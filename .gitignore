@@ -1,0 +1,29 @@
+# Зависимости
+node_modules/
+/frontend/node_modules/
+/backend/node_modules/
+
+# Сборка и временные файлы
+/frontend/dist/
+/backend/dist/
+/frontend/build/
+*.log
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# Переменные окружения (секреты)
+.env
+.env.local
+.env.production
+
+# Файлы IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Базы данных (если вдруг)
+*.sqlite
+*.db
