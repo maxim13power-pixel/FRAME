@@ -12,4 +12,9 @@ export default defineConfig({
       '@mui/styled-engine'
     ],
   },
+  server: {
+    allowedHosts: [
+      'afd895d7-a7fe-4c8b-ab3d-36846b361263-00-2g1su4d4u7yw3.riker.replit.dev'
+    ],
+  },
 })
