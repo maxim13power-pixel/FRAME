@@ -1,0 +1,54 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+ }
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  phone     String   @unique
+  password  String
+  fullName  String
+  role      Role     @default(FOREMAN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Object {
+  id          Int      @id @default(autoincrement())
+  name        String
+  startDate   DateTime
+  endDate     DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  projects    Project[]
+}
+
+model Project {
+  id          Int      @id @default(autoincrement())
+  name        String
+  startDate   DateTime
+  endDate     DateTime
+  objectId    Int
+  object      Object   @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  // TODO: таблица работ/материалов будет привязана к проекту
+}
+
+enum Role {
+  ADMIN
+  STORE_MANAGER
+  FOREMAN
+  CUSTOMER
+}

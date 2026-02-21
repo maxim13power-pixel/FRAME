@@ -12,11 +12,16 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import InputAdornment from '@mui/material/InputAdornment';
+import IconButton from '@mui/material/IconButton';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 
 const Login: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+const handleClickShowPassword = () => setShowPassword((show) => !show);
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
@@ -78,12 +83,12 @@ const Login: React.FC = () => {
           }}
         >
           <Avatar
-            src="/images/frame-logo.png"
+            src="/images/frame-logo2.svg"
             alt="FRAME"
             sx={{
               width: 100,
               height: 100,
-              mb: 1,
+              mb: 0.1,
               animation: 'pulse 5s infinite ease-in-out',
               '@keyframes pulse': {
                 '0%': { transform: 'scale(1)' },
@@ -100,6 +105,7 @@ const Login: React.FC = () => {
               letterSpacing: '1px',
               color: '#04164b',
               textShadow: '1px 1px 2px rgba(0,0,0,0.05)',
+              fontSize: '1.8rem', 
             }}
           >
             FRAME
@@ -133,27 +139,68 @@ const Login: React.FC = () => {
           />
 
           {/* Поле пароля — аналогично */}
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="Пароль"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+<TextField
+  margin="normal"
+  required
+  fullWidth
+  label="Пароль"
+  type={showPassword ? 'text' : 'password'}
+  value={password}
+  onChange={(e) => setPassword(e.target.value)}
+  slotProps={{
+    input: {
+      endAdornment: (
+        <InputAdornment position="end">
+          <IconButton
+            aria-label="toggle password visibility"
+            onClick={handleClickShowPassword}
+            edge="end"
+            disableRipple
             sx={{
-              '& .MuiOutlinedInput-root': {
-                borderRadius: 2,
-                '&:hover .MuiOutlinedInput-notchedOutline': {
-                  borderColor: '#1976d2',
-                },
-              },
-              '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                borderColor: '#1976d2',
-                borderWidth: 2,
-              },
+              backgroundColor: 'transparent !important',
+              '&:hover': { backgroundColor: 'transparent !important' },
+              '&:focus': { outline: 'none' },
             }}
-          />
+          >
+            {showPassword ? <VisibilityOff /> : <Visibility />}
+          </IconButton>
+        </InputAdornment>
+      ),
+    },
+  }}
+  sx={{
+    '& .MuiOutlinedInput-root': {
+      backgroundColor: 'white',
+      borderRadius: 2,
+      transition: 'background-color 0.2s',
+      '&:hover .MuiOutlinedInput-notchedOutline': {
+        borderColor: '#1976d2',
+      },
+      '&.Mui-focused': {
+        backgroundColor: '#e3f2fd', // голубая заливка при фокусе
+        '& .MuiOutlinedInput-notchedOutline': {
+          borderColor: '#1976d2',
+          borderWidth: 2,
+        },
+      },
+    },
+    // прозрачный фон у области глазка всегда
+    '& .MuiInputAdornment-root': {
+      backgroundColor: 'transparent !important',
+    },
+    '& .MuiIconButton-root': {
+      backgroundColor: 'transparent !important',
+      outline: 'none',
+    },
+    // дополнительно при фокусе (чтобы перебить возможные стили)
+    '& .MuiOutlinedInput-root.Mui-focused .MuiInputAdornment-root': {
+      backgroundColor: 'transparent !important',
+    },
+    '& .MuiOutlinedInput-root.Mui-focused .MuiIconButton-root': {
+      backgroundColor: 'transparent !important',
+    }
+  }}
+/>
 
           {/* Чекбокс "Запомнить меня" */}
           <FormControlLabel
