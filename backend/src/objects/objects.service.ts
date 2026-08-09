@@ -15,6 +15,9 @@ export class ObjectsService {
         address: dto.address,
         startDate: new Date(dto.startDate),
         endDate: new Date(dto.endDate),
+        plannedEndDate: dto.plannedEndDate 
+          ? new Date(dto.plannedEndDate) 
+          : new Date(dto.endDate),
       },
     });
   }
@@ -39,5 +42,17 @@ export class ObjectsService {
 
 async remove(id: number) {
   return this.prisma.object.delete({ where: { id } });
+}
+async findOne(id: number) {
+  return this.prisma.object.findUnique({ where: { id } });
+}
+
+async updateEndDate(id: number, newEndDate: string) {
+  return this.prisma.object.update({
+    where: { id },
+    data: {
+      endDate: new Date(newEndDate),
+    },
+  });
 }
 }

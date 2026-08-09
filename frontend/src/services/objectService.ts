@@ -8,6 +8,7 @@ export interface ObjectData {
   address: string;
   startDate: string;
   endDate: string;
+  plannedEndDate?: string;
   createdAt?: string;
 }
 
@@ -38,5 +39,25 @@ export const deleteObject = async (token: string, id: number) => {
   const response = await axios.delete(`${API_URL}/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  return response.data;
+};
+// Получить один объект по ID
+export const fetchObjectById = async (token: string, id: number): Promise<ObjectData> => {
+  const response = await axios.get(`${API_URL}/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
+};
+
+export const updateObjectEndDate = async (
+  token: string, 
+  id: number, 
+  endDate: string
+) => {
+  const response = await axios.patch(
+    `${API_URL}/${id}/end-date`, 
+    { endDate },
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
   return response.data;
 };

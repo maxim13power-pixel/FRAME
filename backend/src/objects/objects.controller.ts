@@ -28,4 +28,17 @@ update(@Param('id', ParseIntPipe) id: number, @Body() dto: Partial<CreateObjectD
 remove(@Param('id', ParseIntPipe) id: number) {
   return this.objectsService.remove(id);
 }
+
+@Get(':id')
+findOne(@Param('id', ParseIntPipe) id: number) {
+  return this.objectsService.findOne(id);
+}
+
+@Patch(':id/end-date')
+updateEndDate(
+  @Param('id', ParseIntPipe) id: number,
+  @Body('endDate') endDate: string,
+) {
+  return this.objectsService.updateEndDate(id, endDate);
+}
 }

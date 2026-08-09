@@ -4,4 +4,5 @@ export class CreateObjectDto {
   address: string;
   startDate: string;   // формат ISO (например, "2026-03-01")
   endDate: string;
+  plannedEndDate?: string;
 }

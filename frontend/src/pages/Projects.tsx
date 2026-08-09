@@ -28,6 +28,10 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SettingsIcon from '@mui/icons-material/Settings';
 import DescriptionIcon from '@mui/icons-material/Description';  // ← листочек 📄
 import EventIcon from '@mui/icons-material/Event';  
+import { fetchObjectById } from '../services/objectService';
+import type { ObjectData } from '../services/objectService';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { updateObjectEndDate } from '../services/objectService';
 
 const Projects: React.FC = () => {
   const { objectId } = useParams<{ objectId: string }>();
@@ -36,6 +40,9 @@ const Projects: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
 
+
+// ... внутри компонента:
+const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -51,7 +58,20 @@ const Projects: React.FC = () => {
   const [editStartDate, setEditStartDate] = useState('');
   const [editEndDate, setEditEndDate] = useState('');  
   const [searchQuery, setSearchQuery] = useState('');
-  // ↓↓↓ ВСТАВИТЬ СЮДА ↓↓↓
+  const [dateConflictDialog, setDateConflictDialog] = useState<{
+    open: boolean;
+    projectEndDate: string;
+    objectEndDate: string;
+  }>({
+    open: false,
+    projectEndDate: '',
+    objectEndDate: '',
+  });
+  const [pendingProject, setPendingProject] = useState<{
+  name: string;
+  startDate: string;
+  endDate: string;
+} | null>(null);// ↓↓↓ ВСТАВИТЬ СЮДА ↓↓↓
   
   // Временная функция для процента (позже заменим на реальную)
   const getProgress = () => Math.floor(Math.random() * 60) + 20;
@@ -72,11 +92,19 @@ const Projects: React.FC = () => {
     if (days < 15) return 'warning';
     return 'success';
   };
-  
-  // ↑↑↑ ДО СЮДА ↑↑↑  
+
+// Форматирование даты с 2-значным годом (как в объектах)
+//const formatDate = (dateStr: string) => {
+  //const d = new Date(dateStr);
+  //const day = d.getDate().toString().padStart(2, '0');
+  //const month = (d.getMonth() + 1).toString().padStart(2, '0');
+  //const year = d.getFullYear().toString().slice(-2);
+  //return `${day}.${month}.${year}`;
+//};  
   const filteredProjects = projects.filter(proj =>
   proj.name.toLowerCase().includes(searchQuery.toLowerCase())
 );
+
 
   useEffect(() => {
     if (!token || !objectId) return;
@@ -95,6 +123,19 @@ const Projects: React.FC = () => {
     };
     loadProjects();
   }, [token, objectId]);
+// Загружаем данные объекта для валидации дат
+useEffect(() => {
+  if (!token || !objectId) return;
+  const loadObject = async () => {
+    try {
+      const obj = await fetchObjectById(token, parseInt(objectId));
+      setCurrentObject(obj);
+    } catch (err) {
+      console.error('Не удалось загрузить объект');
+    }
+  };
+  loadObject();
+}, [token, objectId]);
 
   const handleOpenAddModal = () => setAddModalOpen(true);
   const handleCloseAddModal = () => {
@@ -102,26 +143,149 @@ const Projects: React.FC = () => {
     setNewName('');
     setNewStartDate('');
     setNewEndDate('');
+    setPendingProject(null);
   };
 
-  const handleCreateProject = async () => {
-    if (!token || !objectId || !newName || !newStartDate || !newEndDate) {
-      alert('Заполните все поля');
-      return;
-    }
-    try {
+const handleCreateProject = async () => {
+  if (!token || !objectId || !newName || !newStartDate || !newEndDate) {
+    alert('Заполните все поля');
+    return;
+  }
+  
+  // Валидация 1: окончание >= начала
+  if (new Date(newEndDate) < new Date(newStartDate)) {
+    alert('❌ Дата окончания проекта не может быть раньше даты начала!');
+    return;
+  }
+  
+  // Валидация 2: проверяем конфликт с датой объекта
+  if (currentObject && new Date(newEndDate) > new Date(currentObject.endDate)) {
+    // Сохраняем данные проекта перед открытием диалога
+    setPendingProject({
+      name: newName,
+      startDate: newStartDate,
+      endDate: newEndDate,
+    });
+    
+    // Открываем красивое модальное окно
+    setDateConflictDialog({
+      open: true,
+      projectEndDate: newEndDate,
+      objectEndDate: currentObject.endDate,
+    });
+    return;
+  }
+  
+  // Если конфликтов нет - создаём проект
+  await createProjectAction({
+    name: newName,
+    startDate: newStartDate,
+    endDate: newEndDate,
+  });
+};
+
+const createProjectAction = async (projectData?: {
+  name: string;
+  startDate: string;
+  endDate: string;
+}) => {
+  // Используем переданные данные или pendingProject
+  const data = projectData || pendingProject;
+  
+  if (!data) {
+    alert('Нет данных для создания проекта');
+    return;
+  }
+  
+  try {
+    const created = await createProject(token!, {
+      name: data.name,
+      startDate: data.startDate,
+      endDate: data.endDate,
+      objectId: parseInt(objectId!),
+    });
+    setProjects(prev => [created, ...prev]);
+    handleCloseAddModal();
+    setPendingProject(null); // очищаем
+  } catch (err: any) {
+    alert('Ошибка при создании проекта');
+  }
+};
+
+// Обработчик подтверждения замены даты объекта
+const handleConfirmDateUpdate = async () => {
+  //console.log('🔵 handleConfirmDateUpdate started');
+  
+  if (!token || !currentObject) {
+    alert('Ошибка: нет данных объекта');
+    return;
+  }
+  
+  try {
+    //console.log('🟡 Шаг 1: Обновляем дату объекта...');
+    
+    // 1. Обновляем дату окончания объекта
+    await updateObjectEndDate(
+      token, 
+      currentObject.id, 
+      dateConflictDialog.projectEndDate
+    );
+    //console.log('✅ Дата объекта обновлена');
+    
+    // 2. Обновляем локальное состояние объекта
+    setCurrentObject(prev => prev ? {
+      ...prev,
+      endDate: dateConflictDialog.projectEndDate,
+    } : null);
+    
+    // 3. Закрываем диалог
+    setDateConflictDialog(prev => ({ ...prev, open: false }));
+    
+    // 4. Определяем что делать дальше
+    if (pendingProject) {
+      // ====== СОЗДАНИЕ НОВОГО ПРОЕКТА ======
+      //console.log('🟢 Шаг 2: Создаём новый проект...');
       const created = await createProject(token, {
-        name: newName,
-        startDate: newStartDate,
-        endDate: newEndDate,
-        objectId: parseInt(objectId),
+        name: pendingProject.name,
+        startDate: pendingProject.startDate,
+        endDate: pendingProject.endDate,
+        objectId: parseInt(objectId!),
       });
       setProjects(prev => [created, ...prev]);
       handleCloseAddModal();
-    } catch (err: any) {
-      alert('Ошибка при создании проекта');
+      setPendingProject(null);
+      //console.log('✅ Проект создан!');
+      
+    } else if (editingProject) {
+      // ====== ОБНОВЛЕНИЕ СУЩЕСТВУЮЩЕГО ПРОЕКТА ======
+      console.log('🟢 Шаг 2: Обновляем проект...');
+      console.log('editingProject.id:', editingProject.id);
+      console.log('editName:', editName);
+      console.log('editStartDate:', editStartDate);
+      console.log('editEndDate:', editEndDate);
+      
+      const updated = await updateProject(token, Number(editingProject.id), {
+        name: editName,
+        startDate: editStartDate,
+        endDate: editEndDate,
+      });
+      console.log('✅ Проект обновлён:', updated);
+      
+      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      handleCloseEdit();
+      console.log('✅ Модалка закрыта');
+      
+    } else {
+      console.error('❌ Нет данных для создания/обновления проекта');
+      alert('Ошибка: нет данных проекта');
     }
-  };
+    
+  } catch (err: any) {
+    console.error('❌ Ошибка в handleConfirmDateUpdate:', err);
+    alert('Ошибка: ' + (err.response?.data?.message || err.message));
+  }
+};
+
   const handleOpenEdit = (proj: ProjectData) => {
     setEditingProject(proj);
     setEditName(proj.name);
@@ -135,23 +299,47 @@ const Projects: React.FC = () => {
     setEditingProject(null);
   };
 
-  const handleUpdateProject = async () => {
-    if (!token || !editingProject || !editName || !editStartDate || !editEndDate) {
-      alert('Заполните все поля');
-      return;
-    }
-    try {
-      const updated = await updateProject(token, Number(editingProject.id), {
-        name: editName,
-        startDate: editStartDate,
-        endDate: editEndDate,
-      });
-      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
-      handleCloseEdit();
-    } catch (err) {
-      alert('Ошибка обновления проекта');
-    }
-  };
+const handleUpdateProject = async () => {
+  if (!token || !editingProject || !editName || !editStartDate || !editEndDate) {
+    alert('Заполните все поля');
+    return;
+  }
+  
+  if (new Date(editEndDate) < new Date(editStartDate)) {
+    alert('❌ Дата окончания проекта не может быть раньше даты начала!');
+    return;
+  }
+
+  if (currentObject && new Date(editEndDate) > new Date(currentObject.endDate)) {
+    // Очищаем pendingProject (чтобы не было путаницы с созданием)
+    setPendingProject(null);
+    
+    // Открываем диалог
+    setDateConflictDialog({
+      open: true,
+      projectEndDate: editEndDate,
+      objectEndDate: currentObject.endDate,
+    });
+    return;
+}
+  
+  await updateProjectAction();
+};
+
+const updateProjectAction = async () => {
+  try {
+    const updated = await updateProject(token!, Number(editingProject!.id), {
+      name: editName,
+      startDate: editStartDate,
+      endDate: editEndDate,
+    });
+    setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+    handleCloseEdit();
+  } catch (err) {
+    alert('Ошибка обновления проекта');
+  }
+};
+
 
   const handleDeleteProject = async () => {
     if (!token || !deletingProject) return;
@@ -287,31 +475,39 @@ const Projects: React.FC = () => {
               }}
             />
 
-            {/* Строка с датами и днями */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <EventIcon fontSize="small" color="action" />
-                <Typography variant="body2">
-                  {new Date(proj.startDate).toLocaleDateString('ru-RU')} – {new Date(proj.endDate).toLocaleDateString('ru-RU')}
-                </Typography>
-              </Box>
-              <Chip
-                label={daysUntil(proj.endDate) < 0 
-                  ? `Просрочено ${Math.abs(daysUntil(proj.endDate))}дн.` 
-                  : `${daysUntil(proj.endDate)} дн.`}
-                color={getDaysColor(daysUntil(proj.endDate))}
-                size="small"
-                variant="outlined"
-                sx={{
-                  backgroundColor: 
-                    daysUntil(proj.endDate) < 0 || daysUntil(proj.endDate) < 7 
-                      ? 'rgba(244, 67, 54, 0.1)' 
-                      : daysUntil(proj.endDate) < 15 
-                        ? 'rgba(255, 152, 0, 0.1)' 
-                        : 'rgba(76, 175, 80, 0.1)',
-                }}
-              />
-            </Box>
+{/* Строка с датами и днями */}
+<Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <EventIcon fontSize="small" color="action" />
+    <Typography variant="body2">
+      {new Date(proj.startDate).toLocaleDateString('ru-RU', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: '2-digit' 
+      })} – {new Date(proj.endDate).toLocaleDateString('ru-RU', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: '2-digit' 
+      })}
+    </Typography>
+  </Box>
+  <Chip
+    label={daysUntil(proj.endDate) < 0 
+      ? `Просрочено ${Math.abs(daysUntil(proj.endDate))}дн.` 
+      : `${daysUntil(proj.endDate)} дн.`}
+    color={getDaysColor(daysUntil(proj.endDate))}
+    size="small"
+    variant="outlined"
+    sx={{
+      backgroundColor: 
+        daysUntil(proj.endDate) < 0 || daysUntil(proj.endDate) < 7 
+          ? 'rgba(244, 67, 54, 0.1)' 
+          : daysUntil(proj.endDate) < 15 
+            ? 'rgba(255, 152, 0, 0.1)' 
+            : 'rgba(76, 175, 80, 0.1)',
+    }}
+  />
+</Box>
           </Paper>
   ))
 ) : (
@@ -324,52 +520,89 @@ const Projects: React.FC = () => {
       </Stack>
 
       {/* Модалка добавления проекта */}
-      <Modal open={addModalOpen} onClose={handleCloseAddModal}>
-        <Paper sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: { xs: '90%', sm: 400 },
-          p: 4,
-          borderRadius: 2,
-        }}>
-          <Typography variant="h6" gutterBottom>Добавить проект</Typography>
-          <Stack spacing={2}>
-            <TextField
-              fullWidth
-              label="Название"
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              required
-            />
-            <TextField
-              fullWidth
-              label="Дата начала"
-              type="date"
-              InputLabelProps={{ shrink: true }}
-              value={newStartDate}
-              onChange={e => setNewStartDate(e.target.value)}
-              required
-            />
-            <TextField
-              fullWidth
-              label="Дата окончания"
-              type="date"
-              InputLabelProps={{ shrink: true }}
-              value={newEndDate}
-              onChange={e => setNewEndDate(e.target.value)}
-              required
-            />
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-              <Button variant="outlined" onClick={handleCloseAddModal}>Отмена</Button>
-              <Button variant="contained" onClick={handleCreateProject}>Сохранить</Button>
-            </Box>
-          </Stack>
-        </Paper>
-      </Modal>
+<Modal open={addModalOpen} onClose={handleCloseAddModal} disableRestoreFocus={true} >
+  <Paper sx={{
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    width: { xs: '90%', sm: 450 },
+    p: 4,
+    borderRadius: 2,
+  }}>
+    <Typography variant="h6" gutterBottom>Добавить проект</Typography>
+    
+    {/* ↓↓↓ БЛОК С ГРАНИЦАМИ ОБЪЕКТА ↓↓↓ */}
+    {currentObject && (
+      <Box sx={{
+        mb: 3,
+        p: 2,
+        bgcolor: 'rgba(25, 118, 210, 0.08)',
+        borderRadius: 2,
+        border: '1px solid rgba(25, 118, 210, 0.3)',
+      }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#1976d2' }}>
+          📅 Сроки работ по объекту "{currentObject.name}":
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Chip
+            icon={<EventIcon />}
+            label={`Начало: ${new Date(currentObject.startDate).toLocaleDateString('ru-RU')}`}
+            size="small"
+            sx={{ bgcolor: '#e3f2fd', color: '#1976d2' }}
+          />
+          <Chip
+            icon={<EventIcon />}
+            label={`Окончание: ${new Date(currentObject.endDate).toLocaleDateString('ru-RU')}`}
+            size="small"
+            sx={{ bgcolor: '#e3f2fd', color: '#1976d2' }}
+          />
+        </Box>
+      </Box>
+    )}
+    {/* ↑↑↑ КОНЕЦ БЛОКА ↑↑↑ */}
+    
+    <Stack spacing={2}>
+      <TextField
+        fullWidth
+        label="Название"
+        value={newName}
+        onChange={e => setNewName(e.target.value)}
+        required
+      />
+      <TextField
+        fullWidth
+        label="Дата начала"
+        type="date"
+        InputLabelProps={{ shrink: true }}
+        value={newStartDate}
+        onChange={e => setNewStartDate(e.target.value)}
+        required
+        inputProps={{
+          min: currentObject ? currentObject.startDate.slice(0, 10) : undefined,
+                  }}
+      />
+      <TextField
+        fullWidth
+        label="Дата окончания"
+        type="date"
+        InputLabelProps={{ shrink: true }}
+        value={newEndDate}
+        onChange={e => setNewEndDate(e.target.value)}
+        required
+        inputProps={{
+          min: newStartDate || (currentObject ? currentObject.startDate.slice(0, 10) : undefined),
+                  }}
+      />
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+        <Button variant="outlined" onClick={handleCloseAddModal}>Отмена</Button>
+        <Button variant="contained" onClick={handleCreateProject}>Сохранить</Button>
+      </Box>
+    </Stack>
+  </Paper>
+</Modal>
       {/* Модалка редактирования проекта */}
-      <Modal open={editModalOpen} onClose={handleCloseEdit}>
+      <Modal open={editModalOpen} onClose={handleCloseEdit} disableRestoreFocus={true}>
         <Paper sx={{
           position: 'absolute',
           top: '50%',
@@ -380,6 +613,37 @@ const Projects: React.FC = () => {
           borderRadius: 2,
         }}>
           <Typography variant="h6" gutterBottom>Редактировать проект</Typography>
+
+    {/* ↓↓↓ БЛОК С ГРАНИЦАМИ ОБЪЕКТА ↓↓↓ */}
+    {currentObject && (
+      <Box sx={{
+        mb: 3,
+        p: 2,
+        bgcolor: 'rgba(25, 118, 210, 0.08)',
+        borderRadius: 2,
+        border: '1px solid rgba(25, 118, 210, 0.3)',
+      }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#1976d2' }}>
+          📅 Сроки работ по объекту "{currentObject.name}":
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Chip
+            icon={<EventIcon />}
+            label={`Начало: ${new Date(currentObject.startDate).toLocaleDateString('ru-RU')}`}
+            size="small"
+            sx={{ bgcolor: '#e3f2fd', color: '#1976d2' }}
+          />
+          <Chip
+            icon={<EventIcon />}
+            label={`Окончание: ${new Date(currentObject.endDate).toLocaleDateString('ru-RU')}`}
+            size="small"
+            sx={{ bgcolor: '#e3f2fd', color: '#1976d2' }}
+          />
+        </Box>
+      </Box>
+    )}
+    {/* ↑↑↑ КОНЕЦ БЛОКА ↑↑↑ */}          
+          
           <Stack spacing={2}>
             <TextField
               fullWidth
@@ -396,6 +660,9 @@ const Projects: React.FC = () => {
               value={editStartDate}
               onChange={e => setEditStartDate(e.target.value)}
               required
+              inputProps={{
+                min: currentObject ? currentObject.startDate.slice(0, 10) : undefined,
+              }}
             />
             <TextField
               fullWidth
@@ -405,6 +672,9 @@ const Projects: React.FC = () => {
               value={editEndDate}
               onChange={e => setEditEndDate(e.target.value)}
               required
+              inputProps={{
+                min: editStartDate || (currentObject ? currentObject.startDate.slice(0, 10) : undefined),
+              }}
             />
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
               <Button
@@ -438,6 +708,7 @@ const Projects: React.FC = () => {
           setDeleteConfirmOpen(false);
           setDeletingProject(null);
         }}
+        disableRestoreFocus={true}
       >
         <Paper sx={{
           position: 'absolute',
@@ -468,6 +739,20 @@ const Projects: React.FC = () => {
           </Box>
         </Paper>
       </Modal>
+
+      <ConfirmDialog
+        open={dateConflictDialog.open}
+        title="Конфликт дат"
+        message="Дата окончания проекта позже даты окончания объекта. Хотите автоматически продлить срок объекта?"
+        details={{
+          currentDate: new Date(dateConflictDialog.objectEndDate).toLocaleDateString('ru-RU'),
+          proposedDate: new Date(dateConflictDialog.projectEndDate).toLocaleDateString('ru-RU'),
+        }}
+        onConfirm={handleConfirmDateUpdate}
+        onCancel={() => setDateConflictDialog(prev => ({ ...prev, open: false }))}
+        confirmText="Да, продлить объект"
+        cancelText="Отмена"
+      />
 
       {isMobile && (
         <Fab

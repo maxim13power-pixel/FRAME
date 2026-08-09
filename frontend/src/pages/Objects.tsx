@@ -36,7 +36,10 @@ import CloseIcon from '@mui/icons-material/Close';
 // Вспомогательная функция для форматирования даты
 const formatDate = (dateStr: string) => {
   const d = new Date(dateStr);
-  return d.toLocaleDateString('ru-RU');
+  const day = d.getDate().toString().padStart(2, '0');
+  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+  const year = d.getFullYear().toString().slice(-2); // ← только последние 2 цифры
+  return `${day}.${month}.${year}`;
 };
 
 // Функция для вычисления процента выполнения (пока случайный или 0)
@@ -83,7 +86,7 @@ const Objects: React.FC = () => {
   const [editEndDate, setEditEndDate] = useState('');
   
 
-console.log('Objects render, token:', token);
+//console.log('Objects render, token:', token);
 
 //const getProgressColor = (progress: number) => {
   // Нелинейный переход: прогресс в квадрате, чтобы цвет дольше оставался в теплой зоне
@@ -106,7 +109,7 @@ useEffect(() => {
       setLoading(true);
       const data = await fetchObjects(token);
       setObjects(data);
-      console.log('Получены объекты:', data);
+      //console.log('Получены объекты:', data);
       setError('');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Ошибка загрузки объектов');
@@ -157,25 +160,50 @@ const filteredAndSortedObjects = useMemo(() => {
     setNewStartDate('');
     setNewEndDate('');
   };
-
-  const handleCreateObject = async () => {
-    if (!token || !newName || !newAddress || !newStartDate || !newEndDate) {
-      alert('Заполните все поля');
-      return;
-    }
-    try {
-      const created = await createObject(token, {
-        name: newName,
-        address: newAddress,
-        startDate: newStartDate,
-        endDate: newEndDate,
-      });
-      setObjects(prev => [created, ...prev]); // добавляем новый объект в начало списка
-      handleCloseAddModal();
-    } catch (err: any) {
-      alert('Ошибка при создании объекта: ' + (err.response?.data?.message || err.message));
-    }
-  };
+const handleCreateObject = async () => {
+  if (!token || !newName || !newAddress || !newStartDate || !newEndDate) {
+    alert('Заполните все поля');
+    return;
+  }
+  
+  // ↓↓↓ ВАЛИДАЦИЯ ДАТ ↓↓↓
+  if (new Date(newEndDate) < new Date(newStartDate)) {
+    alert('❌ Дата окончания не может быть раньше даты начала!');
+    return;
+  }
+  // ↑↑↑ КОНЕЦ ВАЛИДАЦИИ ↑↑↑
+  
+  try {
+    const created = await createObject(token, {
+      name: newName,
+      address: newAddress,
+      startDate: newStartDate,
+      endDate: newEndDate,
+    });
+    setObjects(prev => [created, ...prev]);
+    handleCloseAddModal();
+  } catch (err: any) {
+    alert('Ошибка при создании объекта: ' + (err.response?.data?.message || err.message));
+  }
+};
+  //const handleCreateObject = async () => {
+    //if (!token || !newName || !newAddress || !newStartDate || !newEndDate) {
+      //alert('Заполните все поля');
+      //return;
+    //}
+    //try {
+      //const created = await createObject(token, {
+        //name: newName,
+        //address: newAddress,
+        //startDate: newStartDate,
+        //endDate: newEndDate,
+      //});
+      //setObjects(prev => [created, ...prev]); // добавляем новый объект в начало списка
+      //handleCloseAddModal();
+    //} catch (err: any) {
+      //alert('Ошибка при создании объекта: ' + (err.response?.data?.message || err.message));
+    //}
+  //};
   
     const handleOpenEdit = (obj: ObjectData) => {
     setEditingObject(obj);
@@ -191,21 +219,29 @@ const filteredAndSortedObjects = useMemo(() => {
     setEditingObject(null);
   };
 
-  const handleUpdateObject = async () => {
-    if (!token || !editingObject) return;
-    try {
-      const updated = await updateObject(token, Number(editingObject.id), {
-        name: editName,
-        address: editAddress,
-        startDate: editStartDate,
-        endDate: editEndDate,
-      });
-      setObjects(prev => prev.map(obj => obj.id === updated.id ? updated : obj));
-      handleCloseEdit();
-    } catch (err) {
-      alert('Ошибка обновления');
-    }
-  };
+const handleUpdateObject = async () => {
+  if (!token || !editingObject) return;
+  
+  // ↓↓↓ ВАЛИДАЦИЯ ДАТ ↓↓↓
+  if (new Date(editEndDate) < new Date(editStartDate)) {
+    alert('❌ Дата окончания не может быть раньше даты начала!');
+    return;
+  }
+  // ↑↑↑ КОНЕЦ ВАЛИДАЦИИ ↑↑↑
+  
+  try {
+    const updated = await updateObject(token, Number(editingObject.id), {
+      name: editName,
+      address: editAddress,
+      startDate: editStartDate,
+      endDate: editEndDate,
+    });
+    setObjects(prev => prev.map(obj => obj.id === updated.id ? updated : obj));
+    handleCloseEdit();
+  } catch (err) {
+    alert('Ошибка обновления');
+  }
+};
 
 const handleDeleteObject = async () => {
   if (!token || !deletingObject) return;
@@ -388,15 +424,12 @@ const handleSearchClose = () => {
             const progress = getProgress(); // позже заменим на реальный процент
             const daysLeft = daysUntil(obj.endDate);
             //const daysColor = getDaysColor(daysLeft);
-            const chipLabel = daysLeft < 0 
-  ? `Просрочено -${Math.abs(daysLeft)}дн.` 
-  : `${daysLeft} дн.`;
 
             return (
 <Paper
   key={obj.id}
    onClick={() => {
-    console.log('Клик по объекту:', obj.id, obj.name);
+    //console.log('Клик по объекту:', obj.id, obj.name);
     navigate(`/objects/${obj.id}/projects`);
   }}
   elevation={2}
@@ -460,27 +493,44 @@ const handleSearchClose = () => {
   }}
 />
 
-                {/* Строка с датами и днями */}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <EventIcon fontSize="small" color="action" />
-                    <Typography variant="body2">
-                      {formatDate(obj.startDate)} – {formatDate(obj.endDate)}
-                    </Typography>
-                  </Box>
-<Chip
-  label={chipLabel}
-  color={getDaysColor(daysLeft)}
-  size="small"
-  variant="outlined"
-  sx={{
-    backgroundColor: 
-      daysLeft < 0 || daysLeft < 7 ? 'rgba(244, 67, 54, 0.1)' :
-      daysLeft < 15 ? 'rgba(255, 152, 0, 0.1)' :
-      'rgba(76, 175, 80, 0.1)',
-  }}
-/>
-                </Box>
+{/* Строка с датами и днями */}
+<Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <EventIcon fontSize="small" color="action" />
+    <Box>
+      <Typography variant="body2">
+        {formatDate(obj.startDate)} – {formatDate(obj.endDate)}
+        {obj.plannedEndDate && obj.plannedEndDate !== obj.endDate && (
+          <Typography 
+            component="span" 
+            variant="body2" 
+            sx={{ 
+              color: '#ff9800', 
+              fontSize: '0.85em',
+              ml: 0.5,
+              textDecoration: 'underline',
+              textDecorationStyle: 'dotted',
+            }}
+          >
+            ({formatDate(obj.plannedEndDate)})
+          </Typography>
+        )}
+      </Typography>
+    </Box>
+  </Box>
+  <Chip
+    label={daysLeft < 0 ? `Просрочено ${Math.abs(daysLeft)}дн.` : `${daysLeft} дн.`}
+    color={getDaysColor(daysLeft)}
+    size="small"
+    variant="outlined"
+    sx={{
+      backgroundColor: 
+        daysLeft < 0 || daysLeft < 7 ? 'rgba(244, 67, 54, 0.1)' :
+        daysLeft < 15 ? 'rgba(255, 152, 0, 0.1)' :
+        'rgba(76, 175, 80, 0.1)',
+    }}
+  />
+</Box>
               </Paper>
             );
           })
