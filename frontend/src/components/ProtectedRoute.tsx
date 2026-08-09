@@ -1,17 +1,20 @@
-import React from 'react';   // <---- ЭТО РЕШИТ ПРОБЛЕМУ
+import React from 'react';
 import { Navigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 interface ProtectedRouteProps {
-  children: React.ReactNode; 
+  children: React.ReactNode;
 }
 
-const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const token = localStorage.getItem('token');
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
+  const { token } = useAuth();
 
+  // Если нет токена – редирект на логин
   if (!token) {
     return <Navigate to="/login" replace />;
   }
 
+  // Если токен есть – показываем защищённый контент
   return <>{children}</>;
 };
 

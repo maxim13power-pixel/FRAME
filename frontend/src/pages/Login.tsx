@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import InputAdornment from '@mui/material/InputAdornment';
 import IconButton from '@mui/material/IconButton';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
+import { useAuth } from '../contexts/AuthContext'; // добавить эту строку
 
 const Login: React.FC = () => {
   const [phone, setPhone] = useState('');
@@ -24,6 +25,7 @@ const Login: React.FC = () => {
 const handleClickShowPassword = () => setShowPassword((show) => !show);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,10 +33,10 @@ const handleClickShowPassword = () => setShowPassword((show) => !show);
       const response = await axios.post('http://localhost:3000/auth/login', {
         phone,
         password,
+        rememberMe, // добавляем состояние чекбокса
       });
-      localStorage.setItem('token', response.data.access_token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-      navigate('/');
+login(response.data.access_token, response.data.user);
+navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Ошибка входа');
     }

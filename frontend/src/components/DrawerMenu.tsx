@@ -18,7 +18,7 @@ interface DrawerMenuProps {
 const menuItems = [
   { label: 'Объекты', path: '/objects', icon: <HomeIcon /> },
   { label: 'Бригады', path: '/brigades', icon: <EngineeringIcon /> },
-  { label: 'Склад', path: '/equipment', icon: <WarehouseIcon /> },
+  { label: 'Склад', path: '/warehouse', icon: <WarehouseIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
   { label: 'Аналитика', path: '/analytics', icon: <AnalyticsIcon /> },
   { label: 'Отчеты', path: '/reports', icon: <AssessmentIcon /> },

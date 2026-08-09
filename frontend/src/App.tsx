@@ -2,97 +2,51 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
+import Objects from './pages/Objects';   
+import Projects from './pages/Projects';     // создадим позже
+import Brigades from './pages/Brigades';      // создадим позже
+import Warehouse from './pages/Warehouse';
+import Rentals from './pages/Rentals';
+import Analytics from './pages/Analytics';
+import Reports from './pages/Reports';
+import Users from './pages/Users';
+import Settings from './pages/Settings';
+
 function App() {
   const token = localStorage.getItem('token');
 
   return (
     <BrowserRouter>
       <Routes>
-        {/* Публичный маршрут: если уже залогинен, уходим с логина на главную */}
+        {/* Публичный логин */}
         <Route
           path="/login"
-          element={
-            token ? <Navigate to="/" replace /> : <Login />
-          }
+          element={token ? <Navigate to="/" replace /> : <Login />}
         />
 
-        {/* Защищённые маршруты */}
+        {/* Защищённые маршруты – все внутри Dashboard */}
         <Route
           path="/"
           element={
             <ProtectedRoute>
-            <Dashboard />  
+              <Dashboard />
             </ProtectedRoute>
           }
-        />
+        >
+          {/* По умолчанию показываем, например, список объектов */}
+          <Route index element={<Objects />} />
+          <Route path="objects" element={<Objects />} />
+          <Route path="objects/:objectId/projects" element={<Projects />} />
+          <Route path="brigades" element={<Brigades />} />
+          <Route path="warehouse" element={<Warehouse />} />
+          <Route path="rentals" element={<Rentals />} />
+          <Route path="analytics" element={<Analytics />} />
+          <Route path="reports" element={<Reports />} />
+          <Route path="users" element={<Users />} />
+          <Route path="settings" element={<Settings />} />
+        </Route>
 
-        {/* Пример: сюда позже добавим /objects, /equipment и т.д. */}
-        <Route
-          path="/objects"
-          element={
-            <ProtectedRoute>
-              <div>Объекты</div>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/brigades"
-          element={
-            <ProtectedRoute>
-              <div>Бригады</div>
-            </ProtectedRoute>
-          }
-        />
-<Route
-  path="/warehouse"
-  element={
-    <ProtectedRoute>
-      <div>Склад</div>
-    </ProtectedRoute>
-  }
-/>
-<Route
-  path="/rentals"
-  element={
-    <ProtectedRoute>
-      <div>Аренда</div>
-    </ProtectedRoute>
-  }
-/>
-<Route
-  path="/analytics"
-  element={
-    <ProtectedRoute>
-      <div>Аналитика</div>
-    </ProtectedRoute>
-  }
-/>
-<Route
-  path="/reports"
-  element={
-    <ProtectedRoute>
-      <div>Отчеты</div>
-    </ProtectedRoute>
-  }
-/>
-<Route
-  path="/users"
-  element={
-    <ProtectedRoute>
-      <div>Пользователи</div>
-    </ProtectedRoute>
-  }
-/>
-<Route
-  path="/settings"
-  element={
-    <ProtectedRoute>
-      <div>Настройки</div>
-    </ProtectedRoute>
-  }
-/>
-        
-        {/* Если маршрут не найден — редирект на логин или на главную */}
+        {/* 404 редирект */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

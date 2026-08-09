@@ -1,0 +1,2 @@
+Если хотите карандаш, используйте CreateIcon 
+(импорт import CreateIcon from '@mui/icons-material/Create';).

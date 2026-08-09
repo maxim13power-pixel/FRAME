@@ -27,6 +27,7 @@ model User {
 model Object {
   id          Int      @id @default(autoincrement())
   name        String
+  address     String
   startDate   DateTime
   endDate     DateTime
   createdAt   DateTime @default(now())
