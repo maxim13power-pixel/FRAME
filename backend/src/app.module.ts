@@ -5,7 +5,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { ObjectsModule } from './objects/objects.module';
 import { ProjectsModule } from './projects/projects.module';
-
+import { MaterialsModule } from './materials/materials.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -15,6 +15,7 @@ import { ProjectsModule } from './projects/projects.module';
     AuthModule,
     ObjectsModule,
     ProjectsModule,
+    MaterialsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

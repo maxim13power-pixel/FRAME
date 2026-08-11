@@ -3,8 +3,9 @@ import Login from './pages/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
 import Objects from './pages/Objects';   
-import Projects from './pages/Projects';     // создадим позже
-import Brigades from './pages/Brigades';      // создадим позже
+import Projects from './pages/Projects'; 
+import Materials from './pages/Materials';
+import Brigades from './pages/Brigades';   
 import Warehouse from './pages/Warehouse';
 import Rentals from './pages/Rentals';
 import Analytics from './pages/Analytics';
@@ -37,6 +38,7 @@ function App() {
           <Route index element={<Objects />} />
           <Route path="objects" element={<Objects />} />
           <Route path="objects/:objectId/projects" element={<Projects />} />
+          <Route path="objects/:objectId/projects/:projectId/materials" element={<Materials />} />
           <Route path="brigades" element={<Brigades />} />
           <Route path="warehouse" element={<Warehouse />} />
           <Route path="rentals" element={<Rentals />} />

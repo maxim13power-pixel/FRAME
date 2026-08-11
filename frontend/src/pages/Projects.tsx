@@ -421,17 +421,23 @@ const updateProjectAction = async () => {
       <Stack spacing={2}>
 {filteredProjects.length > 0 ? (
   filteredProjects.map(proj => (
-          <Paper key={proj.id} sx={{
-            p: isMobile ? 1.5 : 2,
-            borderRadius: 2,
-            cursor: 'pointer',
-            transition: 'box-shadow 0.3s, transform 0.3s',
-            '&:hover': {
-              boxShadow: 6,
-              transform: 'scale(1.01)',
-            },
-          }}
-          >
+<Paper 
+  key={proj.id} 
+  onClick={() => {
+    console.log('Переход в материалы проекта:', proj.id);
+    navigate(`/objects/${objectId}/projects/${proj.id}/materials`);
+  }}
+  sx={{
+    p: isMobile ? 1.5 : 2,
+    borderRadius: 2,
+    cursor: 'pointer',
+    transition: 'box-shadow 0.3s, transform 0.3s',
+    '&:hover': {
+      boxShadow: 6,
+      transform: 'scale(1.01)',
+    },
+  }}
+>
 {/* Верхняя строка: иконка, название, шестерёнка, процент */}
 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
   <DescriptionIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28 }} />

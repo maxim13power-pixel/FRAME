@@ -43,6 +43,7 @@ model Project {
   endDate     DateTime
   objectId    Int
   object      Object   @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  materials   Material[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   // TODO: таблица работ/материалов будет привязана к проекту
@@ -53,4 +54,50 @@ enum Role {
   STORE_MANAGER
   FOREMAN
   CUSTOMER
+}
+
+enum Unit {
+  PIECE          // шт
+  METER          // м
+  SQUARE_METER   // м²
+  CUBIC_METER    // м³
+  KILOGRAM       // кг
+  LITER          // л
+  TON            // т
+  BAG            // мешок
+  PACKAGE        // упаковка
+  SET            // комплект
+}
+
+model Material {
+  id              Int            @id @default(autoincrement())
+  name            String
+  article         String?
+  unit            Unit           @default(PIECE)
+  specQuantity    Float          // количество по спецификации (план)
+  totalUsed       Float          @default(0)  // фактический расход (автосчёт)
+  lastEntry       Float?         // последняя фиксация
+  lastEntryDate   DateTime?      // дата последней фиксации
+  note            String?
+  progressPercent Float          @default(0)  // % выполнения
+  isSpecLocked    Boolean        @default(true) // защита спецификации
+  projectId       Int
+  project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fixes           MaterialFix[]  // история всех фиксаций
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@map("materials")
+}
+
+model MaterialFix {
+  id          Int       @id @default(autoincrement())
+  materialId  Int
+  material    Material  @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  amount      Float     // объём этой фиксации
+  note        String?   // примечание к фиксации
+  fixedAt     DateTime  @default(now())  // когда зафиксировано
+  userId      Int?      // кто зафиксировал (опционально, пока оставим)
+
+  @@map("material_fixes")
 }
