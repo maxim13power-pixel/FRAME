@@ -13,8 +13,16 @@ export default defineConfig({
     ],
   },
   server: {
-    allowedHosts: [
-      'afd895d7-a7fe-4c8b-ab3d-36846b361263-00-2g1su4d4u7yw3.riker.replit.dev'
-    ],
+    host: '0.0.0.0',
+    port: 5000,
+    strictPort: true,
+    allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
   },
 })

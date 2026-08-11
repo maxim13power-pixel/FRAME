@@ -30,7 +30,7 @@ const handleClickShowPassword = () => setShowPassword((show) => !show);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await axios.post('http://localhost:3000/auth/login', {
+      const response = await axios.post('/api/auth/login', {
         phone,
         password,
         rememberMe, // добавляем состояние чекбокса
@@ -122,6 +122,7 @@ navigate('/');
             required
             fullWidth
             label="Телефон или Email"
+            autoComplete="username"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             sx={{
@@ -146,6 +147,7 @@ navigate('/');
   required
   fullWidth
   label="Пароль"
+   autoComplete="current-password"
   type={showPassword ? 'text' : 'password'}
   value={password}
   onChange={(e) => setPassword(e.target.value)}

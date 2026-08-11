@@ -20,7 +20,4 @@ import { ProjectsModule } from './projects/projects.module';
   providers: [AppService],
 })
 export class AppModule {
-  constructor() {
-    console.log('DATABASE_URL from AppModule:', process.env.DATABASE_URL);
-  }
 }
