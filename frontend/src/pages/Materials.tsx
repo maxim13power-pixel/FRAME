@@ -19,6 +19,7 @@ import {
   TableBody,
   TableCell,
   TableContainer,
+  TableFooter,
   TableHead,
   TableRow,
   Select,
@@ -103,6 +104,14 @@ const Materials: React.FC = () => {
     m.article?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Итоговая строка: суммы по спеке и факту, средний прогресс
+  const totals = {
+    sumSpecQuantity: filteredMaterials.reduce((acc, m) => acc + (Number(m.specQuantity) || 0), 0),
+    sumTotalUsed: filteredMaterials.reduce((acc, m) => acc + (Number(m.totalUsed) || 0), 0),
+    avgProgressPercent: filteredMaterials.length > 0
+      ? Math.round(filteredMaterials.reduce((acc, m) => acc + (Number(m.progressPercent) || 0), 0) / filteredMaterials.length)
+      : 0,
+  };
   useEffect(() => {
     if (!token || !projectId) return;
     const loadMaterials = async () => {
@@ -419,6 +428,16 @@ const Materials: React.FC = () => {
                 </TableRow>
               )}
             </TableBody>
+            <TableFooter>
+              <TableRow sx={{ bgcolor: '#FFF9C4' }}>
+                <TableCell colSpan={4} sx={{ fontWeight: 700 }}>ИТОГО:</TableCell>
+                <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.sumSpecQuantity}</TableCell>
+                <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.sumTotalUsed}</TableCell>
+                <TableCell />
+                <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.avgProgressPercent}%</TableCell>
+                <TableCell />
+              </TableRow>
+            </TableFooter>
           </Table>
         </TableContainer>
       )}
