@@ -45,6 +45,10 @@ import {
   deleteMaterial,
 } from '../services/materialService';
 import type { MaterialData } from '../services/materialService';
+import { fetchProjectById } from '../services/materialService';
+import type { ProjectData } from '../services/projectService';
+import { fetchObjectById } from '../services/objectService';
+import type { ObjectData } from '../services/objectService';
 
 const UNIT_OPTIONS = [
   { value: 'PIECE', label: 'шт' },
@@ -70,6 +74,9 @@ const Materials: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentProject, setCurrentProject] = useState<ProjectData | null>(null);
+  const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
+  
 
   // Модалка добавления материала
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -112,23 +119,32 @@ const Materials: React.FC = () => {
       ? Math.round(filteredMaterials.reduce((acc, m) => acc + (Number(m.progressPercent) || 0), 0) / filteredMaterials.length)
       : 0,
   };
-  useEffect(() => {
-    if (!token || !projectId) return;
-    const loadMaterials = async () => {
-      try {
-        setLoading(true);
-        const data = await fetchMaterialsByProject(token, parseInt(projectId));
-        setMaterials(data);
-        setError('');
-      } catch (err: any) {
-        setError('Ошибка загрузки материалов');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadMaterials();
-  }, [token, projectId]);
+useEffect(() => {
+  if (!token || !projectId || !objectId) return;
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      // Параллельная загрузка материалов, проекта и объекта
+      const [materialsData, projectData] = await Promise.all([
+        fetchMaterialsByProject(token, parseInt(projectId)),
+        fetchProjectById(token, parseInt(projectId)),
+      ]);
+      setMaterials(materialsData);
+      setCurrentProject(projectData);
+      // Загружаем объект (для названия)
+      //const { fetchObjectById } = await import('../services/objectService');
+      const objData = await fetchObjectById(token, parseInt(objectId));
+      setCurrentObject(objData);
+      setError('');
+    } catch (err: any) {
+      setError('Ошибка загрузки');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+  loadData();
+}, [token, projectId, objectId]);
 
   const handleOpenAddModal = () => setAddModalOpen(true);
   const handleCloseAddModal = () => {
@@ -301,21 +317,57 @@ const Materials: React.FC = () => {
 
   return (
     <Box>
-      {/* Верхняя строка с кнопкой назад и заголовком */}
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <IconButton 
-          onClick={() => navigate(`/objects/${objectId}/projects`)} 
-          sx={{ 
-            mr: 1,
-            bgcolor: 'rgba(0, 0, 0, 0.06)',
-            '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } 
-          }}
-        >
-          <ArrowBackIcon />
-        </IconButton>
-        <Typography variant={isMobile ? "h5" : "h4"} sx={{ flexGrow: 1 }}>
-          Материалы и работы
-        </Typography>
+      {/* Верхняя строка с хлебными крошками */}
+      <Box sx={{ mb: 2 }}>
+        {/* Хлебные крошки: Объекты › Объект › Проект */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1, flexWrap: 'wrap' }}>
+          <Typography
+            component="button"
+            onClick={() => navigate('/objects')}
+            sx={{
+              background: 'none', border: 'none', padding: 0,
+              color: '#1976d2', cursor: 'pointer', fontSize: 14,
+              textDecoration: 'underline',
+              '&:hover': { color: '#1565c0' },
+            }}
+          >
+            Объекты
+          </Typography>
+          <Typography sx={{ color: 'text.secondary', fontSize: 14 }}>›</Typography>
+          <Typography
+            component="button"
+            onClick={() => navigate(`/objects/${objectId}/projects`)}
+            sx={{
+              background: 'none', border: 'none', padding: 0,
+              color: '#1976d2', cursor: 'pointer', fontSize: 14,
+              textDecoration: 'underline',
+              '&:hover': { color: '#1565c0' },
+            }}
+          >
+            {currentObject ? currentObject.name : 'Объект'}
+          </Typography>
+          <Typography sx={{ color: 'text.secondary', fontSize: 14 }}>›</Typography>
+          <Typography sx={{ fontSize: 14, fontWeight: 600 }}>
+            {currentProject ? currentProject.name : 'Проект'}
+          </Typography>
+        </Box>
+
+        {/* Заголовок с кнопкой назад */}
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <IconButton
+            onClick={() => navigate(`/objects/${objectId}/projects`)}
+            sx={{
+              mr: 1,
+              bgcolor: 'rgba(0, 0, 0, 0.06)',
+              '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+            }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant={isMobile ? "h5" : "h4"} sx={{ flexGrow: 1 }}>
+            Материалы и работы
+          </Typography>
+        </Box>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}

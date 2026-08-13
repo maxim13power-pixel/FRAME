@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { ProjectData } from './projectService';
 
 const API_URL = 'http://localhost:3000/materials';
 
@@ -115,4 +116,17 @@ export const deleteMaterial = async (
   await axios.delete(`${API_URL}/${materialId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+};
+
+
+// Загрузка проекта по ID (для хлебных крошек)
+export const fetchProjectById = async (
+  token: string,
+  projectId: number
+): Promise<ProjectData> => {
+  const response = await axios.get(
+    `http://localhost:3000/projects/${projectId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return response.data;
 };
