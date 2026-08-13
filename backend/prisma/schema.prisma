@@ -81,6 +81,10 @@ model Material {
   note            String?
   progressPercent Float          @default(0)  // % выполнения
   isSpecLocked    Boolean        @default(true) // защита спецификации
+  priceItemId   Int?
+  priceItem     PriceItem? @relation(fields: [priceItemId], references: [id], onDelete: SetNull)
+  unitPrice     Float      @default(0)  // SNAPSHOT цены на момент привязки
+  totalCost     Float      @default(0)  // totalUsed × unitPrice (автосчёт)
   projectId       Int
   project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   fixes           MaterialFix[]  // история всех фиксаций
@@ -100,4 +104,29 @@ model MaterialFix {
   userId      Int?      // кто зафиксировал (опционально, пока оставим)
 
   @@map("material_fixes")
+}
+
+model PriceCategory {
+  id        Int         @id @default(autoincrement())
+  name      String      @unique  // "Электрика", "Отделка"
+  sortOrder Int         @default(0)
+  items     PriceItem[]
+
+  @@map("price_categories")
+}
+
+model PriceItem {
+  id         Int           @id @default(autoincrement())
+  name       String        // "Установка розетки"
+  article    String?
+  unit       Unit          @default(PIECE)
+  price      Float         @default(0)
+  categoryId Int
+  category   PriceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  isActive   Boolean       @default(true)  // устаревшие расценки скрываем
+  materials  Material[]
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@map("price_items")
 }

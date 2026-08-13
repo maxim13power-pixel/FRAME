@@ -6,6 +6,8 @@ import { AuthModule } from './auth/auth.module';
 import { ObjectsModule } from './objects/objects.module';
 import { ProjectsModule } from './projects/projects.module';
 import { MaterialsModule } from './materials/materials.module';
+import { PriceListModule } from './price-list/price-list.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -16,6 +18,7 @@ import { MaterialsModule } from './materials/materials.module';
     ObjectsModule,
     ProjectsModule,
     MaterialsModule,
+    PriceListModule,
   ],
   controllers: [AppController],
   providers: [AppService],

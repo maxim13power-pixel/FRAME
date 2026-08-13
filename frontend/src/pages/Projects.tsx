@@ -14,10 +14,9 @@ import {
   useMediaQuery,
   useTheme,
   InputAdornment,
-  Chip,              // ← добавить
+  Chip,
   LinearProgress,  
 } from '@mui/material';
-//import AddIcon from '@mui/icons-material/Add';//
 import { useAuth } from '../contexts/AuthContext';
 import { fetchProjectsByObject, createProject, updateProject, deleteProject } from '../services/projectService';
 import type { ProjectData } from '../services/projectService';
@@ -26,7 +25,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import IconButton from '@mui/material/IconButton';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SettingsIcon from '@mui/icons-material/Settings';
-import DescriptionIcon from '@mui/icons-material/Description';  // ← листочек 📄
+import DescriptionIcon from '@mui/icons-material/Description';
 import EventIcon from '@mui/icons-material/Event';  
 import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
@@ -71,7 +70,7 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   name: string;
   startDate: string;
   endDate: string;
-} | null>(null);// ↓↓↓ ВСТАВИТЬ СЮДА ↓↓↓
+} | null>(null);
   
   // Временная функция для процента (позже заменим на реальную)
   const getProgress = () => Math.floor(Math.random() * 60) + 20;
@@ -93,14 +92,6 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
     return 'success';
   };
 
-// Форматирование даты с 2-значным годом (как в объектах)
-//const formatDate = (dateStr: string) => {
-  //const d = new Date(dateStr);
-  //const day = d.getDate().toString().padStart(2, '0');
-  //const month = (d.getMonth() + 1).toString().padStart(2, '0');
-  //const year = d.getFullYear().toString().slice(-2);
-  //return `${day}.${month}.${year}`;
-//};  
   const filteredProjects = projects.filter(proj =>
   proj.name.toLowerCase().includes(searchQuery.toLowerCase())
 );

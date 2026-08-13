@@ -1,0 +1,58 @@
+import {
+  Body, Controller, Delete, Get, Param, ParseIntPipe,
+  Patch, Post, Query, UseGuards, ValidationPipe,
+} from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PriceListService } from './price-list.service';
+import { CreateCategoryDto } from './dto/create-category.dto';
+import { CreatePriceItemDto } from './dto/create-price-item.dto';
+
+@Controller('price-list')
+@UseGuards(JwtAuthGuard)
+export class PriceListController {
+  constructor(private readonly priceListService: PriceListService) {}
+
+  @Get('categories')
+  getCategories() {
+    return this.priceListService.getCategories();
+  }
+
+  @Get('categories/full')
+  getCategoriesWithItems() {
+    return this.priceListService.getCategoriesWithItems();
+  }
+
+  @Get('items/search')
+  searchItems(
+    @Query('search') search?: string,
+    @Query('categoryId') categoryId?: string,
+  ) {
+    return this.priceListService.searchItems(
+      search,
+      categoryId ? parseInt(categoryId) : undefined,
+    );
+  }
+
+  @Post('categories')
+  createCategory(@Body(new ValidationPipe({ whitelist: true })) dto: CreateCategoryDto) {
+    return this.priceListService.createCategory(dto);
+  }
+
+  @Post('items')
+  createItem(@Body(new ValidationPipe({ whitelist: true })) dto: CreatePriceItemDto) {
+    return this.priceListService.createItem(dto);
+  }
+
+  @Patch('items/:id')
+  updateItem(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ValidationPipe({ whitelist: true })) dto: Partial<CreatePriceItemDto>,
+  ) {
+    return this.priceListService.updateItem(id, dto);
+  }
+
+  @Delete('items/:id')
+  removeItem(@Param('id', ParseIntPipe) id: number) {
+    return this.priceListService.removeItem(id);
+  }
+}
