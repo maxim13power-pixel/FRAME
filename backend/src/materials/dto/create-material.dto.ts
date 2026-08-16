@@ -8,7 +8,7 @@ export const UNIT_VALUES = [
 export class CreateMaterialDto {
   @IsString()
   @IsNotEmpty({ message: 'Наименование обязательно' })
-  name: string;
+  name!: string;
 
   @IsOptional()
   @IsString()
@@ -20,12 +20,12 @@ export class CreateMaterialDto {
 
   @IsNumber({}, { message: 'Кол-во по спецификации должно быть числом' })
   @Min(0, { message: 'Кол-во не может быть отрицательным' })
-  specQuantity: number;
+  specQuantity!: number;
 
   @IsOptional()
   @IsString()
   note?: string;
 
   @IsInt({ message: 'projectId должен быть целым числом' })
-  projectId: number;
+  projectId!: number;
 }

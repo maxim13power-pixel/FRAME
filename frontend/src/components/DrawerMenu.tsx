@@ -3,6 +3,7 @@ import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Box
 import HomeIcon from '@mui/icons-material/Home';
 import EngineeringIcon from '@mui/icons-material/Engineering';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
+import SellIcon from '@mui/icons-material/Sell';
 import HandshakeIcon from '@mui/icons-material/Handshake';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
 import AssessmentIcon from '@mui/icons-material/Assessment';
@@ -19,6 +20,7 @@ const menuItems = [
   { label: 'Объекты', path: '/objects', icon: <HomeIcon /> },
   { label: 'Бригады', path: '/brigades', icon: <EngineeringIcon /> },
   { label: 'Склад', path: '/warehouse', icon: <WarehouseIcon /> },
+  { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
   { label: 'Аналитика', path: '/analytics', icon: <AnalyticsIcon /> },
   { label: 'Отчеты', path: '/reports', icon: <AssessmentIcon /> },

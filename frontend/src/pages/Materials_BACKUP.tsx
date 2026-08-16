@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -28,8 +28,6 @@ import {
   InputLabel,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
 import LockIcon from '@mui/icons-material/Lock';
@@ -78,12 +76,7 @@ const Materials: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentProject, setCurrentProject] = useState<ProjectData | null>(null);
   const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
-
-  // Состояния для сортировки
-  const [sortBy, setSortBy] = useState<'name' | 'specQuantity' | 'totalPrice' | 'percentage' | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>('asc');
-
-  // Состояния для поиска (существуют)  
+  
 
   // Модалка добавления материала
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -117,34 +110,6 @@ const Materials: React.FC = () => {
     m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     m.article?.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  // Сортировка материалов с помощью useMemo
-  const sortedMaterials = useMemo(() => {
-    if (!sortBy) return filteredMaterials;
-
-    return [...filteredMaterials].sort((a, b) => {
-      let comparison = 0;
-
-      switch (sortBy) {
-        case 'name':
-          comparison = a.name.localeCompare(b.name);
-          break;
-        case 'specQuantity':
-          comparison = a.specQuantity - b.specQuantity;
-          break;
-        case 'totalPrice':
-          comparison = a.totalUsed - b.totalUsed;
-          break;
-        case 'percentage':
-          comparison = a.progressPercent - b.progressPercent;
-          break;
-        default:
-          return 0;
-      }
-
-      return sortDirection === 'desc' ? -comparison : comparison;
-    });
-  }, [filteredMaterials, sortBy, sortDirection]);
 
   // Итоговая строка: суммы по спеке и факту, средний прогресс
   const totals = {
@@ -342,34 +307,6 @@ useEffect(() => {
     }
   };
 
-  // Обработчик клика по заголовку таблицы для сортировки
-  const handleSortClick = (sortByColumn: 'name' | 'specQuantity' | 'totalPrice' | 'percentage') => {
-    if (sortBy === sortByColumn) {
-      // Если уже сортируем по этой колонке → переключаем направление или сбрасываем
-      if (sortDirection === 'asc') {
-        setSortDirection('desc');
-      } else {
-        // Сброс сортировки
-        setSortBy(null);
-        setSortDirection(null);
-      }
-    } else {
-      // Новая колонка для сортировки - по возрастанию
-      setSortBy(sortByColumn);
-      setSortDirection('asc');
-    }
-  };
-
-  // Отображение иконки сортировки
-  const renderSortIcon = (column: 'name' | 'specQuantity' | 'totalPrice' | 'percentage') => {
-    if (sortBy !== column) return null;
-    return sortDirection === 'asc' ? (
-      <ArrowUpwardIcon sx={{ fontSize: 16, ml: 0.5 }} />
-    ) : (
-      <ArrowDownwardIcon sx={{ fontSize: 16, ml: 0.5 }} />
-    );
-  };
-
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
@@ -482,42 +419,18 @@ useEffect(() => {
             <TableHead sx={{ bgcolor: '#f5f5f5' }}>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>№</TableCell>
-                <TableCell 
-                  sx={{ fontWeight: 600, cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }}
-                  onClick={() => handleSortClick('name')}
-                >
-                  Наименование
-                  {renderSortIcon('name')}
-                </TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Наименование</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Артикул</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Ед.</TableCell>
-                <TableCell 
-                  sx={{ fontWeight: 600, textAlign: 'center', cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }}
-                  onClick={() => handleSortClick('specQuantity')}
-                >
-                  По спец.
-                  {renderSortIcon('specQuantity')}
-                </TableCell>
-                <TableCell 
-                  sx={{ fontWeight: 600, textAlign: 'center', cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }}
-                  onClick={() => handleSortClick('totalPrice')}
-                >
-                  Итого
-                  {renderSortIcon('totalPrice')}
-                </TableCell>
-                <TableCell sx={{ fontWeight: 600, textAlign: 'center' }}>Посл. фикс.</TableCell>
-                <TableCell 
-                  sx={{ fontWeight: 600, textAlign: 'center', cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }}
-                  onClick={() => handleSortClick('percentage')}
-                >
-                  %
-                  {renderSortIcon('percentage')}
-                </TableCell>
+                <TableCell sx={{ fontWeight: 600, textAlign: 'center' }}>По спец</TableCell>
+                <TableCell sx={{ fontWeight: 600, textAlign: 'center' }}>Итого</TableCell>
+                <TableCell sx={{ fontWeight: 600, textAlign: 'center' }}>Посл. фикс</TableCell>
+                <TableCell sx={{ fontWeight: 600, textAlign: 'center' }}>%</TableCell>
                 <TableCell sx={{ fontWeight: 600, textAlign: 'center' }}>Действия</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {sortedMaterials.map((m, idx) => (
+              {filteredMaterials.map((m, idx) => (
                 <TableRow key={m.id} hover>
                   <TableCell>{idx + 1}</TableCell>
                   <TableCell>{m.name}</TableCell>
@@ -584,41 +497,8 @@ useEffect(() => {
       {/* Карточки для мобилки */}
       {isMobile && (
         <Stack spacing={2}>
-          {/* Select сортировки */}
-          <FormControl fullWidth variant="outlined">
-            <InputLabel id="mobile-sort-label">Сортировка</InputLabel>
-            <Select
-              labelId="mobile-sort-label"
-              value={sortBy ? `${sortBy}_${sortDirection || 'asc'}` : 'default'}
-              label="Сортировка"
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value === 'default') {
-                  setSortBy(null);
-                  setSortDirection(null);
-                } else {
-                  const [col, dir] = value.split('_');
-                  setSortBy(col as 'name' | 'specQuantity' | 'totalPrice' | 'percentage');
-                  setSortDirection(dir as 'asc' | 'desc');
-                }
-              }}
-            >
-              <MenuItem value="default">
-                <em>По умолчанию</em>
-              </MenuItem>
-              <MenuItem value="name_asc">По имени (A→Z)</MenuItem>
-              <MenuItem value="name_desc">По имени (Z→A)</MenuItem>
-              <MenuItem value="specQuantity_asc">По спец. (по возрастанию)</MenuItem>
-              <MenuItem value="specQuantity_desc">По спец. (по убыванию)</MenuItem>
-              <MenuItem value="totalPrice_asc">По итогу (по возрастанию)</MenuItem>
-              <MenuItem value="totalPrice_desc">По итогу (по убыванию)</MenuItem>
-              <MenuItem value="percentage_asc">По % (по возрастанию)</MenuItem>
-              <MenuItem value="percentage_desc">По % (по убыванию)</MenuItem>
-            </Select>
-          </FormControl>
-
-          {sortedMaterials.length > 0 ? (
-            sortedMaterials.map((m) => (
+          {filteredMaterials.length > 0 ? (
+            filteredMaterials.map((m) => (
               <Paper key={m.id} sx={{ p: 2, borderRadius: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                   <InventoryIcon sx={{ color: '#1976d2', mr: 1 }} />
@@ -634,7 +514,7 @@ useEffect(() => {
                 </Typography>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                   <Box>
-                    <Typography variant="caption" color="text.secondary">По спец.:</Typography>
+                    <Typography variant="caption" color="text.secondary">По спец:</Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       <Typography variant="body1" fontWeight={600}>{m.specQuantity}</Typography>
                       <IconButton 

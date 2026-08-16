@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Objects from './pages/Objects';   
 import Projects from './pages/Projects'; 
 import Materials from './pages/Materials';
+import PriceList from './pages/PriceList';
 import Brigades from './pages/Brigades';   
 import Warehouse from './pages/Warehouse';
 import Rentals from './pages/Rentals';
@@ -39,6 +40,7 @@ function App() {
           <Route path="objects" element={<Objects />} />
           <Route path="objects/:objectId/projects" element={<Projects />} />
           <Route path="objects/:objectId/projects/:projectId/materials" element={<Materials />} />
+          <Route path="price-list" element={<PriceList />} />
           <Route path="brigades" element={<Brigades />} />
           <Route path="warehouse" element={<Warehouse />} />
           <Route path="rentals" element={<Rentals />} />
