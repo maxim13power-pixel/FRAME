@@ -41,6 +41,8 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   fetchCategoriesWithItems,
   createCategory,
+  updateCategory,
+  deleteCategory,
   createPriceItem,
   updatePriceItem,
   deletePriceItem,
@@ -98,6 +100,12 @@ const PriceList: React.FC = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingItem, setDeletingItem] = useState<PriceItemData | null>(null);
 
+  // Настройки категории (шестерёнка): переименование + защищённое удаление
+  const [catSettingsOpen, setCatSettingsOpen] = useState(false);
+  const [settingsCategory, setSettingsCategory] = useState<PriceCategoryData | null>(null);
+  const [settingsCatName, setSettingsCatName] = useState('');
+  const [catDeleteError, setCatDeleteError] = useState('');
+  const [deleteCatConfirmOpen, setDeleteCatConfirmOpen] = useState(false);
   // ============================================================
   // ЗАГРУЗКА
   // ============================================================
@@ -293,7 +301,65 @@ const PriceList: React.FC = () => {
       alert('Ошибка удаления: ' + (err.response?.data?.message || err.message));
     }
   };
+  // ============================================================
+  // НАСТРОЙКИ КАТЕГОРИИ (шестерёнка): переименование + защита
+  // ============================================================
+  const handleOpenCategorySettings = (cat: PriceCategoryData) => {
+    setSettingsCategory(cat);
+    setSettingsCatName(cat.name);
+    setCatDeleteError('');
+    setCatSettingsOpen(true);
+  };
 
+  const handleCloseCategorySettings = () => {
+    setCatSettingsOpen(false);
+    setSettingsCategory(null);
+    setCatDeleteError('');
+  };
+
+  const handleRenameCategory = async () => {
+    if (!token || !settingsCategory) return;
+    if (!settingsCatName.trim()) {
+      alert('Введите название категории');
+      return;
+    }
+    try {
+      const updated = await updateCategory(token, settingsCategory.id, {
+        name: settingsCatName.trim(),
+      });
+      setCategories(prev =>
+        prev.map(cat => (cat.id === updated.id ? { ...cat, name: updated.name } : cat))
+      );
+      handleCloseCategorySettings();
+    } catch (err: any) {
+      alert('Ошибка переименования: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  // Клик «Удалить»: есть расценки → инлайн-защита, пусто → подтверждение
+  const handleDeleteCategoryClick = () => {
+    if (!settingsCategory) return;
+    const count = (settingsCategory.items || []).length;
+    if (count > 0) {
+      setCatDeleteError(
+        `Нельзя удалить: в категории ${count} расценок(ки). Сначала удалите их или перенесите в другую категорию.`
+      );
+      return;
+    }
+    setDeleteCatConfirmOpen(true);
+  };
+
+  const handleDeleteCategoryConfirm = async () => {
+    if (!token || !settingsCategory) return;
+    try {
+      await deleteCategory(token, settingsCategory.id);
+      setCategories(prev => prev.filter(cat => cat.id !== settingsCategory.id));
+      setDeleteCatConfirmOpen(false);
+      handleCloseCategorySettings();
+    } catch (err: any) {
+      alert('Ошибка удаления: ' + (err.response?.data?.message || err.message));
+    }
+  };
   // ============================================================
   // РЕНДЕР
   // ============================================================
@@ -438,6 +504,15 @@ const PriceList: React.FC = () => {
                 {cat.name}
               </Typography>
               <Chip label={`${(cat.items || []).length} поз.`} size="small" variant="outlined" />
+              <IconButton
+                size="small"
+                onClick={e => {
+                  e.stopPropagation();
+                  handleOpenCategorySettings(cat);
+                }}
+              >
+                <SettingsIcon fontSize="small" />
+              </IconButton>
               {!isMobile && (
                 <Button
                   size="small"
@@ -597,6 +672,73 @@ const PriceList: React.FC = () => {
               <Button variant="contained" onClick={handleCreateCategory}>Сохранить</Button>
             </Box>
           </Stack>
+        </Paper>
+      </Modal>
+
+      {/* Модалка настроек категории (шестерёнка) */}
+      <Modal open={catSettingsOpen} onClose={handleCloseCategorySettings} disableRestoreFocus>
+        <Paper sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '90%', sm: 400 },
+          p: 4,
+          borderRadius: 2,
+        }}>
+          <Typography variant="h6" gutterBottom>Настройки категории</Typography>
+          <Stack spacing={2}>
+            <TextField
+              fullWidth
+              label="Название категории"
+              value={settingsCatName}
+              onChange={e => setSettingsCatName(e.target.value)}
+            />
+            {/* ⭐ Инлайн-защита: появляется после клика «Удалить», если есть расценки */}
+            {catDeleteError && (
+              <Alert severity="warning">{catDeleteError}</Alert>
+            )}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Button variant="outlined" color="error" onClick={handleDeleteCategoryClick}>
+                Удалить
+              </Button>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <Button variant="outlined" onClick={handleCloseCategorySettings}>Отмена</Button>
+                <Button variant="contained" onClick={handleRenameCategory}>Сохранить</Button>
+              </Box>
+            </Box>
+          </Stack>
+        </Paper>
+      </Modal>
+
+      {/* Подтверждение удаления ПУСТОЙ категории */}
+      <Modal
+        open={deleteCatConfirmOpen}
+        onClose={() => setDeleteCatConfirmOpen(false)}
+        disableRestoreFocus
+      >
+        <Paper sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '90%', sm: 380 },
+          p: 3,
+          borderRadius: 2,
+        }}>
+          <Typography variant="h6" gutterBottom>Удалить категорию?</Typography>
+          <Typography sx={{ mb: 3 }}>
+            Вы уверены, что хотите удалить категорию <b>"{settingsCategory?.name}"</b>?
+            Это действие необратимо.
+          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+            <Button variant="outlined" onClick={() => setDeleteCatConfirmOpen(false)}>
+              Отмена
+            </Button>
+            <Button variant="contained" color="error" onClick={handleDeleteCategoryConfirm}>
+              Удалить
+            </Button>
+          </Box>
         </Paper>
       </Modal>
 
