@@ -5,6 +5,7 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PriceListService } from './price-list.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreatePriceItemDto } from './dto/create-price-item.dto';
 
 @Controller('price-list')
@@ -36,6 +37,19 @@ export class PriceListController {
   @Post('categories')
   createCategory(@Body(new ValidationPipe({ whitelist: true })) dto: CreateCategoryDto) {
     return this.priceListService.createCategory(dto);
+  }
+
+    @Patch('categories/:id')
+  updateCategory(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ValidationPipe({ whitelist: true })) dto: UpdateCategoryDto,
+  ) {
+    return this.priceListService.updateCategory(id, dto);
+  }
+
+  @Delete('categories/:id')
+  removeCategory(@Param('id', ParseIntPipe) id: number) {
+    return this.priceListService.removeCategory(id);
   }
 
   @Post('items')

@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Unit } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreatePriceItemDto } from './dto/create-price-item.dto';
 
 @Injectable()
@@ -52,6 +53,32 @@ export class PriceListService {
     });
   }
 
+    // Переименование категории
+  async updateCategory(id: number, dto: UpdateCategoryDto) {
+    const category = await this.prisma.priceCategory.findUnique({ where: { id } });
+    if (!category) throw new NotFoundException('Категория не найдена');
+    return this.prisma.priceCategory.update({
+      where: { id },
+      data: { name: dto.name.trim() },
+    });
+  }
+
+  // Удаление категории — ТОЛЬКО если она пуста
+  // (иначе Cascade удалил бы расценки, а нам это не надо)
+  async removeCategory(id: number) {
+    const category = await this.prisma.priceCategory.findUnique({
+      where: { id },
+      include: { _count: { select: { items: true } } },
+    });
+    if (!category) throw new NotFoundException('Категория не найдена');
+    if (category._count.items > 0) {
+      throw new BadRequestException(
+        'Нельзя удалить категорию: в ней есть расценки. Сначала удалите или перенесите их.'
+      );
+    }
+    return this.prisma.priceCategory.delete({ where: { id } });
+  }
+  
   async createItem(dto: CreatePriceItemDto) {
     const category = await this.prisma.priceCategory.findUnique({
       where: { id: dto.categoryId },

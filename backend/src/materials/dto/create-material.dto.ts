@@ -26,6 +26,10 @@ export class CreateMaterialDto {
   @IsString()
   note?: string;
 
+  @IsOptional()
+  @IsInt({ message: 'priceItemId должен быть целым числом' })
+  priceItemId?: number;
+
   @IsInt({ message: 'projectId должен быть целым числом' })
   projectId!: number;
 }

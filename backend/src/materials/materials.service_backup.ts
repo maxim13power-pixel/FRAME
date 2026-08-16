@@ -8,12 +8,11 @@ import { CreateFixDto } from './dto/create-fix.dto';
 export class MaterialsService {
   constructor(private prisma: PrismaService) {}
 
-  // Все материалы проекта (с расценкой и её категорией из справочника)
+  // Все материалы проекта
   async findAllByProject(projectId: number) {
     return this.prisma.material.findMany({
       where: { projectId },
       orderBy: { id: 'asc' },
-      include: { priceItem: { include: { category: true } } },
     });
   }
 
@@ -27,23 +26,10 @@ export class MaterialsService {
     });
   }
 
-  // Создание материала (+ snapshot цены из справочника)
+  // Создание материала
   async create(dto: CreateMaterialDto) {
     const project = await this.prisma.project.findUnique({ where: { id: dto.projectId } });
     if (!project) throw new NotFoundException('Проект не найден');
-
-    // ⭐ Если выбрана расценка — снимаем snapshot её цены
-    let unitPrice = 0;
-    if (dto.priceItemId) {
-      const priceItem = await this.prisma.priceItem.findUnique({
-        where: { id: dto.priceItemId },
-      });
-      if (!priceItem) throw new NotFoundException('Расценка не найдена');
-      if (!priceItem.isActive) {
-        throw new BadRequestException('Выбранная расценка неактивна');
-      }
-      unitPrice = priceItem.price;
-    }
 
     return this.prisma.material.create({
       data: {
@@ -53,11 +39,7 @@ export class MaterialsService {
         specQuantity: dto.specQuantity,
         note: dto.note ?? null,
         projectId: dto.projectId,
-        priceItemId: dto.priceItemId ?? null,
-        unitPrice,
-        totalCost: 0,
       },
-      include: { priceItem: { include: { category: true } } },
     });
   }
 
@@ -65,9 +47,11 @@ export class MaterialsService {
   async addFix(materialId: number, dto: CreateFixDto) {
     const material = await this.prisma.material.findUnique({ where: { id: materialId } });
     if (!material) throw new NotFoundException('Материал не найден');
+
     if (!dto.amount || dto.amount <= 0) {
       throw new BadRequestException('Объём фиксации должен быть больше нуля');
     }
+
     const newTotal = material.totalUsed + dto.amount;
     const progress = material.specQuantity > 0
       ? Math.round((newTotal / material.specQuantity) * 100)
@@ -82,6 +66,7 @@ export class MaterialsService {
           note: dto.note ?? null,
         },
       });
+
       return tx.material.update({
         where: { id: materialId },
         data: {
@@ -89,9 +74,7 @@ export class MaterialsService {
           lastEntry: dto.amount,
           lastEntryDate: new Date(),
           progressPercent: progress,
-          totalCost: newTotal * material.unitPrice, // ⭐ пересчёт стоимости
         },
-        include: { priceItem: { include: { category: true } } },
       });
     });
   }
@@ -100,13 +83,14 @@ export class MaterialsService {
   async updateSpecQty(id: number, specQuantity: number) {
     const material = await this.prisma.material.findUnique({ where: { id } });
     if (!material) throw new NotFoundException('Материал не найден');
+
     const progress = specQuantity > 0
       ? Math.round((material.totalUsed / specQuantity) * 100)
       : 0;
+
     return this.prisma.material.update({
       where: { id },
       data: { specQuantity, progressPercent: progress },
-      include: { priceItem: { include: { category: true } } },
     });
   }
 
@@ -114,10 +98,10 @@ export class MaterialsService {
   async toggleSpecLock(id: number) {
     const material = await this.prisma.material.findUnique({ where: { id } });
     if (!material) throw new NotFoundException('Материал не найден');
+
     return this.prisma.material.update({
       where: { id },
       data: { isSpecLocked: !material.isSpecLocked },
-      include: { priceItem: { include: { category: true } } },
     });
   }
 

@@ -60,6 +60,30 @@ export const createCategory = async (
   return response.data;
 };
 
+// Переименовать категорию
+// PATCH /price-list/categories/:id
+export const updateCategory = async (
+  token: string,
+  id: number,
+  data: { name: string }
+): Promise<PriceCategoryData> => {
+  const response = await axios.patch(`${API_URL}/categories/${id}`, data, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
+};
+
+// Удалить категорию (бэкенд пропустит ТОЛЬКО пустую — двойная защита)
+// DELETE /price-list/categories/:id
+export const deleteCategory = async (
+  token: string,
+  id: number
+): Promise<PriceCategoryData> => {
+  const response = await axios.delete(`${API_URL}/categories/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
+};
 // ============================================================
 // РАСЦЕНКИ (PriceItem)
 // ============================================================
