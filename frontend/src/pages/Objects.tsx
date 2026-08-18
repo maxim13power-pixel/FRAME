@@ -16,6 +16,7 @@ import {
   Chip,
   LinearProgress,
   IconButton,
+  Menu,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddHomeIcon from '@mui/icons-material/AddHome';
@@ -31,6 +32,7 @@ import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
+import SortIcon from '@mui/icons-material/Sort';
 import CloseIcon from '@mui/icons-material/Close';
 
 // Вспомогательная функция для форматирования даты
@@ -79,21 +81,12 @@ const Objects: React.FC = () => {
   const [deletingObject, setDeletingObject] = useState<ObjectData | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const [editName, setEditName] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editStartDate, setEditStartDate] = useState('');
   const [editEndDate, setEditEndDate] = useState('');
-  
-
-//console.log('Objects render, token:', token);
-
-//const getProgressColor = (progress: number) => {
-  // Нелинейный переход: прогресс в квадрате, чтобы цвет дольше оставался в теплой зоне
-  //const t = Math.pow(progress / 100, 2.0); // степень >1 смещает зеленый к концу
-  //const hue = 30 + t * (120 - 30);
-  //return `hsl(${hue}, 100%, 45%)`;
-//};
 
   // Загрузка объектов при монтировании
 useEffect(() => {
@@ -186,24 +179,6 @@ const handleCreateObject = async () => {
     alert('Ошибка при создании объекта: ' + (err.response?.data?.message || err.message));
   }
 };
-  //const handleCreateObject = async () => {
-    //if (!token || !newName || !newAddress || !newStartDate || !newEndDate) {
-      //alert('Заполните все поля');
-      //return;
-    //}
-    //try {
-      //const created = await createObject(token, {
-        //name: newName,
-        //address: newAddress,
-        //startDate: newStartDate,
-        //endDate: newEndDate,
-      //});
-      //setObjects(prev => [created, ...prev]); // добавляем новый объект в начало списка
-      //handleCloseAddModal();
-    //} catch (err: any) {
-      //alert('Ошибка при создании объекта: ' + (err.response?.data?.message || err.message));
-    //}
-  //};
   
     const handleOpenEdit = (obj: ObjectData) => {
     setEditingObject(obj);
@@ -283,9 +258,9 @@ const handleSearchClose = () => {
    <Box sx={{ mt: -1.7 }}>
   {/* Верхний блок с заголовком и иконками (только для мобилок) */}
 {isMobile && (
-  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, minHeight: 48 }}>
+  <>
     {showSearch ? (
-      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 1 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
         <TextField
           inputRef={searchInputRef}
           placeholder="Поиск объектов..."
@@ -297,47 +272,51 @@ const handleSearchClose = () => {
           autoFocus
           InputProps={{
             startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
+              <InputAdornment position="start"><SearchIcon /></InputAdornment>
+            ),
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={handleSearchClose}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
               </InputAdornment>
             ),
           }}
         />
-        <IconButton onClick={handleSearchClose} edge="end">
-          <CloseIcon />
-        </IconButton>
       </Box>
     ) : (
-<Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-  <Typography variant="h5">Объекты</Typography>
-  <Box
-    onClick={handleSearchOpen}
-    sx={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 0.5,
-      cursor: 'pointer',
-      px: 1,
-      py: 0.5,
-      borderRadius: 2,
-      border: '1px solid transparent',
-      transition: 'border-color 0.2s',
-      '&:hover': {
-        borderColor: '#1976d2',
-        backgroundColor: 'rgba(25, 118, 210, 0.04)',
-      },
-      alignSelf: 'flex-end',  // <-- добавляем эту строку
-      mt: 0.6,
-    }}
-  >
-    <Typography variant="body2" color="text.secondary">
-      Поиск объектов...
-    </Typography>
-    <SearchIcon fontSize="small" color="action" />
-  </Box>
-</Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, minHeight: 48 }}>
+        <Typography variant="h5" sx={{ flexGrow: 1 }}>Объекты</Typography>
+        <IconButton
+          onClick={handleSearchOpen}
+          sx={{ bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+        >
+          <SearchIcon />
+        </IconButton>
+        <IconButton
+          onClick={(e) => setSortAnchorEl(e.currentTarget)}
+          sx={{
+            ml: 0.5,
+            bgcolor: sortBy !== 'newest' ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+            color: sortBy !== 'newest' ? '#1976d2' : 'inherit',
+            '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' },
+          }}
+        >
+          <SortIcon />
+        </IconButton>
+      </Box>
     )}
-  </Box>
+    <Menu
+      anchorEl={sortAnchorEl}
+      open={Boolean(sortAnchorEl)}
+      onClose={() => setSortAnchorEl(null)}
+    >
+      <MenuItem onClick={() => { setSortBy('newest'); setSortAnchorEl(null); }}>Сначала новые</MenuItem>
+      <MenuItem onClick={() => { setSortBy('name'); setSortAnchorEl(null); }}>По названию А-Я</MenuItem>
+      <MenuItem onClick={() => { setSortBy('endDate'); setSortAnchorEl(null); }}>По сроку (ближайшие)</MenuItem>
+      <MenuItem onClick={() => { setSortBy('progress'); setSortAnchorEl(null); }}>По проценту %</MenuItem>
+    </Menu>
+  </>
 )}
 
   {/* Заголовок для десктопа (всегда виден) */}

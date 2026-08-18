@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -15,7 +15,9 @@ import {
   useTheme,
   InputAdornment,
   Chip,
-  LinearProgress,  
+  LinearProgress,
+  Menu,
+  MenuItem, 
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchProjectsByObject, createProject, updateProject, deleteProject } from '../services/projectService';
@@ -26,7 +28,9 @@ import IconButton from '@mui/material/IconButton';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SettingsIcon from '@mui/icons-material/Settings';
 import DescriptionIcon from '@mui/icons-material/Description';
-import EventIcon from '@mui/icons-material/Event';  
+import EventIcon from '@mui/icons-material/Event';
+import SortIcon from '@mui/icons-material/Sort';
+import CloseIcon from '@mui/icons-material/Close';
 import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -57,6 +61,10 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [editStartDate, setEditStartDate] = useState('');
   const [editEndDate, setEditEndDate] = useState('');  
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'newest' | 'name' | 'endDate' | 'progress'>('newest');
+  const [showSearch, setShowSearch] = useState(false);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
   const [dateConflictDialog, setDateConflictDialog] = useState<{
     open: boolean;
     projectEndDate: string;
@@ -92,9 +100,37 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
     return 'success';
   };
 
-  const filteredProjects = projects.filter(proj =>
-  proj.name.toLowerCase().includes(searchQuery.toLowerCase())
-);
+  const handleSearchOpen = () => {
+    setShowSearch(true);
+    setTimeout(() => searchInputRef.current?.focus(), 100);
+  };
+  const handleSearchClose = () => {
+    setShowSearch(false);
+    setSearchQuery('');
+  };
+
+  const filteredAndSortedProjects = useMemo(() => {
+    let filtered = projects.filter(proj =>
+      proj.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    switch (sortBy) {
+      case 'name':
+        filtered.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'endDate':
+        filtered.sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
+        break;
+      case 'progress':
+        // пока прогресс случайный — сортируем по endDate как запасной вариант
+        filtered.sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
+        break;
+      case 'newest':
+      default:
+        filtered.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        break;
+    }
+    return filtered;
+  }, [projects, searchQuery, sortBy]);
 
 
   useEffect(() => {
@@ -353,65 +389,138 @@ const updateProjectAction = async () => {
 
   return (
 <Box>
-  {/* Верхняя строка с кнопкой назад, заголовком и кнопкой добавления (для десктопа) */}
-  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-    <IconButton onClick={() => navigate('/objects')} sx={{ mr: 1,
-    bgcolor: 'rgba(0, 0, 0, 0.06)', // светло-серый фон всегда
-    '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}>
-      <ArrowBackIcon />
-    </IconButton>
-    <Typography variant={isMobile ? "h5" : "h4"} 
-    sx={{ flexGrow: 1 }}>
-      Проекты (виды работ)
-    </Typography>
-
-  </Box>
-
-  {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-{/* Поиск проекта */}
-{/* Блок поиска и кнопки добавления (для десктопа) */}
-<Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 2, mb: 2 }}>
-  <TextField
-    placeholder="Поиск проектов..."
-    variant="outlined"
-    size="small"
-    fullWidth
-    value={searchQuery}
-    onChange={(e) => setSearchQuery(e.target.value)}
-    sx={{ flexGrow: 1 }}
-    InputProps={{
-      startAdornment: (
-        <InputAdornment position="start">
-          <SearchIcon />
-        </InputAdornment>
-      ),
-    }}
-  />
-  {!isMobile && (
-    <Button
-      variant="contained"
-      startIcon={<NoteAddIcon />}
-      onClick={handleOpenAddModal}
+  {/* Хлебные крошки: Объекты › [объект] */}
+  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1, flexWrap: 'wrap' }}>
+    <Typography
+      component="button"
+      onClick={() => navigate('/objects')}
       sx={{
-        bgcolor: '#4caf50',
-        minWidth: '200px', 
-        '&:hover': {
-          bgcolor: '#388e3c',
-          transform: 'translateY(-3px)',
-          boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
-        },
-        transition: 'all 0.3s ease',
-        whiteSpace: 'nowrap',
+        background: 'none', border: 'none', padding: 0,
+        color: '#1976d2', cursor: 'pointer', fontSize: 14,
+        textDecoration: 'underline',
+        '&:hover': { color: '#1565c0' },
       }}
     >
-      Добавить проект
-    </Button>
+      Объекты
+    </Typography>
+    <Typography sx={{ color: 'text.secondary', fontSize: 14 }}>›</Typography>
+    <Typography sx={{ fontSize: 14, fontWeight: 600 }}>
+      {currentObject ? currentObject.name : 'Объект'}
+    </Typography>
+  </Box>
+
+  {/* Мобильная компактная строка: заголовок + иконки */}
+  {isMobile && (
+    <>
+      {showSearch ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
+          <IconButton onClick={() => navigate('/objects')} sx={{ bgcolor: 'rgba(0,0,0,0.06)' }}>
+            <ArrowBackIcon />
+          </IconButton>
+          <TextField
+            inputRef={searchInputRef}
+            placeholder="Поиск проектов..."
+            variant="outlined"
+            size="small"
+            fullWidth
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            autoFocus
+            InputProps={{
+              startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton size="small" onClick={handleSearchClose}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Box>
+      ) : (
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, minHeight: 48 }}>
+          <IconButton
+            onClick={() => navigate('/objects')}
+            sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h5" sx={{ flexGrow: 1 }}>Проекты (виды работ)</Typography>
+          <IconButton
+            onClick={handleSearchOpen}
+            sx={{ bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+          >
+            <SearchIcon />
+          </IconButton>
+          <IconButton
+            onClick={(e) => setSortAnchorEl(e.currentTarget)}
+            sx={{
+              ml: 0.5,
+              bgcolor: sortBy !== 'newest' ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+              color: sortBy !== 'newest' ? '#1976d2' : 'inherit',
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' },
+            }}
+          >
+            <SortIcon />
+          </IconButton>
+        </Box>
+      )}
+      <Menu
+        anchorEl={sortAnchorEl}
+        open={Boolean(sortAnchorEl)}
+        onClose={() => setSortAnchorEl(null)}
+      >
+        <MenuItem onClick={() => { setSortBy('newest'); setSortAnchorEl(null); }}>Сначала новые</MenuItem>
+        <MenuItem onClick={() => { setSortBy('name'); setSortAnchorEl(null); }}>По названию А-Я</MenuItem>
+        <MenuItem onClick={() => { setSortBy('endDate'); setSortAnchorEl(null); }}>По сроку (ближайшие)</MenuItem>
+        <MenuItem onClick={() => { setSortBy('progress'); setSortAnchorEl(null); }}>По проценту %</MenuItem>
+      </Menu>
+    </>
   )}
-</Box>
+
+  {/* Десктоп: большая строка с поиском и кнопкой добавления */}
+  {!isMobile && (
+    <>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <IconButton onClick={() => navigate('/objects')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}>
+          <ArrowBackIcon />
+        </IconButton>
+        <Typography variant="h4" sx={{ flexGrow: 1 }}>Проекты (виды работ)</Typography>
+      </Box>
+      <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+        <TextField
+          placeholder="Поиск проектов..."
+          variant="outlined"
+          size="small"
+          fullWidth
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          sx={{ flexGrow: 1 }}
+          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
+        />
+        <Button
+          variant="contained"
+          startIcon={<NoteAddIcon />}
+          onClick={handleOpenAddModal}
+          sx={{
+            bgcolor: '#4caf50',
+            minWidth: '200px',
+            '&:hover': { bgcolor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
+            transition: 'all 0.3s ease',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Добавить проект
+        </Button>
+      </Box>
+    </>
+  )}
+
+  {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Stack spacing={2}>
-{filteredProjects.length > 0 ? (
-  filteredProjects.map(proj => (
+{filteredAndSortedProjects.length > 0 ? (
+  filteredAndSortedProjects.map(proj => (
 <Paper 
   key={proj.id} 
   onClick={() => {
