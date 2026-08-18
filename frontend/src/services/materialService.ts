@@ -3,6 +3,19 @@ import type { ProjectData } from './projectService';
 
 const API_URL = 'http://localhost:3000/materials';
 
+// Снапшот расценки из справочника (приходит вместе с материалом)
+export interface PriceItemSnapshot {
+  id: number;
+  name: string;
+  article?: string | null;
+  unit: string;
+  price: number;
+  categoryId: number;
+  category?: {
+    id: number;
+    name: string;
+  };
+}
 export interface MaterialData {
   id: number;
   name: string;
@@ -15,11 +28,15 @@ export interface MaterialData {
   note?: string | null;
   progressPercent: number;
   isSpecLocked: boolean;
+  // ⭐ Интеграция цен из справочника
+  priceItemId?: number | null;
+  unitPrice: number; // snapshot цены на момент привязки
+  totalCost: number; // totalUsed × unitPrice (считает бэкенд)
+  priceItem?: PriceItemSnapshot | null;
   projectId: number;
   createdAt?: string;
   updatedAt?: string;
 }
-
 export interface MaterialFixData {
   id: number;
   materialId: number;
@@ -61,6 +78,7 @@ export const createMaterial = async (
     specQuantity: number;
     note?: string;
     projectId: number;
+    priceItemId?: number;
   }
 ): Promise<MaterialData> => {
   const response = await axios.post(API_URL, data, {

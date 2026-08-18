@@ -8,6 +8,7 @@ import {
   Stack,
   CircularProgress,
   Alert,
+  Autocomplete,
   Modal,
   TextField,
   Fab,
@@ -24,13 +25,17 @@ import {
   TableRow,
   Select,
   MenuItem,
+  Menu,
   FormControl,
   InputLabel,
+  LinearProgress,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import SearchIcon from '@mui/icons-material/Search';
+import SortIcon from '@mui/icons-material/Sort';
+import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
@@ -51,6 +56,8 @@ import { fetchProjectById } from '../services/materialService';
 import type { ProjectData } from '../services/projectService';
 import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
+import { searchPriceItems } from '../services/priceListService';
+import type { PriceItemData } from '../services/priceListService';
 
 const UNIT_OPTIONS = [
   { value: 'PIECE', label: 'шт' },
@@ -82,7 +89,9 @@ const Materials: React.FC = () => {
   // Состояния для сортировки
   const [sortBy, setSortBy] = useState<'name' | 'specQuantity' | 'totalPrice' | 'percentage' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>('asc');
-
+// Мобилка: компактный поиск и меню сортировки
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
   // Состояния для поиска (существуют)  
 
   // Модалка добавления материала
@@ -93,6 +102,10 @@ const Materials: React.FC = () => {
   //const [newSpecQuantity, setNewSpecQuantity] = useState<number>(0);
   const [newSpecQuantity, setNewSpecQuantity] = useState('');
   const [newNote, setNewNote] = useState('');
+  // ⭐ Расценка из справочника (опционально)
+  const [selectedPriceItem, setSelectedPriceItem] = useState<PriceItemData | null>(null);
+  const [priceOptions, setPriceOptions] = useState<PriceItemData[]>([]);
+  const [priceLoading, setPriceLoading] = useState(false);
 
   // Модалка фиксации объёма
   const [fixModalOpen, setFixModalOpen] = useState(false);
@@ -147,13 +160,20 @@ const Materials: React.FC = () => {
   }, [filteredMaterials, sortBy, sortDirection]);
 
   // Итоговая строка: суммы по спеке и факту, средний прогресс
-  const totals = {
-    sumSpecQuantity: filteredMaterials.reduce((acc, m) => acc + (Number(m.specQuantity) || 0), 0),
-    sumTotalUsed: filteredMaterials.reduce((acc, m) => acc + (Number(m.totalUsed) || 0), 0),
-    avgProgressPercent: filteredMaterials.length > 0
-      ? Math.round(filteredMaterials.reduce((acc, m) => acc + (Number(m.progressPercent) || 0), 0) / filteredMaterials.length)
+const totals = (() => {
+  const sumSpecQuantity = filteredMaterials.reduce((acc, m) => acc + (Number(m.specQuantity) || 0), 0);
+  const sumTotalUsed = filteredMaterials.reduce((acc, m) => acc + (Number(m.totalUsed) || 0), 0);
+  return {
+    sumSpecQuantity,
+    sumTotalUsed,
+    // ⭐ Сумма стоимостей по всем материалам
+    sumTotalCost: filteredMaterials.reduce((acc, m) => acc + (Number(m.totalCost) || 0), 0),
+    // ⭐ Взвешенный %: общее итого / общее по спец (честнее среднего)
+    weightedPercent: sumSpecQuantity > 0
+      ? Math.round((sumTotalUsed / sumSpecQuantity) * 100)
       : 0,
   };
+})();
 useEffect(() => {
   if (!token || !projectId || !objectId) return;
   const loadData = async () => {
@@ -180,31 +200,31 @@ useEffect(() => {
   };
   loadData();
 }, [token, projectId, objectId]);
+const handleOpenAddModal = () => setAddModalOpen(true);
+const handleCloseAddModal = () => {
+setAddModalOpen(false);
+setNewName('');
+setNewArticle('');
+setNewUnit('PIECE');
+setNewSpecQuantity('');
+setNewNote('');
+setSelectedPriceItem(null);
+setPriceOptions([]);
+};
 
-  const handleOpenAddModal = () => setAddModalOpen(true);
-  const handleCloseAddModal = () => {
-    setAddModalOpen(false);
-    setNewName('');
-    setNewArticle('');
-    setNewUnit('PIECE');
-    setNewSpecQuantity('');
-    setNewNote('');
-  };
-    //setNewSpecQuantity(0);
-    //setNewNote('');
-  //};
-
-  //const handleCreateMaterial = async () => {
-    //if (!token || !projectId || !newName || !newSpecQuantity) {
-      //alert('Заполните наименование и количество по спецификации');
-      //return;
-    //}
-    //try {
-      //const created = await createMaterial(token, {
-        //name: newName,
-        //article: newArticle || undefined,
-        //unit: newUnit,
-        //specQuantity: newSpecQuantity,
+// ⭐ Поиск расценок из справочника для Autocomplete
+const handlePriceSearch = async (value: string) => {
+if (!token) return;
+try {
+setPriceLoading(true);
+const data = await searchPriceItems(token, value || undefined);
+setPriceOptions(data);
+} catch (err) {
+console.error('Ошибка поиска расценок:', err);
+} finally {
+setPriceLoading(false);
+}
+};
   const handleCreateMaterial = async () => {
     if (!token || !projectId || !newName.trim()) {
       alert('Введите наименование');
@@ -219,7 +239,8 @@ useEffect(() => {
         specQuantity: specQty,    
         note: newNote || undefined,
         projectId: parseInt(projectId),
-      });
+        priceItemId: selectedPriceItem?.id ?? undefined,
+        });
       setMaterials(prev => [created, ...prev]);
       handleCloseAddModal();
     } catch (err: any) {
@@ -341,6 +362,15 @@ useEffect(() => {
       alert('Ошибка удаления: ' + (err.response?.data?.message || err.message));
     }
   };
+// Применение сортировки из мобильного меню
+const applyMobileSort = (
+col: 'name' | 'specQuantity' | 'totalPrice' | 'percentage' | null,
+dir: 'asc' | 'desc' | null
+) => {
+setSortBy(col);
+setSortDirection(dir);
+setSortAnchorEl(null);
+};
 
   // Обработчик клика по заголовку таблицы для сортировки
   const handleSortClick = (sortByColumn: 'name' | 'specQuantity' | 'totalPrice' | 'percentage') => {
@@ -435,25 +465,80 @@ useEffect(() => {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {/* Поиск и кнопка добавления */}
-      <Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 2, mb: 2 }}>
-        <TextField
-          placeholder="Поиск материалов..."
-          variant="outlined"
-          size="small"
-          fullWidth
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          sx={{ flexGrow: 1 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
-        />
-        {!isMobile && (
+{/* Поиск и кнопка добавления */}
+<Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
+{isMobile ? (
+mobileSearchOpen ? (
+<TextField
+autoFocus
+placeholder="Поиск материалов..."
+variant="outlined"
+size="small"
+fullWidth
+value={searchQuery}
+onChange={(e) => setSearchQuery(e.target.value)}
+sx={{ flexGrow: 1 }}
+InputProps={{
+startAdornment: (
+<InputAdornment position="start">
+<SearchIcon />
+</InputAdornment>
+),
+endAdornment: (
+<InputAdornment position="end">
+<IconButton
+size="small"
+onClick={() => {
+setSearchQuery('');
+setMobileSearchOpen(false);
+}}
+>
+<CloseIcon fontSize="small" />
+</IconButton>
+</InputAdornment>
+),
+}}
+/>
+) : (
+<IconButton
+onClick={() => setMobileSearchOpen(true)}
+sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
+>
+<SearchIcon />
+</IconButton>
+)
+) : (
+<TextField
+placeholder="Поиск материалов..."
+variant="outlined"
+size="small"
+fullWidth
+value={searchQuery}
+onChange={(e) => setSearchQuery(e.target.value)}
+sx={{ flexGrow: 1 }}
+InputProps={{
+startAdornment: (
+<InputAdornment position="start">
+<SearchIcon />
+</InputAdornment>
+),
+}}
+/>
+)}
+{/* Иконка сортировки (мобилка) — подсвечивается, если сортировка активна */}
+{isMobile && (
+<IconButton
+onClick={(e) => setSortAnchorEl(e.currentTarget)}
+sx={{
+bgcolor: sortBy ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
+color: sortBy ? '#1976d2' : 'inherit',
+'&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+}}
+>
+<SortIcon />
+</IconButton>
+)}
+{!isMobile && (
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -474,6 +559,24 @@ useEffect(() => {
           </Button>
         )}
       </Box>
+      {/* Мобильное меню сортировки (открывается из иконки) */}
+      <Menu
+      anchorEl={sortAnchorEl}
+      open={Boolean(sortAnchorEl)}
+      onClose={() => setSortAnchorEl(null)}
+      >
+      <MenuItem onClick={() => applyMobileSort(null, null)}>
+      <em>По умолчанию</em>
+      </MenuItem>
+      <MenuItem onClick={() => applyMobileSort('name', 'asc')}>По имени (A→Z)</MenuItem>
+      <MenuItem onClick={() => applyMobileSort('name', 'desc')}>По имени (Z→A)</MenuItem>
+      <MenuItem onClick={() => applyMobileSort('specQuantity', 'asc')}>По спец. (возрастание)</MenuItem>
+      <MenuItem onClick={() => applyMobileSort('specQuantity', 'desc')}>По спец. (убывание)</MenuItem>
+      <MenuItem onClick={() => applyMobileSort('totalPrice', 'asc')}>По итогу (возрастание)</MenuItem>
+      <MenuItem onClick={() => applyMobileSort('totalPrice', 'desc')}>По итогу (убывание)</MenuItem>
+      <MenuItem onClick={() => applyMobileSort('percentage', 'asc')}>По % (возрастание)</MenuItem>
+      <MenuItem onClick={() => applyMobileSort('percentage', 'desc')}>По % (убывание)</MenuItem>
+      </Menu>
 
       {/* Таблица для десктопа */}
       {!isMobile && (
@@ -489,7 +592,7 @@ useEffect(() => {
                   Наименование
                   {renderSortIcon('name')}
                 </TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Артикул</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Арт.</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Ед.</TableCell>
                 <TableCell 
                   sx={{ fontWeight: 600, textAlign: 'center', cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }}
@@ -502,9 +605,11 @@ useEffect(() => {
                   sx={{ fontWeight: 600, textAlign: 'center', cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }}
                   onClick={() => handleSortClick('totalPrice')}
                 >
-                  Итого
-                  {renderSortIcon('totalPrice')}
+                Итого
+                {renderSortIcon('totalPrice')}
                 </TableCell>
+                <TableCell sx={{ fontWeight: 600, textAlign: 'right' }}>Цена</TableCell>
+                <TableCell sx={{ fontWeight: 600, textAlign: 'right' }}>Стоимость</TableCell>
                 <TableCell sx={{ fontWeight: 600, textAlign: 'center' }}>Посл. фикс.</TableCell>
                 <TableCell 
                   sx={{ fontWeight: 600, textAlign: 'center', cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }}
@@ -539,6 +644,12 @@ useEffect(() => {
                     </Box>
                   </TableCell>
                   <TableCell sx={{ textAlign: 'center', fontWeight: 600 }}>{m.totalUsed}</TableCell>
+                  <TableCell sx={{ textAlign: 'right' }}>
+                  {m.unitPrice > 0 ? `${m.unitPrice.toLocaleString('ru-RU')} ₽` : '—'}
+                  </TableCell>
+                  <TableCell sx={{ textAlign: 'right', fontWeight: 600 }}>
+                  {m.totalCost > 0 ? `${m.totalCost.toLocaleString('ru-RU')} ₽` : '—'}
+                  </TableCell>
                   <TableCell sx={{ textAlign: 'center' }}>
                     <Button
                       size="small"
@@ -561,21 +672,25 @@ useEffect(() => {
               ))}
               {filteredMaterials.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
+                  <TableCell colSpan={11} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
                     {materials.length === 0 ? 'Материалы не добавлены' : 'Ничего не найдено'}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
             <TableFooter>
-              <TableRow sx={{ bgcolor: '#FFF9C4' }}>
-                <TableCell colSpan={4} sx={{ fontWeight: 700 }}>ИТОГО:</TableCell>
-                <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.sumSpecQuantity}</TableCell>
-                <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.sumTotalUsed}</TableCell>
-                <TableCell />
-                <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.avgProgressPercent}%</TableCell>
-                <TableCell />
-              </TableRow>
+            <TableRow sx={{ bgcolor: '#FFF9C4' }}>
+            <TableCell colSpan={4} sx={{ fontWeight: 700 }}>ИТОГО:</TableCell>
+            <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.sumSpecQuantity}</TableCell>
+            <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.sumTotalUsed}</TableCell>
+            <TableCell />
+            <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>
+            {totals.sumTotalCost.toLocaleString('ru-RU')} ₽
+            </TableCell>
+            <TableCell />
+            <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.weightedPercent}%</TableCell>
+            <TableCell />
+            </TableRow>
             </TableFooter>
           </Table>
         </TableContainer>
@@ -584,39 +699,6 @@ useEffect(() => {
       {/* Карточки для мобилки */}
       {isMobile && (
         <Stack spacing={2}>
-          {/* Select сортировки */}
-          <FormControl fullWidth variant="outlined">
-            <InputLabel id="mobile-sort-label">Сортировка</InputLabel>
-            <Select
-              labelId="mobile-sort-label"
-              value={sortBy ? `${sortBy}_${sortDirection || 'asc'}` : 'default'}
-              label="Сортировка"
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value === 'default') {
-                  setSortBy(null);
-                  setSortDirection(null);
-                } else {
-                  const [col, dir] = value.split('_');
-                  setSortBy(col as 'name' | 'specQuantity' | 'totalPrice' | 'percentage');
-                  setSortDirection(dir as 'asc' | 'desc');
-                }
-              }}
-            >
-              <MenuItem value="default">
-                <em>По умолчанию</em>
-              </MenuItem>
-              <MenuItem value="name_asc">По имени (A→Z)</MenuItem>
-              <MenuItem value="name_desc">По имени (Z→A)</MenuItem>
-              <MenuItem value="specQuantity_asc">По спец. (по возрастанию)</MenuItem>
-              <MenuItem value="specQuantity_desc">По спец. (по убыванию)</MenuItem>
-              <MenuItem value="totalPrice_asc">По итогу (по возрастанию)</MenuItem>
-              <MenuItem value="totalPrice_desc">По итогу (по убыванию)</MenuItem>
-              <MenuItem value="percentage_asc">По % (по возрастанию)</MenuItem>
-              <MenuItem value="percentage_desc">По % (по убыванию)</MenuItem>
-            </Select>
-          </FormControl>
-
           {sortedMaterials.length > 0 ? (
             sortedMaterials.map((m) => (
               <Paper key={m.id} sx={{ p: 2, borderRadius: 2 }}>
@@ -629,10 +711,25 @@ useEffect(() => {
                     <SettingsIcon fontSize="small" />
                   </IconButton>
                 </Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  {m.article || 'Без артикула'} • {UNIT_OPTIONS.find(u => u.value === m.unit)?.label}
-                </Typography>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {m.article || 'Без артикула'} • {UNIT_OPTIONS.find(u => u.value === m.unit)?.label}
+              </Typography>
+              {/* Прогресс-бар */}
+              <LinearProgress
+              variant="determinate"
+              value={Math.min(m.progressPercent, 100)}
+              sx={{
+              height: 8,
+              borderRadius: 4,
+              mb: 1,
+              bgcolor: '#e0e0e0',
+              '& .MuiLinearProgress-bar': {
+              backgroundColor: m.progressPercent >= 100 ? '#4caf50' : '#1976d2',
+              borderRadius: 4,
+              },
+              }}
+              />
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                   <Box>
                     <Typography variant="caption" color="text.secondary">По спец.:</Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -652,11 +749,19 @@ useEffect(() => {
                   <Box sx={{ textAlign: 'right' }}>
                     <Typography variant="caption" color="text.secondary">Прогресс:</Typography>
                     <Typography variant="body1" fontWeight={600} color={m.progressPercent >= 100 ? '#4caf50' : '#1976d2'}>
-                      {m.progressPercent}%
-                    </Typography>
+                  {m.progressPercent}%
+                  </Typography>
                   </Box>
-                </Box>
-                <Button
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                  Цена: <b>{m.unitPrice > 0 ? `${m.unitPrice.toLocaleString('ru-RU')} ₽` : '—'}</b>
+                  </Typography>
+                  <Typography variant="body2">
+                  Стоимость: <b>{m.totalCost > 0 ? `${m.totalCost.toLocaleString('ru-RU')} ₽` : '—'}</b>
+                  </Typography>
+                  </Box>
+                  <Button
                   fullWidth
                   variant="contained"
                   size="small"
@@ -714,6 +819,36 @@ useEffect(() => {
               value={newArticle}
               onChange={e => setNewArticle(e.target.value)}
             />
+            <Autocomplete
+            fullWidth
+            options={priceOptions}
+            loading={priceLoading}
+            value={selectedPriceItem}
+            onChange={(_e, value) => {
+            setSelectedPriceItem(value);
+            if (value) {
+            setNewUnit(value.unit);
+            if (!newName.trim()) setNewName(value.name);
+            if (!newArticle.trim() && value.article) setNewArticle(value.article);
+            }
+            }}
+            onInputChange={(_e, value) => handlePriceSearch(value)}
+            getOptionLabel={(option) =>
+            `${option.name} — ${option.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === option.unit)?.label || option.unit}`
+            }
+            noOptionsText="Ничего не найдено. Начни вводить название..."
+            renderInput={(params) => (
+            <TextField {...params} label="Расценка из справочника (необязательно)" placeholder="Начни вводить..." />
+            )}
+            />
+            {selectedPriceItem && (
+            <Box sx={{ bgcolor: 'rgba(76, 175, 80, 0.08)', p: 1.5, borderRadius: 1 }}>
+            <Typography variant="body2">
+            Цена: <strong>{selectedPriceItem.price.toLocaleString('ru-RU')} ₽</strong>
+            {' '}• {selectedPriceItem.category?.name || 'Без категории'}
+            </Typography>
+            </Box>
+            )}
             <FormControl fullWidth>
               <InputLabel>Единица измерения</InputLabel>
               <Select
