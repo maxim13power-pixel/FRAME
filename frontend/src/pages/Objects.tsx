@@ -374,29 +374,8 @@ const handleSearchClose = () => {
     </Box>
   )}
 
-  {/* Сортировка на мобилках (всегда под поиском) */}
-  {isMobile && (
-    <FormControl size="small" fullWidth sx={{ mb: 2 }}>
-      <InputLabel id="sort-label-mobile">Сортировка</InputLabel>
-      <Select
-        labelId="sort-label-mobile"
-        value={sortBy}
-        label="Сортировка"
-        onChange={(e) => setSortBy(e.target.value)}
-      >
-        <MenuItem value="newest">Сначала новые</MenuItem>
-        <MenuItem value="name">По названию А-Я</MenuItem>
-        <MenuItem value="endDate">По сроку (ближайшие)</MenuItem>
-        <MenuItem value="progress">По проценту %</MenuItem>
-      </Select>
-    </FormControl>
-  )}
-
   {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-   
-
-      {/* Список объектов – красивые карточки */}
+         {/* Список объектов – красивые карточки */}
       <Stack spacing={isMobile ? 1.5 : 2}>
         {filteredAndSortedObjects.length > 0 ? (
           filteredAndSortedObjects.map(obj => {
