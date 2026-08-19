@@ -12,6 +12,8 @@ import HomeWorkIcon from '@mui/icons-material/HomeWork';
 import EngineeringIcon from '@mui/icons-material/Engineering';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import SellIcon from '@mui/icons-material/Sell';
+import CalculateIcon from '@mui/icons-material/Calculate';
+import HelpIcon from '@mui/icons-material/Help';
 import HandshakeIcon from '@mui/icons-material/Handshake';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
 import AssessmentIcon from '@mui/icons-material/Assessment';
@@ -36,6 +38,8 @@ const menuItems = [
   { label: 'Бригады', path: '/brigades', icon: <EngineeringIcon /> },
   { label: 'Склад', path: '/warehouse', icon: <InventoryIcon /> },
   { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
+  { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
+  { label: 'Помощь', path: '/help', icon: <HelpIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
   { label: 'Аналитика', path: '/analytics', icon: <AnalyticsIcon /> },
   { label: 'Отчеты', path: '/reports', icon: <AssessmentIcon /> },

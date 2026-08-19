@@ -6,6 +6,8 @@ import Objects from './pages/Objects';
 import Projects from './pages/Projects'; 
 import Materials from './pages/Materials';
 import PriceList from './pages/PriceList';
+import Calculators from './pages/Calculators';
+import Help from './pages/Help';
 import Brigades from './pages/Brigades';   
 import Warehouse from './pages/Warehouse';
 import Rentals from './pages/Rentals';
@@ -41,6 +43,8 @@ function App() {
           <Route path="objects/:objectId/projects" element={<Projects />} />
           <Route path="objects/:objectId/projects/:projectId/materials" element={<Materials />} />
           <Route path="price-list" element={<PriceList />} />
+          <Route path="calculators" element={<Calculators />} />
+          <Route path="help" element={<Help />} />
           <Route path="brigades" element={<Brigades />} />
           <Route path="warehouse" element={<Warehouse />} />
           <Route path="rentals" element={<Rentals />} />

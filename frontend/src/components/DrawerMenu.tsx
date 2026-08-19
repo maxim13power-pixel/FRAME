@@ -9,7 +9,8 @@ import AnalyticsIcon from '@mui/icons-material/Analytics';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import GroupIcon from '@mui/icons-material/Group';
 import SettingsIcon from '@mui/icons-material/Settings';
-
+import CalculateIcon from '@mui/icons-material/Calculate';
+import HelpIcon from '@mui/icons-material/Help';
 interface DrawerMenuProps {
   open: boolean;
   onClose: () => void;
@@ -21,6 +22,8 @@ const menuItems = [
   { label: 'Бригады', path: '/brigades', icon: <EngineeringIcon /> },
   { label: 'Склад', path: '/warehouse', icon: <WarehouseIcon /> },
   { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
+  { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
+  { label: 'Помощь', path: '/help', icon: <HelpIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
   { label: 'Аналитика', path: '/analytics', icon: <AnalyticsIcon /> },
   { label: 'Отчеты', path: '/reports', icon: <AssessmentIcon /> },
