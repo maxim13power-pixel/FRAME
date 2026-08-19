@@ -15,6 +15,8 @@ import {
   useTheme,
   InputAdornment,
   IconButton,
+  Menu,
+  MenuItem,
   Table,
   TableBody,
   TableCell,
@@ -22,7 +24,6 @@ import {
   TableHead,
   TableRow,
   Select,
-  MenuItem,
   FormControl,
   InputLabel,
   Chip,
@@ -30,6 +31,8 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SearchIcon from '@mui/icons-material/Search';
+import SortIcon from '@mui/icons-material/Sort';
+import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -81,6 +84,13 @@ const PriceList: React.FC = () => {
   // Какие категории свёрнуты (по умолчанию все раскрыты)
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
 
+  // Сортировка расценок внутри категорий
+  const [priceSortBy, setPriceSortBy] = useState<'name' | 'price' | null>(null);
+  const [priceSortDirection, setPriceSortDirection] = useState<'asc' | 'desc'>('asc');
+    // Мобильный компактный поиск и меню сортировки
+  const [showSearch, setShowSearch] = useState(false);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
   // Модалка категории
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
@@ -106,6 +116,15 @@ const PriceList: React.FC = () => {
   const [settingsCatName, setSettingsCatName] = useState('');
   const [catDeleteError, setCatDeleteError] = useState('');
   const [deleteCatConfirmOpen, setDeleteCatConfirmOpen] = useState(false);
+    const handleSearchOpen = () => {
+    setShowSearch(true);
+    setTimeout(() => searchInputRef.current?.focus(), 100);
+  };
+  const handleSearchClose = () => {
+    setShowSearch(false);
+    setSearchQuery('');
+  };
+
   // ============================================================
   // ЗАГРУЗКА
   // ============================================================
@@ -131,14 +150,26 @@ const PriceList: React.FC = () => {
   // ФИЛЬТРАЦИЯ ПО ПОИСКУ (локально, как в Materials)
   // ============================================================
   const filteredCategories = categories
-    .map(cat => ({
-      ...cat,
-      items: (cat.items || []).filter(
+    .map(cat => {
+      let items = (cat.items || []).filter(
         item =>
           item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           (item.article || '').toLowerCase().includes(searchQuery.toLowerCase())
-      ),
-    }))
+      );
+      // ⭐ Сортировка расценок внутри категории
+      if (priceSortBy) {
+        items = [...items].sort((a, b) => {
+          let comparison = 0;
+          if (priceSortBy === 'name') {
+            comparison = a.name.localeCompare(b.name);
+          } else if (priceSortBy === 'price') {
+            comparison = a.price - b.price;
+          }
+          return priceSortDirection === 'desc' ? -comparison : comparison;
+        });
+      }
+      return { ...cat, items };
+    })
     .filter(cat => cat.items!.length > 0 || !searchQuery);
 
   const isCategoryExpanded = (catId: number) =>
@@ -373,69 +404,138 @@ const PriceList: React.FC = () => {
 
   return (
     <Box>
-      {/* Заголовок с кнопкой назад */}
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <IconButton
-          onClick={() => navigate(-1)}
-          sx={{
-            mr: 1,
-            bgcolor: 'rgba(0, 0, 0, 0.06)',
-            '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
-          }}
-        >
-          <ArrowBackIcon />
-        </IconButton>
-        <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ flexGrow: 1 }}>
-          Справочник цен
-        </Typography>
-      </Box>
+      {/* Мобилка: компактная строка (заголовок + 🔍 + сортировка) */}
+      {isMobile && (
+        <>
+          {showSearch ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
+              <IconButton
+                onClick={() => navigate(-1)}
+                sx={{ bgcolor: 'rgba(0,0,0,0.06)' }}
+              >
+                <ArrowBackIcon />
+              </IconButton>
+              <TextField
+                inputRef={searchInputRef}
+                placeholder="Поиск расценок..."
+                variant="outlined"
+                size="small"
+                fullWidth
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                autoFocus
+                InputProps={{
+                  startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton size="small" onClick={handleSearchClose}>
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, minHeight: 48 }}>
+              <IconButton
+                onClick={() => navigate(-1)}
+                sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+              >
+                <ArrowBackIcon />
+              </IconButton>
+              <Typography variant="h5" sx={{ flexGrow: 1 }}>Справочник цен</Typography>
+              <IconButton
+                onClick={handleSearchOpen}
+                sx={{ bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+              >
+                <SearchIcon />
+              </IconButton>
+              <IconButton
+                onClick={(e) => setSortAnchorEl(e.currentTarget)}
+                sx={{
+                  ml: 0.5,
+                  bgcolor: priceSortBy ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+                  color: priceSortBy ? '#1976d2' : 'inherit',
+                  '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' },
+                }}
+              >
+                <SortIcon />
+              </IconButton>
+            </Box>
+          )}
+          <Menu
+            anchorEl={sortAnchorEl}
+            open={Boolean(sortAnchorEl)}
+            onClose={() => setSortAnchorEl(null)}
+          >
+            <MenuItem onClick={() => { setPriceSortBy(null); setSortAnchorEl(null); }}>
+              <em>По умолчанию</em>
+            </MenuItem>
+            <MenuItem onClick={() => { setPriceSortBy('name'); setPriceSortDirection('asc'); setSortAnchorEl(null); }}>
+              По имени (А→Я)
+            </MenuItem>
+            <MenuItem onClick={() => { setPriceSortBy('name'); setPriceSortDirection('desc'); setSortAnchorEl(null); }}>
+              По имени (Я→А)
+            </MenuItem>
+            <MenuItem onClick={() => { setPriceSortBy('price'); setPriceSortDirection('asc'); setSortAnchorEl(null); }}>
+              По цене (возрастание)
+            </MenuItem>
+            <MenuItem onClick={() => { setPriceSortBy('price'); setPriceSortDirection('desc'); setSortAnchorEl(null); }}>
+              По цене (убывание)
+            </MenuItem>
+          </Menu>
+        </>
+      )}
+
+      {/* Десктоп: классический заголовок + большой поиск */}
+      {!isMobile && (
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <IconButton
+            onClick={() => navigate(-1)}
+            sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h4" sx={{ flexGrow: 1 }}>
+            Справочник цен
+          </Typography>
+        </Box>
+      )}
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {/* Поиск и кнопки добавления */}
       <Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 2, mb: 2 }}>
-        <TextField
-          placeholder="Поиск расценок..."
-          variant="outlined"
-          size="small"
-          fullWidth
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          sx={{ flexGrow: 1 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
-        />
+        {/* На мобилке поиск теперь в шапке — скрываем его здесь */}
+        {!isMobile && (
+          <TextField
+            placeholder="Поиск расценок..."
+            variant="outlined"
+            size="small"
+            fullWidth
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            sx={{ flexGrow: 1 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+            }}
+          />
+        )}
         {isMobile ? (
-          // ⭐ МОБИЛКА: обе кнопки рядом под поиском
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              fullWidth
-              variant="outlined"
-              startIcon={<CategoryIcon />}
-              onClick={handleOpenCatModal}
-              sx={{ whiteSpace: 'nowrap' }}
-            >
-              Категория
-            </Button>
-            <Button
-              fullWidth
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => handleOpenAddItem()}
-              sx={{
-                bgcolor: '#4caf50',
-                whiteSpace: 'nowrap',
-                '&:hover': { bgcolor: '#388e3c' },
-              }}
-            >
-              Расценка
-            </Button>
-          </Box>
+          // ⭐ МОБИЛКА: только кнопка "Категория" (FAB `$+` справляется с расценками)
+          <Button
+            variant="outlined"
+            startIcon={<CategoryIcon />}
+            onClick={handleOpenCatModal}
+            sx={{ whiteSpace: 'nowrap' }}
+          >
+            Создать категорию
+          </Button>
         ) : (
           // ДЕСКТОП: кнопки не сжимаются (flexShrink: 0) → текст больше не вылезает
           <>
