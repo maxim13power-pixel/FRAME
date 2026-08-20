@@ -273,23 +273,18 @@ const Help: React.FC = () => {
   }, [search]);
 
   return (
-    <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 2, md: 3 } }}>
-      <Box sx={{ mb: { xs: 2.5, md: 4 } }}>
-        <Typography component="h1" variant={isMobile ? 'h5' : 'h4'} sx={{ color: '#04164b', fontWeight: 700, mb: 0.75 }}>
-          Помощь
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Пошаговые инструкции и ответы на частые вопросы
-        </Typography>
-      </Box>
+    <Container maxWidth="lg" sx={{ pt: { xs: 0.5, md: 1 }, pb: { xs: 2, md: 3 }, px: { xs: 2, md: 3 } }}>
+      <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ mb: 2 }}>
+        Помощь
+      </Typography>
 
       <TextField
         fullWidth
         value={search}
         onChange={(event) => setSearch(event.target.value)}
         placeholder="Поиск по инструкциям"
-        label="Найти ответ"
-        sx={{ mb: { xs: 2.5, md: 3 }, '& .MuiOutlinedInput-root': { bgcolor: '#fff', borderRadius: 2 } }}
+        size="small"
+        sx={{ mb: 2 }}
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">

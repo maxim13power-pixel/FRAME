@@ -147,55 +147,72 @@ const Calculators: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="xl" sx={{ py: { xs: 2, md: 3 } }}>
-      <Box sx={{ mb: { xs: 2, md: 3 } }}>
-        <Typography variant="h4" component="h1" sx={{ color: '#04164b', fontWeight: 700, mb: 0.75 }}>
-          Калькуляторы
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Быстрые расчёты для строительных материалов и работ
-        </Typography>
-      </Box>
-
-      <Box sx={{ display: 'flex', justifyContent: { xs: 'flex-end', md: 'stretch' }, mb: { xs: 2.5, md: 3 } }}>
-        {isMobile && !showSearch ? (
-          <IconButton
-            aria-label="Открыть поиск"
-            onClick={() => setShowSearch(true)}
-            sx={{ bgcolor: '#e3f2fd', color: '#1976d2', '&:hover': { bgcolor: '#bbdefb' } }}
-          >
-            <SearchIcon />
-          </IconButton>
+    <Container maxWidth="xl" sx={{ pt: { xs: 0.5, md: 1 }, pb: { xs: 2, md: 3 } }}>
+      {/* Мобилка: компактная строка — заголовок + поиск (как во всех разделах) */}
+      {isMobile ? (
+        showSearch ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, gap: 1 }}>
+            <TextField
+              fullWidth
+              inputRef={searchInputRef}
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Поиск калькулятора..."
+              variant="outlined"
+              size="small"
+              autoFocus
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={closeMobileSearch}>
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
         ) : (
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, minHeight: 48 }}>
+            <Typography variant="h5" sx={{ flexGrow: 1 }}>
+              Калькуляторы
+            </Typography>
+            <IconButton
+              onClick={() => setShowSearch(true)}
+              sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
+            >
+              <SearchIcon />
+            </IconButton>
+          </Box>
+        )
+      ) : (
+        /* Десктоп: заголовок + поиск, как во всех разделах */
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="h4" sx={{ mb: 2 }}>
+            Калькуляторы
+          </Typography>
           <TextField
-            fullWidth
-            inputRef={searchInputRef}
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            label="Поиск калькулятора"
-            placeholder="Например, бетон или плитка"
-            sx={{ maxWidth: { md: 520 }, '& .MuiOutlinedInput-root': { bgcolor: '#fff', borderRadius: 2 } }}
+            placeholder="Поиск калькулятора..."
+            variant="outlined"
+            size="small"
+            sx={{ maxWidth: 520 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon color="action" />
+                  <SearchIcon />
                 </InputAdornment>
               ),
-              ...(isMobile
-                ? {
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton aria-label="Закрыть поиск" edge="end" onClick={closeMobileSearch}>
-                          <CloseIcon />
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }
-                : {}),
             }}
           />
-        )}
-      </Box>
+        </Box>
+      )}
 
       {filteredSections.length > 0 ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 3, md: 4 } }}>
