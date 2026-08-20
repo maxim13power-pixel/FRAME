@@ -35,6 +35,7 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import SearchIcon from '@mui/icons-material/Search';
 import SortIcon from '@mui/icons-material/Sort';
+import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import LockIcon from '@mui/icons-material/Lock';
@@ -95,7 +96,9 @@ const Materials: React.FC = () => {
 // Мобилка: компактный поиск и меню сортировки
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
-  // Состояния для поиска (существуют)  
+  // ⭐ Фильтр по категориям справочника
+  const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
+  const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null); 
 
   // Модалка добавления материала
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -135,10 +138,25 @@ const Materials: React.FC = () => {
   const [editFixNote, setEditFixNote] = useState('');
   // Информационная модалка вместо браузерного alert
   const [infoModal, setInfoModal] = useState<{ open: boolean; text: string }>({ open: false, text: '' }); 
-  const filteredMaterials = materials.filter(m =>
-    m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.article?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+// ⭐ Категории, реально присутствующие в материалах проекта
+const availableCategories = useMemo(() => {
+  const map = new Map<number, string>();
+  materials.forEach(m => {
+    if (m.priceItem?.category) {
+      map.set(m.priceItem.category.id, m.priceItem.category.name);
+    }
+  });
+  return Array.from(map.entries())
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}, [materials]);
+
+// Поиск + фильтр по категории (двойная фильтрация)
+const filteredMaterials = materials.filter(m =>
+  (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+   m.article?.toLowerCase().includes(searchQuery.toLowerCase())) &&
+  (!categoryFilter || m.priceItem?.category?.id === categoryFilter)
+);
 
   // Сортировка материалов с помощью useMemo
   const sortedMaterials = useMemo(() => {
@@ -577,6 +595,21 @@ startAdornment: (
 />
 )}
 {/* Иконка сортировки (мобилка) — подсвечивается, если сортировка активна */}
+{!isMobile && availableCategories.length > 0 && (
+<FormControl size="small" sx={{ minWidth: 180 }}>
+<InputLabel>Категория</InputLabel>
+<Select
+value={categoryFilter ?? ''}
+label="Категория"
+onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.target.value))}
+>
+<MenuItem value=""><em>Все категории</em></MenuItem>
+{availableCategories.map(cat => (
+<MenuItem key={cat.id} value={cat.id}>{cat.name}</MenuItem>
+))}
+</Select>
+</FormControl>
+)}
 {isMobile && (
 <IconButton
 onClick={(e) => setSortAnchorEl(e.currentTarget)}
@@ -587,6 +620,18 @@ color: sortBy ? '#1976d2' : 'inherit',
 }}
 >
 <SortIcon />
+</IconButton>
+)}
+{isMobile && availableCategories.length > 0 && (
+<IconButton
+onClick={(e) => setFilterAnchorEl(e.currentTarget)}
+sx={{
+bgcolor: categoryFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
+color: categoryFilter ? '#1976d2' : 'inherit',
+'&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+}}
+>
+<FilterAltIcon />
 </IconButton>
 )}
 {!isMobile && (
@@ -629,6 +674,21 @@ color: sortBy ? '#1976d2' : 'inherit',
       <MenuItem onClick={() => applyMobileSort('percentage', 'desc')}>По % (убывание)</MenuItem>
       </Menu>
 
+{/* Меню фильтра по категориям (мобилка) */}
+<Menu
+anchorEl={filterAnchorEl}
+open={Boolean(filterAnchorEl)}
+onClose={() => setFilterAnchorEl(null)}
+>
+<MenuItem onClick={() => { setCategoryFilter(null); setFilterAnchorEl(null); }}>
+<em>Все категории</em>
+</MenuItem>
+{availableCategories.map(cat => (
+<MenuItem key={cat.id} onClick={() => { setCategoryFilter(cat.id); setFilterAnchorEl(null); }}>
+{cat.name}
+</MenuItem>
+))}
+</Menu>
       {/* Таблица для десктопа */}
       {!isMobile && (
         <TableContainer component={Paper} sx={{ mb: 2 }}>
