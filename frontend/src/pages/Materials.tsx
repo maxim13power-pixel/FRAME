@@ -41,6 +41,7 @@ import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 //import DeleteIcon from '@mui/icons-material/Delete';
 import SettingsIcon from '@mui/icons-material/Settings';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -50,6 +51,8 @@ import {
   updateSpecQuantity,
   toggleSpecLock,
   deleteMaterial,
+  fetchFixesByMaterial,
+  editLastFix,
 } from '../services/materialService';
 import type { MaterialData } from '../services/materialService';
 import { fetchProjectById } from '../services/materialService';
@@ -125,7 +128,13 @@ const Materials: React.FC = () => {
   const [settingsMaterial, setSettingsMaterial] = useState<MaterialData | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingMaterial, setDeletingMaterial] = useState<MaterialData | null>(null);
-
+ 
+  // Правка последней фиксации («Изменить Итого»)
+  const [editFixModalOpen, setEditFixModalOpen] = useState(false);
+  const [editFixAmount, setEditFixAmount] = useState('');
+  const [editFixNote, setEditFixNote] = useState('');
+  // Информационная модалка вместо браузерного alert
+  const [infoModal, setInfoModal] = useState<{ open: boolean; text: string }>({ open: false, text: '' }); 
   const filteredMaterials = materials.filter(m =>
     m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     m.article?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -362,6 +371,48 @@ setPriceLoading(false);
       alert('Ошибка удаления: ' + (err.response?.data?.message || err.message));
     }
   };
+
+// ✏️ Открыть правку последней фиксации (из шестерёнки)
+const handleOpenEditFix = async () => {
+  if (!token || !settingsMaterial) return;
+  try {
+    const fixes = await fetchFixesByMaterial(token, settingsMaterial.id);
+    if (fixes.length === 0) {
+      setInfoModal({ open: true, text: 'У материала ещё нет фиксаций' });
+      return;
+    }
+    const last = fixes[0]; // отсортированы по fixedAt desc
+    const ageMs = Date.now() - new Date(last.fixedAt).getTime();
+    if (ageMs > 72 * 60 * 60 * 1000) {
+      setInfoModal({ open: true, text: 'Исправить можно только фиксацию младше 72 часов' });
+      return;
+    }
+    setEditFixAmount(String(last.amount));
+    setEditFixNote(last.note || '');
+    setSettingsModalOpen(false);
+    setEditFixModalOpen(true);
+  } catch (err: any) {
+    setInfoModal({ open: true, text: 'Ошибка: ' + (err.response?.data?.message || err.message) });
+  }
+};
+
+const handleSaveEditFix = async () => {
+  const amount = parseFloat(editFixAmount);
+  if (!token || !settingsMaterial || isNaN(amount) || amount <= 0) {
+    setInfoModal({ open: true, text: 'Введите объём больше нуля' });
+    return;
+  }
+  try {
+    const updated = await editLastFix(token, settingsMaterial.id, {
+      amount,
+      note: editFixNote || undefined,
+    });
+    setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
+    setEditFixModalOpen(false);
+  } catch (err: any) {
+    setInfoModal({ open: true, text: 'Ошибка: ' + (err.response?.data?.message || err.message) });
+  }
+};
 // Применение сортировки из мобильного меню
 const applyMobileSort = (
 col: 'name' | 'specQuantity' | 'totalPrice' | 'percentage' | null,
@@ -979,14 +1030,22 @@ color: sortBy ? '#1976d2' : 'inherit',
             {settingsMaterial?.name}
           </Typography>
           <Stack spacing={1}>
-            <Button
-              fullWidth
-              variant="outlined"
-              color="error"
-              onClick={handleDeleteRequest}
-            >
-              Удалить материал
-            </Button>
+          <Button
+          fullWidth
+          variant="outlined"
+          onClick={handleOpenEditFix}
+          disabled={!settingsMaterial?.lastEntryDate}
+          >
+          Изменить последнюю фиксацию
+          </Button>
+          <Button
+          fullWidth
+          variant="outlined"
+          color="error"
+          onClick={handleDeleteRequest}
+          >
+          Удалить материал
+          </Button>
             <Button fullWidth variant="text" onClick={handleCloseSettings}>
               Отмена
             </Button>
@@ -994,6 +1053,66 @@ color: sortBy ? '#1976d2' : 'inherit',
         </Paper>
       </Modal>
 
+{/* Модалка правки последней фиксации */}
+<Modal open={editFixModalOpen} onClose={() => setEditFixModalOpen(false)} disableRestoreFocus>
+<Paper sx={{
+position: 'absolute',
+top: '50%',
+left: '50%',
+transform: 'translate(-50%, -50%)',
+width: { xs: '90%', sm: 400 },
+p: 4,
+borderRadius: 2,
+}}>
+<Typography variant="h6" gutterBottom>Изменить последнюю фиксацию</Typography>
+<Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+{settingsMaterial?.name} • доступно в течение 72 часов
+</Typography>
+<Stack spacing={2}>
+<TextField
+fullWidth
+label="Объём фиксации"
+type="number"
+placeholder="0"
+value={editFixAmount}
+onChange={e => setEditFixAmount(e.target.value)}
+/>
+<TextField
+fullWidth
+label="Примечание"
+multiline
+rows={2}
+value={editFixNote}
+onChange={e => setEditFixNote(e.target.value)}
+/>
+<Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+<Button variant="outlined" onClick={() => setEditFixModalOpen(false)}>Отмена</Button>
+<Button variant="contained" onClick={handleSaveEditFix}>Сохранить</Button>
+</Box>
+</Stack>
+</Paper>
+</Modal>
+
+{/* Информационная модалка вместо браузерного alert */}
+<Modal open={infoModal.open} onClose={() => setInfoModal({ open: false, text: '' })} disableRestoreFocus>
+<Paper sx={{
+position: 'absolute',
+top: '50%',
+left: '50%',
+transform: 'translate(-50%, -50%)',
+width: { xs: '90%', sm: 360 },
+p: 3,
+borderRadius: 2,
+textAlign: 'center',
+}}>
+<ErrorOutlineIcon sx={{ fontSize: 48, color: '#ed6c02', mb: 1 }} />
+<Typography variant="h6" gutterBottom>Внимание</Typography>
+<Typography sx={{ mb: 3 }}>{infoModal.text}</Typography>
+<Button variant="contained" onClick={() => setInfoModal({ open: false, text: '' })}>
+Понятно
+</Button>
+</Paper>
+</Modal>
       {/* Модалка подтверждения удаления */}
       <Modal
         open={deleteConfirmOpen}

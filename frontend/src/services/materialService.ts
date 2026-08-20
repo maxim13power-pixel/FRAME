@@ -125,6 +125,17 @@ export const toggleSpecLock = async (
   );
   return response.data;
 };
+// ✏️ Правка последней фиксации (только младше 24 часов)
+export const editLastFix = async (
+  token: string,
+  materialId: number,
+  data: { amount: number; note?: string }
+): Promise<MaterialData> => {
+  const response = await axios.patch(`${API_URL}/${materialId}/last-fix`, data, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
+};
 
 // Удаление материала
 export const deleteMaterial = async (

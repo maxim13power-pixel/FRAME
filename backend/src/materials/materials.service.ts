@@ -131,10 +131,10 @@ export class MaterialsService {
     });
     if (!lastFix) throw new BadRequestException('У материала ещё нет фиксаций');
 
-    // Защита: исправляем только свежие фиксации (до 24 часов)
+    // Защита: исправляем свежие фиксации (72 часа — пятница→понедельник)
     const ageMs = Date.now() - lastFix.fixedAt.getTime();
-    if (ageMs > 24 * 60 * 60 * 1000) {
-      throw new BadRequestException('Исправить можно только фиксацию младше 24 часов');
+    if (ageMs > 72 * 60 * 60 * 1000) {
+      throw new BadRequestException('Исправить можно только фиксацию младше 72 часов');
     }
     if (!dto.amount || dto.amount <= 0) {
       throw new BadRequestException('Объём должен быть больше нуля');
