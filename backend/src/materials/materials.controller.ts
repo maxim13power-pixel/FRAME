@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MaterialsService } from './materials.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
+import { UpdateMaterialDto } from './dto/update-material.dto';
 import { UpdateSpecQtyDto } from './dto/update-spec-qty.dto';
 
 @Controller('materials')
@@ -43,6 +44,14 @@ export class MaterialsController {
     @Body(new ValidationPipe({ whitelist: true })) dto: CreateFixDto,
   ) {
     return this.materialsService.editLastFix(id, dto);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ValidationPipe({ whitelist: true })) dto: UpdateMaterialDto,
+  ) {
+    return this.materialsService.update(id, dto);
   }
 
   @Patch(':id/spec')

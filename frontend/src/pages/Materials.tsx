@@ -54,6 +54,7 @@ import {
   deleteMaterial,
   fetchFixesByMaterial,
   editLastFix,
+  updateMaterial,
 } from '../services/materialService';
 import type { MaterialData } from '../services/materialService';
 import { fetchProjectById } from '../services/materialService';
@@ -138,7 +139,14 @@ const Materials: React.FC = () => {
   const [editFixNote, setEditFixNote] = useState('');
   // Информационная модалка вместо браузерного alert
   const [infoModal, setInfoModal] = useState<{ open: boolean; text: string }>({ open: false, text: '' }); 
-// ⭐ Категории, реально присутствующие в материалах проекта
+// Полное редактирование материала (шестерёнка)
+const [editModalOpen, setEditModalOpen] = useState(false);
+const [editName, setEditName] = useState('');
+const [editArticle, setEditArticle] = useState('');
+const [editUnit, setEditUnit] = useState('PIECE');
+const [editSpecQty, setEditSpecQty] = useState('');
+const [editNote, setEditNote] = useState('');
+  // ⭐ Категории, реально присутствующие в материалах проекта
 const availableCategories = useMemo(() => {
   const map = new Map<number, string>();
   materials.forEach(m => {
@@ -427,6 +435,44 @@ const handleSaveEditFix = async () => {
     });
     setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
     setEditFixModalOpen(false);
+  } catch (err: any) {
+    setInfoModal({ open: true, text: 'Ошибка: ' + (err.response?.data?.message || err.message) });
+  }
+};
+
+// ✏️ Полное редактирование: открыть из шестерёнки
+const handleOpenEdit = () => {
+  if (!settingsMaterial) return;
+  setEditName(settingsMaterial.name);
+  setEditArticle(settingsMaterial.article || '');
+  setEditUnit(settingsMaterial.unit);
+  setEditSpecQty(String(settingsMaterial.specQuantity));
+  setEditNote(settingsMaterial.note || '');
+  setSettingsModalOpen(false);
+  setEditModalOpen(true);
+};
+
+const handleSaveEdit = async () => {
+  if (!token || !settingsMaterial) return;
+  if (!editName.trim()) {
+    setInfoModal({ open: true, text: 'Введите наименование' });
+    return;
+  }
+  const qty = parseFloat(editSpecQty);
+  if (isNaN(qty) || qty < 0) {
+    setInfoModal({ open: true, text: 'Введите корректное количество по спецификации' });
+    return;
+  }
+  try {
+    const updated = await updateMaterial(token, settingsMaterial.id, {
+      name: editName.trim(),
+      article: editArticle,
+      unit: editUnit,
+      specQuantity: qty,
+      note: editNote,
+    });
+    setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
+    setEditModalOpen(false);
   } catch (err: any) {
     setInfoModal({ open: true, text: 'Ошибка: ' + (err.response?.data?.message || err.message) });
   }
@@ -1093,6 +1139,13 @@ onClose={() => setFilterAnchorEl(null)}
           <Button
           fullWidth
           variant="outlined"
+          onClick={handleOpenEdit}
+          >
+          Редактировать материал
+          </Button>
+          <Button
+          fullWidth
+          variant="outlined"
           onClick={handleOpenEditFix}
           disabled={!settingsMaterial?.lastEntryDate}
           >
@@ -1171,6 +1224,39 @@ textAlign: 'center',
 <Button variant="contained" onClick={() => setInfoModal({ open: false, text: '' })}>
 Понятно
 </Button>
+</Paper>
+</Modal>
+
+{/* Модалка полного редактирования материала */}
+<Modal open={editModalOpen} onClose={() => setEditModalOpen(false)} disableRestoreFocus>
+<Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 450 }, p: 4, borderRadius: 2 }}>
+<Typography variant="h6" gutterBottom>Редактировать материал</Typography>
+<Stack spacing={2}>
+<TextField fullWidth label="Наименование" value={editName} onChange={e => setEditName(e.target.value)} required />
+<TextField fullWidth label="Артикул" value={editArticle} onChange={e => setEditArticle(e.target.value)} />
+<FormControl fullWidth>
+<InputLabel>Единица измерения</InputLabel>
+<Select value={editUnit} label="Единица измерения" onChange={e => setEditUnit(e.target.value)}>
+{UNIT_OPTIONS.map(opt => (
+<MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+))}
+</Select>
+</FormControl>
+<TextField
+fullWidth
+label="Количество по спецификации"
+type="number"
+value={editSpecQty}
+onChange={e => setEditSpecQty(e.target.value)}
+disabled={settingsMaterial?.isSpecLocked}
+helperText={settingsMaterial?.isSpecLocked ? 'Спека защищена замком — сними замок в таблице, чтобы изменить' : undefined}
+/>
+<TextField fullWidth label="Примечание" multiline rows={2} value={editNote} onChange={e => setEditNote(e.target.value)} />
+<Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+<Button variant="outlined" onClick={() => setEditModalOpen(false)}>Отмена</Button>
+<Button variant="contained" onClick={handleSaveEdit}>Сохранить</Button>
+</Box>
+</Stack>
 </Paper>
 </Modal>
       {/* Модалка подтверждения удаления */}

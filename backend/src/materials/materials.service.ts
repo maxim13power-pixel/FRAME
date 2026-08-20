@@ -3,7 +3,7 @@ import { Unit } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
-
+import { UpdateMaterialDto } from './dto/update-material.dto';
 @Injectable()
 export class MaterialsService {
   constructor(private prisma: PrismaService) {}
@@ -160,6 +160,40 @@ export class MaterialsService {
         },
         include: { priceItem: { include: { category: true } } },
       });
+    });
+  }
+  // ✏️ Полное редактирование материала (с защитой спецификации)
+  async update(id: number, dto: UpdateMaterialDto) {
+    const material = await this.prisma.material.findUnique({ where: { id } });
+    if (!material) throw new NotFoundException('Материал не найден');
+
+    // Защита спеки: заблокирована → количество менять нельзя
+    if (
+      dto.specQuantity !== undefined &&
+      dto.specQuantity !== material.specQuantity &&
+      material.isSpecLocked
+    ) {
+      throw new BadRequestException('Спецификация защищена — сними замок, чтобы изменить количество');
+    }
+
+    const specChanged = dto.specQuantity !== undefined && dto.specQuantity !== material.specQuantity;
+    const progress = specChanged
+      ? dto.specQuantity! > 0
+        ? Math.round((material.totalUsed / dto.specQuantity!) * 100)
+        : 0
+      : material.progressPercent;
+
+    return this.prisma.material.update({
+      where: { id },
+      data: {
+        name: dto.name?.trim(),
+        article: dto.article !== undefined ? dto.article.trim() || null : undefined,
+        unit: dto.unit ? (dto.unit as Unit) : undefined,
+        note: dto.note !== undefined ? dto.note.trim() || null : undefined,
+        specQuantity: dto.specQuantity,
+        progressPercent: progress,
+      },
+      include: { priceItem: { include: { category: true } } },
     });
   }
 

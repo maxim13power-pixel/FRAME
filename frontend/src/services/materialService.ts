@@ -136,7 +136,17 @@ export const editLastFix = async (
   });
   return response.data;
 };
-
+// ✏️ Полное редактирование материала
+export const updateMaterial = async (
+  token: string,
+  materialId: number,
+  data: { name?: string; article?: string; unit?: string; specQuantity?: number; note?: string }
+): Promise<MaterialData> => {
+  const response = await axios.patch(`${API_URL}/${materialId}`, data, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
+};
 // Удаление материала
 export const deleteMaterial = async (
   token: string,
