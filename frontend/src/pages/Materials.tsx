@@ -458,7 +458,7 @@ setSortAnchorEl(null);
             <ArrowBackIcon />
           </IconButton>
           <Typography variant={isMobile ? "h5" : "h4"} sx={{ flexGrow: 1 }}>
-            Материалы и работы
+            Материал и работы
           </Typography>
         </Box>
       </Box>
