@@ -29,6 +29,7 @@ import {
   FormControl,
   InputLabel,
   LinearProgress,
+  Divider,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
@@ -38,8 +39,8 @@ import SortIcon from '@mui/icons-material/Sort';
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
-import LockIcon from '@mui/icons-material/Lock';
-import LockOpenIcon from '@mui/icons-material/LockOpen';
+//import LockIcon from '@mui/icons-material/Lock';
+//import LockOpenIcon from '@mui/icons-material/LockOpen';
 //import DeleteIcon from '@mui/icons-material/Delete';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
@@ -49,12 +50,11 @@ import {
   fetchMaterialsByProject,
   createMaterial,
   addFix,
-  updateSpecQuantity,
-  toggleSpecLock,
   deleteMaterial,
   fetchFixesByMaterial,
   editLastFix,
   updateMaterial,
+  createPriceItemForMaterial,
 } from '../services/materialService';
 import type { MaterialData } from '../services/materialService';
 import { fetchProjectById } from '../services/materialService';
@@ -63,6 +63,7 @@ import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
 import { searchPriceItems } from '../services/priceListService';
 import type { PriceItemData } from '../services/priceListService';
+import { fetchCategoriesWithItems, createCategory } from '../services/priceListService';
 
 const UNIT_OPTIONS = [
   { value: 'PIECE', label: 'шт' },
@@ -121,12 +122,6 @@ const Materials: React.FC = () => {
   const [fixAmount, setFixAmount] = useState('');
   const [fixNote, setFixNote] = useState('');
 
-  // Модалка изменения спецификации
-  const [specModalOpen, setSpecModalOpen] = useState(false);
-  const [editingMaterial, setEditingMaterial] = useState<MaterialData | null>(null);
-  //const [newSpecQty, setNewSpecQty] = useState<number>(0);
-  const [newSpecQty, setNewSpecQty] = useState('');
-
   // Шестерёнка (настройки материала) и подтверждение удаления
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [settingsMaterial, setSettingsMaterial] = useState<MaterialData | null>(null);
@@ -146,6 +141,19 @@ const [editArticle, setEditArticle] = useState('');
 const [editUnit, setEditUnit] = useState('PIECE');
 const [editSpecQty, setEditSpecQty] = useState('');
 const [editNote, setEditNote] = useState('');
+// Расценка в модалке редактирования
+const [editPriceItemId, setEditPriceItemId] = useState<number | null>(null);
+const [editSelectedPriceItem, setEditSelectedPriceItem] = useState<PriceItemData | null>(null);
+const [editPriceOptions, setEditPriceOptions] = useState<PriceItemData[]>([]);
+const [editPriceLoading, setEditPriceLoading] = useState(false);
+// Создание новой расценки прямо из модалки
+const [editCreatingNew, setEditCreatingNew] = useState(false);
+const [newPriceName, setNewPriceName] = useState('');
+const [newPriceCategoryId, setNewPriceCategoryId] = useState<number | '' | '__new__'>('');
+const [newPriceCategoryName, setNewPriceCategoryName] = useState('');
+const [newPriceUnit, setNewPriceUnit] = useState('PIECE');
+const [newPricePrice, setNewPricePrice] = useState('');
+const [allCategories, setAllCategories] = useState<{ id: number; name: string }[]>([]);
   // ⭐ Категории, реально присутствующие в материалах проекта
 const availableCategories = useMemo(() => {
   const map = new Map<number, string>();
@@ -323,51 +331,6 @@ setPriceLoading(false);
     }
   };
 
-  const handleOpenSpecModal = (material: MaterialData) => {
-    //setEditingMaterial(material);
-    //setNewSpecQty(material.specQuantity);
-    setEditingMaterial(material);
-    setNewSpecQty(String(material.specQuantity));    
-    setSpecModalOpen(true);
-  };
-
-  const handleCloseSpecModal = () => {
-    setSpecModalOpen(false);
-    setEditingMaterial(null);
-  };
-
-  //const handleUpdateSpec = async () => {
-    //if (!token || !editingMaterial || newSpecQty < 0) {
-      //alert('Введите корректное количество');
-      //return;
-    //}
-    //try {
-      //const updated = await updateSpecQuantity(token, editingMaterial.id, newSpecQty);
-  const handleUpdateSpec = async () => {
-    const qty = parseFloat(newSpecQty);
-    if (!token || !editingMaterial || isNaN(qty) || qty < 0) {
-      alert('Введите корректное количество');
-      return;
-    }
-    try {
-      const updated = await updateSpecQuantity(token, editingMaterial.id, qty);
-      setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
-      handleCloseSpecModal();
-    } catch (err: any) {
-      alert('Ошибка обновления: ' + (err.response?.data?.message || err.message));
-    }
-  };
-
-  const handleToggleLock = async (material: MaterialData) => {
-    if (!token) return;
-    try {
-      const updated = await toggleSpecLock(token, material.id);
-      setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
-    } catch (err: any) {
-      alert('Ошибка: ' + (err.response?.data?.message || err.message));
-    }
-  };
-
   // Шестерёнка: открываем настройки материала
   const handleOpenSettings = (material: MaterialData) => {
     setSettingsMaterial(material);
@@ -441,15 +404,44 @@ const handleSaveEditFix = async () => {
 };
 
 // ✏️ Полное редактирование: открыть из шестерёнки
-const handleOpenEdit = () => {
-  if (!settingsMaterial) return;
+const handleOpenEdit = async () => {
+  if (!settingsMaterial || !token) return;
   setEditName(settingsMaterial.name);
   setEditArticle(settingsMaterial.article || '');
   setEditUnit(settingsMaterial.unit);
   setEditSpecQty(String(settingsMaterial.specQuantity));
   setEditNote(settingsMaterial.note || '');
+  setEditPriceItemId(settingsMaterial.priceItemId ?? null);
+  setEditSelectedPriceItem(settingsMaterial.priceItem ?? null);
+  setEditCreatingNew(false);
+  setNewPriceName('');
+  setNewPriceCategoryId('');
+  setNewPriceCategoryName('');
+  setNewPriceUnit('PIECE');
+  setNewPricePrice('');
   setSettingsModalOpen(false);
   setEditModalOpen(true);
+  // Подгружаем категории для создания новой расценки
+  try {
+    const cats = await fetchCategoriesWithItems(token);
+    setAllCategories(cats.map(c => ({ id: c.id, name: c.name })));
+  } catch (e) {
+    console.error('Не удалось загрузить категории', e);
+  }
+};
+
+// Поиск расценок для Autocomplete в модалке редактирования
+const handleEditPriceSearch = async (value: string) => {
+  if (!token) return;
+  try {
+    setEditPriceLoading(true);
+    const data = await searchPriceItems(token, value || undefined);
+    setEditPriceOptions(data);
+  } catch (err) {
+    console.error('Ошибка поиска расценок:', err);
+  } finally {
+    setEditPriceLoading(false);
+  }
 };
 
 const handleSaveEdit = async () => {
@@ -463,13 +455,55 @@ const handleSaveEdit = async () => {
     setInfoModal({ open: true, text: 'Введите корректное количество по спецификации' });
     return;
   }
+
   try {
+    let priceItemIdToSend: number | null | undefined = editPriceItemId;
+
+    // Если включён режим создания новой расценки — сначала создаём её
+    if (editCreatingNew) {
+      if (!newPriceName.trim()) {
+        setInfoModal({ open: true, text: 'Введите название новой расценки' });
+        return;
+      }
+      const price = parseFloat(newPricePrice);
+      if (isNaN(price) || price < 0) {
+        setInfoModal({ open: true, text: 'Введите корректную цену' });
+        return;
+      }
+      let categoryId: number;
+      if (newPriceCategoryId === '' && !newPriceCategoryName.trim()) {
+        setInfoModal({ open: true, text: 'Выберите категорию или создайте новую' });
+        return;
+      }
+      if (newPriceCategoryId === '') {
+        // Создаём новую категорию
+        const newCat = await createCategory(token, { name: newPriceCategoryName.trim() });
+        categoryId = newCat.id;
+      } else {
+        categoryId = Number(newPriceCategoryId);
+      }
+      // Создаём расценку
+      const created = await createPriceItemForMaterial(
+        token,
+        {
+          name: newPriceName.trim(),
+          article: undefined,
+          unit: newPriceUnit,
+          price,
+          categoryId,
+        },
+        newPriceCategoryId === '' ? newPriceCategoryName.trim() : undefined
+      );
+      priceItemIdToSend = created.id;
+    }
+
     const updated = await updateMaterial(token, settingsMaterial.id, {
       name: editName.trim(),
       article: editArticle,
       unit: editUnit,
       specQuantity: qty,
       note: editNote,
+      priceItemId: priceItemIdToSend,
     });
     setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
     setEditModalOpen(false);
@@ -785,21 +819,7 @@ onClose={() => setFilterAnchorEl(null)}
                   <TableCell>{m.name}</TableCell>
                   <TableCell>{m.article || '-'}</TableCell>
                   <TableCell>{UNIT_OPTIONS.find(u => u.value === m.unit)?.label || m.unit}</TableCell>
-                  <TableCell sx={{ textAlign: 'center' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
-                      <span>{m.specQuantity}</span>
-                      <IconButton 
-                        size="small" 
-                        onClick={() => m.isSpecLocked ? handleToggleLock(m) : handleOpenSpecModal(m)}
-                        sx={{ 
-                          bgcolor: m.isSpecLocked ? 'rgba(255, 152, 0, 0.1)' : 'rgba(76, 175, 80, 0.1)',
-                          '&:hover': { bgcolor: m.isSpecLocked ? 'rgba(255, 152, 0, 0.2)' : 'rgba(76, 175, 80, 0.2)' }
-                        }}
-                      >
-                        {m.isSpecLocked ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
-                      </IconButton>
-                    </Box>
-                  </TableCell>
+<TableCell sx={{ textAlign: 'center' }}>{m.specQuantity}</TableCell>
                   <TableCell sx={{ textAlign: 'center', fontWeight: 600 }}>{m.totalUsed}</TableCell>
                   <TableCell sx={{ textAlign: 'right' }}>
                   {m.unitPrice > 0 ? `${m.unitPrice.toLocaleString('ru-RU')} ₽` : '—'}
@@ -887,18 +907,10 @@ onClose={() => setFilterAnchorEl(null)}
               }}
               />
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">По спец.:</Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Typography variant="body1" fontWeight={600}>{m.specQuantity}</Typography>
-                      <IconButton 
-                        size="small" 
-                        onClick={() => m.isSpecLocked ? handleToggleLock(m) : handleOpenSpecModal(m)}
-                      >
-                        {m.isSpecLocked ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
-                      </IconButton>
-                    </Box>
-                  </Box>
+<Box>
+<Typography variant="caption" color="text.secondary">По спец.:</Typography>
+<Typography variant="body1" fontWeight={600}>{m.specQuantity}</Typography>
+</Box>
                   <Box sx={{ textAlign: 'center' }}>
                     <Typography variant="caption" color="text.secondary">Итого:</Typography>
                     <Typography variant="body1" fontWeight={600}>{m.totalUsed}</Typography>
@@ -1089,37 +1101,6 @@ onClose={() => setFilterAnchorEl(null)}
         </Paper>
       </Modal>
 
-      {/* Модалка изменения спецификации */}
-      <Modal open={specModalOpen} onClose={handleCloseSpecModal} disableRestoreFocus>
-        <Paper sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: { xs: '90%', sm: 360 },
-          p: 4,
-          borderRadius: 2,
-        }}>
-          <Typography variant="h6" gutterBottom>
-            Изменить количество по спецификации
-          </Typography>
-          <Stack spacing={2}>
-            <TextField
-              fullWidth
-              label="Новое количество"
-              type="number"
-              placeholder="0"
-              value={newSpecQty}
-              onChange={e => setNewSpecQty(e.target.value)}
-            />
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-              <Button variant="outlined" onClick={handleCloseSpecModal}>Отмена</Button>
-              <Button variant="contained" onClick={handleUpdateSpec}>Сохранить</Button>
-            </Box>
-          </Stack>
-        </Paper>
-      </Modal>
-
       {/* Модалка настроек материала (шестерёнка) */}
       <Modal open={settingsModalOpen} onClose={handleCloseSettings} disableRestoreFocus>
         <Paper sx={{
@@ -1248,10 +1229,95 @@ label="Количество по спецификации"
 type="number"
 value={editSpecQty}
 onChange={e => setEditSpecQty(e.target.value)}
-disabled={settingsMaterial?.isSpecLocked}
-helperText={settingsMaterial?.isSpecLocked ? 'Спека защищена замком — сними замок в таблице, чтобы изменить' : undefined}
 />
 <TextField fullWidth label="Примечание" multiline rows={2} value={editNote} onChange={e => setEditNote(e.target.value)} />
+<Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Расценка</Typography></Divider>
+
+{!editCreatingNew ? (
+  <>
+    <Autocomplete
+      fullWidth
+      options={editPriceOptions}
+      loading={editPriceLoading}
+      value={editSelectedPriceItem}
+      onChange={(_e, value) => {
+        // Специальное значение — открыть режим создания
+        if ((value as any)?.__new__) {
+          setEditCreatingNew(true);
+          setNewPriceName(editName); // подставляем название материала
+          return;
+        }
+        setEditSelectedPriceItem(value);
+        setEditPriceItemId(value?.id ?? null);
+      }}
+      onInputChange={(_e, value) => handleEditPriceSearch(value)}
+      getOptionLabel={(option) => {
+        if ((option as any)?.__new__) return '➕ Создать новую расценку...';
+        const o = option as PriceItemData;
+        return `${o.name} — ${o.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`;
+      }}
+      noOptionsText="Ничего не найдено"
+      renderInput={(params) => (
+        <TextField {...params} label="Расценка из справочника" placeholder="Начни вводить..." />
+      )}
+      onOpen={() => { if (editPriceOptions.length === 0) handleEditPriceSearch(''); }}
+    />
+    {editSelectedPriceItem && (
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Typography variant="body2" color="text.secondary">
+          Текущая цена: <b>{editSelectedPriceItem.price.toLocaleString('ru-RU')} ₽</b>
+          {' '}• {editSelectedPriceItem.category?.name || 'Без категории'}
+        </Typography>
+        <Button size="small" onClick={() => { setEditSelectedPriceItem(null); setEditPriceItemId(null); }}>
+          Сбросить
+        </Button>
+      </Box>
+    )}
+    {!editSelectedPriceItem && (
+      <Button size="small" variant="text" onClick={() => {
+        setEditCreatingNew(true);
+        setNewPriceName(editName);
+      }}>
+        ➕ Создать новую расценку
+      </Button>
+    )}
+  </>
+) : (
+  <>
+    <Typography variant="subtitle2" color="primary">Создать новую расценку</Typography>
+    <TextField fullWidth label="Название расценки" value={newPriceName} onChange={e => setNewPriceName(e.target.value)} />
+    <FormControl fullWidth>
+      <InputLabel>Категория</InputLabel>
+      <Select
+        value={newPriceCategoryId}
+        label="Категория"
+        onChange={e => setNewPriceCategoryId(e.target.value as any)}
+      >
+        <MenuItem value="__new__">
+          <em>➕ Создать новую категорию...</em>
+        </MenuItem>
+        {allCategories.map(c => (
+          <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+    {newPriceCategoryId === '__new__' && (
+      <TextField fullWidth label="Название новой категории" value={newPriceCategoryName} onChange={e => setNewPriceCategoryName(e.target.value)} />
+    )}
+    <FormControl fullWidth>
+      <InputLabel>Единица</InputLabel>
+      <Select value={newPriceUnit} label="Единица" onChange={e => setNewPriceUnit(e.target.value)}>
+        {UNIT_OPTIONS.map(opt => (
+          <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+    <TextField fullWidth label="Цена, ₽" type="number" value={newPricePrice} onChange={e => setNewPricePrice(e.target.value)} />
+    <Button size="small" variant="text" onClick={() => setEditCreatingNew(false)}>
+      ← Выбрать из существующих
+    </Button>
+  </>
+)}
 <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
 <Button variant="outlined" onClick={() => setEditModalOpen(false)}>Отмена</Button>
 <Button variant="contained" onClick={handleSaveEdit}>Сохранить</Button>

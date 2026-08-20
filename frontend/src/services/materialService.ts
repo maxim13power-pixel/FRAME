@@ -11,9 +11,11 @@ export interface PriceItemSnapshot {
   unit: string;
   price: number;
   categoryId: number;
+  isActive: boolean;
   category?: {
     id: number;
     name: string;
+    sortOrder: number;
   };
 }
 export interface MaterialData {
@@ -136,11 +138,38 @@ export const editLastFix = async (
   });
   return response.data;
 };
+// ✨ Создать новую расценку (+ опционально новую категорию)
+export const createPriceItemForMaterial = async (
+  token: string,
+  item: {
+    name: string;
+    article?: string;
+    unit: string;
+    price: number;
+    categoryId: number;
+  },
+  newCategoryName?: string
+) => {
+  const response = await axios.post(
+    `${API_URL}/price-item`,
+    { item, newCategoryName },
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return response.data;
+};
+
 // ✏️ Полное редактирование материала
 export const updateMaterial = async (
   token: string,
   materialId: number,
-  data: { name?: string; article?: string; unit?: string; specQuantity?: number; note?: string }
+  data: {
+    name?: string;
+    article?: string;
+    unit?: string;
+    specQuantity?: number;
+    note?: string;
+    priceItemId?: number | null; // ← добавили параметр
+  }
 ): Promise<MaterialData> => {
   const response = await axios.patch(`${API_URL}/${materialId}`, data, {
     headers: { Authorization: `Bearer ${token}` },

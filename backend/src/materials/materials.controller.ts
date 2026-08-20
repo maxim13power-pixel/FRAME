@@ -8,6 +8,7 @@ import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { UpdateSpecQtyDto } from './dto/update-spec-qty.dto';
+import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
 
 @Controller('materials')
 @UseGuards(JwtAuthGuard)
@@ -54,6 +55,20 @@ export class MaterialsController {
     return this.materialsService.update(id, dto);
   }
 
+  // ✨ Создать расценку (+ опционально новую категорию) и вернуть её фронтенду
+  @Post('price-item')
+  createPriceItem(
+    @Body(new ValidationPipe({ whitelist: true })) body: {
+      item: CreatePriceItemDto;
+      newCategoryName?: string;
+    },
+  ) {
+    return this.materialsService.createPriceItemWithCategory(
+      body.item,
+      body.newCategoryName,
+    );
+  }
+  
   @Patch(':id/spec')
   updateSpecQty(
     @Param('id', ParseIntPipe) id: number,

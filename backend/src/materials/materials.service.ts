@@ -3,6 +3,8 @@ import { Unit } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
+import { CreateCategoryDto } from '../price-list/dto/create-category.dto';
+import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 @Injectable()
 export class MaterialsService {
@@ -162,26 +164,37 @@ export class MaterialsService {
       });
     });
   }
-  // ✏️ Полное редактирование материала (с защитой спецификации)
+  // ✏️ Полное редактирование материала (смена расценки + защита данных)
   async update(id: number, dto: UpdateMaterialDto) {
     const material = await this.prisma.material.findUnique({ where: { id } });
     if (!material) throw new NotFoundException('Материал не найден');
 
-    // Защита спеки: заблокирована → количество менять нельзя
-    if (
-      dto.specQuantity !== undefined &&
-      dto.specQuantity !== material.specQuantity &&
-      material.isSpecLocked
-    ) {
-      throw new BadRequestException('Спецификация защищена — сними замок, чтобы изменить количество');
+    // Если меняется priceItemId — подтягиваем snapshot новой цены
+    let unitPrice = material.unitPrice;
+    let priceItemId: number | null = material.priceItemId;
+
+    if (dto.priceItemId !== undefined && dto.priceItemId !== material.priceItemId) {
+      if (dto.priceItemId === null) {
+        // Сброс привязки
+        unitPrice = 0;
+        priceItemId = null;
+      } else {
+        const priceItem = await this.prisma.priceItem.findUnique({
+          where: { id: dto.priceItemId },
+        });
+        if (!priceItem) throw new NotFoundException('Расценка не найдена');
+        if (!priceItem.isActive) throw new BadRequestException('Расценка неактивна');
+        unitPrice = priceItem.price;
+        priceItemId = priceItem.id;
+      }
     }
 
-    const specChanged = dto.specQuantity !== undefined && dto.specQuantity !== material.specQuantity;
-    const progress = specChanged
-      ? dto.specQuantity! > 0
-        ? Math.round((material.totalUsed / dto.specQuantity!) * 100)
-        : 0
-      : material.progressPercent;
+    // Пересчёт progressPercent при смене спеки
+    const newSpecQty = dto.specQuantity ?? material.specQuantity;
+    const progress = newSpecQty > 0
+      ? Math.round((material.totalUsed / newSpecQty) * 100)
+      : 0;
+    const totalCost = material.totalUsed * unitPrice;
 
     return this.prisma.material.update({
       where: { id },
@@ -192,8 +205,43 @@ export class MaterialsService {
         note: dto.note !== undefined ? dto.note.trim() || null : undefined,
         specQuantity: dto.specQuantity,
         progressPercent: progress,
+        priceItemId,
+        unitPrice,
+        totalCost,
       },
       include: { priceItem: { include: { category: true } } },
+    });
+  }
+
+  // ✨ Удобная обёртка: создать категорию (если надо) + расценку в одном запросе
+  async createPriceItemWithCategory(
+    itemDto: CreatePriceItemDto,
+    newCategoryName?: string,
+  ) {
+    let categoryId = itemDto.categoryId;
+
+    // Если передано имя новой категории — создаём её
+    if (newCategoryName && newCategoryName.trim()) {
+      const created = await this.prisma.priceCategory.create({
+        data: { name: newCategoryName.trim(), sortOrder: 0 },
+      });
+      categoryId = created.id;
+    }
+
+    const category = await this.prisma.priceCategory.findUnique({
+      where: { id: categoryId },
+    });
+    if (!category) throw new NotFoundException('Категория не найдена');
+
+    return this.prisma.priceItem.create({
+      data: {
+        name: itemDto.name.trim(),
+        article: itemDto.article?.trim() || null,
+        unit: (itemDto.unit ?? 'PIECE') as Unit,
+        price: itemDto.price,
+        categoryId,
+      },
+      include: { category: true },
     });
   }
 
