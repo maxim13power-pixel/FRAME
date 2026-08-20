@@ -1005,11 +1005,12 @@ onClose={() => setFilterAnchorEl(null)}
             getOptionLabel={(option) =>
             `${option.name} — ${option.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === option.unit)?.label || option.unit}`
             }
-            noOptionsText="Ничего не найдено. Начни вводить название..."
-            renderInput={(params) => (
-            <TextField {...params} label="Расценка из справочника (необязательно)" placeholder="Начни вводить..." />
-            )}
-            />
+noOptionsText="Ничего не найдено. Начни вводить название..."
+onOpen={() => { if (priceOptions.length === 0) handlePriceSearch(''); }}
+renderInput={(params) => (
+<TextField {...params} label="Расценка из справочника (необязательно)" placeholder="Выбери или начни вводить..." />
+)}
+/>
             {selectedPriceItem && (
             <Box sx={{ bgcolor: 'rgba(76, 175, 80, 0.08)', p: 1.5, borderRadius: 1 }}>
             <Typography variant="body2">
