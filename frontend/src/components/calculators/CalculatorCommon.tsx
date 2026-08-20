@@ -1,9 +1,6 @@
 import React from 'react';
 import { Box, Button, Paper, TextField, Typography } from '@mui/material';
 
-export const formatNumber = (value: number) =>
-  value.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
-
 interface NumberFieldProps {
   label: string;
   value: string;

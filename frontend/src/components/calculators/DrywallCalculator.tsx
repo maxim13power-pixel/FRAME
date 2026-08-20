@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Typography } from '@mui/material';
-import { FieldGrid, formatNumber, NumberField, ResetButton, ResultPaper } from './CalculatorCommon';
+import { FieldGrid, NumberField, ResetButton, ResultPaper } from './CalculatorCommon';
+import { formatNumber } from './CalculatorUtils';
 
 const DrywallCalculator: React.FC = () => {
   const [area, setArea] = useState('');
