@@ -36,6 +36,15 @@ export class MaterialsController {
     return this.materialsService.addFix(id, dto);
   }
 
+  
+  @Patch(':id/last-fix')
+  editLastFix(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ValidationPipe({ whitelist: true })) dto: CreateFixDto,
+  ) {
+    return this.materialsService.editLastFix(id, dto);
+  }
+
   @Patch(':id/spec')
   updateSpecQty(
     @Param('id', ParseIntPipe) id: number,

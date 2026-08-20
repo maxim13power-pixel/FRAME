@@ -120,6 +120,48 @@ export class MaterialsService {
       include: { priceItem: { include: { category: true } } },
     });
   }
+  // ✏️ Исправление последней фиксации (защита от ошибок ввода)
+  async editLastFix(id: number, dto: CreateFixDto) {
+    const material = await this.prisma.material.findUnique({ where: { id } });
+    if (!material) throw new NotFoundException('Материал не найден');
+
+    const lastFix = await this.prisma.materialFix.findFirst({
+      where: { materialId: id },
+      orderBy: { fixedAt: 'desc' },
+    });
+    if (!lastFix) throw new BadRequestException('У материала ещё нет фиксаций');
+
+    // Защита: исправляем только свежие фиксации (до 24 часов)
+    const ageMs = Date.now() - lastFix.fixedAt.getTime();
+    if (ageMs > 24 * 60 * 60 * 1000) {
+      throw new BadRequestException('Исправить можно только фиксацию младше 24 часов');
+    }
+    if (!dto.amount || dto.amount <= 0) {
+      throw new BadRequestException('Объём должен быть больше нуля');
+    }
+
+    const newTotal = material.totalUsed - lastFix.amount + dto.amount;
+    const progress = material.specQuantity > 0
+      ? Math.round((newTotal / material.specQuantity) * 100)
+      : 0;
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.materialFix.update({
+        where: { id: lastFix.id },
+        data: { amount: dto.amount, note: dto.note ?? null },
+      });
+      return tx.material.update({
+        where: { id },
+        data: {
+          totalUsed: newTotal,
+          lastEntry: dto.amount,
+          progressPercent: progress,
+          totalCost: newTotal * material.unitPrice,
+        },
+        include: { priceItem: { include: { category: true } } },
+      });
+    });
+  }
 
   // Удаление (фиксации удалятся каскадно)
   async remove(id: number) {
