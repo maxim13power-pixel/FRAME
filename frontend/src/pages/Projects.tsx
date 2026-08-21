@@ -81,7 +81,7 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
 } | null>(null);
   
   // Временная функция для процента (позже заменим на реальную)
-  const getProgress = () => Math.floor(Math.random() * 60) + 20;
+  //const getProgress = () => Math.floor(Math.random() * 60) + 20;
   
   // Функция для расчёта дней до окончания
   const daysUntil = (endDateStr: string) => {
@@ -555,10 +555,10 @@ const updateProjectAction = async () => {
   <SettingsIcon fontSize="small" />
 </IconButton>
   <Chip
-    label={`${getProgress()}%`}
+    label={`${proj.progressPercent ?? 0}%`}
     size="small"
     sx={{
-      bgcolor: '#1976d2',
+      bgcolor: (proj.progressPercent ?? 0) >= 100 ? '#4caf50' : '#1976d2',
       color: 'white',
       fontWeight: 'bold',
     }}
@@ -568,14 +568,14 @@ const updateProjectAction = async () => {
             {/* Прогресс-бар */}
             <LinearProgress
               variant="determinate"
-              value={getProgress()}
+              value={Math.min(proj.progressPercent ?? 0, 100)}
               sx={{
                 height: 10,
                 borderRadius: 5,
                 mb: 2,
                 bgcolor: '#e0e0e0',
                 '& .MuiLinearProgress-bar': {
-                  backgroundColor: '#1976d2',
+                  backgroundColor: (proj.progressPercent ?? 0) >= 100 ? '#4caf50' : '#1976d2',
                   borderRadius: 5,
                 },
               }}

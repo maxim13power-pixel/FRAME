@@ -32,14 +32,44 @@ async create(dto: CreateProjectDto) {
 }
 
   async findAllByObject(objectId: number) {
-    return this.prisma.project.findMany({
+    const projects = await this.prisma.project.findMany({
       where: { objectId },
       orderBy: { createdAt: 'desc' },
+      include: {
+        materials: { select: { specQuantity: true, totalUsed: true, totalCost: true } },
+      },
+    });
+    // ⭐ Честный процент: Σ Итого / Σ По спец × 100 по материалам проекта
+    return projects.map(p => {
+      const sumSpec = p.materials.reduce((a, m) => a + (m.specQuantity || 0), 0);
+      const sumUsed = p.materials.reduce((a, m) => a + (m.totalUsed || 0), 0);
+      const sumCost = p.materials.reduce((a, m) => a + (m.totalCost || 0), 0);
+      const { materials, ...rest } = p;
+      return {
+        ...rest,
+        progressPercent: sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
+        totalCost: sumCost,
+      };
     });
   }
 
   async findOne(id: number) {
-    return this.prisma.project.findUnique({ where: { id } });
+    const project = await this.prisma.project.findUnique({
+      where: { id },
+      include: {
+        materials: { select: { specQuantity: true, totalUsed: true, totalCost: true } },
+      },
+    });
+    if (!project) return null;
+    const sumSpec = project.materials.reduce((a, m) => a + (m.specQuantity || 0), 0);
+    const sumUsed = project.materials.reduce((a, m) => a + (m.totalUsed || 0), 0);
+    const sumCost = project.materials.reduce((a, m) => a + (m.totalCost || 0), 0);
+    const { materials, ...rest } = project;
+    return {
+      ...rest,
+      progressPercent: sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
+      totalCost: sumCost,
+    };
   }
 
   async update(id: number, dto: Partial<CreateProjectDto>) {

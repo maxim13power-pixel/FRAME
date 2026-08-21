@@ -8,6 +8,8 @@ export interface ProjectData {
   startDate: string;
   endDate: string;
   objectId: number;
+  progressPercent?: number; // ⭐ честный % из материалов
+  totalCost?: number;       // ⭐ сумма стоимостей материалов
   createdAt?: string;
   updatedAt?: string;
 }
