@@ -463,7 +463,7 @@ const handleOpenEdit = async () => {
   setEditName(settingsMaterial.name);
   setEditArticle(settingsMaterial.article || '');
   setEditUnit(settingsMaterial.unit);
-  setEditSpecQty(String(settingsMaterial.specQuantity));
+  setEditSpecQty(settingsMaterial.specQuantity ? String(settingsMaterial.specQuantity) : '');
   setEditNote(settingsMaterial.note || '');
   setEditPriceItemId(settingsMaterial.priceItemId ?? null);
   setEditSelectedPriceItem(settingsMaterial.priceItem ?? null);
@@ -504,7 +504,7 @@ const handleSaveEdit = async () => {
     setInfoModal({ open: true, text: 'Введите наименование' });
     return;
   }
-  const qty = parseFloat(editSpecQty);
+  const qty = editSpecQty.trim() === '' ? 0 : parseFloat(editSpecQty);
   if (isNaN(qty) || qty < 0) {
     setInfoModal({ open: true, text: 'Введите корректное количество по спецификации' });
     return;
@@ -1322,6 +1322,7 @@ textAlign: 'center',
 fullWidth
 label="Количество по спецификации"
 type="number"
+placeholder="0"
 value={editSpecQty}
 onChange={e => setEditSpecQty(e.target.value)}
 />

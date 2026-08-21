@@ -73,7 +73,7 @@ async create(dto: CreateProjectDto) {
   }
 
   async update(id: number, dto: Partial<CreateProjectDto>) {
-    return this.prisma.project.update({
+    await this.prisma.project.update({
       where: { id },
       data: {
         name: dto.name,
@@ -81,6 +81,8 @@ async create(dto: CreateProjectDto) {
         endDate: dto.endDate ? new Date(dto.endDate) : undefined,
       },
     });
+    // ⭐ Возвращаем проект с честным процентом (та же форма, что в списке)
+    return this.findOne(id);
   }
 
   async remove(id: number) {
