@@ -114,7 +114,13 @@ const Materials: React.FC = () => {
   const [selectedPriceItem, setSelectedPriceItem] = useState<PriceItemData | null>(null);
   const [priceOptions, setPriceOptions] = useState<PriceItemData[]>([]);
   const [priceLoading, setPriceLoading] = useState(false);
-
+  // ⭐ Создание новой расценки прямо из модалки добавления
+  const [addCreatingNew, setAddCreatingNew] = useState(false);
+  const [addPriceName, setAddPriceName] = useState('');
+  const [addPriceCategoryId, setAddPriceCategoryId] = useState<number | '' | '__new__'>('');
+  const [addPriceCategoryName, setAddPriceCategoryName] = useState('');
+  const [addPriceUnit, setAddPriceUnit] = useState('PIECE');
+  const [addPricePrice, setAddPricePrice] = useState('');
   // Модалка фиксации объёма
   const [fixModalOpen, setFixModalOpen] = useState(false);
   const [fixingMaterial, setFixingMaterial] = useState<MaterialData | null>(null);
@@ -243,7 +249,21 @@ useEffect(() => {
   };
   loadData();
 }, [token, projectId, objectId]);
-const handleOpenAddModal = () => setAddModalOpen(true);
+const handleOpenAddModal = () => {
+  setAddModalOpen(true);
+  setAddCreatingNew(false);
+  setAddPriceName('');
+  setAddPriceCategoryId('');
+  setAddPriceCategoryName('');
+  setAddPriceUnit('PIECE');
+  setAddPricePrice('');
+  // Подгружаем категории для создания новой расценки
+  if (token) {
+    fetchCategoriesWithItems(token)
+      .then(cats => setAllCategories(cats.map(c => ({ id: c.id, name: c.name }))))
+      .catch(e => console.error('Не удалось загрузить категории', e));
+  }
+};
 const handleCloseAddModal = () => {
 setAddModalOpen(false);
 setNewName('');
@@ -253,6 +273,7 @@ setNewSpecQuantity('');
 setNewNote('');
 setSelectedPriceItem(null);
 setPriceOptions([]);
+setAddCreatingNew(false);
 };
 
 // ⭐ Поиск расценок из справочника для Autocomplete
@@ -275,14 +296,47 @@ setPriceLoading(false);
     }
     const specQty = parseFloat(newSpecQuantity) || 0;
     try {
+      // ⭐ Режим «новая расценка»: сначала создаём её (+ категорию если надо)
+      let priceItemId: number | undefined = selectedPriceItem?.id ?? undefined;
+      if (addCreatingNew) {
+        if (!addPriceName.trim()) {
+          setInfoModal({ open: true, text: 'Введите название новой расценки' });
+          return;
+        }
+        const price = parseFloat(addPricePrice);
+        if (isNaN(price) || price < 0) {
+          setInfoModal({ open: true, text: 'Введите корректную цену' });
+          return;
+        }
+        const isNewCat = addPriceCategoryId === '__new__';
+        if (isNewCat && !addPriceCategoryName.trim()) {
+          setInfoModal({ open: true, text: 'Введите название новой категории' });
+          return;
+        }
+        if (!isNewCat && addPriceCategoryId === '') {
+          setInfoModal({ open: true, text: 'Выберите категорию для расценки' });
+          return;
+        }
+        const createdPrice = await createPriceItemForMaterial(
+          token,
+          {
+            name: addPriceName.trim(),
+            unit: addPriceUnit,
+            price,
+            categoryId: isNewCat ? 0 : Number(addPriceCategoryId),
+          },
+          isNewCat ? addPriceCategoryName.trim() : undefined
+        );
+        priceItemId = createdPrice.id;
+      }
       const created = await createMaterial(token, {
         name: newName,
         article: newArticle || undefined,
         unit: newUnit,
-        specQuantity: specQty,    
+        specQuantity: specQty,
         note: newNote || undefined,
         projectId: parseInt(projectId),
-        priceItemId: selectedPriceItem?.id ?? undefined,
+        priceItemId,
         });
       setMaterials(prev => [created, ...prev]);
       handleCloseAddModal();
@@ -988,6 +1042,8 @@ onClose={() => setFilterAnchorEl(null)}
               value={newArticle}
               onChange={e => setNewArticle(e.target.value)}
             />
+            {!addCreatingNew ? (
+            <>
             <Autocomplete
             fullWidth
             options={priceOptions}
@@ -1018,6 +1074,44 @@ renderInput={(params) => (
             {' '}• {selectedPriceItem.category?.name || 'Без категории'}
             </Typography>
             </Box>
+            )}
+            <Button size="small" variant="text" onClick={() => { setAddCreatingNew(true); setAddPriceName(newName); }}>
+              ➕ Создать новую расценку
+            </Button>
+            </>
+            ) : (
+            <>
+            <Typography variant="subtitle2" color="primary">Создать новую расценку</Typography>
+            <TextField fullWidth label="Название расценки" value={addPriceName} onChange={e => setAddPriceName(e.target.value)} />
+            <FormControl fullWidth>
+            <InputLabel>Категория</InputLabel>
+            <Select
+            value={addPriceCategoryId}
+            label="Категория"
+            onChange={e => setAddPriceCategoryId(e.target.value as any)}
+            >
+            <MenuItem value="__new__"><em>➕ Создать новую категорию...</em></MenuItem>
+            {allCategories.map(c => (
+            <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+            ))}
+            </Select>
+            </FormControl>
+            {addPriceCategoryId === '__new__' && (
+            <TextField fullWidth label="Название новой категории" value={addPriceCategoryName} onChange={e => setAddPriceCategoryName(e.target.value)} />
+            )}
+            <FormControl fullWidth>
+            <InputLabel>Единица</InputLabel>
+            <Select value={addPriceUnit} label="Единица" onChange={e => setAddPriceUnit(e.target.value)}>
+            {UNIT_OPTIONS.map(opt => (
+            <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+            ))}
+            </Select>
+            </FormControl>
+            <TextField fullWidth label="Цена, ₽" type="number" value={addPricePrice} onChange={e => setAddPricePrice(e.target.value)} />
+            <Button size="small" variant="text" onClick={() => setAddCreatingNew(false)}>
+              ← Выбрать из существующих
+            </Button>
+            </>
             )}
             <FormControl fullWidth>
               <InputLabel>Единица измерения</InputLabel>
