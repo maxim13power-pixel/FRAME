@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Unit } from '@prisma/client';
+import { PriceKind,Unit } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
@@ -240,18 +240,28 @@ export class MaterialsService {
     });
   }
 
-  // ✨ Создать расценку (+ опционально новую категорию) в одном запросе
+    // ✨ Создать расценку (+ опционально новую категорию) в одном запросе
   async createPriceItemWithCategory(
     itemDto: CreatePriceItemDto,
     newCategoryName?: string,
+    kind?: string,
   ) {
     let categoryId = itemDto.categoryId;
+    // ⭐ Тип расценки: из параметра, из DTO, или WORK по умолчанию
+    const kindValue: PriceKind = ((kind ?? itemDto.kind) as PriceKind) || 'WORK';
 
     if (newCategoryName && newCategoryName.trim()) {
-      const created = await this.prisma.priceCategory.create({
-        data: { name: newCategoryName.trim(), sortOrder: 0 },
+      const existing = await this.prisma.priceCategory.findFirst({
+        where: { name: newCategoryName.trim(), kind: kindValue },
       });
-      categoryId = created.id;
+      if (existing) {
+        categoryId = existing.id; // категория уже есть — используем её
+      } else {
+        const created = await this.prisma.priceCategory.create({
+          data: { name: newCategoryName.trim(), sortOrder: 0, kind: kindValue },
+        });
+        categoryId = created.id;
+      }
     }
 
     const category = await this.prisma.priceCategory.findUnique({
@@ -266,6 +276,7 @@ export class MaterialsService {
         unit: (itemDto.unit ?? 'PIECE') as Unit,
         price: itemDto.price,
         categoryId,
+        kind: kindValue,
       },
       include: { category: true },
     });

@@ -45,11 +45,6 @@ const formatDate = (dateStr: string) => {
   return `${day}.${month}.${year}`;
 };
 
-// Функция для вычисления процента выполнения (пока случайный или 0)
-const getProgress = () => {
-  // позже будем вычислять по проектам, сейчас просто случайное число
-  return Math.floor(Math.random() * 60) + 20; // от 20 до 80%
-};
 
 // Функция для вычисления дней до окончания
 const daysUntil = (endDateStr: string) => {
@@ -136,9 +131,7 @@ const filteredAndSortedObjects = useMemo(() => {
       filtered.sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
       break;
     case 'progress':
-      // пока прогресс случайный, сортировка по нему не имеет смысла, но позже заменим
-      // пока сортируем по дате окончания для примера
-      filtered.sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
+      filtered.sort((a, b) => (b.progressPercent ?? 0) - (a.progressPercent ?? 0));
       break;
     case 'newest':
     default:
@@ -287,7 +280,7 @@ const handleSearchClose = () => {
   }
 
   return (
-   <Box sx={{ mt: -1.7 }}>
+   <Box sx={{ mt: -1.7, maxWidth: 1000, mx: 'auto', width: '100%' }}>
   {/* Верхний блок с заголовком и иконками (только для мобилок) */}
 {isMobile && (
   <>
@@ -411,7 +404,7 @@ const handleSearchClose = () => {
       <Stack spacing={isMobile ? 1.5 : 2}>
         {filteredAndSortedObjects.length > 0 ? (
           filteredAndSortedObjects.map(obj => {
-            const progress = getProgress(); // позже заменим на реальный процент
+            const progress = obj.progressPercent ?? 0;
             const daysLeft = daysUntil(obj.endDate);
             //const daysColor = getDaysColor(daysLeft);
 
@@ -465,7 +458,7 @@ const handleSearchClose = () => {
                     label={`${progress}%`}
                     size="small"
                     sx={{
-                      bgcolor: '#1976d2',
+                      bgcolor: progress >= 100 ? '#4caf50' : '#1976d2',
                       color: 'white',
                       fontWeight: 'bold',
                     }}
@@ -480,14 +473,14 @@ const handleSearchClose = () => {
                 {/* Прогресс-бар */}
 <LinearProgress
   variant="determinate"
-  value={progress}
+  value={Math.min(progress, 100)}
   sx={{
     height: 10,
     borderRadius: 5,
     mb: isMobile ? 1.7 : 2,
     bgcolor: '#e0e0e0',
     '& .MuiLinearProgress-bar': {
-      backgroundColor: '#1976d2',  // синий (как у иконок)
+      backgroundColor: progress >= 100 ? '#4caf50' : '#1976d2',
       borderRadius: 5,
     },
   }}

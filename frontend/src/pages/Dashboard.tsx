@@ -92,8 +92,12 @@ const Dashboard: React.FC = () => {
           anchor="left"
           open={sidebarOpen}
           sx={{
-            width: sidebarWidth,
+            width: sidebarOpen ? sidebarWidth : 0,
             flexShrink: 0,
+            transition: theme.transitions.create('width', {
+              easing: theme.transitions.easing.easeInOut,
+              duration: theme.transitions.duration.standard,
+            }),
             '& .MuiDrawer-paper': {
               width: sidebarWidth,
               boxSizing: 'border-box',
@@ -143,9 +147,11 @@ const Dashboard: React.FC = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          transition: theme.transitions.create('margin', {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
+          minWidth: 0,
+          paddingLeft: !isMobile && !sidebarOpen ? '48px' : 0,
+          transition: theme.transitions.create('padding', {
+            easing: theme.transitions.easing.easeInOut,
+            duration: theme.transitions.duration.standard,
           }),
         }}
       >
@@ -153,10 +159,10 @@ const Dashboard: React.FC = () => {
         {!isMobile && !sidebarOpen && (
           <IconButton
             onClick={() => setSidebarOpen(true)}
-    sx={{
+     sx={{
       position: 'fixed',
-      top: 16,
-      left: 16,
+      top: 24,
+      left: 24,
       zIndex: 1200,
       bgcolor: 'rgba(0, 0, 0, 0.06)',
       '&:hover': {
@@ -169,9 +175,11 @@ const Dashboard: React.FC = () => {
         )}
 
         <Container
+          maxWidth={false}
           sx={{
-            mt: { xs: 10, md: 4 },
+            mt: { xs: 10, md: 3 },
             mb: { xs: 8, md: 4 },
+            px: { xs: 2, md: 3 },
             position: 'relative',
           }}
         >

@@ -769,10 +769,24 @@ setSortAnchorEl(null);
 
   return (
     <Box>
-      {/* Верхняя строка с хлебными крошками */}
+       {/* Заголовок с кнопкой назад, крошки ниже */}
       <Box sx={{ mb: 2 }}>
-        {/* Хлебные крошки: Объекты › Объект › Проект */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <IconButton
+            onClick={() => navigate(`/objects/${objectId}/projects`)}
+            sx={{
+              mr: 1,
+              bgcolor: 'rgba(0, 0, 0, 0.06)',
+              '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+            }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant={isMobile ? "h5" : "h4"} sx={{ flexGrow: 1 }}>
+            Материал и работы
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, ml: 6, flexWrap: 'wrap' }}>
           <Typography
             component="button"
             onClick={() => navigate('/objects')}
@@ -801,23 +815,6 @@ setSortAnchorEl(null);
           <Typography sx={{ color: 'text.secondary', fontSize: 14 }}>›</Typography>
           <Typography sx={{ fontSize: 14, fontWeight: 600 }}>
             {currentProject ? currentProject.name : 'Проект'}
-          </Typography>
-        </Box>
-
-        {/* Заголовок с кнопкой назад */}
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <IconButton
-            onClick={() => navigate(`/objects/${objectId}/projects`)}
-            sx={{
-              mr: 1,
-              bgcolor: 'rgba(0, 0, 0, 0.06)',
-              '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
-            }}
-          >
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant={isMobile ? "h5" : "h4"} sx={{ flexGrow: 1 }}>
-            Материал и работы
           </Typography>
         </Box>
       </Box>
@@ -1086,67 +1083,68 @@ onClose={() => setFilterAnchorEl(null)}
 
       {/* Карточки для мобилки */}
       {isMobile && (
-        <Stack spacing={2}>
+        <Stack spacing={1.5}>
           {sortedMaterials.length > 0 ? (
             sortedMaterials.map((m) => (
-              <Paper key={m.id} sx={{ p: 2, borderRadius: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <InventoryIcon sx={{ color: '#1976d2', mr: 1 }} />
-                  <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1 }}>
+              <Paper key={m.id} sx={{ p: 1.5, borderRadius: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                  <InventoryIcon sx={{ color: '#1976d2', mr: 1, fontSize: 22 }} />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>
                     {m.name}
                   </Typography>
                   <IconButton size="small" onClick={() => handleOpenSettings(m)}>
                     <SettingsIcon fontSize="small" />
                   </IconButton>
                 </Box>
-             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              {m.article || 'Без артикула'} • {UNIT_OPTIONS.find(u => u.value === m.unit)?.label}
-              </Typography>
-              {/* Прогресс-бар */}
-              <LinearProgress
-              variant="determinate"
-              value={Math.min(m.progressPercent, 100)}
-              sx={{
-              height: 8,
-              borderRadius: 4,
-              mb: 1,
-              bgcolor: '#e0e0e0',
-              '& .MuiLinearProgress-bar': {
-              backgroundColor: m.progressPercent >= 100 ? '#4caf50' : '#1976d2',
-              borderRadius: 4,
-              },
-              }}
-              />
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-<Box>
-<Typography variant="caption" color="text.secondary">По спец.:</Typography>
-<Typography variant="body1" fontWeight={600}>{m.specQuantity}</Typography>
-</Box>
-                  <Box sx={{ textAlign: 'center' }}>
-                    <Typography variant="caption" color="text.secondary">Итого:</Typography>
-                    <Typography variant="body1" fontWeight={600}>{m.totalUsed}</Typography>
-                  </Box>
-                  <Box sx={{ textAlign: 'right' }}>
-                    <Typography variant="caption" color="text.secondary">Прогресс:</Typography>
-                    <Typography variant="body1" fontWeight={600} color={m.progressPercent >= 100 ? '#4caf50' : '#1976d2'}>
-                  {m.progressPercent}%
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  {m.article || 'Без артикула'} • {UNIT_OPTIONS.find(u => u.value === m.unit)?.label}
+                </Typography>
+                {/* Прогресс-бар с процентом справа */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                  <LinearProgress
+                    variant="determinate"
+                    value={Math.min(m.progressPercent, 100)}
+                    sx={{
+                      height: 8, borderRadius: 4, flexGrow: 1, bgcolor: '#e0e0e0',
+                      '& .MuiLinearProgress-bar': {
+                        backgroundColor: m.progressPercent >= 100 ? '#4caf50' : '#1976d2',
+                        borderRadius: 4,
+                      },
+                    }}
+                  />
+                  <Typography variant="body2" fontWeight={700} sx={{ color: m.progressPercent >= 100 ? '#4caf50' : '#1976d2', minWidth: 40, textAlign: 'right' }}>
+                    {m.progressPercent}%
                   </Typography>
+                </Box>
+                {/* Ключевые цифры в одну строку */}
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <Box component="span" color="text.secondary">Спец:</Box> <b>{m.specQuantity}</b>
+                  {' • '}<Box component="span" color="text.secondary">Итого:</Box> <b>{m.totalUsed}</b>
+                  {' • '}<Box component="span" color="text.secondary">Посл.:</Box> <b>{m.lastEntry ?? '—'}</b>
+                </Typography>
+                {/* Блок "На текущий момент" */}
+                <Box sx={{ bgcolor: '#f5f9ff', borderRadius: 1.5, p: 1, mb: 1, border: '1px solid #e3edf8' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
+                    <Typography variant="caption" color="text.secondary">Работы:</Typography>
+                    <Typography variant="caption" fontWeight={600}>{m.totalCost > 0 ? `${m.totalCost.toLocaleString('ru-RU')} ₽` : '—'}</Typography>
                   </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
+                    <Typography variant="caption" color="text.secondary">Материалы:</Typography>
+                    <Typography variant="caption" fontWeight={600}>{m.materialTotalCost > 0 ? `${m.materialTotalCost.toLocaleString('ru-RU')} ₽` : '—'}</Typography>
                   </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                  Цена: <b>{m.unitPrice > 0 ? `${m.unitPrice.toLocaleString('ru-RU')} ₽` : '—'}</b>
-                  </Typography>
-                  <Typography variant="body2">
-                  Стоимость: <b>{m.totalCost > 0 ? `${m.totalCost.toLocaleString('ru-RU')} ₽` : '—'}</b>
-                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" fontWeight={700}>Итого:</Typography>
+                    <Typography variant="body2" fontWeight={700} color="#1976d2">
+                      {(m.totalCost + m.materialTotalCost) > 0 ? `${(m.totalCost + m.materialTotalCost).toLocaleString('ru-RU')} ₽` : '—'}
+                    </Typography>
                   </Box>
-                  <Button
+                </Box>
+                <Button
                   fullWidth
                   variant="contained"
                   size="small"
                   onClick={() => handleOpenFixModal(m)}
-                  sx={{ mt: 1, bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' } }}
+                  sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' } }}
                 >
                   + Зафиксировать объём
                 </Button>
@@ -1181,6 +1179,8 @@ onClose={() => setFilterAnchorEl(null)}
           left: '50%',
           transform: 'translate(-50%, -50%)',
           width: { xs: '90%', sm: 450 },
+          maxHeight: '90vh',
+          overflowY: 'auto',
           p: 4,
           borderRadius: 2,
         }}>
@@ -1517,7 +1517,7 @@ textAlign: 'center',
 
 {/* Модалка полного редактирования материала */}
 <Modal open={editModalOpen} onClose={() => setEditModalOpen(false)} disableRestoreFocus>
-<Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 450 }, p: 4, borderRadius: 2 }}>
+<Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 450 }, maxHeight: '90vh', overflowY: 'auto', p: 4, borderRadius: 2 }}>
 <Typography variant="h6" gutterBottom>Редактировать материал</Typography>
 <Stack spacing={2}>
 <TextField fullWidth label="Наименование" value={editName} onChange={e => setEditName(e.target.value)} required />

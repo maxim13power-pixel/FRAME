@@ -11,6 +11,8 @@ export interface ObjectData {
   plannedEndDate?: string;
   createdAt?: string;
   note?: string | null;
+  progressPercent?: number; // честный % из проектов
+  totalCost?: number;
 }
 
 // Получить все объекты

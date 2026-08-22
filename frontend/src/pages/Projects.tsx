@@ -418,26 +418,7 @@ const handleSaveNote = async () => {
   }
 
   return (
-<Box>
-  {/* Хлебные крошки: Объекты › [объект] */}
-  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1, flexWrap: 'wrap' }}>
-    <Typography
-      component="button"
-      onClick={() => navigate('/objects')}
-      sx={{
-        background: 'none', border: 'none', padding: 0,
-        color: '#1976d2', cursor: 'pointer', fontSize: 14,
-        textDecoration: 'underline',
-        '&:hover': { color: '#1565c0' },
-      }}
-    >
-      Объекты
-    </Typography>
-    <Typography sx={{ color: 'text.secondary', fontSize: 14 }}>›</Typography>
-    <Typography sx={{ fontSize: 14, fontWeight: 600 }}>
-      {currentObject ? currentObject.name : 'Объект'}
-    </Typography>
-  </Box>
+<Box sx={{ maxWidth: 1000, mx: 'auto', width: '100%' }}>
 
   {/* Мобильная компактная строка: заголовок + иконки */}
   {isMobile && (
@@ -512,11 +493,32 @@ const handleSaveNote = async () => {
   {/* Десктоп: большая строка с поиском и кнопкой добавления */}
   {!isMobile && (
     <>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <IconButton onClick={() => navigate('/objects')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}>
-          <ArrowBackIcon />
-        </IconButton>
-        <Typography variant="h4" sx={{ flexGrow: 1 }}>Проекты (виды работ)</Typography>
+      <Box sx={{ mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <IconButton onClick={() => navigate('/objects')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}>
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h4" sx={{ flexGrow: 1 }}>Проекты (виды работ)</Typography>
+        </Box>
+        {/* Хлебные крошки под заголовком */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, ml: 6, flexWrap: 'wrap' }}>
+          <Typography
+            component="button"
+            onClick={() => navigate('/objects')}
+            sx={{
+              background: 'none', border: 'none', padding: 0,
+              color: '#1976d2', cursor: 'pointer', fontSize: 14,
+              textDecoration: 'underline',
+              '&:hover': { color: '#1565c0' },
+            }}
+          >
+            Объекты
+          </Typography>
+          <Typography sx={{ color: 'text.secondary', fontSize: 14 }}>›</Typography>
+          <Typography sx={{ fontSize: 14, fontWeight: 600 }}>
+            {currentObject ? currentObject.name : 'Объект'}
+          </Typography>
+        </Box>
       </Box>
       <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
         <TextField
@@ -546,6 +548,7 @@ const handleSaveNote = async () => {
       </Box>
     </>
   )}
+
 
   {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Stack spacing={2}>

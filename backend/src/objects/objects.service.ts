@@ -24,9 +24,37 @@ export class ObjectsService {
   }
 
   // Получение всех объектов
+  // Все объекты + честный % из материалов всех проектов
   async findAll() {
-    return this.prisma.object.findMany({
-      orderBy: { createdAt: 'desc' }, // сортировка по дате создания (новые сверху)
+    const objects = await this.prisma.object.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        projects: {
+          include: {
+            materials: {
+              select: { specQuantity: true, totalUsed: true, totalCost: true, materialTotalCost: true },
+            },
+          },
+        },
+      },
+    });
+    return objects.map(o => {
+      let sumSpec = 0;
+      let sumUsed = 0;
+      let sumCost = 0;
+      o.projects.forEach(p =>
+        p.materials.forEach(m => {
+          sumSpec += m.specQuantity || 0;
+          sumUsed += m.totalUsed || 0;
+          sumCost += (m.totalCost || 0) + (m.materialTotalCost || 0);
+        })
+      );
+      const { projects, ...rest } = o;
+      return {
+        ...rest,
+        progressPercent: sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
+        totalCost: sumCost,
+      };
     });
   }
   async update(id: number, dto: Partial<CreateObjectDto>) {
