@@ -56,6 +56,11 @@ enum Role {
   CUSTOMER
 }
 
+enum PriceKind {
+  WORK      // работы
+  MATERIAL  // материалы
+}
+
 enum Unit {
   PIECE          // шт
   METER          // м
@@ -131,7 +136,8 @@ model PriceItem {
   price      Float         @default(0)
   categoryId Int
   category   PriceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  isActive   Boolean       @default(true)
+  isActive   Boolean       @default(true)  // устаревшие расценки скрываем
+  kind       PriceKind    @default(WORK)  // WORK = работы, MATERIAL = материалы
   
   // Связи: работа или материал
   workMaterials     Material[]  @relation("WorkPrice")
