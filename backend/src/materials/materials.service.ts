@@ -3,23 +3,29 @@ import { Unit } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
-import { CreateCategoryDto } from '../price-list/dto/create-category.dto';
-import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
+import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
+
+// ⭐ Общий include: расценка работы + расценка материала (с категориями)
+const MATERIAL_INCLUDE = {
+  priceItem: { include: { category: true } },
+  materialItem: { include: { category: true } },
+};
+
 @Injectable()
 export class MaterialsService {
   constructor(private prisma: PrismaService) {}
 
-  // Все материалы проекта (с расценкой и её категорией из справочника)
+  // Все материалы проекта (с обеими расценками)
   async findAllByProject(projectId: number) {
     return this.prisma.material.findMany({
       where: { projectId },
       orderBy: { id: 'asc' },
-      include: { priceItem: { include: { category: true } } },
+      include: MATERIAL_INCLUDE,
     });
   }
 
-  // История фиксаций одного материала (для отчёта по дням)
+  // История фиксаций одного материала
   async findFixes(materialId: number) {
     const material = await this.prisma.material.findUnique({ where: { id: materialId } });
     if (!material) throw new NotFoundException('Материал не найден');
@@ -29,22 +35,25 @@ export class MaterialsService {
     });
   }
 
-  // Создание материала (+ snapshot цены из справочника)
+  // Создание материала (+ snapshot цен работы и материала)
   async create(dto: CreateMaterialDto) {
     const project = await this.prisma.project.findUnique({ where: { id: dto.projectId } });
     if (!project) throw new NotFoundException('Проект не найден');
 
-    // ⭐ Если выбрана расценка — снимаем snapshot её цены
     let unitPrice = 0;
     if (dto.priceItemId) {
-      const priceItem = await this.prisma.priceItem.findUnique({
-        where: { id: dto.priceItemId },
-      });
+      const priceItem = await this.prisma.priceItem.findUnique({ where: { id: dto.priceItemId } });
       if (!priceItem) throw new NotFoundException('Расценка не найдена');
-      if (!priceItem.isActive) {
-        throw new BadRequestException('Выбранная расценка неактивна');
-      }
+      if (!priceItem.isActive) throw new BadRequestException('Выбранная расценка неактивна');
       unitPrice = priceItem.price;
+    }
+
+    let materialUnitPrice = 0;
+    if (dto.materialItemId) {
+      const materialItem = await this.prisma.priceItem.findUnique({ where: { id: dto.materialItemId } });
+      if (!materialItem) throw new NotFoundException('Расценка материала не найдена');
+      if (!materialItem.isActive) throw new BadRequestException('Расценка материала неактивна');
+      materialUnitPrice = materialItem.price;
     }
 
     return this.prisma.material.create({
@@ -58,12 +67,15 @@ export class MaterialsService {
         priceItemId: dto.priceItemId ?? null,
         unitPrice,
         totalCost: 0,
+        materialItemId: dto.materialItemId ?? null,
+        materialUnitPrice,
+        materialTotalCost: 0,
       },
-      include: { priceItem: { include: { category: true } } },
+      include: MATERIAL_INCLUDE,
     });
   }
 
-  // ⭐ ГЛАВНАЯ ФИЧА из старого кода: фиксация объёма
+  // ⭐ Фиксация объёма + пересчёт ОБЕИХ стоимостей
   async addFix(materialId: number, dto: CreateFixDto) {
     const material = await this.prisma.material.findUnique({ where: { id: materialId } });
     if (!material) throw new NotFoundException('Материал не найден');
@@ -75,7 +87,6 @@ export class MaterialsService {
       ? Math.round((newTotal / material.specQuantity) * 100)
       : 0;
 
-    // Транзакция: запись фиксации + пересчёт агрегатов атомарно
     return this.prisma.$transaction(async (tx) => {
       await tx.materialFix.create({
         data: {
@@ -91,14 +102,15 @@ export class MaterialsService {
           lastEntry: dto.amount,
           lastEntryDate: new Date(),
           progressPercent: progress,
-          totalCost: newTotal * material.unitPrice, // ⭐ пересчёт стоимости
+          totalCost: newTotal * material.unitPrice,
+          materialTotalCost: newTotal * material.materialUnitPrice,
         },
-        include: { priceItem: { include: { category: true } } },
+        include: MATERIAL_INCLUDE,
       });
     });
   }
 
-  // Обновление количества по спецификации + пересчёт процента
+  // Обновление спеки + пересчёт процента
   async updateSpecQty(id: number, specQuantity: number) {
     const material = await this.prisma.material.findUnique({ where: { id } });
     if (!material) throw new NotFoundException('Материал не найден');
@@ -108,7 +120,7 @@ export class MaterialsService {
     return this.prisma.material.update({
       where: { id },
       data: { specQuantity, progressPercent: progress },
-      include: { priceItem: { include: { category: true } } },
+      include: MATERIAL_INCLUDE,
     });
   }
 
@@ -119,10 +131,11 @@ export class MaterialsService {
     return this.prisma.material.update({
       where: { id },
       data: { isSpecLocked: !material.isSpecLocked },
-      include: { priceItem: { include: { category: true } } },
+      include: MATERIAL_INCLUDE,
     });
   }
-  // ✏️ Исправление последней фиксации (защита от ошибок ввода)
+
+  // ✏️ Исправление последней фиксации (72 часа)
   async editLastFix(id: number, dto: CreateFixDto) {
     const material = await this.prisma.material.findUnique({ where: { id } });
     if (!material) throw new NotFoundException('Материал не найден');
@@ -133,7 +146,6 @@ export class MaterialsService {
     });
     if (!lastFix) throw new BadRequestException('У материала ещё нет фиксаций');
 
-    // Защита: исправляем свежие фиксации (72 часа — пятница→понедельник)
     const ageMs = Date.now() - lastFix.fixedAt.getTime();
     if (ageMs > 72 * 60 * 60 * 1000) {
       throw new BadRequestException('Исправить можно только фиксацию младше 72 часов');
@@ -159,29 +171,27 @@ export class MaterialsService {
           lastEntry: dto.amount,
           progressPercent: progress,
           totalCost: newTotal * material.unitPrice,
+          materialTotalCost: newTotal * material.materialUnitPrice,
         },
-        include: { priceItem: { include: { category: true } } },
+        include: MATERIAL_INCLUDE,
       });
     });
   }
-  // ✏️ Полное редактирование материала (смена расценки + защита данных)
+
+  // ✏️ Полное редактирование (смена расценок работы и материала)
   async update(id: number, dto: UpdateMaterialDto) {
     const material = await this.prisma.material.findUnique({ where: { id } });
     if (!material) throw new NotFoundException('Материал не найден');
 
-    // Если меняется priceItemId — подтягиваем snapshot новой цены
+    // Смена расценки РАБОТЫ
     let unitPrice = material.unitPrice;
     let priceItemId: number | null = material.priceItemId;
-
     if (dto.priceItemId !== undefined && dto.priceItemId !== material.priceItemId) {
       if (dto.priceItemId === null) {
-        // Сброс привязки
         unitPrice = 0;
         priceItemId = null;
       } else {
-        const priceItem = await this.prisma.priceItem.findUnique({
-          where: { id: dto.priceItemId },
-        });
+        const priceItem = await this.prisma.priceItem.findUnique({ where: { id: dto.priceItemId } });
         if (!priceItem) throw new NotFoundException('Расценка не найдена');
         if (!priceItem.isActive) throw new BadRequestException('Расценка неактивна');
         unitPrice = priceItem.price;
@@ -189,12 +199,26 @@ export class MaterialsService {
       }
     }
 
-    // Пересчёт progressPercent при смене спеки
+    // ⭐ Смена расценки МАТЕРИАЛА
+    let materialUnitPrice = material.materialUnitPrice;
+    let materialItemId: number | null = material.materialItemId;
+    if (dto.materialItemId !== undefined && dto.materialItemId !== material.materialItemId) {
+      if (dto.materialItemId === null) {
+        materialUnitPrice = 0;
+        materialItemId = null;
+      } else {
+        const materialItem = await this.prisma.priceItem.findUnique({ where: { id: dto.materialItemId } });
+        if (!materialItem) throw new NotFoundException('Расценка материала не найдена');
+        if (!materialItem.isActive) throw new BadRequestException('Расценка материала неактивна');
+        materialUnitPrice = materialItem.price;
+        materialItemId = materialItem.id;
+      }
+    }
+
     const newSpecQty = dto.specQuantity ?? material.specQuantity;
     const progress = newSpecQty > 0
       ? Math.round((material.totalUsed / newSpecQty) * 100)
       : 0;
-    const totalCost = material.totalUsed * unitPrice;
 
     return this.prisma.material.update({
       where: { id },
@@ -207,20 +231,22 @@ export class MaterialsService {
         progressPercent: progress,
         priceItemId,
         unitPrice,
-        totalCost,
+        totalCost: material.totalUsed * unitPrice,
+        materialItemId,
+        materialUnitPrice,
+        materialTotalCost: material.totalUsed * materialUnitPrice,
       },
-      include: { priceItem: { include: { category: true } } },
+      include: MATERIAL_INCLUDE,
     });
   }
 
-  // ✨ Удобная обёртка: создать категорию (если надо) + расценку в одном запросе
+  // ✨ Создать расценку (+ опционально новую категорию) в одном запросе
   async createPriceItemWithCategory(
     itemDto: CreatePriceItemDto,
     newCategoryName?: string,
   ) {
     let categoryId = itemDto.categoryId;
 
-    // Если передано имя новой категории — создаём её
     if (newCategoryName && newCategoryName.trim()) {
       const created = await this.prisma.priceCategory.create({
         data: { name: newCategoryName.trim(), sortOrder: 0 },

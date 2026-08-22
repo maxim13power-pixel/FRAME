@@ -27,4 +27,8 @@ export class UpdateMaterialDto {
   @IsOptional()
   @IsInt({ message: 'priceItemId должен быть целым числом' })
   priceItemId?: number | null;  
+  
+  @IsOptional()
+  @IsInt({ message: 'materialItemId должен быть целым числом' })
+  materialItemId?: number | null;
 }
