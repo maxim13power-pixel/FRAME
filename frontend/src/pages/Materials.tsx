@@ -160,18 +160,26 @@ const [newPriceCategoryName, setNewPriceCategoryName] = useState('');
 const [newPriceUnit, setNewPriceUnit] = useState('PIECE');
 const [newPricePrice, setNewPricePrice] = useState('');
 const [allCategories, setAllCategories] = useState<{ id: number; name: string }[]>([]);
-  // ⭐ Категории, реально присутствующие в материалах проекта
-const availableCategories = useMemo(() => {
-  const map = new Map<number, string>();
-  materials.forEach(m => {
-    if (m.priceItem?.category) {
-      map.set(m.priceItem.category.id, m.priceItem.category.name);
-    }
-  });
-  return Array.from(map.entries())
-    .map(([id, name]) => ({ id, name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}, [materials]);
+  // ⭐ Фильтр — ВСЕ категории справочника (всегда актуальные)
+const availableCategories = useMemo(() =>
+  [...allCategories].sort((a, b) => a.name.localeCompare(b.name)),
+[allCategories]);
+
+// ⭐ Загрузка категорий из справочника (фильтр + модалки)
+const loadCategories = async () => {
+  if (!token) return;
+  try {
+    const cats = await fetchCategoriesWithItems(token);
+    setAllCategories(cats.map(c => ({ id: c.id, name: c.name })));
+  } catch (e) {
+    console.error('Не удалось загрузить категории', e);
+  }
+};
+
+useEffect(() => {
+  loadCategories();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [token]);
 
 // Поиск + фильтр по категории (двойная фильтрация)
 const filteredMaterials = materials.filter(m =>
@@ -339,6 +347,7 @@ setPriceLoading(false);
         priceItemId,
         });
       setMaterials(prev => [created, ...prev]);
+      loadCategories(); // ⭐ обновить категории фильтра
       handleCloseAddModal();
     } catch (err: any) {
       alert('Ошибка при создании материала: ' + (err.response?.data?.message || err.message));
@@ -560,6 +569,7 @@ const handleSaveEdit = async () => {
       priceItemId: priceItemIdToSend,
     });
     setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
+    loadCategories(); // ⭐ обновить категории фильтра
     setEditModalOpen(false);
   } catch (err: any) {
     setInfoModal({ open: true, text: 'Ошибка: ' + (err.response?.data?.message || err.message) });
