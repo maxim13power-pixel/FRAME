@@ -14,23 +14,23 @@ export class PriceListController {
   constructor(private readonly priceListService: PriceListService) {}
 
   @Get('categories')
-  getCategories() {
-    return this.priceListService.getCategories();
+  getCategories(@Query('kind') kind?: string) {
+    return this.priceListService.getCategories(kind);
   }
-
   @Get('categories/full')
-  getCategoriesWithItems() {
-    return this.priceListService.getCategoriesWithItems();
+  getCategoriesWithItems(@Query('kind') kind?: string) {
+    return this.priceListService.getCategoriesWithItems(kind);
   }
-
   @Get('items/search')
   searchItems(
     @Query('search') search?: string,
     @Query('categoryId') categoryId?: string,
+    @Query('kind') kind?: string,
   ) {
     return this.priceListService.searchItems(
       search,
       categoryId ? parseInt(categoryId) : undefined,
+      kind,
     );
   }
 

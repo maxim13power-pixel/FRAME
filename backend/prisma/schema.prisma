@@ -31,6 +31,7 @@ model Object {
   startDate   DateTime
   endDate     DateTime
   plannedEndDate  DateTime?  // ← ДОБАВИТЬ: первоначальная плановая дата
+  note        String?      // ← ЗАМЕТКА ОБЪЕКТА
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   projects    Project[]
@@ -46,6 +47,7 @@ model Project {
   materials   Material[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  note        String?  // ← ЗАМЕТКА ПРОЕКТА
   // TODO: таблица работ/материалов будет привязана к проекту
 }
 

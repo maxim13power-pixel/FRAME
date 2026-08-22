@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Unit } from '@prisma/client';
+import { PriceKind, Unit } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -10,27 +10,33 @@ export class PriceListService {
   constructor(private prisma: PrismaService) {}
 
   // Все категории (для селектов)
-  async getCategories() {
+  async getCategories(kind?: string) {
     return this.prisma.priceCategory.findMany({
+      where: kind ? { kind: kind as PriceKind } : {},
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
   }
 
   // Категории с активными расценками (для страницы справочника)
-  async getCategoriesWithItems() {
+  async getCategoriesWithItems(kind?: string) {
     return this.prisma.priceCategory.findMany({
+      where: kind ? { kind: kind as PriceKind } : {},
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: {
-        items: { where: { isActive: true }, orderBy: { name: 'asc' } },
+        items: {
+          where: { isActive: true, ...(kind ? { kind: kind as PriceKind } : {}) },
+          orderBy: { name: 'asc' },
+        },
       },
     });
   }
 
   // Поиск расценок (для Autocomplete в материалах)
-  async searchItems(search?: string, categoryId?: number) {
+  async searchItems(search?: string, categoryId?: number, kind?: string) {
     return this.prisma.priceItem.findMany({
       where: {
         isActive: true,
+        ...(kind ? { kind: kind as PriceKind } : {}),
         ...(categoryId ? { categoryId } : {}),
         ...(search
           ? {
@@ -49,7 +55,11 @@ export class PriceListService {
 
   async createCategory(dto: CreateCategoryDto) {
     return this.prisma.priceCategory.create({
-      data: { name: dto.name.trim(), sortOrder: dto.sortOrder ?? 0 },
+            data: {
+        name: dto.name.trim(),
+        sortOrder: dto.sortOrder ?? 0,
+        kind: (dto.kind as PriceKind) ?? 'WORK',
+      },
     });
   }
 
@@ -92,6 +102,7 @@ export class PriceListService {
         unit: (dto.unit ?? 'PIECE') as Unit,
         price: dto.price,
         categoryId: dto.categoryId,
+        kind: (dto.kind as PriceKind) ?? 'WORK',
       },
     });
   }

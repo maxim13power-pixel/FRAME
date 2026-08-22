@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, IsIn } from 'class-validator';
 
 export class CreateCategoryDto {
   @IsString()
@@ -8,4 +8,8 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsInt()
   sortOrder?: number;
+
+  @IsOptional()
+  @IsIn(['WORK', 'MATERIAL'], { message: 'Некорректный тип расценки' })
+  kind?: string;
 }
