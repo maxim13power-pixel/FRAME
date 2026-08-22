@@ -27,6 +27,7 @@ async create(dto: CreateProjectDto) {
       startDate,
       endDate,
       objectId: dto.objectId,
+      note: dto.note || null,
     },
   });
 }
@@ -79,6 +80,7 @@ async create(dto: CreateProjectDto) {
         name: dto.name,
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
         endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+        note: dto.note !== undefined ? dto.note : undefined,
       },
     });
     // ⭐ Возвращаем проект с честным процентом (та же форма, что в списке)

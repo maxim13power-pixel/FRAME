@@ -18,6 +18,7 @@ export class ObjectsService {
         plannedEndDate: dto.plannedEndDate 
           ? new Date(dto.plannedEndDate) 
           : new Date(dto.endDate),
+        note: dto.note || null,
       },
     });
   }
@@ -29,16 +30,17 @@ export class ObjectsService {
     });
   }
   async update(id: number, dto: Partial<CreateObjectDto>) {
-  return this.prisma.object.update({
-    where: { id },
-    data: {
-      name: dto.name,
-      address: dto.address,
-      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-      endDate: dto.endDate ? new Date(dto.endDate) : undefined,
-    },
-  });
-}
+    return this.prisma.object.update({
+      where: { id },
+      data: {
+        name: dto.name,
+        address: dto.address,
+        startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+        endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+        note: dto.note !== undefined ? dto.note : undefined,
+      },
+    });
+  }
 
 async remove(id: number) {
   return this.prisma.object.delete({ where: { id } });

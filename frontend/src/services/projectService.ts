@@ -12,6 +12,7 @@ export interface ProjectData {
   totalCost?: number;       // ⭐ сумма стоимостей материалов
   createdAt?: string;
   updatedAt?: string;
+  note?: string | null;
 }
 
 export const fetchProjectsByObject = async (token: string, objectId: number): Promise<ProjectData[]> => {

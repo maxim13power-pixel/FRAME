@@ -27,6 +27,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import IconButton from '@mui/material/IconButton';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SettingsIcon from '@mui/icons-material/Settings';
+import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import DescriptionIcon from '@mui/icons-material/Description';
 import EventIcon from '@mui/icons-material/Event';
 import SortIcon from '@mui/icons-material/Sort';
@@ -79,7 +80,11 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   startDate: string;
   endDate: string;
 } | null>(null);
-  
+
+  // Заметки к проекту
+  const [noteModalOpen, setNoteModalOpen] = useState(false);
+  const [editingNoteProject, setEditingNoteProject] = useState<ProjectData | null>(null);
+  const [editNote, setEditNote] = useState('');
   // Временная функция для процента (позже заменим на реальную)
   //const getProgress = () => Math.floor(Math.random() * 60) + 20;
   
@@ -366,6 +371,31 @@ const updateProjectAction = async () => {
     alert('Ошибка обновления проекта');
   }
 };
+// Обработчик открытия модалки заметки
+const handleOpenNoteModal = (proj: ProjectData) => {
+  setEditingNoteProject(proj);
+  setEditNote(proj.note || '');
+  setNoteModalOpen(true);
+};
+
+const handleCloseNoteModal = () => {
+  setNoteModalOpen(false);
+  setEditingNoteProject(null);
+  setEditNote('');
+};
+
+const handleSaveNote = async () => {
+  if (!token || !editingNoteProject) return;
+  try {
+    const updated = await updateProject(token, Number(editingNoteProject.id), {
+      note: editNote.trim() !== '' ? editNote.trim() : null,
+    });
+    setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+    handleCloseNoteModal();
+  } catch (err: any) {
+    alert('Ошибка обновления заметки: ' + (err.response?.data?.message || err.message));
+  }
+};
 
 
   const handleDeleteProject = async () => {
@@ -544,11 +574,21 @@ const updateProjectAction = async () => {
   <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1 }}>
     {proj.name}
   </Typography>
-<IconButton 
-  size="small" 
-  onClick={(e) => { 
-    e.stopPropagation(); 
-    handleOpenEdit(proj); 
+<IconButton
+  size="small"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleOpenNoteModal(proj);
+  }}
+  sx={{ mr: 0.5, color: proj.note ? '#1976d2' : 'inherit' }}
+>
+  <NoteAltIcon fontSize="small" />
+</IconButton>
+<IconButton
+  size="small"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleOpenEdit(proj);
   }}
   sx={{ mr: 1 }}
 >
@@ -859,6 +899,48 @@ const updateProjectAction = async () => {
         confirmText="Да, продлить объект"
         cancelText="Отмена"
       />
+      {/* Модалка заметки проекта */}
+      <Modal open={noteModalOpen} onClose={handleCloseNoteModal} disableRestoreFocus>
+        <Paper
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '90%', sm: 450 },
+            bgcolor: 'background.paper',
+            p: 4,
+            borderRadius: 2,
+            outline: 'none',
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Заметка к проекту "{editingNoteProject?.name}"
+          </Typography>
+          <Stack spacing={2}>
+            <TextField
+              fullWidth
+              multiline
+              rows={6}
+              label="Заметка"
+              placeholder="Напишите заметку к проекту..."
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              inputProps={{ maxLength: 1000 }}
+              helperText={`${editNote.length}/1000`}
+              FormHelperTextProps={{ sx: { textAlign: 'right' } }}
+            />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+              <Button variant="outlined" onClick={handleCloseNoteModal}>
+                Отмена
+              </Button>
+              <Button variant="contained" onClick={handleSaveNote}>
+                Сохранить
+              </Button>
+            </Box>
+          </Stack>
+        </Paper>
+      </Modal>
 
       {isMobile && (
         <Fab

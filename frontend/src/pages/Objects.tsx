@@ -22,6 +22,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import AddHomeIcon from '@mui/icons-material/AddHome';
 import PlaceIcon from '@mui/icons-material/Place';
 import EventIcon from '@mui/icons-material/Event';
+import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import { fetchObjects, createObject } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
 import { useAuth } from '../contexts/AuthContext'; // предполагаем, что есть контекст авторизации
@@ -87,6 +88,9 @@ const Objects: React.FC = () => {
   const [editAddress, setEditAddress] = useState('');
   const [editStartDate, setEditStartDate] = useState('');
   const [editEndDate, setEditEndDate] = useState('');
+  const [noteModalOpen, setNoteModalOpen] = useState(false);
+  const [editingNoteObject, setEditingNoteObject] = useState<ObjectData | null>(null);
+  const [editNote, setEditNote] = useState('');
 
   // Загрузка объектов при монтировании
 useEffect(() => {
@@ -232,6 +236,34 @@ const handleDeleteObject = async () => {
 const handleSearchOpen = () => {
   setShowSearch(true);
   setTimeout(() => searchInputRef.current?.focus(), 100);
+};
+
+// Обработчик открытия модалки для редактирования заметки
+const handleOpenNoteModal = (obj: ObjectData) => {
+  setEditingNoteObject(obj);
+  setEditNote(obj.note || '');
+  setNoteModalOpen(true);
+};
+
+const handleCloseNoteModal = () => {
+  setNoteModalOpen(false);
+  setEditingNoteObject(null);
+  setEditNote('');
+};
+
+// Обработчик сохранения заметки
+const handleSaveNote = async () => {
+  if (!token || !editingNoteObject) return;
+  
+  try {
+    const updated = await updateObject(token, Number(editingNoteObject.id), {
+      note: editNote.trim() !== '' ? editNote.trim() : null,
+    });
+    setObjects(prev => prev.map(obj => obj.id === updated.id ? updated : obj));
+    handleCloseNoteModal();
+  } catch (err) {
+    alert('Ошибка обновления заметки');
+  }
 };
 
 const handleSearchClose = () => {
@@ -408,16 +440,26 @@ const handleSearchClose = () => {
                   <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1 }}>
                     {obj.name}
                   </Typography>
-                    <IconButton 
-    size="small" 
-    onClick={(e) => { 
-      e.stopPropagation(); 
-      handleOpenEdit(obj); 
-    }}
-    sx={{ mr: 1 }}
-  >
-    <SettingsIcon fontSize="small" />
-  </IconButton>
+<IconButton 
+  size="small" 
+  onClick={(e) => { 
+    e.stopPropagation(); 
+    handleOpenNoteModal(obj); 
+  }}
+  sx={{ mr: 0.5, color: obj.note ? '#1976d2' : 'inherit' }}
+>
+  <NoteAltIcon fontSize="small" />
+</IconButton>
+<IconButton 
+  size="small" 
+  onClick={(e) => { 
+    e.stopPropagation(); 
+    handleOpenEdit(obj); 
+  }}
+  sx={{ mr: 1 }}
+>
+  <SettingsIcon fontSize="small" />
+</IconButton>
                   
                   <Chip
                     label={`${progress}%`}
@@ -657,6 +699,49 @@ const handleSearchClose = () => {
         </Paper>
       </Modal>
 
+      {/* Модалка заметки объекта */}
+      <Modal open={noteModalOpen} onClose={handleCloseNoteModal}>
+        <Paper
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '90%', sm: 450 },
+            maxWidth: 500,
+            bgcolor: 'background.paper',
+            p: 4,
+            borderRadius: 2,
+            outline: 'none',
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Заметка к объекту "{editingNoteObject?.name}"
+          </Typography>
+          <Stack spacing={2}>
+            <TextField
+              fullWidth
+              multiline
+              rows={6}
+              label="Заметка"
+              placeholder="Напишите заметку к объекту..."
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              inputProps={{ maxLength: 1000 }}
+              helperText={`${editNote.length}/1000`}
+              FormHelperTextProps={{ sx: { textAlign: 'right' } }}
+            />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+              <Button variant="outlined" onClick={handleCloseNoteModal}>
+                Отмена
+              </Button>
+              <Button variant="contained" onClick={handleSaveNote}>
+                Сохранить
+              </Button>
+            </Box>
+          </Stack>
+        </Paper>
+      </Modal>
       {/* Модалка подтверждения удаления */}
       <Modal 
         open={deleteConfirmOpen} 

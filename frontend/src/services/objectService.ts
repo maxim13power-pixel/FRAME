@@ -10,6 +10,7 @@ export interface ObjectData {
   endDate: string;
   plannedEndDate?: string;
   createdAt?: string;
+  note?: string | null;
 }
 
 // Получить все объекты
