@@ -8,11 +8,11 @@ export interface ProjectData {
   startDate: string;
   endDate: string;
   objectId: number;
-  progressPercent?: number; // ⭐ честный % из материалов
-  totalCost?: number;       // ⭐ сумма стоимостей материалов
+  note?: string | null;
+  progressPercent?: number;
+  totalCost?: number;
   createdAt?: string;
   updatedAt?: string;
-  note?: string | null;
 }
 
 export const fetchProjectsByObject = async (token: string, objectId: number): Promise<ProjectData[]> => {
