@@ -20,4 +20,8 @@ export class CreatePriceItemDto {
 
   @IsInt({ message: 'categoryId должен быть целым числом' })
   categoryId!: number;
+
+  @IsOptional()
+  @IsIn(['WORK', 'MATERIAL'], { message: 'Некорректный тип расценки' })
+  kind?: string;
 }
