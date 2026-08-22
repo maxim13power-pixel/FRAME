@@ -121,6 +121,29 @@ const Materials: React.FC = () => {
   const [addPriceCategoryName, setAddPriceCategoryName] = useState('');
   const [addPriceUnit, setAddPriceUnit] = useState('PIECE');
   const [addPricePrice, setAddPricePrice] = useState('');
+  // ⭐ Материал из справочника (цена за материал)
+const [selectedMaterialItem, setSelectedMaterialItem] = useState<PriceItemData | null>(null);
+const [materialOptions, setMaterialOptions] = useState<PriceItemData[]>([]);
+const [materialLoading, setMaterialLoading] = useState(false);
+const [addMatCreatingNew, setAddMatCreatingNew] = useState(false);
+const [addMatPriceName, setAddMatPriceName] = useState('');
+const [addMatPriceCategoryId, setAddMatPriceCategoryId] = useState<number | '' | '__new__'>('');
+const [addMatPriceCategoryName, setAddMatPriceCategoryName] = useState('');
+const [addMatPriceUnit, setAddMatPriceUnit] = useState('PIECE');
+const [addMatPricePrice, setAddMatPricePrice] = useState('');
+// Категории материалов (kind MATERIAL)
+const [materialCategories, setMaterialCategories] = useState<{ id: number; name: string }[]>([]);
+// Редактирование: материал из справочника
+const [editMaterialItemId, setEditMaterialItemId] = useState<number | null>(null);
+const [editSelectedMaterialItem, setEditSelectedMaterialItem] = useState<PriceItemData | null>(null);
+const [editMaterialOptions, setEditMaterialOptions] = useState<PriceItemData[]>([]);
+const [editMaterialLoading, setEditMaterialLoading] = useState(false);
+const [editMatCreatingNew, setEditMatCreatingNew] = useState(false);
+const [editMatPriceName, setEditMatPriceName] = useState('');
+const [editMatPriceCategoryId, setEditMatPriceCategoryId] = useState<number | '' | '__new__'>('');
+const [editMatPriceCategoryName, setEditMatPriceCategoryName] = useState('');
+const [editMatPriceUnit, setEditMatPriceUnit] = useState('PIECE');
+const [editMatPricePrice, setEditMatPricePrice] = useState('');
   // Модалка фиксации объёма
   const [fixModalOpen, setFixModalOpen] = useState(false);
   const [fixingMaterial, setFixingMaterial] = useState<MaterialData | null>(null);
@@ -169,8 +192,12 @@ const availableCategories = useMemo(() =>
 const loadCategories = async () => {
   if (!token) return;
   try {
-    const cats = await fetchCategoriesWithItems(token);
-    setAllCategories(cats.map(c => ({ id: c.id, name: c.name })));
+    const [all, mats] = await Promise.all([
+      fetchCategoriesWithItems(token),
+      fetchCategoriesWithItems(token, 'MATERIAL'),
+    ]);
+    setAllCategories(all.map(c => ({ id: c.id, name: c.name })));
+    setMaterialCategories(mats.map(c => ({ id: c.id, name: c.name })));
   } catch (e) {
     console.error('Не удалось загрузить категории', e);
   }
@@ -282,6 +309,9 @@ setNewNote('');
 setSelectedPriceItem(null);
 setPriceOptions([]);
 setAddCreatingNew(false);
+setSelectedMaterialItem(null);
+setMaterialOptions([]);
+setAddMatCreatingNew(false);
 };
 
 // ⭐ Поиск расценок из справочника для Autocomplete
@@ -289,7 +319,7 @@ const handlePriceSearch = async (value: string) => {
 if (!token) return;
 try {
 setPriceLoading(true);
-const data = await searchPriceItems(token, value || undefined);
+const data = await searchPriceItems(token, value || undefined, undefined, 'WORK');
 setPriceOptions(data);
 } catch (err) {
 console.error('Ошибка поиска расценок:', err);
@@ -304,7 +334,7 @@ setPriceLoading(false);
     }
     const specQty = parseFloat(newSpecQuantity) || 0;
     try {
-      // ⭐ Режим «новая расценка»: сначала создаём её (+ категорию если надо)
+      // ⭐ Режим «новая расценка РАБОТЫ»
       let priceItemId: number | undefined = selectedPriceItem?.id ?? undefined;
       if (addCreatingNew) {
         if (!addPriceName.trim()) {
@@ -337,6 +367,42 @@ setPriceLoading(false);
         );
         priceItemId = createdPrice.id;
       }
+
+      // ⭐ Режим «новая расценка МАТЕРИАЛА» (kind MATERIAL)
+      let materialItemId: number | undefined = selectedMaterialItem?.id ?? undefined;
+      if (addMatCreatingNew) {
+        if (!addMatPriceName.trim()) {
+          setInfoModal({ open: true, text: 'Введите название новой расценки материала' });
+          return;
+        }
+        const mprice = parseFloat(addMatPricePrice);
+        if (isNaN(mprice) || mprice < 0) {
+          setInfoModal({ open: true, text: 'Введите корректную цену материала' });
+          return;
+        }
+        const isNewMatCat = addMatPriceCategoryId === '__new__';
+        if (isNewMatCat && !addMatPriceCategoryName.trim()) {
+          setInfoModal({ open: true, text: 'Введите название новой категории' });
+          return;
+        }
+        if (!isNewMatCat && addMatPriceCategoryId === '') {
+          setInfoModal({ open: true, text: 'Выберите категорию для расценки материала' });
+          return;
+        }
+        const createdMatPrice = await createPriceItemForMaterial(
+          token,
+          {
+            name: addMatPriceName.trim(),
+            unit: addMatPriceUnit,
+            price: mprice,
+            categoryId: isNewMatCat ? 0 : Number(addMatPriceCategoryId),
+          },
+          isNewMatCat ? addMatPriceCategoryName.trim() : undefined,
+          'MATERIAL'
+        );
+        materialItemId = createdMatPrice.id;
+      }
+
       const created = await createMaterial(token, {
         name: newName,
         article: newArticle || undefined,
@@ -345,9 +411,10 @@ setPriceLoading(false);
         note: newNote || undefined,
         projectId: parseInt(projectId),
         priceItemId,
-        });
+        materialItemId,
+      });
       setMaterials(prev => [created, ...prev]);
-      loadCategories(); // ⭐ обновить категории фильтра
+      loadCategories();
       handleCloseAddModal();
     } catch (err: any) {
       alert('Ошибка при создании материала: ' + (err.response?.data?.message || err.message));
@@ -476,6 +543,14 @@ const handleOpenEdit = async () => {
   setEditNote(settingsMaterial.note || '');
   setEditPriceItemId(settingsMaterial.priceItemId ?? null);
   setEditSelectedPriceItem(settingsMaterial.priceItem ?? null);
+  setEditMaterialItemId(settingsMaterial.materialItemId ?? null);
+  setEditSelectedMaterialItem(settingsMaterial.materialItem ?? null);
+  setEditMatCreatingNew(false);
+  setEditMatPriceName('');
+  setEditMatPriceCategoryId('');
+  setEditMatPriceCategoryName('');
+  setEditMatPriceUnit('PIECE');
+  setEditMatPricePrice('');
   setEditCreatingNew(false);
   setNewPriceName('');
   setNewPriceCategoryId('');
@@ -498,7 +573,7 @@ const handleEditPriceSearch = async (value: string) => {
   if (!token) return;
   try {
     setEditPriceLoading(true);
-    const data = await searchPriceItems(token, value || undefined);
+    const data = await searchPriceItems(token, value || undefined, undefined, 'WORK');
     setEditPriceOptions(data);
   } catch (err) {
     console.error('Ошибка поиска расценок:', err);
@@ -507,6 +582,33 @@ const handleEditPriceSearch = async (value: string) => {
   }
 };
 
+// ⭐ Поиск MATERIAL-расценок (модалка добавления)
+const handleMaterialPriceSearch = async (value: string) => {
+  if (!token) return;
+  try {
+    setMaterialLoading(true);
+    const data = await searchPriceItems(token, value || undefined, undefined, 'MATERIAL');
+    setMaterialOptions(data);
+  } catch (err) {
+    console.error('Ошибка поиска расценок материалов:', err);
+  } finally {
+    setMaterialLoading(false);
+  }
+};
+
+// ⭐ Поиск MATERIAL-расценок (модалка редактирования)
+const handleEditMaterialPriceSearch = async (value: string) => {
+  if (!token) return;
+  try {
+    setEditMaterialLoading(true);
+    const data = await searchPriceItems(token, value || undefined, undefined, 'MATERIAL');
+    setEditMaterialOptions(data);
+  } catch (err) {
+    console.error('Ошибка поиска расценок материалов:', err);
+  } finally {
+    setEditMaterialLoading(false);
+  }
+};
 const handleSaveEdit = async () => {
   if (!token || !settingsMaterial) return;
   if (!editName.trim()) {
@@ -559,6 +661,41 @@ const handleSaveEdit = async () => {
       );
       priceItemIdToSend = created.id;
     }
+    
+    // ⭐ Режим «новая расценка материала» в редактировании
+    let materialItemIdToSend: number | null | undefined = editMaterialItemId;
+    if (editMatCreatingNew) {
+      if (!editMatPriceName.trim()) {
+        setInfoModal({ open: true, text: 'Введите название новой расценки материала' });
+        return;
+      }
+      const mprice = parseFloat(editMatPricePrice);
+      if (isNaN(mprice) || mprice < 0) {
+        setInfoModal({ open: true, text: 'Введите корректную цену материала' });
+        return;
+      }
+      const isNewMatCat = editMatPriceCategoryId === '__new__';
+      if (isNewMatCat && !editMatPriceCategoryName.trim()) {
+        setInfoModal({ open: true, text: 'Введите название новой категории' });
+        return;
+      }
+      if (!isNewMatCat && editMatPriceCategoryId === '') {
+        setInfoModal({ open: true, text: 'Выберите категорию для расценки материала' });
+        return;
+      }
+      const createdMat = await createPriceItemForMaterial(
+        token,
+        {
+          name: editMatPriceName.trim(),
+          unit: editMatPriceUnit,
+          price: mprice,
+          categoryId: isNewMatCat ? 0 : Number(editMatPriceCategoryId),
+        },
+        isNewMatCat ? editMatPriceCategoryName.trim() : undefined,
+        'MATERIAL'
+      );
+      materialItemIdToSend = createdMat.id;
+    }
 
     const updated = await updateMaterial(token, settingsMaterial.id, {
       name: editName.trim(),
@@ -567,6 +704,7 @@ const handleSaveEdit = async () => {
       specQuantity: qty,
       note: editNote,
       priceItemId: priceItemIdToSend,
+      materialItemId: materialItemIdToSend,
     });
     setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
     loadCategories(); // ⭐ обновить категории фильтра
@@ -1123,6 +1261,61 @@ renderInput={(params) => (
             </Button>
             </>
             )}
+            
+    <Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена материала</Typography></Divider>
+    {!addMatCreatingNew ? (
+    <>
+    <Autocomplete
+    fullWidth
+    options={materialOptions}
+    loading={materialLoading}
+    value={selectedMaterialItem}
+    onChange={(_e, value) => setSelectedMaterialItem(value)}
+    onInputChange={(_e, value) => handleMaterialPriceSearch(value)}
+    getOptionLabel={(o) => `${o.name} — ${o.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`}
+    noOptionsText="Ничего не найдено"
+    onOpen={() => { if (materialOptions.length === 0) handleMaterialPriceSearch(''); }}
+    renderInput={(params) => (
+    <TextField {...params} label="Материал из справочника (необязательно)" placeholder="Выбери или начни вводить..." />
+    )}
+    />
+    {selectedMaterialItem && (
+    <Box sx={{ bgcolor: 'rgba(25, 118, 210, 0.08)', p: 1.5, borderRadius: 1 }}>
+    <Typography variant="body2">
+    Цена: <strong>{selectedMaterialItem.price.toLocaleString('ru-RU')} ₽</strong> • {selectedMaterialItem.category?.name || 'Без категории'}
+    </Typography>
+    </Box>
+    )}
+    <Button size="small" variant="text" onClick={() => { setAddMatCreatingNew(true); setAddMatPriceName(newName); }}>
+      ➕ Создать новую расценку материала
+    </Button>
+    </>
+    ) : (
+    <>
+    <Typography variant="subtitle2" color="primary">Новая расценка материала</Typography>
+    <TextField fullWidth label="Название расценки" value={addMatPriceName} onChange={e => setAddMatPriceName(e.target.value)} />
+    <FormControl fullWidth>
+    <InputLabel>Категория</InputLabel>
+    <Select value={addMatPriceCategoryId} label="Категория" onChange={e => setAddMatPriceCategoryId(e.target.value as any)}>
+    <MenuItem value="__new__"><em>➕ Создать новую категорию...</em></MenuItem>
+    {materialCategories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+    </Select>
+    </FormControl>
+    {addMatPriceCategoryId === '__new__' && (
+    <TextField fullWidth label="Название новой категории" value={addMatPriceCategoryName} onChange={e => setAddMatPriceCategoryName(e.target.value)} />
+    )}
+    <FormControl fullWidth>
+    <InputLabel>Единица</InputLabel>
+    <Select value={addMatPriceUnit} label="Единица" onChange={e => setAddMatPriceUnit(e.target.value)}>
+    {UNIT_OPTIONS.map(opt => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
+    </Select>
+    </FormControl>
+    <TextField fullWidth label="Цена, ₽" type="number" value={addMatPricePrice} onChange={e => setAddMatPricePrice(e.target.value)} />
+    <Button size="small" variant="text" onClick={() => setAddMatCreatingNew(false)}>
+      ← Выбрать из существующих
+    </Button>
+    </>
+    )}
             <FormControl fullWidth>
               <InputLabel>Единица измерения</InputLabel>
               <Select
@@ -1423,6 +1616,62 @@ onChange={e => setEditSpecQty(e.target.value)}
       ← Выбрать из существующих
     </Button>
   </>
+)}
+
+<Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена материала</Typography></Divider>
+{!editMatCreatingNew ? (
+<>
+<Autocomplete
+fullWidth
+options={editMaterialOptions}
+loading={editMaterialLoading}
+value={editSelectedMaterialItem}
+onChange={(_e, value) => { setEditSelectedMaterialItem(value); setEditMaterialItemId(value?.id ?? null); }}
+onInputChange={(_e, value) => handleEditMaterialPriceSearch(value)}
+getOptionLabel={(o) => `${o.name} — ${o.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`}
+noOptionsText="Ничего не найдено"
+onOpen={() => { if (editMaterialOptions.length === 0) handleEditMaterialPriceSearch(''); }}
+renderInput={(params) => (
+<TextField {...params} label="Материал из справочника" placeholder="Выбери или начни вводить..." />
+)}
+/>
+{editSelectedMaterialItem && (
+<Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+<Typography variant="body2" color="text.secondary">
+Цена: <b>{editSelectedMaterialItem.price.toLocaleString('ru-RU')} ₽</b> • {editSelectedMaterialItem.category?.name || 'Без категории'}
+</Typography>
+<Button size="small" onClick={() => { setEditSelectedMaterialItem(null); setEditMaterialItemId(null); }}>Сбросить</Button>
+</Box>
+)}
+{!editSelectedMaterialItem && (
+<Button size="small" variant="text" onClick={() => { setEditMatCreatingNew(true); setEditMatPriceName(editName); }}>
+➕ Создать новую расценку материала
+</Button>
+)}
+</>
+) : (
+<>
+<Typography variant="subtitle2" color="primary">Новая расценка материала</Typography>
+<TextField fullWidth label="Название расценки" value={editMatPriceName} onChange={e => setEditMatPriceName(e.target.value)} />
+<FormControl fullWidth>
+<InputLabel>Категория</InputLabel>
+<Select value={editMatPriceCategoryId} label="Категория" onChange={e => setEditMatPriceCategoryId(e.target.value as any)}>
+<MenuItem value="__new__"><em>➕ Создать новую категорию...</em></MenuItem>
+{materialCategories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+</Select>
+</FormControl>
+{editMatPriceCategoryId === '__new__' && (
+<TextField fullWidth label="Название новой категории" value={editMatPriceCategoryName} onChange={e => setEditMatPriceCategoryName(e.target.value)} />
+)}
+<FormControl fullWidth>
+<InputLabel>Единица</InputLabel>
+<Select value={editMatPriceUnit} label="Единица" onChange={e => setEditMatPriceUnit(e.target.value)}>
+{UNIT_OPTIONS.map(opt => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
+</Select>
+</FormControl>
+<TextField fullWidth label="Цена, ₽" type="number" value={editMatPricePrice} onChange={e => setEditMatPricePrice(e.target.value)} />
+<Button size="small" variant="text" onClick={() => setEditMatCreatingNew(false)}>← Выбрать из существующих</Button>
+</>
 )}
 <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
 <Button variant="outlined" onClick={() => setEditModalOpen(false)}>Отмена</Button>

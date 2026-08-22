@@ -12,10 +12,12 @@ export interface PriceItemSnapshot {
   price: number;
   categoryId: number;
   isActive: boolean;
+  kind: 'WORK' | 'MATERIAL';
   category?: {
     id: number;
     name: string;
     sortOrder: number;
+    kind: 'WORK' | 'MATERIAL';
   };
 }
 export interface MaterialData {
@@ -157,11 +159,12 @@ export const createPriceItemForMaterial = async (
     price: number;
     categoryId: number;
   },
-  newCategoryName?: string
+  newCategoryName?: string,
+  kind?: 'WORK' | 'MATERIAL'
 ) => {
   const response = await axios.post(
     `${API_URL}/price-item`,
-    { item, newCategoryName },
+    { item, newCategoryName, kind },
     { headers: { Authorization: `Bearer ${token}` } }
   );
   return response.data;
