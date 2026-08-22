@@ -5,23 +5,24 @@ const API_URL = 'http://localhost:3000/price-list';
 // ============================================================
 // ТИПЫ ДАННЫХ (соответствуют моделям Prisma: PriceCategory, PriceItem)
 // ============================================================
-
 export interface PriceCategoryData {
   id: number;
   name: string;
   sortOrder: number;
-  items?: PriceItemData[]; // заполняется только в /categories/full
+  kind: 'WORK' | 'MATERIAL';
+  items?: PriceItemData[];
 }
 
 export interface PriceItemData {
   id: number;
   name: string;
   article?: string | null;
-  unit: string; // PIECE | METER | SQUARE_METER | ...
+  unit: string;
   price: number;
   categoryId: number;
-  category?: PriceCategoryData; // возвращается из search (include: { category })
+  category?: PriceCategoryData;
   isActive: boolean;
+  kind: 'WORK' | 'MATERIAL';
   createdAt?: string;
   updatedAt?: string;
 }
@@ -31,19 +32,26 @@ export interface PriceItemData {
 // ============================================================
 
 // Все категории (для селектов)
-// GET /price-list/categories
-export const fetchCategories = async (token: string): Promise<PriceCategoryData[]> => {
+export const fetchCategories = async (
+  token: string,
+  kind?: 'WORK' | 'MATERIAL'
+): Promise<PriceCategoryData[]> => {
   const response = await axios.get(`${API_URL}/categories`, {
     headers: { Authorization: `Bearer ${token}` },
+    params: kind ? { kind } : {},
   });
   return response.data;
 };
 
 // Категории вместе с активными расценками (для страницы справочника)
 // GET /price-list/categories/full
-export const fetchCategoriesWithItems = async (token: string): Promise<PriceCategoryData[]> => {
+export const fetchCategoriesWithItems = async (
+  token: string,
+  kind?: 'WORK' | 'MATERIAL'
+): Promise<PriceCategoryData[]> => {
   const response = await axios.get(`${API_URL}/categories/full`, {
     headers: { Authorization: `Bearer ${token}` },
+    params: kind ? { kind } : {},
   });
   return response.data;
 };
@@ -93,13 +101,15 @@ export const deleteCategory = async (
 export const searchPriceItems = async (
   token: string,
   search?: string,
-  categoryId?: number
+  categoryId?: number,
+  kind?: 'WORK' | 'MATERIAL'
 ): Promise<PriceItemData[]> => {
   const response = await axios.get(`${API_URL}/items/search`, {
     headers: { Authorization: `Bearer ${token}` },
     params: {
       ...(search ? { search } : {}),
       ...(categoryId ? { categoryId } : {}),
+      ...(kind ? { kind } : {}),
     },
   });
   return response.data;
@@ -115,6 +125,7 @@ export const createPriceItem = async (
     unit?: string;
     price: number;
     categoryId: number;
+    kind?: 'WORK' | 'MATERIAL';
   }
 ): Promise<PriceItemData> => {
   const response = await axios.post(`${API_URL}/items`, data, {

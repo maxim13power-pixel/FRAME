@@ -30,11 +30,19 @@ export interface MaterialData {
   note?: string | null;
   progressPercent: number;
   isSpecLocked: boolean;
-  // ⭐ Интеграция цен из справочника
+  
+  // Работы
   priceItemId?: number | null;
-  unitPrice: number; // snapshot цены на момент привязки
-  totalCost: number; // totalUsed × unitPrice (считает бэкенд)
   priceItem?: PriceItemSnapshot | null;
+  unitPrice: number;
+  totalCost: number;
+  
+  // Материалы
+  materialItemId?: number | null;
+  materialItem?: PriceItemSnapshot | null;
+  materialUnitPrice: number;
+  materialTotalCost: number;
+  
   projectId: number;
   createdAt?: string;
   updatedAt?: string;
@@ -81,6 +89,7 @@ export const createMaterial = async (
     note?: string;
     projectId: number;
     priceItemId?: number;
+    materialItemId?: number;
   }
 ): Promise<MaterialData> => {
   const response = await axios.post(API_URL, data, {
@@ -168,7 +177,8 @@ export const updateMaterial = async (
     unit?: string;
     specQuantity?: number;
     note?: string;
-    priceItemId?: number | null; // ← добавили параметр
+    priceItemId?: number | null;
+    materialItemId?: number | null;
   }
 ): Promise<MaterialData> => {
   const response = await axios.patch(`${API_URL}/${materialId}`, data, {
