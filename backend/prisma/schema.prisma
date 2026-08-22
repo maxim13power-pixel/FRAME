@@ -121,10 +121,11 @@ model MaterialFix {
 
 model PriceCategory {
   id        Int         @id @default(autoincrement())
-  name      String      @unique  // "Электрика", "Отделка"
+  name      String
   sortOrder Int         @default(0)
+  kind      PriceKind   @default(WORK)  // WORK = работы, MATERIAL = материалы
   items     PriceItem[]
-
+  @@unique([name, kind])
   @@map("price_categories")
 }
 
