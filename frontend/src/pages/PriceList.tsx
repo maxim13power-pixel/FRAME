@@ -28,12 +28,16 @@ import {
   InputLabel,
   Chip,
   Collapse,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SearchIcon from '@mui/icons-material/Search';
 import SortIcon from '@mui/icons-material/Sort';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
+import EngineeringIcon from '@mui/icons-material/Engineering';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -76,6 +80,8 @@ const PriceList: React.FC = () => {
   const { token } = useAuth();
 
   // Основные данные
+    // Основные данные
+  const [activeTab, setActiveTab] = useState<'WORK' | 'MATERIAL'>('WORK');
   const [categories, setCategories] = useState<PriceCategoryData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -133,7 +139,7 @@ const PriceList: React.FC = () => {
     const loadData = async () => {
       try {
         setLoading(true);
-        const data = await fetchCategoriesWithItems(token);
+        const data = await fetchCategoriesWithItems(token, activeTab);
         setCategories(data);
         setError('');
       } catch (err: any) {
@@ -144,7 +150,7 @@ const PriceList: React.FC = () => {
       }
     };
     loadData();
-  }, [token]);
+  }, [token, activeTab]);
 
   // ============================================================
   // ФИЛЬТРАЦИЯ ПО ПОИСКУ (локально, как в Materials)
@@ -189,13 +195,13 @@ const PriceList: React.FC = () => {
     setNewCatName('');
   };
 
-  const handleCreateCategory = async () => {
+    const handleCreateCategory = async () => {
     if (!token || !newCatName.trim()) {
       alert('Введите название категории');
       return;
     }
     try {
-      const created = await createCategory(token, { name: newCatName.trim() });
+      const created = await createCategory(token, { name: newCatName.trim(), kind: activeTab });
       setCategories(prev => [...prev, { ...created, items: [] }]);
       handleCloseCatModal();
     } catch (err: any) {
@@ -277,9 +283,9 @@ const PriceList: React.FC = () => {
       } else {
         // ===== СОЗДАНИЕ (возможно, вместе с новой категорией) =====
         let categoryId: number;
-        if (itemCategoryId === NEW_CATEGORY_VALUE) {
-          // 1) Сначала создаём категорию
-          const createdCat = await createCategory(token, { name: newCategoryName.trim() });
+            if (itemCategoryId === NEW_CATEGORY_VALUE) {
+        // 1) Сначала создаём категорию
+        const createdCat = await createCategory(token, { name: newCategoryName.trim(), kind: activeTab });
           setCategories(prev => [...prev, { ...createdCat, items: [] }]);
           setCollapsed(prev => ({ ...prev, [createdCat.id]: false }));
           categoryId = createdCat.id;
@@ -293,6 +299,7 @@ const PriceList: React.FC = () => {
           unit: itemUnit,
           price,
           categoryId,
+          kind: activeTab,
         });
         setCategories(prev =>
           prev.map(cat =>
@@ -404,9 +411,25 @@ const PriceList: React.FC = () => {
 
   return (
     <Box>
-      {/* Мобилка: компактная строка (заголовок + 🔍 + сортировка) */}
+      {/* Мобилка: вкладки + компактная строка */}
       {isMobile && (
         <>
+          <Tabs
+            value={activeTab}
+            onChange={(_e, newValue: 'WORK' | 'MATERIAL') => {
+              setActiveTab(newValue);
+              setSearchQuery('');
+              setShowSearch(false);
+            }}
+            variant="fullWidth"
+            sx={{
+              mb: 1,
+              '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 13, minHeight: 44 },
+            }}
+          >
+            <Tab icon={<EngineeringIcon />} iconPosition="start" label="Работы" value="WORK" />
+            <Tab icon={<Inventory2Icon />} iconPosition="start" label="Материалы" value="MATERIAL" />
+          </Tabs>
           {showSearch ? (
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
               <IconButton
@@ -415,9 +438,9 @@ const PriceList: React.FC = () => {
               >
                 <ArrowBackIcon />
               </IconButton>
-              <TextField
-                inputRef={searchInputRef}
-                placeholder="Поиск расценок..."
+            <TextField
+              inputRef={searchInputRef}
+              placeholder={activeTab === 'WORK' ? 'Поиск работ...' : 'Поиск материалов...'}
                 variant="outlined"
                 size="small"
                 fullWidth
@@ -444,7 +467,9 @@ const PriceList: React.FC = () => {
               >
                 <ArrowBackIcon />
               </IconButton>
-              <Typography variant="h5" sx={{ flexGrow: 1 }}>Справочник цен</Typography>
+              <Typography variant="h5" sx={{ flexGrow: 1 }}>
+            {activeTab === 'WORK' ? 'Цены на работы' : 'Цены на материалы'}
+          </Typography>
               <IconButton
                 onClick={handleSearchOpen}
                 sx={{ bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
@@ -488,19 +513,37 @@ const PriceList: React.FC = () => {
         </>
       )}
 
-      {/* Десктоп: классический заголовок + большой поиск */}
+      {/* Десктоп: заголовок + вкладки */}
       {!isMobile && (
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <IconButton
-            onClick={() => navigate(-1)}
-            sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+        <>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <IconButton
+              onClick={() => navigate(-1)}
+              sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+            <Typography variant="h4" sx={{ flexGrow: 1 }}>
+              {activeTab === 'WORK' ? 'Цены на работы' : 'Цены на материалы'}
+            </Typography>
+          </Box>
+          <Tabs
+            value={activeTab}
+            onChange={(_e, newValue: 'WORK' | 'MATERIAL') => {
+              setActiveTab(newValue);
+              setSearchQuery('');
+            }}
+            sx={{
+              mb: 2,
+              borderBottom: 1,
+              borderColor: 'divider',
+              '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 15, minHeight: 48 },
+            }}
           >
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant="h4" sx={{ flexGrow: 1 }}>
-            Справочник цен
-          </Typography>
-        </Box>
+            <Tab icon={<EngineeringIcon />} iconPosition="start" label="Цены на работы" value="WORK" />
+            <Tab icon={<Inventory2Icon />} iconPosition="start" label="Цены на материалы" value="MATERIAL" />
+          </Tabs>
+        </>
       )}
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -569,12 +612,14 @@ const PriceList: React.FC = () => {
         )}
       </Box>
 
-      {categories.length === 0 && (
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <PriceCheckIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
-          <Typography color="text.secondary" sx={{ mb: 2 }}>
-            Справочник пуст. Создайте первую категорию.
-          </Typography>
+        {categories.length === 0 && (
+          <Paper sx={{ p: 4, textAlign: 'center' }}>
+            <PriceCheckIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+            <Typography color="text.secondary" sx={{ mb: 2 }}>
+              {activeTab === 'WORK'
+                ? 'Справочник работ пуст. Создайте первую категорию.'
+                : 'Справочник материалов пуст. Создайте первую категорию.'}
+            </Typography>
           <Button variant="contained" startIcon={<CategoryIcon />} onClick={handleOpenCatModal}>
             Создать категорию
           </Button>

@@ -1,92 +1,84 @@
-# PROJECT_STATUS.md — FRAME App
-**Дата обновления:** 11.08.2026
-**Этап:** Таблицы материалов готовы (CRUD + фиксация + итоговая строка + хлебные крошки). 
-Справочник цен: бэкенд готов, фронтенд следующий.
+# PROJECT_STATUS v4 — FRAME (22.08.2026, ночь)
+## ПЕРЕДАТОЧНЫЙ ДОКУМЕНТ ДЛЯ ЧАТА №3
 
 ---
+## 0. ПРАВИЛА ЧАТОВ (ОБЯЗАТЕЛЬНО)
+1. Стиль: пошагово, 1 шаг = 1 сообщение, формат «Найди / Замени» с точными якорями.
+2. Ждать «Готово» перед следующим шагом. Пользователь — новичок, тон «братан», объяснять просто.
+3. КОММИТ-РИТУАЛ в конце каждого ответа с кодом:
+   `git add . ; git commit -m "<scope>: <суть> (DD/MM)" ; git push`
+4. 🔋 СЧЁТЧИК ЧАТА: в конце КАЖДОГО ответа (после коммита) строка
+   «🔋 До нового чата осталось: N». Старт N=30 (только ответы с кодом).
+   N≤10 — предупреждение; N=0 — дозакрыть текущий шаг и переходить.
+5. Код писать ПОЛНОСТЬЮ (уроки чата-2: обрывы строк и переменные вне scope = баги).
+6. Файла нет в контексте → НЕ гадать, просить прикрепить.
+7. Агенты (Replit/Cline): только свои файлы/новые файлы; merge после ревью diff --name-status.
+8. Алиасы PowerShell: `db` (docker), `be` (бэкенд), `fe` (фронтенд).
+9. Танец EPERM: Ctrl+C в бэкенде → `npx prisma generate` → старт.
 
-## ✅ ЧТО СДЕЛАНО СЕГОДНЯ (11.08.2026)
+## 1. СТЕК
+- Monorepo: backend NestJS+Prisma+PostgreSQL (Docker, localhost:5433, порт 3000),
+  frontend React+TS+MUI+Vite (порт 5000). GitHub: maxim13power-pixel/FRAME (main).
+- Деплой-план без карты: Vercel+Render+Neon; позже Railway. Мобилки — Capacitor (v2).
 
-### Таблицы материалов (Materials.tsx):
-- CRUD материалов с модалками добавления/редактирования
-- Фиксация объёма (addFix) с историей MaterialFix
-- Защита спецификации (isSpecLocked) — замочки
-- Шестерёнка вместо урны → модалка настроек → подтверждение удаления
-- Итоговая строка (TableFooter) с суммами specQuantity/totalUsed/средний %
-- Хлебные крошки: Объекты › [объект] › [проект] › Материалы
-- Снэкбары вместо браузерных alert (Snackbar с autoHideDuration)
-- Серые плейсхолдеры "0" в числовых полях
-- Сортировка кликом по заголовкам (Cline)
+## 2. СХЕМА (ключевое)
+- enum PriceKind { WORK MATERIAL }; enum Unit (10 значений); enum Role (4).
+- PriceCategory: name + kind, @@unique([name, kind]), sortOrder.
+- PriceItem: kind @default(WORK), isActive (удаление = деактивация, сметы живут).
+- Material: specQuantity, totalUsed, lastEntry/lastEntryDate, progressPercent,
+  isSpecLocked (в UI НЕ используется — не пугаться),
+  РАБОТЫ: priceItemId+unitPrice+totalCost (snapshot),
+  МАТЕРИАЛЫ: materialItemId+materialUnitPrice+materialTotalCost (snapshot).
+- Object.note, Project.note (≤1000), plannedEndDate.
+- MaterialFix — история фиксаций.
 
-### Справочник цен (PriceList):
-- Схема Prisma: PriceCategory + PriceItem + связь с Material
-- Поля в Material: priceItemId (FK), unitPrice (snapshot), totalCost (автосчёт)
-- Бэкенд-модуль price-list: CRUD + search
-- Эндпоинты:
-  - GET /price-list/categories
-  - GET /price-list/categories/full (с items)
-  - GET /price-list/items/search?search=&categoryId=
-  - POST /price-list/categories
-  - POST /price-list/items
-  - PATCH /price-list/items/:id
-  - DELETE /price-list/items/:id (деактивация, не удаление)
-- onDelete: SetNull для Material → PriceItem (защита смет)
+## 3. БЭКЕНД-ЭНДПОИНТЫ (факт)
+- materials: GET by project; POST create; POST :id/fix; PATCH :id (полное, обе расценки);
+  PATCH :id/last-fix (72ч); PATCH :id/spec; PATCH :id/lock; DELETE; GET :id/fixes;
+  POST /price-item (расценка+категория, kind, findOrCreate категории).
+- price-list: GET categories?kind=; GET categories/full?kind=;
+  GET items/search?search&categoryId&kind; POST categories(kind); PATCH/DELETE categories/:id;
+  POST items(kind); PATCH items/:id; DELETE items/:id (isActive=false).
+- objects/projects: findAll/findOne возвращают progressPercent+totalCost
+  (агрегация Σ totalUsed/Σ specQuantity и Σ стоимостей); projects.update возвращает findOne.
 
-### UX-улучшения:
-- Хлебные крошки в Materials (навигация)
-- Cline провёл UX-аудит мобилки (найдены проблемы с мелкими кнопками)
-- Cline проанализировал Excel-шаблон (структура колонок, защита ячеек)
+## 4. ФРОНТЕНД (ГОТОВО)
+- Dashboard: сайдбар 240, скрытие → width→0 (анимация), контент maxWidth=false,
+  paddingLeft 48 при скрытом, бургер top:24 left:24 = два кружка с «назад».
+- Materials: смета-таблица 17 колонок (группы «работ/материалов по смете», синие линии),
+  итоговая жёлтая строка (8 сумм); мобилка — компактная карточка с блоком «На тек. момент»;
+  модалки: две расценки WORK/MATERIAL + создание расценок/категорий inline;
+  правка последней фиксации 72ч; инфо-модалки вместо alert; 📷-заглушка «фото в v2».
+- Objects/Projects: честный %, заметки 📝, колонка карточек maxWidth 1000,
+  крошки ПОД заголовком (mt:0.5, ml:6).
+- Calculators (22 шт, 4 группы, поиск), Help (гайды+FAQ).
 
----
+## 5. BACKLOG (приоритет чата-3 и далее)
+1. ⭐ PriceList: ДВА раздела «Цены на работы»/«Цены на материалы» (вкладки по kind),
+   в каждом свои категории+CRUD+шестерёнки; создание с нужным kind.
+2. ⭐ Мобилка: проверить/починить фильтр-воронку материалов + добавить фильтр в PriceList.
+3. Причёсывание: заголовки выше, высоты/отступы (блокнот), спиннеры на кнопках.
+4. BottomNav: кликабельный + настраиваемый пользователем.
+5. Excel импорт/экспорт (SheetJS) расценок и материалов — сценарий «тендер».
+6. Главная страница; 7. Архив объектов; 8. Роли (до сторов).
+9. v2: фото (Yandex Object Storage), инструменты (уровень/отвес/шумомер),
+   ИИ (YandexGPT, ключ только на бэке), калькуляторы — через Replit.
+10. Блокнот-19 пунктов — хранится в чате-2, ключевое продублировано выше.
 
-## 🔜 СЛЕДУЮЩИЕ ШАГИ
+## 6. ИЗВЕСТНЫЕ КОСЯКИ (не забыть)
+- PriceList показывает ВСЕ kind вперемешку — задача №1.
+- Браузерные alert ещё живут в Objects/Projects — постепенно в инфо-модалки.
+- isSpecLocked мёртвый в UI — не использовать в новой логике.
 
-### Этап 1: Фронтенд справочника цен (ПРИОРИТЕТ)
-- [ ] Создать `frontend/src/services/priceListService.ts`
-- [ ] Создать `frontend/src/pages/PriceList.tsx` (таблица категорий + позиций)
-- [ ] Добавить роут `/price-list` в App.tsx
-- [ ] Добавить кнопку "Справочник цен" в сайдбар/навигацию
+## 7. 10 ФАЙЛОВ ДЛЯ НОВОГО ЧАТА
+В проект (KB): schema.prisma | materials.service.ts | price-list.service.ts |
+Dashboard.tsx | Projects.tsx
+В диалог: PriceList.tsx | priceListService.ts | price-list.controller.ts |
+Materials.tsx | materialService.ts
 
-### Этап 2: Интеграция справочника в Materials
-- [ ] Autocomplete в модалке добавления материала (поиск по PriceItem)
-- [ ] При выборе PriceItem → копируем unitPrice в Material (snapshot)
-- [ ] Колонка "Цена" в таблице материалов
-- [ ] Колонка "Стоимость" = totalUsed × unitPrice
-- [ ] Обновлённая итоговая строка с суммой стоимости
-
-### Этап 3: UX-фиксы мобилки (из аудита Cline)
-- [ ] Увеличить IconButton до min 48×48px (для перчаток)
-- [ ] Добавить confirm для toggleSpecLock
-- [ ] Переместить шестерёнку в удобное место (большой палец)
-
-### Этап 4: Excel-экспорт (бэклог)
-- [ ] Кнопка "Экспорт .xlsx" в Materials
-- [ ] Структура: ID, Наименование, Ед., Кол-во, Цена, Стоимость
-- [ ] Защита ячеек: ID/описание = только чтение, цена = редактирование
-
----
-
-## 🎨 СТИЛЬ РАБОТЫ
-
-- Пошагово, по одному действию за раз
-- Указывать "куда вставить" (перед/после какой строки)
-- Пользователь — новичок, объяснять детально
-- После каждого шага ждать подтверждения
-- Использовать паттерны из Materials для единообразия
-
----
-
-## 🧠 КОНТЕКСТ ДЛЯ НОВОГО ЧАТА
-
-При старте нового диалога прикрепляй 5 файлов:
-1. `backend/prisma/schema.prisma`
-2. `backend/src/price-list/price-list.service.ts`
-3. `backend/src/price-list/price-list.controller.ts`
-4. `frontend/src/services/materialService.ts`
-5. `frontend/src/pages/Materials.tsx`
-
-И вставляй этот PROJECT_STATUS.md текстом в начало чата.
-
----
-
-*Обновлять этот файл после каждого крупного изменения!*
+## 8. ШАБЛОН ПЕРВОГО ПРОМПТА ЧАТА-3
+«Братан, продолжаем FRAME! Ты — senior full-stack + дизайнер. Чат №3.
+Стиль работы и правила — в PROJECT_STATUS ниже (особенно п.0: шаги, коммит-ритуал,
+счётчик 🔋). Прикрепляю 5 файлов в диалог + 5 в проект. Первая задача: справочник цен
+разделить на два раздела «Цены на работы»/«Цены на материалы» (kind уже на бэкенде),
+со всеми фишками категорий; затем чиним мобильные фильтры. Поехали!»

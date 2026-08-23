@@ -60,7 +60,7 @@ export const fetchCategoriesWithItems = async (
 // POST /price-list/categories
 export const createCategory = async (
   token: string,
-  data: { name: string; sortOrder?: number }
+  data: { name: string; sortOrder?: number; kind?: 'WORK' | 'MATERIAL' }
 ): Promise<PriceCategoryData> => {
   const response = await axios.post(`${API_URL}/categories`, data, {
     headers: { Authorization: `Bearer ${token}` },
