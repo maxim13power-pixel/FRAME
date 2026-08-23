@@ -457,7 +457,7 @@ const handleSaveNote = async () => {
           >
             <ArrowBackIcon />
           </IconButton>
-          <Typography variant="h5" sx={{ flexGrow: 1 }}>Проекты (виды работ)</Typography>
+          <Typography variant="h5" sx={{ flexGrow: 1 }}>Проекты</Typography>
           <IconButton
             onClick={handleSearchOpen}
             sx={{ bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}

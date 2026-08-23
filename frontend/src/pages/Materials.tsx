@@ -1170,11 +1170,15 @@ onClose={() => setFilterAnchorEl(null)}
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: { xs: '90%', sm: 450 },
-          maxHeight: '90vh',
-          overflowY: 'auto',
-          p: 4,
-          borderRadius: 2,
+        width: { xs: '90%', sm: 450 },
+        maxHeight: '90vh',
+        overflowY: 'auto',
+        p: 4,
+        borderRadius: 2,
+        // ⭐ Видимый скроллбар на мобилке: понятно, что внизу ещё есть поля
+        '&::-webkit-scrollbar': { width: 6 },
+        '&::-webkit-scrollbar-track': { backgroundColor: 'rgba(0, 0, 0, 0.04)', borderRadius: 3 },
+        '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(25, 118, 210, 0.35)', borderRadius: 3 },
         }}>
           <Typography variant="h6" gutterBottom>Добавить позицию</Typography>
           <Stack spacing={2}>
@@ -1538,7 +1542,14 @@ textAlign: 'center',
 
 {/* Модалка полного редактирования материала */}
 <Modal open={editModalOpen} onClose={() => setEditModalOpen(false)} disableRestoreFocus>
-<Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 450 }, maxHeight: '90vh', overflowY: 'auto', p: 4, borderRadius: 2 }}>
+      <Paper sx={{
+        position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+        width: { xs: '90%', sm: 450 }, maxHeight: '90vh', overflowY: 'auto', p: 4, borderRadius: 2,
+        // ⭐ Видимый скроллбар на мобилке
+        '&::-webkit-scrollbar': { width: 6 },
+        '&::-webkit-scrollbar-track': { backgroundColor: 'rgba(0, 0, 0, 0.04)', borderRadius: 3 },
+        '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(25, 118, 210, 0.35)', borderRadius: 3 },
+      }}>
 <Typography variant="h6" gutterBottom>Редактировать материал</Typography>
 <Stack spacing={2}>
 <TextField fullWidth label="Наименование" value={editName} onChange={e => setEditName(e.target.value)} required />
