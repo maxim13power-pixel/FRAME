@@ -1175,11 +1175,7 @@ onClose={() => setFilterAnchorEl(null)}
         overflowY: 'auto',
         p: 4,
         borderRadius: 2,
-        // ⭐ Видимый скроллбар на мобилке: понятно, что внизу ещё есть поля
-        '&::-webkit-scrollbar': { width: 6 },
-        '&::-webkit-scrollbar-track': { backgroundColor: 'rgba(0, 0, 0, 0.04)', borderRadius: 3 },
-        '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(25, 118, 210, 0.35)', borderRadius: 3 },
-        }}>
+         }}>
           <Typography variant="h6" gutterBottom>Добавить позицию</Typography>
           <Stack spacing={2}>
             <TextField
@@ -1345,43 +1341,22 @@ renderInput={(params) => (
     </Select>
     </FormControl>
     <TextField fullWidth label="Цена, ₽" type="number" value={addMatPricePrice} onChange={e => setAddMatPricePrice(e.target.value)} />
-    <Button size="small" variant="text" onClick={() => setAddMatCreatingNew(false)}>
-      ← Выбрать из существующих
-    </Button>
-    </>
-    )}
-            <FormControl fullWidth>
-              <InputLabel>Единица измерения</InputLabel>
-              <Select
-                value={newUnit}
-                label="Единица измерения"
-                onChange={e => setNewUnit(e.target.value)}
-              >
-                {UNIT_OPTIONS.map(opt => (
-                  <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              fullWidth
-              label="Количество по спецификации"
-              type="number"
-              placeholder="0"
-              value={newSpecQuantity}
-              onChange={e => setNewSpecQuantity(e.target.value)}
-            />
-            <TextField
-              fullWidth
-              label="Примечание"
-              multiline
-              rows={2}
-              value={newNote}
-              onChange={e => setNewNote(e.target.value)}
-            />
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-              <Button variant="outlined" onClick={handleCloseAddModal}>Отмена</Button>
-              <Button variant="contained" onClick={handleCreateMaterial}>Сохранить</Button>
-            </Box>
+        <Button size="small" variant="text" onClick={() => setAddMatCreatingNew(false)}>
+          ← Выбрать из существующих
+        </Button>
+        </>
+        )}  
+<Box sx={{
+  display: 'flex', justifyContent: 'flex-end', gap: 2,
+  position: 'sticky', bottom: 0, zIndex: 2,
+  mx: -2, px: 2, py: 1.5,
+  bgcolor: '#fff',
+  boxShadow: '0 -6px 12px rgba(0, 0, 0, 0.08)',
+  borderRadius: '0 0 16px 16px',
+}}>
+<Button variant="outlined" onClick={handleCloseAddModal}>Отмена</Button>
+<Button variant="contained" onClick={handleCreateMaterial}>Сохранить</Button>
+</Box>
           </Stack>
         </Paper>
       </Modal>
@@ -1546,17 +1521,31 @@ textAlign: 'center',
         position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
         width: { xs: '90%', sm: 450 }, maxHeight: '90vh', overflowY: 'auto', p: 4, borderRadius: 2,
         // ⭐ Видимый скроллбар на мобилке
-        '&::-webkit-scrollbar': { width: 6 },
-        '&::-webkit-scrollbar-track': { backgroundColor: 'rgba(0, 0, 0, 0.04)', borderRadius: 3 },
-        '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(25, 118, 210, 0.35)', borderRadius: 3 },
       }}>
 <Typography variant="h6" gutterBottom>Редактировать материал</Typography>
 <Stack spacing={2}>
 <TextField fullWidth label="Наименование" value={editName} onChange={e => setEditName(e.target.value)} required />
 <TextField fullWidth label="Артикул" value={editArticle} onChange={e => setEditArticle(e.target.value)} />
 
-<Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена работ</Typography></Divider>
+<FormControl fullWidth>
+  <InputLabel>Единица измерения</InputLabel>
+  <Select value={editUnit} label="Единица измерения" onChange={e => setEditUnit(e.target.value)}>
+    {UNIT_OPTIONS.map(opt => (
+      <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+    ))}
+  </Select>
+</FormControl>
+<TextField
+  fullWidth
+  label="Количество по спецификации"
+  type="number"
+  placeholder="0"
+  value={editSpecQty}
+  onChange={e => setEditSpecQty(e.target.value)}
+/>
+<TextField fullWidth label="Примечание" multiline rows={2} value={editNote} onChange={e => setEditNote(e.target.value)} />
 
+<Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена работ</Typography></Divider>
 {!editCreatingNew ? (
   <>
     <Autocomplete
@@ -1698,7 +1687,14 @@ renderInput={(params) => (
 <Button size="small" variant="text" onClick={() => setEditMatCreatingNew(false)}>← Выбрать из существующих</Button>
 </>
 )}
-<Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+<Box sx={{
+  display: 'flex', justifyContent: 'flex-end', gap: 2,
+  position: 'sticky', bottom: 0, zIndex: 2,
+  mx: -2, px: 2, py: 1.5,
+  bgcolor: '#fff',
+  boxShadow: '0 -6px 12px rgba(0, 0, 0, 0.08)',
+  borderRadius: '0 0 16px 16px',
+}}>
 <Button variant="outlined" onClick={() => setEditModalOpen(false)}>Отмена</Button>
 <Button variant="contained" onClick={handleSaveEdit}>Сохранить</Button>
 </Box>
