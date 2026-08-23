@@ -61,16 +61,20 @@ export class MaterialsController {
   }
 
   // ✨ Создать расценку (+ опционально новую категорию) и вернуть её фронтенду
+  // ⭐ kind приходит с фронта ('WORK'/'MATERIAL') — раньше терялся по дороге,
+  // и расценки материалов создавались как работы (баг 23/08)
   @Post('price-item')
   createPriceItem(
     @Body(new ValidationPipe({ whitelist: true })) body: {
       item: CreatePriceItemDto;
       newCategoryName?: string;
+      kind?: 'WORK' | 'MATERIAL';
     },
   ) {
     return this.materialsService.createPriceItemWithCategory(
       body.item,
       body.newCategoryName,
+      body.kind,
     );
   }
 
