@@ -1,5 +1,6 @@
 import React from 'react';
-import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Box } from '@mui/material';
+import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Box, Divider } from '@mui/material';
+import Logo from './Logo';
 import HomeIcon from '@mui/icons-material/Home';
 import EngineeringIcon from '@mui/icons-material/Engineering';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
@@ -35,6 +36,10 @@ const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) =>
   return (
     <Drawer anchor="left" open={open} onClose={onClose}>
       <Box sx={{ width: 250, pt: 2 }}>
+        <Box sx={{ px: 2, pb: 1 }}>
+          <Logo size="small" />
+        </Box>
+        <Divider sx={{ mb: 1 }} />
         <List>
           {menuItems.map((item) => (
             <ListItem key={item.path} disablePadding>

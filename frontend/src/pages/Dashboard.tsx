@@ -24,6 +24,7 @@ import { Outlet,useNavigate } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import BottomNav from '../components/BottomNav';
 import DrawerMenu from '../components/DrawerMenu';
+import { MobileHeaderProvider } from '../contexts/MobileHeaderContext';
 import Logo from '../components/Logo'; // компонент логотипа
 
 
@@ -74,10 +75,11 @@ const Dashboard: React.FC = () => {
   const sidebarWidth = 240;
 
   return (
+    <MobileHeaderProvider>
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f0f4fa' }}>
       {/* Мобильная шапка */}
       {isMobile && (
-        <AppHeader onMenuClick={() => setDrawerOpen(true)} onLogoClick={handleLogoClick} />
+        <AppHeader onMenuClick={() => setDrawerOpen(true)} />
       )}
 
       {/* Мобильное выезжающее меню */}
@@ -194,13 +196,9 @@ const Dashboard: React.FC = () => {
       {isMobile && (
         <BottomNav value={bottomNavValue} onChange={handleBottomNavChange} />
       )}
-
-      {/* Мобильная зелёная FAB */}
-
-
-      {/* Модалка добавления объекта (адаптивная) */}
- 
+      //{/* Модалка добавления объекта (адаптивная) */}
     </Box>
+    </MobileHeaderProvider>
   );
 };
 
