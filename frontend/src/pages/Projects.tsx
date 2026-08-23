@@ -473,11 +473,30 @@ const handleSaveNote = async () => {
               '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' },
             }}
           >
-            <SortIcon />
-          </IconButton>
-        </Box>
-      )}
-      <Menu
+              <SortIcon />
+            </IconButton>
+          </Box>
+          )}
+          {/* Хлебные крошки на мобилке (как в Материалах) */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1, flexWrap: 'wrap' }}>
+            <Typography
+              component="button"
+              onClick={() => navigate('/objects')}
+              sx={{
+                background: 'none', border: 'none', padding: 0,
+                color: '#1976d2', cursor: 'pointer', fontSize: 13,
+                textDecoration: 'underline',
+                '&:hover': { color: '#1565c0' },
+              }}
+            >
+              Объекты
+            </Typography>
+            <Typography sx={{ color: 'text.secondary', fontSize: 13 }}>›</Typography>
+            <Typography sx={{ fontSize: 13, fontWeight: 600 }}>
+              {currentObject ? currentObject.name : 'Объект'}
+            </Typography>
+          </Box>
+          <Menu
         anchorEl={sortAnchorEl}
         open={Boolean(sortAnchorEl)}
         onClose={() => setSortAnchorEl(null)}

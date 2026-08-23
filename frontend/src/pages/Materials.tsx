@@ -780,7 +780,7 @@ setSortAnchorEl(null);
             <ArrowBackIcon />
           </IconButton>
           <Typography variant={isMobile ? "h5" : "h4"} sx={{ flexGrow: 1 }}>
-            Материал и работы
+            Сметы
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, ml: 6, flexWrap: 'wrap' }}>
@@ -1218,7 +1218,7 @@ onClose={() => setFilterAnchorEl(null)}
 noOptionsText="Ничего не найдено. Начни вводить название..."
 onOpen={() => { if (priceOptions.length === 0) handlePriceSearch(''); }}
 renderInput={(params) => (
-<TextField {...params} label="Расценка из справочника (необязательно)" placeholder="Выбери или начни вводить..." />
+<TextField {...params} label="Работы из справочника (необязательно)" placeholder="Выбери или начни вводить..." />
 )}
 />
             {selectedPriceItem && (
@@ -1563,7 +1563,7 @@ onChange={e => setEditSpecQty(e.target.value)}
       }}
       noOptionsText="Ничего не найдено"
       renderInput={(params) => (
-        <TextField {...params} label="Расценка из справочника" placeholder="Начни вводить..." />
+        <TextField {...params} label="Работы из справочника" placeholder="Начни вводить..." />
       )}
       onOpen={() => { if (editPriceOptions.length === 0) handleEditPriceSearch(''); }}
     />
