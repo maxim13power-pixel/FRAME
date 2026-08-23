@@ -64,7 +64,7 @@ import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
 import { searchPriceItems } from '../services/priceListService';
 import type { PriceItemData } from '../services/priceListService';
-import { fetchCategoriesWithItems, createCategory } from '../services/priceListService';
+import { fetchCategoriesWithItems } from '../services/priceListService';
 
 const UNIT_OPTIONS = [
   { value: 'PIECE', label: 'шт' },
@@ -643,31 +643,28 @@ const handleSaveEdit = async () => {
         setInfoModal({ open: true, text: 'Введите корректную цену' });
         return;
       }
-      let categoryId: number;
-      if (newPriceCategoryId === '' && !newPriceCategoryName.trim()) {
-        setInfoModal({ open: true, text: 'Выберите категорию или создайте новую' });
+      // ⭐ Тот же паттерн, что в handleCreateMaterial (блок addCreatingNew)
+      const isNewCat = newPriceCategoryId === '__new__';
+      if (isNewCat && !newPriceCategoryName.trim()) {
+        setInfoModal({ open: true, text: 'Введите название новой категории' });
         return;
       }
-      if (newPriceCategoryId === '') {
-        // Создаём новую категорию
-        const newCat = await createCategory(token, { name: newPriceCategoryName.trim() });
-        categoryId = newCat.id;
-      } else {
-        categoryId = Number(newPriceCategoryId);
+      if (!isNewCat && newPriceCategoryId === '') {
+        setInfoModal({ open: true, text: 'Выберите категорию для расценки' });
+        return;
       }
-      // Создаём расценку
-      const created = await createPriceItemForMaterial(
+      const createdPrice = await createPriceItemForMaterial(
         token,
         {
           name: newPriceName.trim(),
-          article: undefined,
           unit: newPriceUnit,
           price,
-          categoryId,
+          categoryId: isNewCat ? 0 : Number(newPriceCategoryId),
         },
-        newPriceCategoryId === '' ? newPriceCategoryName.trim() : undefined
+        isNewCat ? newPriceCategoryName.trim() : undefined,
+        'WORK'
       );
-      priceItemIdToSend = created.id;
+      priceItemIdToSend = createdPrice.id;
     }
     
     // ⭐ Режим «новая расценка материала» в редактировании

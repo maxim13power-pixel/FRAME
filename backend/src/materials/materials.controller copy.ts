@@ -1,6 +1,6 @@
 import {
   Body, Controller, Delete, Get, Param, ParseIntPipe,
-  Patch, Post, Req, UseGuards, ValidationPipe,
+  Patch, Post, UseGuards, ValidationPipe,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MaterialsService } from './materials.service';
@@ -9,9 +9,6 @@ import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { UpdateSpecQtyDto } from './dto/update-spec-qty.dto';
 import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
-
-// Тип запроса после JwtAuthGuard: validate() jwt.strategy возвращает { userId, phone, role }
-type AuthedRequest = { user?: { userId?: number | null; phone?: string; role?: string } };
 
 @Controller('materials')
 @UseGuards(JwtAuthGuard)
@@ -37,19 +34,17 @@ export class MaterialsController {
   addFix(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ValidationPipe({ whitelist: true })) dto: CreateFixDto,
-    @Req() req: AuthedRequest,
   ) {
-    return this.materialsService.addFix(id, dto, req.user?.userId ?? null);
+    return this.materialsService.addFix(id, dto);
   }
 
-
+  
   @Patch(':id/last-fix')
   editLastFix(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ValidationPipe({ whitelist: true })) dto: CreateFixDto,
-    @Req() req: AuthedRequest,
   ) {
-    return this.materialsService.editLastFix(id, dto, req.user?.userId ?? null);
+    return this.materialsService.editLastFix(id, dto);
   }
 
   @Patch(':id')
@@ -73,7 +68,7 @@ export class MaterialsController {
       body.newCategoryName,
     );
   }
-
+  
   @Patch(':id/spec')
   updateSpecQty(
     @Param('id', ParseIntPipe) id: number,

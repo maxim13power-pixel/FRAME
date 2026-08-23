@@ -268,7 +268,7 @@ const PriceList: React.FC = () => {
         // ===== РЕДАКТИРОВАНИЕ =====
         const updated = await updatePriceItem(token, editingItem.id, {
           name: itemName.trim(),
-          article: itemArticle.trim() || undefined,
+          article: itemArticle.trim(), // '' = очистить артикул; отсутствие ключа = не трогать
           unit: itemUnit,
           price,
         });

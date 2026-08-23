@@ -117,7 +117,8 @@ model MaterialFix {
   note        String?   // примечание к фиксации
   fixedAt     DateTime  @default(now())  // когда зафиксировано
   userId      Int?      // кто зафиксировал (опционально, пока оставим)
-
+  isEdited    Boolean   @default(false) // правили ли в 72-часовом окне
+  editedAt    DateTime? // когда правили
   @@map("material_fixes")
 }
 

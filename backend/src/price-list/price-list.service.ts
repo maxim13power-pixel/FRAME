@@ -73,12 +73,18 @@ export class PriceListService {
     });
   }
 
-  // Удаление категории — ТОЛЬКО если она пуста
+  // Удаление категории — ТОЛЬКО если в ней нет АКТИВНЫХ расценок
   // (иначе Cascade удалил бы расценки, а нам это не надо)
   async removeCategory(id: number) {
     const category = await this.prisma.priceCategory.findUnique({
       where: { id },
-      include: { _count: { select: { items: true } } },
+      include: {
+        _count: {
+          select: {
+            items: { where: { isActive: true } }, // ⭐ считаем только активные
+          },
+        },
+      },
     });
     if (!category) throw new NotFoundException('Категория не найдена');
     if (category._count.items > 0) {
@@ -114,10 +120,12 @@ export class PriceListService {
     return this.prisma.priceItem.update({
       where: { id },
       data: {
-        name: dto.name?.trim(),
-        article: dto.article?.trim() || null,
-        unit: dto.unit ? (dto.unit as Unit) : undefined,
-        price: dto.price,
+        // PATCH-семантика: обновляем ТОЛЬКО поля, реально пришедшие в запросе.
+        // Ключа нет (undefined) → spread ничего не добавляет → Prisma не трогает поле в БД.
+        ...(dto.name !== undefined && { name: dto.name?.trim() }),
+        ...(dto.article !== undefined && { article: dto.article?.trim() || null }),
+        ...(dto.unit != null && { unit: dto.unit as Unit }),
+        ...(dto.price !== undefined && { price: dto.price }),
       },
     });
   }

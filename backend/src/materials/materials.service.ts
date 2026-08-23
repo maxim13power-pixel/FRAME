@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PriceKind,Unit } from '@prisma/client';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, PriceKind, Unit } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
@@ -76,23 +76,34 @@ export class MaterialsService {
   }
 
   // ⭐ Фиксация объёма + пересчёт ОБЕИХ стоимостей
-  async addFix(materialId: number, dto: CreateFixDto) {
-    const material = await this.prisma.material.findUnique({ where: { id: materialId } });
-    if (!material) throw new NotFoundException('Материал не найден');
+  // 🔒 Race condition fix (аудит 3.2): SELECT ... FOR UPDATE внутри транзакции —
+  // две параллельные фиксации сериализуются на строке материала и больше не теряют апдейт.
+  async addFix(materialId: number, dto: CreateFixDto, userId?: number | null) {
+    // Валидация ДО транзакции: заведомо битый запрос не должен занимать блокировку
     if (!dto.amount || dto.amount <= 0) {
       throw new BadRequestException('Объём фиксации должен быть больше нуля');
     }
-    const newTotal = material.totalUsed + dto.amount;
-    const progress = material.specQuantity > 0
-      ? Math.round((newTotal / material.specQuantity) * 100)
-      : 0;
 
     return this.prisma.$transaction(async (tx) => {
+      // Блокируем строку материала: конкурентный addFix/editLastFix ждёт здесь, а не перезаписывает результат.
+      // numeric-колонки Postgres приходят как Prisma.Decimal — поэтому ниже везде Number(...).
+      const [material] = await tx.$queryRaw<
+        { id: number; totalUsed: number; specQuantity: number; unitPrice: number; materialUnitPrice: number }[]
+      >`SELECT id, "totalUsed", "specQuantity", "unitPrice", "materialUnitPrice"
+          FROM "materials" WHERE id = ${materialId} FOR UPDATE`;
+      if (!material) throw new NotFoundException('Материал не найден');
+
+      const newTotal = Number(material.totalUsed) + dto.amount;
+      const progress = Number(material.specQuantity) > 0
+        ? Math.round((newTotal / Number(material.specQuantity)) * 100)
+        : 0;
+
       await tx.materialFix.create({
         data: {
           materialId,
           amount: dto.amount,
           note: dto.note ?? null,
+          userId: userId ?? null,
         },
       });
       return tx.material.update({
@@ -102,8 +113,8 @@ export class MaterialsService {
           lastEntry: dto.amount,
           lastEntryDate: new Date(),
           progressPercent: progress,
-          totalCost: newTotal * material.unitPrice,
-          materialTotalCost: newTotal * material.materialUnitPrice,
+          totalCost: newTotal * Number(material.unitPrice),
+          materialTotalCost: newTotal * Number(material.materialUnitPrice),
         },
         include: MATERIAL_INCLUDE,
       });
@@ -136,33 +147,59 @@ export class MaterialsService {
   }
 
   // ✏️ Исправление последней фиксации (72 часа)
-  async editLastFix(id: number, dto: CreateFixDto) {
-    const material = await this.prisma.material.findUnique({ where: { id } });
-    if (!material) throw new NotFoundException('Материал не найден');
-
-    const lastFix = await this.prisma.materialFix.findFirst({
-      where: { materialId: id },
-      orderBy: { fixedAt: 'desc' },
-    });
-    if (!lastFix) throw new BadRequestException('У материала ещё нет фиксаций');
-
-    const ageMs = Date.now() - lastFix.fixedAt.getTime();
-    if (ageMs > 72 * 60 * 60 * 1000) {
-      throw new BadRequestException('Исправить можно только фиксацию младше 72 часов');
-    }
+  // 🔒 Race condition fix (аудит 3.2): «последность» фиксации перепроверяется
+  // ВНУТРИ транзакции под блокировкой материала — бригадир не может вклиниться
+  // новой фиксацией, пока прораб сохраняет правку.
+  async editLastFix(id: number, dto: CreateFixDto, userId?: number | null) {
+    // Валидация ДО транзакции
     if (!dto.amount || dto.amount <= 0) {
       throw new BadRequestException('Объём должен быть больше нуля');
     }
 
-    const newTotal = material.totalUsed - lastFix.amount + dto.amount;
-    const progress = material.specQuantity > 0
-      ? Math.round((newTotal / material.specQuantity) * 100)
-      : 0;
+    // Фиксация, которую пользователь видел последней при загрузке формы
+    const expectedLastFix = await this.prisma.materialFix.findFirst({
+      where: { materialId: id },
+      orderBy: { fixedAt: 'desc' },
+    });
+    if (!expectedLastFix) throw new BadRequestException('У материала ещё нет фиксаций');
+
+    const ageMs = Date.now() - expectedLastFix.fixedAt.getTime();
+    if (ageMs > 72 * 60 * 60 * 1000) {
+      throw new BadRequestException('Исправить можно только фиксацию младше 72 часов');
+    }
 
     return this.prisma.$transaction(async (tx) => {
+      // 1) Блокируем строку материала — сериализуемся с addFix и параллельным editLastFix
+      const [material] = await tx.$queryRaw<
+        { id: number; totalUsed: number; specQuantity: number; unitPrice: number; materialUnitPrice: number }[]
+      >`SELECT id, "totalUsed", "specQuantity", "unitPrice", "materialUnitPrice"
+          FROM "materials" WHERE id = ${id} FOR UPDATE`;
+      if (!material) throw new NotFoundException('Материал не найден');
+
+      // 2) Перепроверяем «последность» уже под блокировкой
+      const lastFix = await tx.materialFix.findFirst({
+        where: { materialId: id },
+        orderBy: { fixedAt: 'desc' },
+      });
+      if (!lastFix) throw new BadRequestException('У материала ещё нет фиксаций');
+      if (lastFix.id !== expectedLastFix.id) {
+        throw new ConflictException('Появилась более свежая фиксация');
+      }
+
+      const newTotal = Number(material.totalUsed) - Number(lastFix.amount) + dto.amount;
+      const progress = Number(material.specQuantity) > 0
+        ? Math.round((newTotal / Number(material.specQuantity)) * 100)
+        : 0;
+
       await tx.materialFix.update({
         where: { id: lastFix.id },
-        data: { amount: dto.amount, note: dto.note ?? null },
+        data: {
+          amount: dto.amount,
+          note: dto.note ?? null,
+          userId: userId ?? null,
+          isEdited: true,
+          editedAt: new Date(),
+        },
       });
       return tx.material.update({
         where: { id },
@@ -170,8 +207,8 @@ export class MaterialsService {
           totalUsed: newTotal,
           lastEntry: dto.amount,
           progressPercent: progress,
-          totalCost: newTotal * material.unitPrice,
-          materialTotalCost: newTotal * material.materialUnitPrice,
+          totalCost: newTotal * Number(material.unitPrice),
+          materialTotalCost: newTotal * Number(material.materialUnitPrice),
         },
         include: MATERIAL_INCLUDE,
       });
@@ -257,10 +294,27 @@ export class MaterialsService {
       if (existing) {
         categoryId = existing.id; // категория уже есть — используем её
       } else {
-        const created = await this.prisma.priceCategory.create({
-          data: { name: newCategoryName.trim(), sortOrder: 0, kind: kindValue },
-        });
-        categoryId = created.id;
+        try {
+          const created = await this.prisma.priceCategory.create({
+            data: { name: newCategoryName.trim(), sortOrder: 0, kind: kindValue },
+          });
+          categoryId = created.id;
+        } catch (e) {
+          // 🔒 P2002-retry: два пользователя одновременно создали категорию —
+          // второй ловит unique-конфликт, перечитываем и переиспользуем чужую категорию
+          if (
+            e instanceof Prisma.PrismaClientKnownRequestError &&
+            e.code === 'P2002'
+          ) {
+            const raced = await this.prisma.priceCategory.findFirst({
+              where: { name: newCategoryName.trim(), kind: kindValue },
+            });
+            if (!raced) throw e; // конфликт был, а категории нет — не маскируем чужую ошибку
+            categoryId = raced.id;
+          } else {
+            throw e;
+          }
+        }
       }
     }
 
