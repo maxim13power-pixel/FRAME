@@ -77,7 +77,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
         {config?.onBack && !searchOpen && !editing && (
           <IconButton
             onClick={config.onBack}
-            sx={{ bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' }, flexShrink: 0 }}
+            sx={{ bgcolor: 'rgba(0,0,0,0.06)', color: '#424242', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' }, flexShrink: 0 }}
           >
             <ArrowBackIcon />
           </IconButton>
@@ -132,7 +132,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
         {!searchOpen && !editing && config?.onSearchOpen && (
           <IconButton
             onClick={config.onSearchOpen}
-            sx={{ bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' }, flexShrink: 0 }}
+            sx={{ bgcolor: 'rgba(0,0,0,0.06)', color: '#424242', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' }, flexShrink: 0 }}
           >
             <SearchIcon />
           </IconButton>

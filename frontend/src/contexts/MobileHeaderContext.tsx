@@ -1,17 +1,16 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
-// Конфиг мобильного хэдера: страница сама говорит, что показать
 export interface MobileHeaderConfig {
-  title?: string;                      // заголовок раздела
-  editableKey?: string;                // ключ localStorage: если есть — тап по заголовку переименовывает
-  onBack?: () => void;                 // стрелка «назад»
+  title?: string;
+  editableKey?: string;
+  onBack?: () => void;
   searchOpen?: boolean;
   searchValue?: string;
   searchPlaceholder?: string;
   onSearchOpen?: () => void;
   onSearchClose?: () => void;
   onSearchChange?: (v: string) => void;
-  trailing?: React.ReactNode;          // кнопки справа (сортировка, воронка)
+  trailing?: React.ReactNode;
 }
 
 interface Ctx {
@@ -27,14 +26,33 @@ export const MobileHeaderProvider: React.FC<{ children: React.ReactNode }> = ({ 
   return <MobileHeaderContext.Provider value={value}>{children}</MobileHeaderContext.Provider>;
 };
 
-// ⭐ Страница вызывает этот хук и передаёт конфиг хэдера
+// ⭐ Фикс бесконечного цикла: вызываем setConfig ТОЛЬКО при изменении стабильных полей.
+// trailing (JSX) и функции не входят в deps — они обновляются через ref.
 export const useMobileHeader = (config: MobileHeaderConfig) => {
   const { setConfig } = useContext(MobileHeaderContext);
+
+  // Сохраняем актуальный config в ref (для функций и trailing)
+  const configRef = useRef<MobileHeaderConfig>(config);
   useEffect(() => {
-    setConfig(config);
-    return () => setConfig(null);
+    configRef.current = config;
   });
+
+  // setConfig вызывается только когда "данные" меняются (без JSX и функций)
+  useEffect(() => {
+    setConfig(configRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    config.title,
+    config.editableKey,
+    config.searchOpen,
+    config.searchValue,
+    config.searchPlaceholder,
+    config.trailing,
+  ]);
+  // Cleanup при размонтировании страницы
+  useEffect(() => {
+    return () => setConfig(null);
+  }, [setConfig]);
 };
 
-// Хэдер читает конфиг
 export const useHeaderConfig = () => useContext(MobileHeaderContext);

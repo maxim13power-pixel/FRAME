@@ -37,7 +37,6 @@ import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import SearchIcon from '@mui/icons-material/Search';
 import SortIcon from '@mui/icons-material/Sort';
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
-import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 //import LockIcon from '@mui/icons-material/Lock';
 //import LockOpenIcon from '@mui/icons-material/LockOpen';
@@ -47,6 +46,7 @@ import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import { useAuth } from '../contexts/AuthContext';
+import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import {
   fetchMaterialsByProject,
   createMaterial,
@@ -184,10 +184,23 @@ const [newPriceCategoryName, setNewPriceCategoryName] = useState('');
 const [newPriceUnit, setNewPriceUnit] = useState('PIECE');
 const [newPricePrice, setNewPricePrice] = useState('');
 const [allCategories, setAllCategories] = useState<{ id: number; name: string }[]>([]);
-  // ⭐ Фильтр — ВСЕ категории справочника (всегда актуальные)
-const availableCategories = useMemo(() =>
-  [...allCategories].sort((a, b) => a.name.localeCompare(b.name)),
-[allCategories]);
+  // ⭐ Воронка — ТОЛЬКО категории, которые реально есть в смете этого проекта
+  // (категория попадает сюда, если в проекте есть хотя бы одна позиция с ней)
+  const projectCategories = useMemo(() => {
+    const map = new Map<number, { name: string; count: number }>();
+    materials.forEach(m => {
+      const seen = new Set<number>();
+      [m.priceItem?.category, m.materialItem?.category].forEach(c => {
+        if (!c || seen.has(c.id)) return;
+        seen.add(c.id);
+        const cur = map.get(c.id);
+        map.set(c.id, { name: c.name, count: (cur?.count || 0) + 1 });
+      });
+    });
+    return [...map.entries()]
+      .map(([id, v]) => ({ id, name: v.name, count: v.count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [materials]);
 
 // ⭐ Загрузка категорий из справочника (фильтр + модалки)
 const loadCategories = async () => {
@@ -210,11 +223,13 @@ useEffect(() => {
 }, [token]);
 
 // Поиск + фильтр по категории (двойная фильтрация)
-const filteredMaterials = materials.filter(m =>
-  (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-   m.article?.toLowerCase().includes(searchQuery.toLowerCase())) &&
-  (!categoryFilter || m.priceItem?.category?.id === categoryFilter)
-);
+  const filteredMaterials = materials.filter(m =>
+    (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.article?.toLowerCase().includes(searchQuery.toLowerCase())) &&
+    (!categoryFilter ||
+      m.priceItem?.category?.id === categoryFilter ||
+      m.materialItem?.category?.id === categoryFilter)
+  );
 
   // Сортировка материалов с помощью useMemo
   const sortedMaterials = useMemo(() => {
@@ -756,6 +771,46 @@ setSortAnchorEl(null);
     );
   };
 
+  // ⭐ Мобильный хэдер v2: trailing в useMemo — стабильная ссылка, нет бесконечного цикла
+  const headerTrailing = useMemo(() => isMobile ? (
+    <>
+      <IconButton
+        onClick={(e) => setSortAnchorEl(e.currentTarget)}
+        sx={{
+          bgcolor: sortBy ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
+          color: sortBy ? '#1976d2' : '#424242',
+          '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+        }}
+      >
+        <SortIcon />
+      </IconButton>
+              {projectCategories.length > 0 && (
+        <IconButton
+          onClick={(e) => setFilterAnchorEl(e.currentTarget)}
+          sx={{
+            bgcolor: categoryFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
+            color: categoryFilter ? '#1976d2' : '#424242',
+            '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+          }}
+        >
+          <FilterAltIcon />
+        </IconButton>
+      )}
+    </>
+    ) : undefined, [isMobile, sortBy, categoryFilter, projectCategories.length]);
+
+  useMobileHeader({
+    title: 'Сметы',
+    onBack: () => navigate(`/objects/${objectId}/projects`),
+    searchOpen: mobileSearchOpen,
+    searchValue: searchQuery,
+    searchPlaceholder: 'Поиск материалов...',
+    onSearchOpen: () => setMobileSearchOpen(true),
+    onSearchClose: () => { setSearchQuery(''); setMobileSearchOpen(false); },
+    onSearchChange: (v) => setSearchQuery(v),
+    trailing: headerTrailing,
+  });
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
@@ -766,8 +821,9 @@ setSortAnchorEl(null);
 
   return (
     <Box>
-       {/* Заголовок с кнопкой назад, крошки ниже */}
+      {/* Заголовок (десктоп; мобилка — в хэдере), крошки ниже */}
       <Box sx={{ mb: 2 }}>
+        {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <IconButton
             onClick={() => navigate(`/objects/${objectId}/projects`)}
@@ -783,7 +839,8 @@ setSortAnchorEl(null);
             Сметы
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, ml: 6, flexWrap: 'wrap' }}>
+        )}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, ml: isMobile ? 0 : 6, flexWrap: 'wrap' }}>
           <Typography
             component="button"
             onClick={() => navigate('/objects')}
@@ -818,68 +875,29 @@ setSortAnchorEl(null);
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-{/* Поиск и кнопка добавления */}
-<Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
-{isMobile ? (
-mobileSearchOpen ? (
-<TextField
-autoFocus
-placeholder="Поиск материалов..."
-variant="outlined"
-size="small"
-fullWidth
-value={searchQuery}
-onChange={(e) => setSearchQuery(e.target.value)}
-sx={{ flexGrow: 1 }}
-InputProps={{
-startAdornment: (
-<InputAdornment position="start">
-<SearchIcon />
-</InputAdornment>
-),
-endAdornment: (
-<InputAdornment position="end">
-<IconButton
-size="small"
-onClick={() => {
-setSearchQuery('');
-setMobileSearchOpen(false);
-}}
->
-<CloseIcon fontSize="small" />
-</IconButton>
-</InputAdornment>
-),
-}}
-/>
-) : (
-<IconButton
-onClick={() => setMobileSearchOpen(true)}
-sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
->
-<SearchIcon />
-</IconButton>
-)
-) : (
-<TextField
-placeholder="Поиск материалов..."
-variant="outlined"
-size="small"
-fullWidth
-value={searchQuery}
-onChange={(e) => setSearchQuery(e.target.value)}
-sx={{ flexGrow: 1 }}
-InputProps={{
-startAdornment: (
-<InputAdornment position="start">
-<SearchIcon />
-</InputAdornment>
-),
-}}
-/>
-)}
+      {/* Поиск и кнопка добавления (десктоп; мобилка — в хэдере) */}
+      <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
+        {!isMobile && (
+          <TextField
+            placeholder="Поиск материалов..."
+            variant="outlined"
+            size="small"
+            fullWidth
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            sx={{ flexGrow: 1 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+            }}
+          />
+        )}
+
 {/* Иконка сортировки (мобилка) — подсвечивается, если сортировка активна */}
-{!isMobile && availableCategories.length > 0 && (
+{!isMobile && projectCategories.length > 0 && (
 <FormControl size="small" sx={{ minWidth: 180 }}>
 <InputLabel>Категория</InputLabel>
 <Select
@@ -888,36 +906,13 @@ label="Категория"
 onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.target.value))}
 >
 <MenuItem value=""><em>Все категории</em></MenuItem>
-{availableCategories.map(cat => (
-<MenuItem key={cat.id} value={cat.id}>{cat.name}</MenuItem>
-))}
+              {projectCategories.map(cat => (
+                <MenuItem key={cat.id} value={cat.id}>{cat.name} ({cat.count})</MenuItem>
+              ))}
 </Select>
 </FormControl>
 )}
-{isMobile && (
-<IconButton
-onClick={(e) => setSortAnchorEl(e.currentTarget)}
-sx={{
-bgcolor: sortBy ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
-color: sortBy ? '#1976d2' : 'inherit',
-'&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
-}}
->
-<SortIcon />
-</IconButton>
-)}
-{isMobile && availableCategories.length > 0 && (
-<IconButton
-onClick={(e) => setFilterAnchorEl(e.currentTarget)}
-sx={{
-bgcolor: categoryFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
-color: categoryFilter ? '#1976d2' : 'inherit',
-'&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
-}}
->
-<FilterAltIcon />
-</IconButton>
-)}
+
 {!isMobile && (
           <Button
             variant="contained"
@@ -967,11 +962,11 @@ onClose={() => setFilterAnchorEl(null)}
 <MenuItem onClick={() => { setCategoryFilter(null); setFilterAnchorEl(null); }}>
 <em>Все категории</em>
 </MenuItem>
-{availableCategories.map(cat => (
-<MenuItem key={cat.id} onClick={() => { setCategoryFilter(cat.id); setFilterAnchorEl(null); }}>
-{cat.name}
-</MenuItem>
-))}
+        {projectCategories.map(cat => (
+          <MenuItem key={cat.id} onClick={() => { setCategoryFilter(cat.id); setFilterAnchorEl(null); }}>
+            {cat.name} ({cat.count})
+          </MenuItem>
+        ))}
 </Menu>
       {/* Таблица для десктопа */}
       {!isMobile && (
@@ -1196,7 +1191,36 @@ onClose={() => setFilterAnchorEl(null)}
               value={newArticle}
               onChange={e => setNewArticle(e.target.value)}
             />
-            {!addCreatingNew ? (
+        <FormControl fullWidth>
+          <InputLabel>Единица измерения</InputLabel>
+          <Select
+            value={newUnit}
+            label="Единица измерения"
+            onChange={e => setNewUnit(e.target.value)}
+          >
+            {UNIT_OPTIONS.map(opt => (
+              <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <TextField
+          fullWidth
+          label="Количество по спецификации"
+          type="number"
+          placeholder="0"
+          value={newSpecQuantity}
+          onChange={e => setNewSpecQuantity(e.target.value)}
+        />
+        <TextField
+          fullWidth
+          label="Примечание"
+          multiline
+          rows={2}
+          value={newNote}
+          onChange={e => setNewNote(e.target.value)}
+        />
+        <Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена работ</Typography></Divider>
+        {!addCreatingNew ? (
             <>
             <Autocomplete
             fullWidth
@@ -1519,24 +1543,8 @@ textAlign: 'center',
 <Stack spacing={2}>
 <TextField fullWidth label="Наименование" value={editName} onChange={e => setEditName(e.target.value)} required />
 <TextField fullWidth label="Артикул" value={editArticle} onChange={e => setEditArticle(e.target.value)} />
-<FormControl fullWidth>
-<InputLabel>Единица измерения</InputLabel>
-<Select value={editUnit} label="Единица измерения" onChange={e => setEditUnit(e.target.value)}>
-{UNIT_OPTIONS.map(opt => (
-<MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-))}
-</Select>
-</FormControl>
-<TextField
-fullWidth
-label="Количество по спецификации"
-type="number"
-placeholder="0"
-value={editSpecQty}
-onChange={e => setEditSpecQty(e.target.value)}
-/>
-<TextField fullWidth label="Примечание" multiline rows={2} value={editNote} onChange={e => setEditNote(e.target.value)} />
-<Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Расценка</Typography></Divider>
+
+<Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена работ</Typography></Divider>
 
 {!editCreatingNew ? (
   <>
