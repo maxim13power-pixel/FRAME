@@ -12,6 +12,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import HelpIcon from '@mui/icons-material/Help';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import Logo from './Logo';
 
 interface DrawerMenuProps {
@@ -21,6 +22,7 @@ interface DrawerMenuProps {
 }
 
 const menuItems = [
+  { label: 'Главная', path: '/', icon: <SpaceDashboardIcon /> },
   { label: 'Объекты', path: '/objects', icon: <HomeIcon /> },
   { label: 'Бригады', path: '/brigades', icon: <EngineeringIcon /> },
   { label: 'Склад', path: '/warehouse', icon: <WarehouseIcon /> },

@@ -15,7 +15,7 @@ import Analytics from './pages/Analytics';
 import Reports from './pages/Reports';
 import Users from './pages/Users';
 import Settings from './pages/Settings';
-
+import Home from './pages/Home';
 function App() {
   const token = localStorage.getItem('token');
 
@@ -37,9 +37,10 @@ function App() {
             </ProtectedRoute>
           }
         >
-          {/* По умолчанию показываем, например, список объектов */}
-          <Route index element={<Objects />} />
-          <Route path="objects" element={<Objects />} />
+             {/* После логина попадаем на Главную (командный центр прораба) */}
+        <Route index element={<Home />} />
+        <Route path="home" element={<Home />} />
+        <Route path="objects" element={<Objects />} />
           <Route path="objects/:objectId/projects" element={<Projects />} />
           <Route path="objects/:objectId/projects/:projectId/materials" element={<Materials />} />
           <Route path="price-list" element={<PriceList />} />
