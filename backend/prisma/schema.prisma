@@ -49,6 +49,7 @@ model Project {
   updatedAt   DateTime @updatedAt
   note        String?  // ← ЗАМЕТКА ПРОЕКТА
   // TODO: таблица работ/материалов будет привязана к проекту
+  @@index([endDate])
 }
 
 enum Role {
@@ -106,6 +107,7 @@ model Material {
   fixes           MaterialFix[]  // история всех фиксаций
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+  @@index([projectId])
   @@map("materials")
 }
 
@@ -119,6 +121,8 @@ model MaterialFix {
   userId      Int?      // кто зафиксировал (опционально, пока оставим)
   isEdited    Boolean   @default(false) // правили ли в 72-часовом окне
   editedAt    DateTime? // когда правили
+  @@index([fixedAt])
+  @@index([materialId, fixedAt])
   @@map("material_fixes")
 }
 
