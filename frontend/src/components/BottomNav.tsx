@@ -29,7 +29,7 @@ export const ALL_BOTTOM_TABS: {
   { value: 'profile', label: 'Профиль', path: '/users', icon: PersonIcon },
 ];
 
-const DEFAULT_TABS = ['home', 'objects', 'brigades', 'settings', 'profile'];
+export const DEFAULT_BOTTOM_TABS = ['home', 'objects', 'brigades', 'settings', 'profile'];
 
 // ⭐ Конфиг нижних кнопок (Шаг 12: Настройки будут писать сюда)
 export const getBottomNavConfig = (): string[] => {
@@ -46,7 +46,7 @@ export const getBottomNavConfig = (): string[] => {
   } catch {
     // битый JSON — используем дефолт
   }
-  return DEFAULT_TABS;
+  return DEFAULT_BOTTOM_TABS;
 };
 
 interface BottomNavProps {
@@ -57,9 +57,7 @@ interface BottomNavProps {
 const BottomNav: React.FC<BottomNavProps> = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const tabs = getBottomNavConfig()
-    .map(v => ALL_BOTTOM_TABS.find(t => t.value === v))
-    .filter(Boolean) as typeof ALL_BOTTOM_TABS;
+  const tabs = ALL_BOTTOM_TABS.filter(t => getBottomNavConfig().includes(t.value));
 
   const isActive = (path: string) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
