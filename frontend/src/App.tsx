@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -16,12 +16,13 @@ import Reports from './pages/Reports';
 import Users from './pages/Users';
 import Settings from './pages/Settings';
 import Home from './pages/Home';
-function App() {
-  const token = localStorage.getItem('token');
+import Dashboard from './pages/Dashboard';
 
+const AppRoutes = () => {
+  useLocation();
+  const token = localStorage.getItem('token');
   return (
-    <BrowserRouter>
-      <Routes>
+    <Routes>
         {/* Публичный логин */}
         <Route
           path="/login"
@@ -34,7 +35,7 @@ function App() {
           element={
             token ? (
               <ProtectedRoute>
-                <Home />
+                <Dashboard />
               </ProtectedRoute>
             ) : (
               <Landing />
@@ -61,7 +62,14 @@ function App() {
 
         {/* 404 редирект */}
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+    </Routes>
+  );
+};
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
     </BrowserRouter>
   );
 }
