@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import Landing from './pages/Landing';
 import Login from './pages/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
@@ -22,6 +23,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="landing" element={<Landing />} />
         {/* Публичный логин */}
         <Route
           path="/login"
