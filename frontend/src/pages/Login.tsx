@@ -68,7 +68,7 @@ navigate('/');
         <Link
           component="button"
           type="button"
-          onClick={() => navigate('/landing')}
+          onClick={() => navigate('/')}
           underline="hover"
           sx={{ alignSelf: 'flex-start', mb: 1, color: '#1565c0', fontSize: '0.9rem', minHeight: 48, display: 'inline-flex', alignItems: 'center' }}
         >

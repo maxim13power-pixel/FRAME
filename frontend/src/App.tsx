@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import ProtectedRoute from './components/ProtectedRoute';
-import Dashboard from './pages/Dashboard';
 import Objects from './pages/Objects';   
 import Projects from './pages/Projects'; 
 import Materials from './pages/Materials';
@@ -23,20 +22,23 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="landing" element={<Landing />} />
         {/* Публичный логин */}
         <Route
           path="/login"
           element={token ? <Navigate to="/" replace /> : <Login />}
         />
 
-        {/* Защищённые маршруты – все внутри Dashboard */}
+        {/* Гостям показываем лендинг, авторизованных ведём в приложение */}
         <Route
           path="/"
           element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
+            token ? (
+              <ProtectedRoute>
+                <Home />
+              </ProtectedRoute>
+            ) : (
+              <Landing />
+            )
           }
         >
              {/* После логина попадаем на Главную (командный центр прораба) */}
