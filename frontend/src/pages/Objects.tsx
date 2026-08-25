@@ -25,8 +25,9 @@ import EventIcon from '@mui/icons-material/Event';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import { fetchObjects, createObject } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
-import { useAuth } from '../contexts/AuthContext'; // предполагаем, что есть контекст авторизации
+import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { updateObject, deleteObject } from '../services/objectService';
 import Select from '@mui/material/Select';
@@ -34,7 +35,6 @@ import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import SortIcon from '@mui/icons-material/Sort';
-import CloseIcon from '@mui/icons-material/Close';
 
 // Вспомогательная функция для форматирования даты
 const formatDate = (dateStr: string) => {
@@ -76,9 +76,8 @@ const Objects: React.FC = () => {
   const [editingObject, setEditingObject] = useState<ObjectData | null>(null);
   const [deletingObject, setDeletingObject] = useState<ObjectData | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
-  const searchInputRef = React.useRef<HTMLInputElement>(null);
   const [editName, setEditName] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editStartDate, setEditStartDate] = useState('');
@@ -226,10 +225,7 @@ const handleDeleteObject = async () => {
     alert('Ошибка удаления');
   }
 };
-const handleSearchOpen = () => {
-  setShowSearch(true);
-  setTimeout(() => searchInputRef.current?.focus(), 100);
-};
+
 
 // Обработчик открытия модалки для редактирования заметки
 const handleOpenNoteModal = (obj: ObjectData) => {
@@ -259,10 +255,6 @@ const handleSaveNote = async () => {
   }
 };
 
-const handleSearchClose = () => {
-  setShowSearch(false);
-  setSearchQuery(''); // опционально: очищать поиск при закрытии
-};
   // Функция для получения цвета текста дней
   const getDaysColor = (days: number) => {
     if (days < 0) return 'error'; // просрочено
@@ -270,6 +262,30 @@ const handleSearchClose = () => {
     if (days < 15) return 'warning';
     return 'success';
   };
+  // ⭐ trailing в useMemo — стабильная ссылка, нет бесконечного цикла (как в Materials)
+  const headerTrailing = useMemo(() => isMobile ? (
+    <IconButton
+      onClick={(e) => setSortAnchorEl(e.currentTarget)}
+      sx={{
+        bgcolor: sortBy !== 'newest' ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+        color: sortBy !== 'newest' ? '#1976d2' : '#424242',
+        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+      }}
+    >
+      <SortIcon />
+    </IconButton>
+  ) : undefined, [isMobile, sortBy]);
+
+  useMobileHeader({
+    title: 'Объекты',
+    searchOpen: mobileSearchOpen,
+    searchValue: searchQuery,
+    searchPlaceholder: 'Поиск объектов...',
+    onSearchOpen: () => setMobileSearchOpen(true),
+    onSearchClose: () => { setSearchQuery(''); setMobileSearchOpen(false); },
+    onSearchChange: (v) => setSearchQuery(v),
+    trailing: headerTrailing,
+  });
 
   if (loading) {
     return (
@@ -281,68 +297,17 @@ const handleSearchClose = () => {
 
   return (
    <Box sx={{ mt: -1.7, maxWidth: 1000, mx: 'auto', width: '100%' }}>
-  {/* Верхний блок с заголовком и иконками (только для мобилок) */}
-{isMobile && (
-  <>
-    {showSearch ? (
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
-        <TextField
-          inputRef={searchInputRef}
-          placeholder="Поиск объектов..."
-          variant="outlined"
-          size="small"
-          fullWidth
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          autoFocus
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start"><SearchIcon /></InputAdornment>
-            ),
-            endAdornment: (
-              <InputAdornment position="end">
-                <IconButton size="small" onClick={handleSearchClose}>
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Box>
-    ) : (
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, minHeight: 48 }}>
-        <Typography variant="h5" sx={{ flexGrow: 1 }}>Объекты</Typography>
-        <IconButton
-          onClick={handleSearchOpen}
-          sx={{ bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
-        >
-          <SearchIcon />
-        </IconButton>
-        <IconButton
-          onClick={(e) => setSortAnchorEl(e.currentTarget)}
-          sx={{
-            ml: 0.5,
-            bgcolor: sortBy !== 'newest' ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
-            color: sortBy !== 'newest' ? '#1976d2' : 'inherit',
-            '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' },
-          }}
-        >
-          <SortIcon />
-        </IconButton>
-      </Box>
-    )}
-    <Menu
-      anchorEl={sortAnchorEl}
-      open={Boolean(sortAnchorEl)}
-      onClose={() => setSortAnchorEl(null)}
-    >
-      <MenuItem onClick={() => { setSortBy('newest'); setSortAnchorEl(null); }}>Сначала новые</MenuItem>
-      <MenuItem onClick={() => { setSortBy('name'); setSortAnchorEl(null); }}>По названию А-Я</MenuItem>
-      <MenuItem onClick={() => { setSortBy('endDate'); setSortAnchorEl(null); }}>По сроку (ближайшие)</MenuItem>
-      <MenuItem onClick={() => { setSortBy('progress'); setSortAnchorEl(null); }}>По проценту %</MenuItem>
-    </Menu>
-  </>
-)}
+  {/* Меню сортировки (привязано к trailing-кнопке хэдера на мобилке) */}
+  <Menu
+    anchorEl={sortAnchorEl}
+    open={Boolean(sortAnchorEl)}
+    onClose={() => setSortAnchorEl(null)}
+  >
+    <MenuItem onClick={() => { setSortBy('newest'); setSortAnchorEl(null); }}>Сначала новые</MenuItem>
+    <MenuItem onClick={() => { setSortBy('name'); setSortAnchorEl(null); }}>По названию А-Я</MenuItem>
+    <MenuItem onClick={() => { setSortBy('endDate'); setSortAnchorEl(null); }}>По сроку (ближайшие)</MenuItem>
+    <MenuItem onClick={() => { setSortBy('progress'); setSortAnchorEl(null); }}>По проценту %</MenuItem>
+  </Menu>
 
   {/* Заголовок для десктопа (всегда виден) */}
   {!isMobile && (

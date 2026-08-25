@@ -20,6 +20,7 @@ import {
   MenuItem, 
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
+import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { fetchProjectsByObject, createProject, updateProject, deleteProject } from '../services/projectService';
 import type { ProjectData } from '../services/projectService';
 import NoteAddIcon from '@mui/icons-material/NoteAdd';
@@ -31,7 +32,6 @@ import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import DescriptionIcon from '@mui/icons-material/Description';
 import EventIcon from '@mui/icons-material/Event';
 import SortIcon from '@mui/icons-material/Sort';
-import CloseIcon from '@mui/icons-material/Close';
 import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -63,8 +63,7 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [editEndDate, setEditEndDate] = useState('');  
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'name' | 'endDate' | 'progress'>('newest');
-  const [showSearch, setShowSearch] = useState(false);
-  const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
   const [dateConflictDialog, setDateConflictDialog] = useState<{
     open: boolean;
@@ -103,15 +102,6 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
     if (days < 7) return 'error';
     if (days < 15) return 'warning';
     return 'success';
-  };
-
-  const handleSearchOpen = () => {
-    setShowSearch(true);
-    setTimeout(() => searchInputRef.current?.focus(), 100);
-  };
-  const handleSearchClose = () => {
-    setShowSearch(false);
-    setSearchQuery('');
   };
 
   const filteredAndSortedProjects = useMemo(() => {
@@ -409,6 +399,32 @@ const handleSaveNote = async () => {
       alert('Ошибка удаления проекта');
     }
   };
+  // ⭐ trailing в useMemo — стабильная ссылка, нет бесконечного цикла (как в Materials)
+  const headerTrailing = useMemo(() => isMobile ? (
+    <IconButton
+      onClick={(e) => setSortAnchorEl(e.currentTarget)}
+      sx={{
+        bgcolor: sortBy !== 'newest' ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+        color: sortBy !== 'newest' ? '#1976d2' : '#424242',
+        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+      }}
+    >
+      <SortIcon />
+    </IconButton>
+  ) : undefined, [isMobile, sortBy]);
+
+  useMobileHeader({
+    title: 'Проекты',
+    onBack: () => navigate('/objects'),
+    searchOpen: mobileSearchOpen,
+    searchValue: searchQuery,
+    searchPlaceholder: 'Поиск проектов...',
+    onSearchOpen: () => setMobileSearchOpen(true),
+    onSearchClose: () => { setSearchQuery(''); setMobileSearchOpen(false); },
+    onSearchChange: (v) => setSearchQuery(v),
+    trailing: headerTrailing,
+  });
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
@@ -420,123 +436,47 @@ const handleSaveNote = async () => {
   return (
 <Box sx={{ maxWidth: 1000, mx: 'auto', width: '100%' }}>
 
-  {/* Мобильная компактная строка: заголовок + иконки */}
-  {isMobile && (
-    <>
-      {showSearch ? (
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
-          <IconButton onClick={() => navigate('/objects')} sx={{ bgcolor: 'rgba(0,0,0,0.06)' }}>
-            <ArrowBackIcon />
-          </IconButton>
-          <TextField
-            inputRef={searchInputRef}
-            placeholder="Поиск проектов..."
-            variant="outlined"
-            size="small"
-            fullWidth
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            autoFocus
-            InputProps={{
-              startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton size="small" onClick={handleSearchClose}>
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
-        </Box>
-      ) : (
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, minHeight: 48 }}>
-          <IconButton
-            onClick={() => navigate('/objects')}
-            sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
-          >
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant="h5" sx={{ flexGrow: 1 }}>Проекты</Typography>
-          <IconButton
-            onClick={handleSearchOpen}
-            sx={{ bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
-          >
-            <SearchIcon />
-          </IconButton>
-          <IconButton
-            onClick={(e) => setSortAnchorEl(e.currentTarget)}
-            sx={{
-              ml: 0.5,
-              bgcolor: sortBy !== 'newest' ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
-              color: sortBy !== 'newest' ? '#1976d2' : 'inherit',
-              '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' },
-            }}
-          >
-              <SortIcon />
-            </IconButton>
-          </Box>
-          )}
-          {/* Хлебные крошки на мобилке (как в Материалах) */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1, flexWrap: 'wrap' }}>
-            <Typography
-              component="button"
-              onClick={() => navigate('/objects')}
-              sx={{
-                background: 'none', border: 'none', padding: 0,
-                color: '#1976d2', cursor: 'pointer', fontSize: 13,
-                textDecoration: 'underline',
-                '&:hover': { color: '#1565c0' },
-              }}
-            >
-              Объекты
-            </Typography>
-            <Typography sx={{ color: 'text.secondary', fontSize: 13 }}>›</Typography>
-            <Typography sx={{ fontSize: 13, fontWeight: 600 }}>
-              {currentObject ? currentObject.name : 'Объект'}
-            </Typography>
-          </Box>
-          <Menu
-        anchorEl={sortAnchorEl}
-        open={Boolean(sortAnchorEl)}
-        onClose={() => setSortAnchorEl(null)}
-      >
-        <MenuItem onClick={() => { setSortBy('newest'); setSortAnchorEl(null); }}>Сначала новые</MenuItem>
-        <MenuItem onClick={() => { setSortBy('name'); setSortAnchorEl(null); }}>По названию А-Я</MenuItem>
-        <MenuItem onClick={() => { setSortBy('endDate'); setSortAnchorEl(null); }}>По сроку (ближайшие)</MenuItem>
-        <MenuItem onClick={() => { setSortBy('progress'); setSortAnchorEl(null); }}>По проценту %</MenuItem>
-      </Menu>
-    </>
-  )}
+  {/* Хлебные крошки (видны и на мобилке, и на десктопе) */}
+  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1, ml: isMobile ? 0 : 6, flexWrap: 'wrap' }}>
+    <Typography
+      component="button"
+      onClick={() => navigate('/objects')}
+      sx={{
+        background: 'none', border: 'none', padding: 0,
+        color: '#1976d2', cursor: 'pointer', fontSize: isMobile ? 13 : 14,
+        textDecoration: 'underline',
+        '&:hover': { color: '#1565c0' },
+      }}
+    >
+      Объекты
+    </Typography>
+    <Typography sx={{ color: 'text.secondary', fontSize: isMobile ? 13 : 14 }}>›</Typography>
+    <Typography sx={{ fontSize: isMobile ? 13 : 14, fontWeight: 600 }}>
+      {currentObject ? currentObject.name : 'Объект'}
+    </Typography>
+  </Box>
 
-  {/* Десктоп: большая строка с поиском и кнопкой добавления */}
+  {/* Меню сортировки (привязано к trailing-кнопке хэдера на мобилке) */}
+  <Menu
+    anchorEl={sortAnchorEl}
+    open={Boolean(sortAnchorEl)}
+    onClose={() => setSortAnchorEl(null)}
+  >
+    <MenuItem onClick={() => { setSortBy('newest'); setSortAnchorEl(null); }}>Сначала новые</MenuItem>
+    <MenuItem onClick={() => { setSortBy('name'); setSortAnchorEl(null); }}>По названию А-Я</MenuItem>
+    <MenuItem onClick={() => { setSortBy('endDate'); setSortAnchorEl(null); }}>По сроку (ближайшие)</MenuItem>
+    <MenuItem onClick={() => { setSortBy('progress'); setSortAnchorEl(null); }}>По проценту %</MenuItem>
+  </Menu>
+
+  {/* Десктоп: заголовок + панель поиска и кнопки добавления */}
   {!isMobile && (
     <>
       <Box sx={{ mb: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <IconButton onClick={() => navigate('/objects')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}>
+       <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+        <IconButton onClick={() => navigate('/objects')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}>
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h4" sx={{ flexGrow: 1 }}>Проекты (виды работ)</Typography>
-        </Box>
-        {/* Хлебные крошки под заголовком */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, ml: 6, flexWrap: 'wrap' }}>
-          <Typography
-            component="button"
-            onClick={() => navigate('/objects')}
-            sx={{
-              background: 'none', border: 'none', padding: 0,
-              color: '#1976d2', cursor: 'pointer', fontSize: 14,
-              textDecoration: 'underline',
-              '&:hover': { color: '#1565c0' },
-            }}
-          >
-            Объекты
-          </Typography>
-          <Typography sx={{ color: 'text.secondary', fontSize: 14 }}>›</Typography>
-          <Typography sx={{ fontSize: 14, fontWeight: 600 }}>
-            {currentObject ? currentObject.name : 'Объект'}
-          </Typography>
         </Box>
       </Box>
       <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
