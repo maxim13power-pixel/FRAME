@@ -179,7 +179,7 @@ const Dashboard: React.FC = () => {
         <Container
           maxWidth={false}
           sx={{
-            mt: { xs: 8, md: 3 },
+            mt: { xs: 10, md: 3 },
             mb: { xs: 8, md: 4 },
             px: { xs: 2, md: 3 },
             position: 'relative',

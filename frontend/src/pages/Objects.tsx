@@ -35,6 +35,7 @@ import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import SortIcon from '@mui/icons-material/Sort';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 // Вспомогательная функция для форматирования даты
 const formatDate = (dateStr: string) => {
@@ -276,16 +277,17 @@ const handleSaveNote = async () => {
     </IconButton>
   ) : undefined, [isMobile, sortBy]);
 
-  useMobileHeader({
-    title: 'Объекты',
-    searchOpen: mobileSearchOpen,
-    searchValue: searchQuery,
-    searchPlaceholder: 'Поиск объектов...',
-    onSearchOpen: () => setMobileSearchOpen(true),
-    onSearchClose: () => { setSearchQuery(''); setMobileSearchOpen(false); },
-    onSearchChange: (v) => setSearchQuery(v),
-    trailing: headerTrailing,
-  });
+useMobileHeader({
+title: 'Объекты',
+onBack: () => navigate('/'),
+searchOpen: mobileSearchOpen,
+searchValue: searchQuery,
+searchPlaceholder: 'Поиск объектов...',
+onSearchOpen: () => setMobileSearchOpen(true),
+onSearchClose: () => { setSearchQuery(''); setMobileSearchOpen(false); },
+onSearchChange: (v) => setSearchQuery(v),
+trailing: headerTrailing,
+});
 
   if (loading) {
     return (
@@ -309,12 +311,25 @@ const handleSaveNote = async () => {
     <MenuItem onClick={() => { setSortBy('progress'); setSortAnchorEl(null); }}>По проценту %</MenuItem>
   </Menu>
 
-  {/* Заголовок для десктопа (всегда виден) */}
-  {!isMobile && (
-    <Typography variant="h4" sx={{ mb: 2 }}>
+{/* Заголовок для десктопа + кнопка "в главное меню" */}
+{!isMobile && (
+  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+    <IconButton
+      onClick={() => navigate('/')}
+      sx={{
+        mr: 1,
+        bgcolor: 'rgba(0,0,0,0.06)',
+        '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' },
+      }}
+      aria-label="В главное меню"
+    >
+      <ArrowBackIcon />
+    </IconButton>
+    <Typography variant="h4" sx={{ flexGrow: 1 }}>
       Объекты
     </Typography>
-  )}
+  </Box>
+)}
 
   {/* Панель поиска и добавления (десктоп) */}
   {!isMobile && (
