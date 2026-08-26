@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -34,7 +34,6 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SearchIcon from '@mui/icons-material/Search';
 import SortIcon from '@mui/icons-material/Sort';
-import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import EngineeringIcon from '@mui/icons-material/Engineering';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
@@ -45,6 +44,7 @@ import CategoryIcon from '@mui/icons-material/Category';
 import PriceCheckIcon from '@mui/icons-material/PriceCheck';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import { useAuth } from '../contexts/AuthContext';
+import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import {
   fetchCategoriesWithItems,
   createCategory,
@@ -93,9 +93,8 @@ const PriceList: React.FC = () => {
   // Сортировка расценок внутри категорий
   const [priceSortBy, setPriceSortBy] = useState<'name' | 'price' | null>(null);
   const [priceSortDirection, setPriceSortDirection] = useState<'asc' | 'desc'>('asc');
-    // Мобильный компактный поиск и меню сортировки
-  const [showSearch, setShowSearch] = useState(false);
-  const searchInputRef = React.useRef<HTMLInputElement>(null);
+  // Мобильный компактный поиск и меню сортировки
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
   // Модалка категории
   const [catModalOpen, setCatModalOpen] = useState(false);
@@ -122,14 +121,35 @@ const PriceList: React.FC = () => {
   const [settingsCatName, setSettingsCatName] = useState('');
   const [catDeleteError, setCatDeleteError] = useState('');
   const [deleteCatConfirmOpen, setDeleteCatConfirmOpen] = useState(false);
-    const handleSearchOpen = () => {
-    setShowSearch(true);
-    setTimeout(() => searchInputRef.current?.focus(), 100);
-  };
-  const handleSearchClose = () => {
-    setShowSearch(false);
-    setSearchQuery('');
-  };
+    // ============================================================
+  // ⭐ ХЭДЕР v2 (по эталону Materials/Projects)
+  // ============================================================
+  const headerTitle = activeTab === 'WORK' ? 'Цены на работы' : 'Цены на материалы';
+
+  const headerTrailing = useMemo(() => isMobile ? (
+    <IconButton
+      onClick={(e) => setSortAnchorEl(e.currentTarget)}
+      sx={{
+        bgcolor: priceSortBy ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+        color: priceSortBy ? '#1976d2' : '#424242',
+        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+      }}
+    >
+      <SortIcon />
+    </IconButton>
+  ) : undefined, [isMobile, priceSortBy]);
+
+  useMobileHeader({
+    title: headerTitle,
+    onBack: () => navigate('/'),
+    searchOpen: mobileSearchOpen,
+    searchValue: searchQuery,
+    searchPlaceholder: activeTab === 'WORK' ? 'Поиск работ...' : 'Поиск материалов...',
+    onSearchOpen: () => setMobileSearchOpen(true),
+    onSearchClose: () => { setSearchQuery(''); setMobileSearchOpen(false); },
+    onSearchChange: (v) => setSearchQuery(v),
+    trailing: headerTrailing,
+  });
 
   // ============================================================
   // ЗАГРУЗКА
@@ -411,139 +431,87 @@ const PriceList: React.FC = () => {
 
   return (
     <Box>
-      {/* Мобилка: вкладки + компактная строка */}
+            {/* Вкладки WORK/MATERIAL — оставляем как есть на мобилке */}
       {isMobile && (
-        <>
-          <Tabs
-            value={activeTab}
-            onChange={(_e, newValue: 'WORK' | 'MATERIAL') => {
-              setActiveTab(newValue);
-              setSearchQuery('');
-              setShowSearch(false);
-            }}
-            variant="fullWidth"
-            sx={{
-              mb: 1,
-              '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 13, minHeight: 44 },
-            }}
-          >
-            <Tab icon={<EngineeringIcon />} iconPosition="start" label="Работы" value="WORK" />
-            <Tab icon={<Inventory2Icon />} iconPosition="start" label="Материалы" value="MATERIAL" />
-          </Tabs>
-          {showSearch ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
-              <IconButton
-                onClick={() => navigate(-1)}
-                sx={{ bgcolor: 'rgba(0,0,0,0.06)' }}
-              >
-                <ArrowBackIcon />
-              </IconButton>
-            <TextField
-              inputRef={searchInputRef}
-              placeholder={activeTab === 'WORK' ? 'Поиск работ...' : 'Поиск материалов...'}
-                variant="outlined"
-                size="small"
-                fullWidth
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                autoFocus
-                InputProps={{
-                  startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton size="small" onClick={handleSearchClose}>
-                        <CloseIcon fontSize="small" />
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Box>
-          ) : (
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, minHeight: 48 }}>
-              <IconButton
-                onClick={() => navigate(-1)}
-                sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
-              >
-                <ArrowBackIcon />
-              </IconButton>
-              <Typography variant="h5" sx={{ flexGrow: 1 }}>
-            {activeTab === 'WORK' ? 'Цены на работы' : 'Цены на материалы'}
-          </Typography>
-              <IconButton
-                onClick={handleSearchOpen}
-                sx={{ bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
-              >
-                <SearchIcon />
-              </IconButton>
-              <IconButton
-                onClick={(e) => setSortAnchorEl(e.currentTarget)}
-                sx={{
-                  ml: 0.5,
-                  bgcolor: priceSortBy ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
-                  color: priceSortBy ? '#1976d2' : 'inherit',
-                  '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' },
-                }}
-              >
-                <SortIcon />
-              </IconButton>
-            </Box>
-          )}
-          <Menu
-            anchorEl={sortAnchorEl}
-            open={Boolean(sortAnchorEl)}
-            onClose={() => setSortAnchorEl(null)}
-          >
-            <MenuItem onClick={() => { setPriceSortBy(null); setSortAnchorEl(null); }}>
-              <em>По умолчанию</em>
-            </MenuItem>
-            <MenuItem onClick={() => { setPriceSortBy('name'); setPriceSortDirection('asc'); setSortAnchorEl(null); }}>
-              По имени (А→Я)
-            </MenuItem>
-            <MenuItem onClick={() => { setPriceSortBy('name'); setPriceSortDirection('desc'); setSortAnchorEl(null); }}>
-              По имени (Я→А)
-            </MenuItem>
-            <MenuItem onClick={() => { setPriceSortBy('price'); setPriceSortDirection('asc'); setSortAnchorEl(null); }}>
-              По цене (возрастание)
-            </MenuItem>
-            <MenuItem onClick={() => { setPriceSortBy('price'); setPriceSortDirection('desc'); setSortAnchorEl(null); }}>
-              По цене (убывание)
-            </MenuItem>
-          </Menu>
-        </>
+        <Tabs
+          value={activeTab}
+          onChange={(_e, newValue: 'WORK' | 'MATERIAL') => {
+            setActiveTab(newValue);
+            setSearchQuery('');
+            setMobileSearchOpen(false);
+          }}
+          variant="fullWidth"
+          sx={{
+            mt: -1,
+            mb: 1,
+            '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 13, minHeight: 44 },
+          }}
+        >
+          <Tab icon={<EngineeringIcon />} iconPosition="start" label="Работы" value="WORK" />
+          <Tab icon={<Inventory2Icon />} iconPosition="start" label="Материалы" value="MATERIAL" />
+        </Tabs>
       )}
 
-      {/* Десктоп: заголовок + вкладки */}
+      {/* Меню сортировки (привязано к trailing-иконке хэдера на мобилке) */}
+      <Menu
+        anchorEl={sortAnchorEl}
+        open={Boolean(sortAnchorEl)}
+        onClose={() => setSortAnchorEl(null)}
+      >
+        <MenuItem onClick={() => { setPriceSortBy(null); setSortAnchorEl(null); }}>
+          <em>По умолчанию</em>
+        </MenuItem>
+        <MenuItem onClick={() => { setPriceSortBy('name'); setPriceSortDirection('asc'); setSortAnchorEl(null); }}>
+          По имени (А→Я)
+        </MenuItem>
+        <MenuItem onClick={() => { setPriceSortBy('name'); setPriceSortDirection('desc'); setSortAnchorEl(null); }}>
+          По имени (Я→А)
+        </MenuItem>
+        <MenuItem onClick={() => { setPriceSortBy('price'); setPriceSortDirection('asc'); setSortAnchorEl(null); }}>
+          По цене (возрастание)
+        </MenuItem>
+        <MenuItem onClick={() => { setPriceSortBy('price'); setPriceSortDirection('desc'); setSortAnchorEl(null); }}>
+          По цене (убывание)
+        </MenuItem>
+      </Menu>
+
+      {/* Десктоп: заголовок + кнопка "назад в главное меню" */}
       {!isMobile && (
-        <>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-            <IconButton
-              onClick={() => navigate(-1)}
-              sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
-            >
-              <ArrowBackIcon />
-            </IconButton>
-            <Typography variant="h4" sx={{ flexGrow: 1 }}>
-              {activeTab === 'WORK' ? 'Цены на работы' : 'Цены на материалы'}
-            </Typography>
-          </Box>
-          <Tabs
-            value={activeTab}
-            onChange={(_e, newValue: 'WORK' | 'MATERIAL') => {
-              setActiveTab(newValue);
-              setSearchQuery('');
-            }}
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <IconButton
+            onClick={() => navigate('/')}
             sx={{
-              mb: 2,
-              borderBottom: 1,
-              borderColor: 'divider',
-              '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 15, minHeight: 48 },
+              mr: 1,
+              bgcolor: 'rgba(0,0,0,0.06)',
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' },
             }}
+            aria-label="В главное меню"
           >
-            <Tab icon={<EngineeringIcon />} iconPosition="start" label="Цены на работы" value="WORK" />
-            <Tab icon={<Inventory2Icon />} iconPosition="start" label="Цены на материалы" value="MATERIAL" />
-          </Tabs>
-        </>
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h4" sx={{ flexGrow: 1 }}>
+            {activeTab === 'WORK' ? 'Цены на работы' : 'Цены на материалы'}
+          </Typography>
+        </Box>
+      )}
+      {/* Десктоп: вкладки */}
+      {!isMobile && (
+        <Tabs
+          value={activeTab}
+          onChange={(_e, newValue: 'WORK' | 'MATERIAL') => {
+            setActiveTab(newValue);
+            setSearchQuery('');
+          }}
+          sx={{
+            mb: 2,
+            borderBottom: 1,
+            borderColor: 'divider',
+            '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 15, minHeight: 48 },
+          }}
+        >
+          <Tab icon={<EngineeringIcon />} iconPosition="start" label="Цены на работы" value="WORK" />
+          <Tab icon={<Inventory2Icon />} iconPosition="start" label="Цены на материалы" value="MATERIAL" />
+        </Tabs>
       )}
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -588,7 +556,7 @@ const PriceList: React.FC = () => {
               onClick={handleOpenCatModal}
               sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
             >
-              Категория
+              + Категория
             </Button>
             <Button
               variant="contained"
