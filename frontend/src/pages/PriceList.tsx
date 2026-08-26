@@ -442,7 +442,7 @@ const PriceList: React.FC = () => {
           }}
           variant="fullWidth"
           sx={{
-            mt: -1,
+            mt: -3,
             mb: 1,
             '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 13, minHeight: 44 },
           }}

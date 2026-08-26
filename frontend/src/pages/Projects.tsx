@@ -32,6 +32,9 @@ import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import DescriptionIcon from '@mui/icons-material/Description';
 import EventIcon from '@mui/icons-material/Event';
 import SortIcon from '@mui/icons-material/Sort';
+import Select from '@mui/material/Select';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
 import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -434,27 +437,42 @@ const handleSaveNote = async () => {
   }
 
   return (
-<Box sx={{ maxWidth: 1000, mx: 'auto', width: '100%' }}>
-
-  {/* Хлебные крошки (видны и на мобилке, и на десктопе) */}
-  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1, ml: isMobile ? 0 : 6, flexWrap: 'wrap' }}>
-    <Typography
-      component="button"
-      onClick={() => navigate('/objects')}
-      sx={{
-        background: 'none', border: 'none', padding: 0,
-        color: '#1976d2', cursor: 'pointer', fontSize: isMobile ? 13 : 14,
-        textDecoration: 'underline',
-        '&:hover': { color: '#1565c0' },
-      }}
-    >
-      Объекты
-    </Typography>
-    <Typography sx={{ color: 'text.secondary', fontSize: isMobile ? 13 : 14 }}>›</Typography>
-    <Typography sx={{ fontSize: isMobile ? 13 : 14, fontWeight: 600 }}>
-      {currentObject ? currentObject.name : 'Объект'}
-    </Typography>
-  </Box>
+    <Box sx={{ maxWidth: 1000, mx: 'auto', width: '100%' }}>
+      {/* Заголовок (десктоп) + хлебные крошки — единый блок, как в Сметах */}
+      <Box sx={{ mb: 1, mt: { xs: -2, md: 0 } }}>
+        {/* Десктоп: заголовок с кнопкой "назад" */}
+        {!isMobile && (
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <IconButton
+              onClick={() => navigate('/objects')}
+              sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+              aria-label="Назад к объектам"
+            >
+              <ArrowBackIcon />
+            </IconButton>
+            <Typography variant="h4" sx={{ flexGrow: 1 }}>Проекты (виды работ)</Typography>
+          </Box>
+        )}
+        {/* Хлебные крошки (видны и на мобилке, и на десктопе) */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, ml: isMobile ? 0 : 6, flexWrap: 'wrap' }}>
+          <Typography
+            component="button"
+            onClick={() => navigate('/objects')}
+            sx={{
+              background: 'none', border: 'none', padding: 0,
+              color: '#1976d2', cursor: 'pointer', fontSize: isMobile ? 13 : 14,
+              textDecoration: 'underline',
+              '&:hover': { color: '#1565c0' },
+            }}
+          >
+            Объекты
+          </Typography>
+          <Typography sx={{ color: 'text.secondary', fontSize: isMobile ? 13 : 14 }}>›</Typography>
+          <Typography sx={{ fontSize: isMobile ? 13 : 14, fontWeight: 600 }}>
+            {currentObject ? currentObject.name : 'Объект'}
+          </Typography>
+        </Box>
+      </Box>
 
   {/* Меню сортировки (привязано к trailing-кнопке хэдера на мобилке) */}
   <Menu
@@ -468,45 +486,48 @@ const handleSaveNote = async () => {
     <MenuItem onClick={() => { setSortBy('progress'); setSortAnchorEl(null); }}>По проценту %</MenuItem>
   </Menu>
 
-  {/* Десктоп: заголовок + панель поиска и кнопки добавления */}
-  {!isMobile && (
-    <>
-      <Box sx={{ mb: 2 }}>
-       <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-        <IconButton onClick={() => navigate('/objects')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}>
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant="h4" sx={{ flexGrow: 1 }}>Проекты (виды работ)</Typography>
+      {/* Десктоп: панель поиска, сортировки и кнопки добавления */}
+      {!isMobile && (
+        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+          <TextField
+            placeholder="Поиск проектов..."
+            variant="outlined"
+            size="small"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            sx={{ flexGrow: 1 }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
+          />
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel id="projects-sort-label">Сортировка</InputLabel>
+            <Select
+              labelId="projects-sort-label"
+              value={sortBy}
+              label="Сортировка"
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            >
+              <MenuItem value="newest">Сначала новые</MenuItem>
+              <MenuItem value="name">По названию А-Я</MenuItem>
+              <MenuItem value="endDate">По сроку (ближайшие)</MenuItem>
+              <MenuItem value="progress">По проценту %</MenuItem>
+            </Select>
+          </FormControl>
+          <Button
+            variant="contained"
+            startIcon={<NoteAddIcon />}
+            onClick={handleOpenAddModal}
+            sx={{
+              bgcolor: '#4caf50',
+              minWidth: '200px',
+              '&:hover': { bgcolor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
+              transition: 'all 0.3s ease',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Добавить проект
+          </Button>
         </Box>
-      </Box>
-      <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-        <TextField
-          placeholder="Поиск проектов..."
-          variant="outlined"
-          size="small"
-          fullWidth
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          sx={{ flexGrow: 1 }}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
-        />
-        <Button
-          variant="contained"
-          startIcon={<NoteAddIcon />}
-          onClick={handleOpenAddModal}
-          sx={{
-            bgcolor: '#4caf50',
-            minWidth: '200px',
-            '&:hover': { bgcolor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
-            transition: 'all 0.3s ease',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          Добавить проект
-        </Button>
-      </Box>
-    </>
-  )}
+      )}
 
 
   {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
