@@ -822,23 +822,23 @@ setSortAnchorEl(null);
   return (
     <Box>
       {/* Заголовок (десктоп; мобилка — в хэдере), крошки ниже */}
-      <Box sx={{ mb: 2 }}>
+      <Box sx={{ mb: { xs: 1, md: 2 }, mt: { xs: -2, md: 0 } }}>
         {!isMobile && (
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <IconButton
-            onClick={() => navigate(`/objects/${objectId}/projects`)}
-            sx={{
-              mr: 1,
-              bgcolor: 'rgba(0, 0, 0, 0.06)',
-              '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
-            }}
-          >
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant={isMobile ? "h5" : "h4"} sx={{ flexGrow: 1 }}>
-            Сметы
-          </Typography>
-        </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <IconButton
+              onClick={() => navigate(`/objects/${objectId}/projects`)}
+              sx={{
+                mr: 1,
+                bgcolor: 'rgba(0, 0, 0, 0.06)',
+                '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+              }}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+            <Typography variant={isMobile ? "h5" : "h4"} sx={{ flexGrow: 1 }}>
+              Сметы
+            </Typography>
+          </Box>
         )}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, ml: isMobile ? 0 : 6, flexWrap: 'wrap' }}>
           <Typography
@@ -875,8 +875,8 @@ setSortAnchorEl(null);
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {/* Поиск и кнопка добавления (десктоп; мобилка — в хэдере) */}
-      <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
+   {/* Поиск и кнопка добавления (десктоп; мобилка — в хэдере) */}
+   <Box sx={{ display: 'flex', gap: 1, mb: { xs: 0, md: 2 }, alignItems: 'center' }}>
         {!isMobile && (
           <TextField
             placeholder="Поиск материалов..."
@@ -1073,12 +1073,12 @@ onClose={() => setFilterAnchorEl(null)}
         </TableContainer>
       )}
 
-      {/* Карточки для мобилки */}
-      {isMobile && (
-        <Stack spacing={1.5}>
-          {sortedMaterials.length > 0 ? (
-            sortedMaterials.map((m) => (
-              <Paper key={m.id} sx={{ p: 1.5, borderRadius: 2 }}>
+  {/* Карточки для мобилки */}
+  {isMobile && (
+    <Stack spacing={1}>
+      {sortedMaterials.length > 0 ? (
+        sortedMaterials.map((m) => (
+          <Paper key={m.id} sx={{ p: 1.5, borderRadius: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
                   <InventoryIcon sx={{ color: '#1976d2', mr: 1, fontSize: 22 }} />
                   <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>

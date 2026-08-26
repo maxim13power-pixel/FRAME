@@ -381,7 +381,7 @@ trailing: headerTrailing,
 
   {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
          {/* Список объектов – красивые карточки */}
-      <Stack spacing={isMobile ? 1.5 : 2}>
+      <Stack spacing={isMobile ? 1 : 2}>
         {filteredAndSortedObjects.length > 0 ? (
           filteredAndSortedObjects.map(obj => {
             const progress = obj.progressPercent ?? 0;
@@ -410,9 +410,9 @@ trailing: headerTrailing,
                 {/* Верхняя строка: иконка, название, процент */}
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: isMobile ? 0.5 : 1 }}>
                   <PlaceIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28 }} />
-                  <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1 }}>
-                    {obj.name}
-                  </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1, fontSize: { xs: '1.05rem', md: '1.15rem' } }}>
+                {obj.name}
+              </Typography>
 <IconButton 
   size="small" 
   onClick={(e) => { 

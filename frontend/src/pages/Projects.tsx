@@ -531,7 +531,7 @@ const handleSaveNote = async () => {
 
 
   {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      <Stack spacing={2}>
+      <Stack spacing={isMobile ? 1 : 2}>
 {filteredAndSortedProjects.length > 0 ? (
   filteredAndSortedProjects.map(proj => (
 <Paper 
@@ -554,9 +554,9 @@ const handleSaveNote = async () => {
 {/* Верхняя строка: иконка, название, шестерёнка, процент */}
 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
   <DescriptionIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28 }} />
-  <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1 }}>
-    {proj.name}
-  </Typography>
+<Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1, fontSize: { xs: '1.05rem', md: '1.15rem' } }}>
+{proj.name}
+</Typography>
 <IconButton
   size="small"
   onClick={(e) => {

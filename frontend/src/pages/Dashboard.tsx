@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import {
-  Box, Container,  useMediaQuery, useTheme,
-  //Paper, TextField, Button, Typography,
-  Drawer, IconButton, List, ListItem, ListItemButton,
-  ListItemIcon, ListItemText, Divider, //InputAdornment
+Box, Container,  useMediaQuery, useTheme,
+//Paper, TextField, Button, Typography,
+Drawer, IconButton, List, ListItem, ListItemButton,
+ListItemIcon, ListItemText, Divider, Tooltip, //InputAdornment
 } from '@mui/material';
 //import SearchIcon from '@mui/icons-material/Search';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -20,7 +20,7 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import PeopleIcon from '@mui/icons-material/People';
 import SettingsIcon from '@mui/icons-material/Settings';
 
-import { Outlet,useNavigate } from 'react-router-dom';
+import { Outlet,useNavigate, useLocation } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import BottomNav from '../components/BottomNav';
 import DrawerMenu from '../components/DrawerMenu';
@@ -52,6 +52,7 @@ const Dashboard: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
+const location = useLocation();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -140,41 +141,69 @@ const Dashboard: React.FC = () => {
                 </ListItemButton>
               </ListItem>
             ))}
-          </List>
-        </Drawer>
-      )}
+       </List>
+     </Drawer>
+   )}
+   {/* ⭐ Десктоп: свёрнутый rail-сайдбар (узкая полоса 64px) */}
+   {!isMobile && !sidebarOpen && (
+     <Box
+       sx={{
+         width: 64,
+         flexShrink: 0,
+         bgcolor: '#fff',
+         borderRight: '1px solid #e0e0e0',
+         display: 'flex',
+         flexDirection: 'column',
+         alignItems: 'center',
+         py: 1.5,
+       }}
+     >
+       {/* Бургер сверху — раскрыть меню */}
+       <IconButton
+         onClick={() => setSidebarOpen(true)}
+         aria-label="Открыть меню"
+         sx={{
+           bgcolor: 'rgba(0, 0, 0, 0.06)',
+           '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+           mb: 1.5,
+         }}
+       >
+         <MenuIcon />
+       </IconButton>
+       <Divider sx={{ width: '70%', mb: 1.5 }} />
+       {/* Иконки без подписей + tooltips */}
+       <Box sx={{ flexGrow: 1, overflowY: 'auto', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        {menuItems.map((item) => {
+          const active = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+          return (
+            <Tooltip key={item.path} title={item.label} placement="right" arrow>
+              <IconButton
+                onClick={() => handleNavigate(item.path)}
+                aria-label={item.label}
+                sx={{
+                  mb: 0.75,
+                  color: '#616161',
+                  bgcolor: active ? 'rgba(25, 118, 210, 0.12)' : 'transparent',
+                  '&:hover': { bgcolor: active ? 'rgba(25, 118, 210, 0.18)' : 'rgba(0, 0, 0, 0.06)' },
+                }}
+              >
+                {item.icon}
+              </IconButton>
+            </Tooltip>
+          );
+        })}
+       </Box>
+     </Box>
+   )}
 
       {/* Основная область контента */}
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          minWidth: 0,
-          paddingLeft: !isMobile && !sidebarOpen ? '48px' : 0,
-          transition: theme.transitions.create('padding', {
-            easing: theme.transitions.easing.easeInOut,
-            duration: theme.transitions.duration.standard,
-          }),
-        }}
-      >
-        {/* Кнопка открытия бокового меню (когда оно скрыто) */}
-        {!isMobile && !sidebarOpen && (
-          <IconButton
-            onClick={() => setSidebarOpen(true)}
+   <Box
+     component="main"
      sx={{
-      position: 'fixed',
-      top: 24,
-      left: 24,
-      zIndex: 1200,
-      bgcolor: 'rgba(0, 0, 0, 0.06)',
-      '&:hover': {
-        bgcolor: 'rgba(0, 0, 0, 0.10)'
-      }
-    }}
-  >
-            <MenuIcon />
-          </IconButton>
-        )}
+       flexGrow: 1,
+       minWidth: 0,
+     }}
+   >
 
         <Container
           maxWidth={false}
