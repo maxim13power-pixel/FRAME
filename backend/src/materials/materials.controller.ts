@@ -34,7 +34,7 @@ export class MaterialsController {
     @Body(new ValidationPipe({ whitelist: true })) dto: CreateFixDto,
     @Req() req,
   ) {
-    return this.materialsService.addFix(id, dto, req.user.userId, req.user.userId);
+    return this.materialsService.addFix(id, dto, req.user.userId);
   }
 
   @Patch(':id/last-fix')
@@ -43,7 +43,7 @@ export class MaterialsController {
     @Body(new ValidationPipe({ whitelist: true })) dto: CreateFixDto,
     @Req() req,
   ) {
-    return this.materialsService.editLastFix(id, dto, req.user.userId, req.user.userId);
+    return this.materialsService.editLastFix(id, dto, req.user.userId);
   }
 
   @Patch(':id')

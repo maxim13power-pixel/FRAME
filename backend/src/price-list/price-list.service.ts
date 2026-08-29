@@ -1,3 +1,4 @@
+// backend/src/price-list/price-list.service.ts
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PriceKind, Unit } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -9,50 +10,65 @@ import { CreatePriceItemDto } from './dto/create-price-item.dto';
 export class PriceListService {
   constructor(private prisma: PrismaService) {}
 
-  // Все категории (для селектов)
-  async getCategories(kind?: string, orgId?: number) {
+  // ⭐ Хелпер: фильтр расценок — ОБЩИЕ (ownerId=null) + ЛИЧНЫЕ текущего юзера.
+  // Общий стартовый справочник виден всем; личный — только владельцу (ТЗ 3.7).
+  private ownerFilter(userId?: number) {
+    return userId
+      ? { OR: [{ ownerId: null }, { ownerId: userId }] }
+      : { ownerId: null };
+  }
+
+  // Все категории (для селектов). Категории ОБЩИЕ — без владельца.
+  async getCategories(kind?: string, userId?: number) {
     return this.prisma.priceCategory.findMany({
       where: {
         ...(kind ? { kind: kind as PriceKind } : {}),
-        ...(orgId ? { orgId } : {}),
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
   }
 
-  // Категории с активными расценками (для страницы справочника)
-  async getCategoriesWithItems(kind?: string, orgId?: number) {
+  // Категории с активными расценками (общие + личные юзера)
+  async getCategoriesWithItems(kind?: string, userId?: number) {
     return this.prisma.priceCategory.findMany({
       where: {
         ...(kind ? { kind: kind as PriceKind } : {}),
-        ...(orgId ? { orgId } : {}),
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: {
         items: {
-          where: { isActive: true, ...(kind ? { kind: kind as PriceKind } : {}) },
+          where: {
+            isActive: true,
+            ...(kind ? { kind: kind as PriceKind } : {}),
+            ...this.ownerFilter(userId),
+          },
           orderBy: { name: 'asc' },
         },
       },
     });
   }
 
-  // Поиск расценок (для Autocomplete в материалах)
-  async searchItems(search?: string, categoryId?: number, kind?: string, orgId?: number) {
+  // Поиск расценок (для Autocomplete в материалах): общие + личные юзера.
+  // ⭐ Через явный AND, чтобы OR владельца и OR поиска не затёрли друг друга.
+  async searchItems(search?: string, categoryId?: number, kind?: string, userId?: number) {
     return this.prisma.priceItem.findMany({
       where: {
-        isActive: true,
-        ...(kind ? { kind: kind as PriceKind } : {}),
-        ...(categoryId ? { categoryId } : {}),
-        ...(orgId ? { orgId } : {}),
-        ...(search
-          ? {
-              OR: [
-                { name: { contains: search, mode: 'insensitive' } },
-                { article: { contains: search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
+        AND: [
+          { isActive: true },
+          ...(kind ? [{ kind: kind as PriceKind }] : []),
+          ...(categoryId ? [{ categoryId }] : []),
+          this.ownerFilter(userId),
+          ...(search
+            ? [
+                {
+                  OR: [
+                    { name: { contains: search, mode: 'insensitive' as const } },
+                    { article: { contains: search, mode: 'insensitive' as const } },
+                  ],
+                },
+              ]
+            : []),
+        ],
       },
       include: { category: true },
       orderBy: { name: 'asc' },
@@ -60,23 +76,23 @@ export class PriceListService {
     });
   }
 
-  async createCategory(dto: CreateCategoryDto, orgId: number) {
+  // Создание категории (общая — без владельца)
+  async createCategory(dto: CreateCategoryDto, userId?: number) {
     return this.prisma.priceCategory.create({
       data: {
         name: dto.name.trim(),
         sortOrder: dto.sortOrder ?? 0,
         kind: (dto.kind as PriceKind) ?? 'WORK',
-        orgId,
       },
     });
   }
 
-    // Переименование категории
-  async updateCategory(id: number, dto: UpdateCategoryDto, orgId?: number) {
+  // Переименование категории (категории общие)
+  async updateCategory(id: number, dto: UpdateCategoryDto, userId?: number) {
     const category = await this.prisma.priceCategory.findFirst({
-      where: orgId ? { id, orgId } : { id },
+      where: { id },
     });
-    if (!category) throw new NotFoundException('Категория не найдена или нет доступа');
+    if (!category) throw new NotFoundException('Категория не найдена');
     return this.prisma.priceCategory.update({
       where: { id },
       data: { name: dto.name.trim() },
@@ -85,9 +101,9 @@ export class PriceListService {
 
   // Удаление категории — ТОЛЬКО если в ней нет АКТИВНЫХ расценок
   // (иначе Cascade удалил бы расценки, а нам это не надо)
-  async removeCategory(id: number, orgId?: number) {
+  async removeCategory(id: number, userId?: number) {
     const category = await this.prisma.priceCategory.findFirst({
-      where: orgId ? { id, orgId } : { id },
+      where: { id },
       include: {
         _count: {
           select: {
@@ -96,21 +112,22 @@ export class PriceListService {
         },
       },
     });
-    if (!category) throw new NotFoundException('Категория не найдена или нет доступа');
+    if (!category) throw new NotFoundException('Категория не найдена');
     if (category._count.items > 0) {
       throw new BadRequestException(
-        'Нельзя удалить категорию: в ней есть расценки. Сначала удалите или перенесите их.'
+        'Нельзя удалить категорию: в ней есть расценки. Сначала удалите или перенесите их.',
       );
     }
     return this.prisma.priceCategory.delete({ where: { id } });
   }
-  
-  async createItem(dto: CreatePriceItemDto, orgId: number) {
-    // Проверяем что категория принадлежит этой организации
+
+  // Создание расценки → в ЛИЧНЫЙ справочник юзера (ТЗ 3.7)
+  async createItem(dto: CreatePriceItemDto, userId?: number) {
+    // Проверяем что категория существует (категории общие)
     const category = await this.prisma.priceCategory.findFirst({
-      where: { id: dto.categoryId, orgId },
+      where: { id: dto.categoryId },
     });
-    if (!category) throw new NotFoundException('Категория не найдена или нет доступа');
+    if (!category) throw new NotFoundException('Категория не найдена');
 
     return this.prisma.priceItem.create({
       data: {
@@ -120,13 +137,15 @@ export class PriceListService {
         price: dto.price,
         categoryId: dto.categoryId,
         kind: (dto.kind as PriceKind) ?? 'WORK',
-        orgId,
+        ownerId: userId ?? null, // ⭐ личная расценка (ТЗ 3.7)
       },
     });
   }
-  async updateItem(id: number, dto: Partial<CreatePriceItemDto>, orgId?: number) {
+
+  // Обновление расценки: можно менять ОБЩИЕ и СВОИ расценки
+  async updateItem(id: number, dto: Partial<CreatePriceItemDto>, userId?: number) {
     const item = await this.prisma.priceItem.findFirst({
-      where: orgId ? { id, orgId } : { id },
+      where: { id, ...this.ownerFilter(userId) },
     });
     if (!item) throw new NotFoundException('Расценка не найдена или нет доступа');
     return this.prisma.priceItem.update({
@@ -140,10 +159,11 @@ export class PriceListService {
     });
   }
 
-  // Не удаляем, а деактивируем — старые сметы остаются нетронутыми
-  async removeItem(id: number, orgId?: number) {
+  // Не удаляем, а деактивируем — старые сметы остаются нетронутыми.
+  // Можно деактивировать ОБЩИЕ и СВОИ расценки.
+  async removeItem(id: number, userId?: number) {
     const item = await this.prisma.priceItem.findFirst({
-      where: orgId ? { id, orgId } : { id },
+      where: { id, ...this.ownerFilter(userId) },
     });
     if (!item) throw new NotFoundException('Расценка не найдена или нет доступа');
     return this.prisma.priceItem.update({
