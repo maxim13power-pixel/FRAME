@@ -6,12 +6,11 @@ import { DashboardService } from './dashboard.service';
 import type { DashboardSummaryDto } from './dashboard.types';
 
 @Controller('dashboard')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, OrgAccessGuard)
 export class DashboardController {
-  constructor(private readonly dashboard: DashboardService) {}
+  constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('summary')
-  @UseGuards(JwtAuthGuard, OrgAccessGuard)
   getSummary(@Req() req) {
     return this.dashboardService.getSummary(req.user.orgId);
   }

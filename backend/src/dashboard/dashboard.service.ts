@@ -56,8 +56,8 @@ export class DashboardService {
           COALESCE(SUM(m."totalUsed"), 0)::float                                  AS total_used,
           COALESCE(SUM(m."specQuantity"), 0)::float                               AS spec_quantity
         FROM materials m
-        INNER JOIN projects p ON p.id = m."projectId"
-        INNER JOIN objects o ON o.id = p."objectId"
+        INNER JOIN "Project" p ON p.id = m."projectId"
+        INNER JOIN "Object" o ON o.id = p."objectId"
         WHERE o."orgId" = ${orgId}
       `,
     ]);
@@ -68,13 +68,16 @@ export class DashboardService {
     const weekRows = await this.prisma.$queryRaw<WeekPointRow[]>`
       SELECT
         d::date                          AS day,
-        COALESCE(COUNT(mf.id), 0)::int   AS count
+        COALESCE(COUNT(o.id), 0)::int    AS count
       FROM generate_series(
         (${today}::timestamptz)::date - INTERVAL '6 days',
         (${today}::timestamptz)::date,
         INTERVAL '1 day'
       ) AS d
       LEFT JOIN material_fixes mf ON mf."fixedAt"::date = d
+      LEFT JOIN materials m ON m.id = mf."materialId"
+      LEFT JOIN "Project" p ON p.id = m."projectId"
+      LEFT JOIN "Object" o ON o.id = p."objectId" AND o."orgId" = ${orgId}
       GROUP BY d
       ORDER BY d
     `;
