@@ -8,25 +8,27 @@ export class ObjectsService {
   constructor(private prisma: PrismaService) {}
 
   // Создание объекта
-  async create(dto: CreateObjectDto) {
+  async create(dto: CreateObjectDto, orgId: number) {
     return this.prisma.object.create({
       data: {
         name: dto.name,
         address: dto.address,
         startDate: new Date(dto.startDate),
         endDate: new Date(dto.endDate),
-        plannedEndDate: dto.plannedEndDate 
-          ? new Date(dto.plannedEndDate) 
+        plannedEndDate: dto.plannedEndDate
+          ? new Date(dto.plannedEndDate)
           : new Date(dto.endDate),
         note: dto.note || null,
+        orgId,
       },
     });
   }
 
   // Получение всех объектов
   // Все объекты + честный % из материалов всех проектов
-  async findAll() {
+  async findAll(orgId: number) {
     const objects = await this.prisma.object.findMany({
+      where: { orgId },
       orderBy: { createdAt: 'desc' },
       include: {
         projects: {
@@ -38,6 +40,7 @@ export class ObjectsService {
         },
       },
     });
+
     return objects.map(o => {
       let sumSpec = 0;
       let sumUsed = 0;

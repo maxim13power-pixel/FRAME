@@ -17,7 +17,18 @@ export class MaterialsService {
   constructor(private prisma: PrismaService) {}
 
   // Все материалы проекта (с обеими расценками)
-  async findAllByProject(projectId: number) {
+  async findAllByProject(projectId: number, orgId: number) {
+    // Проверяем что проект принадлежит этой организации (через объект)
+    const project = await this.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        object: { orgId },
+      },
+    });
+    if (!project) {
+      throw new NotFoundException('Проект не найден или нет доступа');
+    }
+
     return this.prisma.material.findMany({
       where: { projectId },
       orderBy: { id: 'asc' },
@@ -26,9 +37,11 @@ export class MaterialsService {
   }
 
   // История фиксаций одного материала
-  async findFixes(materialId: number) {
-    const material = await this.prisma.material.findUnique({ where: { id: materialId } });
-    if (!material) throw new NotFoundException('Материал не найден');
+  async findFixes(materialId: number, orgId: number) {
+    const material = await this.prisma.material.findFirst({
+      where: { id: materialId, project: { object: { orgId } } },
+    });
+    if (!material) throw new NotFoundException('Материал не найден или нет доступа');
     return this.prisma.materialFix.findMany({
       where: { materialId },
       orderBy: { fixedAt: 'desc' },
@@ -36,9 +49,15 @@ export class MaterialsService {
   }
 
   // Создание материала (+ snapshot цен работы и материала)
-  async create(dto: CreateMaterialDto) {
-    const project = await this.prisma.project.findUnique({ where: { id: dto.projectId } });
-    if (!project) throw new NotFoundException('Проект не найден');
+  async create(dto: CreateMaterialDto, orgId: number) {
+    // Проверяем что проект принадлежит этой организации
+    const project = await this.prisma.project.findFirst({
+      where: {
+        id: dto.projectId,
+        object: { orgId },
+      },
+    });
+    if (!project) throw new NotFoundException('Проект не найден или нет доступа');
 
     let unitPrice = 0;
     if (dto.priceItemId) {
@@ -78,12 +97,18 @@ export class MaterialsService {
   // ⭐ Фиксация объёма + пересчёт ОБЕИХ стоимостей
   // 🔒 Race condition fix (аудит 3.2): SELECT ... FOR UPDATE внутри транзакции —
   // две параллельные фиксации сериализуются на строке материала и больше не теряют апдейт.
-  async addFix(materialId: number, dto: CreateFixDto, userId?: number | null) {
+  async addFix(materialId: number, dto: CreateFixDto, userId?: number | null, orgId?: number) {
     // Валидация ДО транзакции: заведомо битый запрос не должен занимать блокировку
     if (!dto.amount || dto.amount <= 0) {
       throw new BadRequestException('Объём фиксации должен быть больше нуля');
     }
-
+    // ⭐ Проверка доступа к материалу (материал принадлежит этой организации)
+    if (orgId) {
+      const material = await this.prisma.material.findFirst({
+        where: { id: materialId, project: { object: { orgId } } },
+      });
+      if (!material) throw new NotFoundException('Материал не найден или нет доступа');
+    }
     return this.prisma.$transaction(async (tx) => {
       // Блокируем строку материала: конкурентный addFix/editLastFix ждёт здесь, а не перезаписывает результат.
       // numeric-колонки Postgres приходят как Prisma.Decimal — поэтому ниже везде Number(...).
@@ -122,9 +147,13 @@ export class MaterialsService {
   }
 
   // Обновление спеки + пересчёт процента
-  async updateSpecQty(id: number, specQuantity: number) {
-    const material = await this.prisma.material.findUnique({ where: { id } });
-    if (!material) throw new NotFoundException('Материал не найден');
+  async updateSpecQty(id: number, specQuantity: number, orgId?: number) {
+    const material = await this.prisma.material.findFirst({
+      where: orgId
+        ? { id, project: { object: { orgId } } }
+        : { id },
+    });
+    if (!material) throw new NotFoundException('Материал не найден или нет доступа');
     const progress = specQuantity > 0
       ? Math.round((material.totalUsed / specQuantity) * 100)
       : 0;
@@ -136,9 +165,13 @@ export class MaterialsService {
   }
 
   // 🔒 Переключение защиты спецификации
-  async toggleSpecLock(id: number) {
-    const material = await this.prisma.material.findUnique({ where: { id } });
-    if (!material) throw new NotFoundException('Материал не найден');
+  async toggleSpecLock(id: number, orgId?: number) {
+    const material = await this.prisma.material.findFirst({
+      where: orgId
+        ? { id, project: { object: { orgId } } }
+        : { id },
+    });
+    if (!material) throw new NotFoundException('Материал не найден или нет доступа');
     return this.prisma.material.update({
       where: { id },
       data: { isSpecLocked: !material.isSpecLocked },
@@ -150,12 +183,18 @@ export class MaterialsService {
   // 🔒 Race condition fix (аудит 3.2): «последность» фиксации перепроверяется
   // ВНУТРИ транзакции под блокировкой материала — бригадир не может вклиниться
   // новой фиксацией, пока прораб сохраняет правку.
-  async editLastFix(id: number, dto: CreateFixDto, userId?: number | null) {
+  async editLastFix(id: number, dto: CreateFixDto, userId?: number | null, orgId?: number) {
     // Валидация ДО транзакции
     if (!dto.amount || dto.amount <= 0) {
       throw new BadRequestException('Объём должен быть больше нуля');
     }
-
+    // ⭐ Проверка доступа к материалу (материал принадлежит этой организации)
+    if (orgId) {
+      const material = await this.prisma.material.findFirst({
+        where: { id, project: { object: { orgId } } },
+      });
+      if (!material) throw new NotFoundException('Материал не найден или нет доступа');
+    }
     // Фиксация, которую пользователь видел последней при загрузке формы
     const expectedLastFix = await this.prisma.materialFix.findFirst({
       where: { materialId: id },
@@ -216,9 +255,14 @@ export class MaterialsService {
   }
 
   // ✏️ Полное редактирование (смена расценок работы и материала)
-  async update(id: number, dto: UpdateMaterialDto) {
-    const material = await this.prisma.material.findUnique({ where: { id } });
-    if (!material) throw new NotFoundException('Материал не найден');
+  async update(id: number, dto: UpdateMaterialDto, orgId?: number) {
+    // ⭐ Проверка доступа к материалу (материал принадлежит этой организации)
+    const material = await this.prisma.material.findFirst({
+      where: orgId
+        ? { id, project: { object: { orgId } } }
+        : { id },
+    });
+    if (!material) throw new NotFoundException('Материал не найден или нет доступа');
 
     // Смена расценки РАБОТЫ
     let unitPrice = material.unitPrice;
@@ -277,38 +321,38 @@ export class MaterialsService {
     });
   }
 
-    // ✨ Создать расценку (+ опционально новую категорию) в одном запросе
+  // ✨ Создать расценку (+ опционально новую категорию) в одном запросе
   async createPriceItemWithCategory(
     itemDto: CreatePriceItemDto,
     newCategoryName?: string,
     kind?: string,
+    orgId?: number,
   ) {
     let categoryId = itemDto.categoryId;
     // ⭐ Тип расценки: из параметра, из DTO, или WORK по умолчанию
     const kindValue: PriceKind = ((kind ?? itemDto.kind) as PriceKind) || 'WORK';
-
     if (newCategoryName && newCategoryName.trim()) {
       const existing = await this.prisma.priceCategory.findFirst({
-        where: { name: newCategoryName.trim(), kind: kindValue },
+        where: { name: newCategoryName.trim(), kind: kindValue, ...(orgId ? { orgId } : {}) },
       });
       if (existing) {
         categoryId = existing.id; // категория уже есть — используем её
       } else {
         try {
           const created = await this.prisma.priceCategory.create({
-            data: { name: newCategoryName.trim(), sortOrder: 0, kind: kindValue },
+            data: { name: newCategoryName.trim(), sortOrder: 0, kind: kindValue, orgId },
           });
           categoryId = created.id;
         } catch (e) {
           // 🔒 P2002-retry: два пользователя одновременно создали категорию —
           // второй ловит unique-конфликт, перечитываем и переиспользуем чужую категорию
-          if (
-            e instanceof Prisma.PrismaClientKnownRequestError &&
-            e.code === 'P2002'
-          ) {
-            const raced = await this.prisma.priceCategory.findFirst({
-              where: { name: newCategoryName.trim(), kind: kindValue },
-            });
+        if (
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002'
+        ) {
+          const raced = await this.prisma.priceCategory.findFirst({
+            where: { name: newCategoryName.trim(), kind: kindValue, ...(orgId ? { orgId } : {}) },
+          });
             if (!raced) throw e; // конфликт был, а категории нет — не маскируем чужую ошибку
             categoryId = raced.id;
           } else {
@@ -331,15 +375,20 @@ export class MaterialsService {
         price: itemDto.price,
         categoryId,
         kind: kindValue,
+        orgId,
       },
       include: { category: true },
     });
   }
 
   // Удаление (фиксации удалятся каскадно)
-  async remove(id: number) {
-    const material = await this.prisma.material.findUnique({ where: { id } });
-    if (!material) throw new NotFoundException('Материал не найден');
+  async remove(id: number, orgId?: number) {
+    const material = await this.prisma.material.findFirst({
+      where: orgId
+        ? { id, project: { object: { orgId } } }
+        : { id },
+    });
+    if (!material) throw new NotFoundException('Материал не найден или нет доступа');
     return this.prisma.material.delete({ where: { id } });
   }
 }

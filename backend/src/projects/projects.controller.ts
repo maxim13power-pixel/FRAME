@@ -1,24 +1,24 @@
-import { Controller, Get, Post, Body, Param, Patch, Delete, UseGuards, ParseIntPipe, ValidationPipe } from '@nestjs/common';
+//import { Controller, Get, Post, Body, Param, Patch, Delete, UseGuards, ParseIntPipe, ValidationPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Patch, Delete, UseGuards, ParseIntPipe, ValidationPipe, Put, Req } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-
+import { OrgAccessGuard } from '../auth/org-access.guard';
 @Controller('projects')
 @UseGuards(JwtAuthGuard)
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
-  //@Post()
-  //create(@Body() dto: CreateProjectDto) {
-    //return this.projectsService.create(dto);
-  //}
   @Post()
-  create(@Body(new ValidationPipe({ whitelist: true })) dto: CreateProjectDto) {
-    return this.projectsService.create(dto);
+  @UseGuards(JwtAuthGuard, OrgAccessGuard)
+  create(@Body() createProjectDto: CreateProjectDto, @Req() req) {
+    return this.projectsService.create(createProjectDto, req.user.orgId);
   }
-  @Get('object/:objectId')
-  findAllByObject(@Param('objectId', ParseIntPipe) objectId: number) {
-    return this.projectsService.findAllByObject(objectId);
+
+   @Get('object/:objectId')
+  @UseGuards(JwtAuthGuard, OrgAccessGuard)
+  findAllByObject(@Param('objectId', ParseIntPipe) objectId: number, @Req() req) {
+    return this.projectsService.findAllByObject(objectId, req.user.orgId);
   }
 
   @Get(':id')

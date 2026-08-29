@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { BadRequestException } from '@nestjs/common';
@@ -6,33 +6,47 @@ import { BadRequestException } from '@nestjs/common';
 export class ProjectsService {
   constructor(private prisma: PrismaService) {}
 
-async create(dto: CreateProjectDto) {
-  // Дополнительная проверка дат на уровне сервиса
-  const startDate = new Date(dto.startDate);
-  const endDate = new Date(dto.endDate);
+  async create(dto: CreateProjectDto, orgId: number) {
+    // Дополнительная проверка дат на уровне сервиса
+    const startDate = new Date(dto.startDate);
+    const endDate = new Date(dto.endDate);
+    if (isNaN(startDate.getTime())) {
+      throw new BadRequestException('Невалидная дата начала');
+    }
+    if (isNaN(endDate.getTime())) {
+      throw new BadRequestException('Невалидная дата окончания');
+    }
+    if (endDate < startDate) {
+      throw new BadRequestException('Дата окончания не может быть раньше даты начала');
+    }
+    // Проверяем что объект принадлежит этой организации
+    const object = await this.prisma.object.findFirst({
+      where: { id: dto.objectId, orgId },
+    });
+    if (!object) {
+      throw new NotFoundException('Объект не найден или нет доступа');
+    }
 
-  if (isNaN(startDate.getTime())) {
-    throw new BadRequestException('Невалидная дата начала');
-  }
-  if (isNaN(endDate.getTime())) {
-    throw new BadRequestException('Невалидная дата окончания');
-  }
-  if (endDate < startDate) {
-    throw new BadRequestException('Дата окончания не может быть раньше даты начала');
+    return this.prisma.project.create({
+      data: {
+        name: dto.name.trim(),
+        startDate,
+        endDate,
+        objectId: dto.objectId,
+        note: dto.note || null,
+      },
+    });
   }
 
-  return this.prisma.project.create({
-    data: {
-      name: dto.name.trim(),
-      startDate,
-      endDate,
-      objectId: dto.objectId,
-      note: dto.note || null,
-    },
-  });
-}
+  async findAllByObject(objectId: number, orgId: number) {
+    // Проверяем что объект принадлежит этой организации
+    const object = await this.prisma.object.findFirst({
+      where: { id: objectId, orgId },
+    });
+    if (!object) {
+      throw new NotFoundException('Объект не найден или нет доступа');
+    }
 
-  async findAllByObject(objectId: number) {
     const projects = await this.prisma.project.findMany({
       where: { objectId },
       orderBy: { createdAt: 'desc' },
@@ -40,6 +54,7 @@ async create(dto: CreateProjectDto) {
         materials: { select: { specQuantity: true, totalUsed: true, totalCost: true } },
       },
     });
+
     // ⭐ Честный процент: Σ Итого / Σ По спец × 100 по материалам проекта
     return projects.map(p => {
       const sumSpec = p.materials.reduce((a, m) => a + (m.specQuantity || 0), 0);
