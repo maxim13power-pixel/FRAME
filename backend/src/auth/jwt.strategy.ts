@@ -1,3 +1,4 @@
+// backend/src/auth/jwt.strategy.ts
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
@@ -13,12 +14,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
+    // ⭐ Новая модель: возвращаем только userId, email, phone, role.
+    //    Доступ к объектам проверяется отдельно в object-access.guard.ts.
     return {
       userId: payload.sub,
+      email: payload.email,
       phone: payload.phone,
       role: payload.role,
-      orgId: payload.orgId ?? null,
-      orgRole: payload.orgRole ?? null,
     };
   }
 }
