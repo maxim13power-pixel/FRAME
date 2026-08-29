@@ -14,18 +14,21 @@ datasource db {
  }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  phone     String   @unique
-  password  String
-  fullName  String
-  role      Role     @default(FOREMAN)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          Int             @id @default(autoincrement())
+  email       String          @unique
+  phone       String          @unique
+  password    String
+  fullName    String
+  role        Role            @default(FOREMAN)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  memberships OrgMembership[]
 }
 
 model Object {
-  id          Int      @id @default(autoincrement())
+  id          Int           @id @default(autoincrement())
+  orgId       Int?
+  org         Organization? @relation(fields: [orgId], references: [id])
   name        String
   address     String
   startDate   DateTime
@@ -127,7 +130,9 @@ model MaterialFix {
 }
 
 model PriceCategory {
-  id        Int         @id @default(autoincrement())
+  id        Int           @id @default(autoincrement())
+  orgId     Int?
+  org       Organization? @relation(fields: [orgId], references: [id])
   name      String
   sortOrder Int         @default(0)
   kind      PriceKind   @default(WORK)  // WORK = работы, MATERIAL = материалы
@@ -138,6 +143,8 @@ model PriceCategory {
 
 model PriceItem {
   id         Int           @id @default(autoincrement())
+  orgId      Int?
+  org        Organization? @relation(fields: [orgId], references: [id])
   name       String        // "Установка розетки"
   article    String?
   unit       Unit          @default(PIECE)
@@ -154,4 +161,37 @@ model PriceItem {
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
   @@map("price_items")
+}
+
+// ============================================================
+// МУЛЬТИ-ТЕНАНТНОСТЬ (задача 6.8)
+// ============================================================
+model Organization {
+  id              Int             @id @default(autoincrement())
+  name            String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  memberships     OrgMembership[]
+  objects         Object[]
+  priceCategories PriceCategory[]
+  priceItems      PriceItem[]
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model OrgMembership {
+  id        Int          @id @default(autoincrement())
+  userId    Int
+  orgId     Int
+  role      OrgRole      @default(MEMBER)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, orgId])
+  @@map("org_memberships")
 }
