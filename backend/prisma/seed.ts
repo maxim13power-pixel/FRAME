@@ -10,7 +10,7 @@
 //
 // TODO: orgId после мульти-тенантности — добавлять orgId на каждую запись.
 
-import { PrismaClient, Role, PriceKind, Unit } from '@prisma/client';
+import { PrismaClient, Role, PriceKind, Unit, OrgRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -449,6 +449,30 @@ async function main() {
   });
   console.log('  ✓ User foreman@frame.app');
 
+  // 1.5. Организация и membership (мульти-тенантность)
+  // findFirst вместо upsert: Organization.name НЕ @unique в схеме
+  let org = await prisma.organization.findFirst({
+    where: { name: `${SEED_TAG} Demo Org` },
+  });
+  if (!org) {
+    org = await prisma.organization.create({
+      data: { name: `${SEED_TAG} Demo Org` },
+    });
+  }
+  const foreman = await prisma.user.findUnique({ where: { email: 'foreman@frame.app' } });
+  await prisma.orgMembership.upsert({
+    where: { userId_orgId: { userId: foreman!.id, orgId: org.id } },
+    update: { role: OrgRole.OWNER },
+    create: {
+      userId: foreman!.id,
+      orgId: org.id,
+      role: OrgRole.OWNER,
+    },
+  });
+  console.log(`  ✓ Org id=${org.id}, membership OWNER`);
+
+  // 2. Очистка старых seed-данных (идемпотентность). Сначала фиксации, потом
+
   // 2. Очистка старых seed-данных (идемпотентность). Сначала фиксации, потом
   //    материалы (FK), затем проекты/объекты/расценки/категории.
   await prisma.$transaction([
@@ -465,14 +489,15 @@ async function main() {
   const workCategoryIds: number[] = [];
   for (let i = 0; i < WORK_CATEGORIES.length; i++) {
     const cat = WORK_CATEGORIES[i];
-    const created = await prisma.priceCategory.create({
-      data: {
-        name: `${SEED_TAG} ${cat.name}`,
-        kind: PriceKind.WORK,
-        sortOrder: i,
-      },
-    });
-    workCategoryIds.push(created.id);
+      const created = await prisma.priceCategory.create({
+        data: {
+          name: `${SEED_TAG} ${cat.name}`,
+          kind: PriceKind.WORK,
+          sortOrder: i,
+          orgId: org.id,
+        },
+      });
+      workCategoryIds.push(created.id);
 
     for (let j = 0; j < cat.items.length; j++) {
       const [name, unit, price] = cat.items[j];
@@ -485,6 +510,7 @@ async function main() {
           categoryId: created.id,
           article: `${SEED_ART}W-${String(i + 1).padStart(2, '0')}-${String(j + 1).padStart(3, '0')}`,
           isActive: true,
+          orgId: org.id,
         },
       });
     }
@@ -497,14 +523,15 @@ async function main() {
   const materialCategoryIds: number[] = [];
   for (let i = 0; i < MATERIAL_CATEGORIES.length; i++) {
     const cat = MATERIAL_CATEGORIES[i];
-    const created = await prisma.priceCategory.create({
-      data: {
-        name: `${SEED_TAG} ${cat.name}`,
-        kind: PriceKind.MATERIAL,
-        sortOrder: i,
-      },
-    });
-    materialCategoryIds.push(created.id);
+      const created = await prisma.priceCategory.create({
+        data: {
+          name: `${SEED_TAG} ${cat.name}`,
+          kind: PriceKind.MATERIAL,
+          sortOrder: i,
+          orgId: org.id,
+        },
+      });
+      materialCategoryIds.push(created.id);
 
     for (let j = 0; j < cat.items.length; j++) {
       const [name, unit, price] = cat.items[j];
@@ -517,6 +544,7 @@ async function main() {
           categoryId: created.id,
           article: `${SEED_ART}M-${String(i + 1).padStart(2, '0')}-${String(j + 1).padStart(3, '0')}`,
           isActive: true,
+          orgId: org.id,
         },
       });
     }
@@ -541,6 +569,7 @@ async function main() {
       startDate: plus(-30),
       endDate: plus(120),
       note: 'Демо-объект для проверки дашборда',
+      orgId: org.id,
     },
   });
   console.log(`  ✓ Object id=${obj.id}`);

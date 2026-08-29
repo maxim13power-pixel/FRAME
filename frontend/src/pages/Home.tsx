@@ -77,9 +77,17 @@ const Home: React.FC = () => {
 
   return (
     <Box sx={{ maxWidth: 1000, mx: 'auto', width: '100%' }}>
-      {/* ─── 1. HERO: ДЕНЬГИ ─── */}
-      <Paper sx={{ p: 2, borderRadius: 2, mb: 2, borderLeft: '4px solid #1976d2' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+     {/* ─── 1. HERO: ДЕНЬГИ (кликабельный → в Объекты) ─── */}
+    <Paper
+      onClick={() => navigate('/objects')}
+      sx={{
+        p: 2, borderRadius: 2, mb: 2, borderLeft: '4px solid #1976d2',
+        cursor: 'pointer',
+        transition: 'box-shadow 0.3s, transform 0.3s',
+        '&:hover': { boxShadow: 4, transform: 'translateY(-2px)' },
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
           <AccountBalanceWalletIcon sx={{ fontSize: 20, color: '#1976d2' }} />
           <Typography variant="subtitle1" fontWeight={700}>Деньги по всем объектам</Typography>
         </Box>
