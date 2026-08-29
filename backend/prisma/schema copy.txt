@@ -1,5 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 // Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
@@ -10,7 +11,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-}
+schema copy }
 
 model User {
   id          Int             @id @default(autoincrement())
@@ -21,28 +22,22 @@ model User {
   role        Role            @default(FOREMAN)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
-  
-  // Новые связи вместо Organization
-  objectAccesses    ObjectAccess[]
-  proposedChanges   ChangeRequest[]  @relation("ProposedChanges")
-  reviewedChanges   ChangeRequest[]  @relation("ReviewedChanges")
-  ownedPriceItems   PriceItem[]
+  memberships OrgMembership[]
 }
 
 model Object {
-  id              Int           @id @default(autoincrement())
-  name            String
-  address         String
-  startDate       DateTime
-  endDate         DateTime
-  plannedEndDate  DateTime?     // первоначальная плановая дата
-  isArchived      Boolean       @default(false) // Архив вместо удаления (P3)
-  note            String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  
-  projects        Project[]
-  accesses        ObjectAccess[] // Кто имеет доступ к объекту
+  id          Int           @id @default(autoincrement())
+  orgId       Int?
+  org         Organization? @relation(fields: [orgId], references: [id])
+  name        String
+  address     String
+  startDate   DateTime
+  endDate     DateTime
+  plannedEndDate  DateTime?  // ← ДОБАВИТЬ: первоначальная плановая дата
+  note        String?      // ← ЗАМЕТКА ОБЪЕКТА
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  projects    Project[]
 }
 
 model Project {
@@ -53,11 +48,10 @@ model Project {
   objectId    Int
   object      Object   @relation(fields: [objectId], references: [id], onDelete: Cascade)
   materials   Material[]
-  changeRequests ChangeRequest[] // Согласования на уровне проекта
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  note        String?
-
+  note        String?  // ← ЗАМЕТКА ПРОЕКТА
+  // TODO: таблица работ/материалов будет привязана к проекту
   @@index([endDate])
 }
 
@@ -98,26 +92,24 @@ model Material {
   note            String?
   progressPercent Float          @default(0)  // % выполнения
   isSpecLocked    Boolean        @default(true) // защита спецификации
-
+  
   // Работы (из справочника "Цены на работы")
   priceItemId     Int?
   priceItem       PriceItem?     @relation("WorkPrice", fields: [priceItemId], references: [id], onDelete: SetNull)
   unitPrice       Float          @default(0)  // SNAPSHOT цены работы
   totalCost       Float          @default(0)  // totalUsed × unitPrice (работы на тек. момент)
-
+  
   // Материалы (из справочника "Цены на материалы")
   materialItemId  Int?
   materialItem    PriceItem?     @relation("MaterialPrice", fields: [materialItemId], references: [id], onDelete: SetNull)
   materialUnitPrice Float        @default(0)  // SNAPSHOT цены материала
   materialTotalCost Float        @default(0)  // totalUsed × materialUnitPrice (материалы на тек. момент)
-
+  
   projectId       Int
   project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   fixes           MaterialFix[]  // история всех фиксаций
-  changeRequests  ChangeRequest[] // Согласования по конкретному материалу
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
-
   @@index([projectId])
   @@map("materials")
 }
@@ -129,10 +121,9 @@ model MaterialFix {
   amount      Float     // объём этой фиксации
   note        String?   // примечание к фиксации
   fixedAt     DateTime  @default(now())  // когда зафиксировано
-  userId      Int?      // кто зафиксировал
-  isEdited    Boolean   @default(false)
-  editedAt    DateTime?
-
+  userId      Int?      // кто зафиксировал (опционально, пока оставим)
+  isEdited    Boolean   @default(false) // правили ли в 72-часовом окне
+  editedAt    DateTime? // когда правили
   @@index([fixedAt])
   @@index([materialId, fixedAt])
   @@map("material_fixes")
@@ -140,83 +131,67 @@ model MaterialFix {
 
 model PriceCategory {
   id        Int           @id @default(autoincrement())
+  orgId     Int?
+  org       Organization? @relation(fields: [orgId], references: [id])
   name      String
-  sortOrder Int           @default(0)
-  kind      PriceKind     @default(WORK)
+  sortOrder Int         @default(0)
+  kind      PriceKind   @default(WORK)  // WORK = работы, MATERIAL = материалы
   items     PriceItem[]
-
   @@unique([name, kind])
   @@map("price_categories")
 }
 
 model PriceItem {
   id         Int           @id @default(autoincrement())
-  ownerId    Int?          // null = общий стартовый справочник, userId = личный приватный (3.7)
-  owner      User?         @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  name       String
+  orgId      Int?
+  org        Organization? @relation(fields: [orgId], references: [id])
+  name       String        // "Установка розетки"
   article    String?
   unit       Unit          @default(PIECE)
   price      Float         @default(0)
   categoryId Int
   category   PriceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  isActive   Boolean       @default(true)
-  kind       PriceKind     @default(WORK)
-
+  isActive   Boolean       @default(true)  // устаревшие расценки скрываем
+  kind       PriceKind    @default(WORK)  // WORK = работы, MATERIAL = материалы
+  
   // Связи: работа или материал
   workMaterials     Material[]  @relation("WorkPrice")
   materialMaterials Material[]  @relation("MaterialPrice")
+  
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
-
   @@map("price_items")
 }
 
 // ============================================================
-// НОВАЯ МОДЕЛЬ ДОСТУПА И СОГЛАСОВАНИЙ (Вместо Organization)
+// МУЛЬТИ-ТЕНАНТНОСТЬ (задача 6.8)
 // ============================================================
-
-enum AccessRole {
-  CUSTOMER // Заказчик — утверждает, видит всё, платит
-  FOREMAN  // Прораб — добавляет/фиксирует, его изменения на согласовании
-  VIEWER   // Наблюдатель — видит прогресс и количества, БЕЗ денег
+model Organization {
+  id              Int             @id @default(autoincrement())
+  name            String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  memberships     OrgMembership[]
+  objects         Object[]
+  priceCategories PriceCategory[]
+  priceItems      PriceItem[]
 }
 
-model ObjectAccess {
-  id        Int        @id @default(autoincrement())
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model OrgMembership {
+  id        Int          @id @default(autoincrement())
   userId    Int
-  objectId  Int
-  projectId Int?       // null = весь объект, иначе конкретный проект
-  role      AccessRole @default(FOREMAN)
-  invitedBy Int?
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  object    Object     @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  createdAt DateTime   @default(now())
+  orgId     Int
+  role      OrgRole      @default(MEMBER)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
 
-  @@unique([userId, objectId, projectId])
-  @@map("object_access")
-}
-
-enum ChangeStatus {
-  PENDING  // Ждет согласования (розовая идея)
-  APPROVED // Утверждено (входит в сумму)
-  REJECTED // Отклонено (не входит в сумму, но строка видна прорабу)
-}
-
-model ChangeRequest {
-  id          Int          @id @default(autoincrement())
-  projectId   Int
-  materialId  Int?
-  type        String       // ADD_ROW / CHANGE_QTY / CHANGE_PRICE
-  payload     Json         // Контекст изменения
-  status      ChangeStatus @default(PENDING)
-  proposedBy  Int          // прораб
-  reviewedBy  Int?         // заказчик
-  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  material    Material?    @relation(fields: [materialId], references: [id], onDelete: SetNull)
-  proposer    User         @relation("ProposedChanges", fields: [proposedBy], references: [id], onDelete: Cascade)
-  reviewer    User?        @relation("ReviewedChanges", fields: [reviewedBy], references: [id], onDelete: SetNull)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-
-  @@map("change_requests")
+  @@unique([userId, orgId])
+  @@map("org_memberships")
 }
