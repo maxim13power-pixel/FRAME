@@ -1,13 +1,43 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+// backend/src/projects/projects.service.ts
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { AccessRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
-import { BadRequestException } from '@nestjs/common';
+
 @Injectable()
 export class ProjectsService {
   constructor(private prisma: PrismaService) {}
 
-  async create(dto: CreateProjectDto, orgId: number) {
-    // Дополнительная проверка дат на уровне сервиса
+  // ⭐ Хелпер: проверяет доступ к объекту. Кидает 403 если доступа нет.
+  private async checkObjectAccess(objectId: number, userId: number) {
+    const access = await this.prisma.objectAccess.findFirst({
+      where: { userId, objectId },
+    });
+    if (!access) {
+      throw new ForbiddenException('Нет доступа к этому объекту');
+    }
+    return access;
+  }
+
+  // ⭐ Хелпер: проверяет доступ к объекту ЧЕРЕЗ проект (находит objectId проекта)
+  private async checkProjectAccess(projectId: number, userId: number) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { objectId: true },
+    });
+    if (!project) {
+      throw new NotFoundException('Проект не найден');
+    }
+    return this.checkObjectAccess(project.objectId, userId);
+  }
+
+  async create(dto: CreateProjectDto, userId: number) {
+    // Валидация дат на уровне сервиса
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
     if (isNaN(startDate.getTime())) {
@@ -19,12 +49,12 @@ export class ProjectsService {
     if (endDate < startDate) {
       throw new BadRequestException('Дата окончания не может быть раньше даты начала');
     }
-    // Проверяем что объект принадлежит этой организации
-    const object = await this.prisma.object.findFirst({
-      where: { id: dto.objectId, orgId },
-    });
-    if (!object) {
-      throw new NotFoundException('Объект не найден или нет доступа');
+
+    // ⭐ Проверяем доступ к объекту (вместо старой проверки по организации)
+    const access = await this.checkObjectAccess(dto.objectId, userId);
+    // Наблюдатель не может создавать проекты
+    if (access.role === AccessRole.VIEWER) {
+      throw new ForbiddenException('Наблюдатель не может создавать проекты');
     }
 
     return this.prisma.project.create({
@@ -38,14 +68,9 @@ export class ProjectsService {
     });
   }
 
-  async findAllByObject(objectId: number, orgId: number) {
-    // Проверяем что объект принадлежит этой организации
-    const object = await this.prisma.object.findFirst({
-      where: { id: objectId, orgId },
-    });
-    if (!object) {
-      throw new NotFoundException('Объект не найден или нет доступа');
-    }
+  async findAllByObject(objectId: number, userId: number) {
+    // ⭐ Проверяем доступ к объекту
+    await this.checkObjectAccess(objectId, userId);
 
     const projects = await this.prisma.project.findMany({
       where: { objectId },
@@ -56,7 +81,7 @@ export class ProjectsService {
     });
 
     // ⭐ Честный процент: Σ Итого / Σ По спец × 100 по материалам проекта
-    return projects.map(p => {
+    return projects.map((p) => {
       const sumSpec = p.materials.reduce((a, m) => a + (m.specQuantity || 0), 0);
       const sumUsed = p.materials.reduce((a, m) => a + (m.totalUsed || 0), 0);
       const sumCost = p.materials.reduce((a, m) => a + (m.totalCost || 0), 0);
@@ -69,7 +94,11 @@ export class ProjectsService {
     });
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, userId?: number) {
+    // Если пришёл userId — проверяем доступ
+    if (userId) {
+      await this.checkProjectAccess(id, userId);
+    }
     const project = await this.prisma.project.findUnique({
       where: { id },
       include: {
@@ -77,6 +106,7 @@ export class ProjectsService {
       },
     });
     if (!project) return null;
+
     const sumSpec = project.materials.reduce((a, m) => a + (m.specQuantity || 0), 0);
     const sumUsed = project.materials.reduce((a, m) => a + (m.totalUsed || 0), 0);
     const sumCost = project.materials.reduce((a, m) => a + (m.totalCost || 0), 0);
@@ -88,7 +118,13 @@ export class ProjectsService {
     };
   }
 
-  async update(id: number, dto: Partial<CreateProjectDto>) {
+  async update(id: number, dto: Partial<CreateProjectDto>, userId?: number) {
+    if (userId) {
+      const access = await this.checkProjectAccess(id, userId);
+      if (access.role === AccessRole.VIEWER) {
+        throw new ForbiddenException('Наблюдатель не может редактировать проекты');
+      }
+    }
     await this.prisma.project.update({
       where: { id },
       data: {
@@ -102,7 +138,13 @@ export class ProjectsService {
     return this.findOne(id);
   }
 
-  async remove(id: number) {
+  async remove(id: number, userId?: number) {
+    if (userId) {
+      const access = await this.checkProjectAccess(id, userId);
+      if (access.role === AccessRole.VIEWER) {
+        throw new ForbiddenException('Наблюдатель не может удалять проекты');
+      }
+    }
     return this.prisma.project.delete({ where: { id } });
   }
 }
