@@ -1,6 +1,6 @@
+// backend/src/materials/materials.controller.ts
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards, ValidationPipe } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { OrgAccessGuard } from '../auth/org-access.guard';
 import { MaterialsService } from './materials.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
@@ -9,23 +9,23 @@ import { UpdateSpecQtyDto } from './dto/update-spec-qty.dto';
 import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
 
 @Controller('materials')
-@UseGuards(JwtAuthGuard, OrgAccessGuard)
+@UseGuards(JwtAuthGuard)
 export class MaterialsController {
   constructor(private readonly materialsService: MaterialsService) {}
 
   @Get('project/:projectId')
   findAllByProject(@Param('projectId', ParseIntPipe) projectId: number, @Req() req) {
-    return this.materialsService.findAllByProject(projectId, req.user.orgId);
+    return this.materialsService.findAllByProject(projectId, req.user.userId);
   }
 
   @Get(':id/fixes')
   findFixes(@Param('id', ParseIntPipe) id: number, @Req() req) {
-    return this.materialsService.findFixes(id, req.user.orgId);
+    return this.materialsService.findFixes(id, req.user.userId);
   }
 
   @Post()
   create(@Body(new ValidationPipe({ whitelist: true })) dto: CreateMaterialDto, @Req() req) {
-    return this.materialsService.create(dto, req.user.orgId);
+    return this.materialsService.create(dto, req.user.userId);
   }
 
   @Post(':id/fix')
@@ -34,7 +34,7 @@ export class MaterialsController {
     @Body(new ValidationPipe({ whitelist: true })) dto: CreateFixDto,
     @Req() req,
   ) {
-    return this.materialsService.addFix(id, dto, req.user.userId, req.user.orgId);
+    return this.materialsService.addFix(id, dto, req.user.userId, req.user.userId);
   }
 
   @Patch(':id/last-fix')
@@ -43,7 +43,7 @@ export class MaterialsController {
     @Body(new ValidationPipe({ whitelist: true })) dto: CreateFixDto,
     @Req() req,
   ) {
-    return this.materialsService.editLastFix(id, dto, req.user.userId, req.user.orgId);
+    return this.materialsService.editLastFix(id, dto, req.user.userId, req.user.userId);
   }
 
   @Patch(':id')
@@ -52,7 +52,7 @@ export class MaterialsController {
     @Body(new ValidationPipe({ whitelist: true })) dto: UpdateMaterialDto,
     @Req() req,
   ) {
-    return this.materialsService.update(id, dto, req.user.orgId);
+    return this.materialsService.update(id, dto, req.user.userId);
   }
 
   @Post('price-item')
@@ -68,7 +68,7 @@ export class MaterialsController {
       body.item,
       body.newCategoryName,
       body.kind,
-      req.user.orgId,
+      req.user.userId,
     );
   }
 
@@ -78,16 +78,16 @@ export class MaterialsController {
     @Body(new ValidationPipe({ whitelist: true })) dto: UpdateSpecQtyDto,
     @Req() req,
   ) {
-    return this.materialsService.updateSpecQty(id, dto.specQuantity, req.user.orgId);
+    return this.materialsService.updateSpecQty(id, dto.specQuantity, req.user.userId);
   }
 
   @Patch(':id/lock')
   toggleLock(@Param('id', ParseIntPipe) id: number, @Req() req) {
-    return this.materialsService.toggleSpecLock(id, req.user.orgId);
+    return this.materialsService.toggleSpecLock(id, req.user.userId);
   }
 
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req) {
-    return this.materialsService.remove(id, req.user.orgId);
+    return this.materialsService.remove(id, req.user.userId);
   }
 }
