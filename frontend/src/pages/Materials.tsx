@@ -1131,15 +1131,31 @@ onClose={() => setFilterAnchorEl(null)}
                     </Typography>
                   </Box>
                 </Box>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  size="small"
-                  onClick={() => handleOpenFixModal(m)}
-                  sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' } }}
-                >
-                  + Зафиксировать объём
-                </Button>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setInfoModal({ open: true, text: '📷 Раздел фото в разработке — появится в версии 2' })}
+                aria-label="Фотофиксация"
+                sx={{
+                  minWidth: 48,
+                  color: '#757575',
+                  borderColor: '#bdbdbd',
+                  '&:hover': { borderColor: '#757575', bgcolor: 'rgba(0,0,0,0.04)' },
+                }}
+              >
+                <CameraAltIcon fontSize="small" />
+              </Button>
+              <Button
+                fullWidth
+                variant="contained"
+                size="small"
+                onClick={() => handleOpenFixModal(m)}
+                sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' } }}
+              >
+                + Зафиксировать объём
+              </Button>
+            </Box>
               </Paper>
             ))
           ) : (
@@ -1152,16 +1168,55 @@ onClose={() => setFilterAnchorEl(null)}
         </Stack>
       )}
 
-      {/* FAB для мобилки */}
-      {isMobile && (
-        <Fab
-          color="primary"
-          sx={{ position: 'fixed', bottom: 80, right: 16, zIndex: 1000 }}
-          onClick={handleOpenAddModal}
-        >
-          <AddIcon />
-        </Fab>
-      )}
+  {/* ⭐ 6.7 Липкая плашка итогов (Смета / Факт / %) внизу на мобилке */}
+  {isMobile && (
+    <Paper
+      elevation={8}
+      sx={{
+        position: 'fixed',
+        bottom: 64,
+        left: 8,
+        right: 8,
+        zIndex: 1100,
+        borderRadius: 2,
+        bgcolor: '#fff',
+        px: 2,
+        py: 1,
+        border: '1px solid #e0e0e0',
+      }}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ textAlign: 'left' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Смета</Typography>
+          <Typography variant="body2" fontWeight={700}>
+            {totals.sumEstimate.toLocaleString('ru-RU')} ₽
+          </Typography>
+        </Box>
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Факт</Typography>
+          <Typography variant="body2" fontWeight={700} color="#1976d2">
+            {totals.sumCurrentTotal.toLocaleString('ru-RU')} ₽
+          </Typography>
+        </Box>
+        <Box sx={{ textAlign: 'right' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Освоено</Typography>
+          <Typography variant="body2" fontWeight={700} color={totals.weightedPercent >= 100 ? '#4caf50' : '#ef6c00'}>
+            {totals.weightedPercent}%
+          </Typography>
+        </Box>
+      </Box>
+    </Paper>
+  )}
+  {/* FAB для мобилки (поднят выше плашки итогов) */}
+  {isMobile && (
+    <Fab
+      color="primary"
+      sx={{ position: 'fixed', bottom: 130, right: 16, zIndex: 1000 }}
+      onClick={handleOpenAddModal}
+    >
+      <AddIcon />
+    </Fab>
+  )}
 
       {/* Модалка добавления материала */}
       <Modal open={addModalOpen} onClose={handleCloseAddModal} disableRestoreFocus>

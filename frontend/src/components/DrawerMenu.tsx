@@ -39,7 +39,7 @@ const menuItems = [
 const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) => {
   return (
     <Drawer anchor="left" open={open} onClose={onClose}>
-      <Box sx={{ width: 250, pt: 2 }}>
+      <Box sx={{ width: 250, pt: 1 }}>
         {/* ⭐ Шапка: логотип + кнопка скрытия (как на десктопе) */}
         <Box sx={{ px: 2, pb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Logo size="small" />

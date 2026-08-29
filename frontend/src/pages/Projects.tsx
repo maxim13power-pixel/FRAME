@@ -416,9 +416,10 @@ const handleSaveNote = async () => {
     </IconButton>
   ) : undefined, [isMobile, sortBy]);
 
-  useMobileHeader({
-    title: 'Проекты',
-    onBack: () => navigate('/objects'),
+useMobileHeader({
+title: 'Проекты',
+editableKey: 'frame_title_projects',
+onBack: () => navigate('/objects'),
     searchOpen: mobileSearchOpen,
     searchValue: searchQuery,
     searchPlaceholder: 'Поиск проектов...',

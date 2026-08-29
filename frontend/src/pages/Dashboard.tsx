@@ -68,7 +68,7 @@ const location = useLocation();
   };
 
   const handleLogoClick = () => {
-    window.open('https://t.me/frame_inf', '_blank');
+    window.open('https://max.ru/channel_fram', '_blank');
   };
 
 
