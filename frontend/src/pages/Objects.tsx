@@ -86,6 +86,10 @@ const Objects: React.FC = () => {
   const [noteModalOpen, setNoteModalOpen] = useState(false);
   const [editingNoteObject, setEditingNoteObject] = useState<ObjectData | null>(null);
   const [editNote, setEditNote] = useState('');
+  // ⭐ Роль создателя объекта (по умолчанию — Заказчик)
+  const [createRole, setCreateRole] = useState<'CUSTOMER' | 'FOREMAN'>('CUSTOMER');
+  // ⭐ Модалка-предупреждение при создании в роли Прораба
+  const [foremanConfirmOpen, setForemanConfirmOpen] = useState(false);
 
   // Загрузка объектов при монтировании
 useEffect(() => {
@@ -149,33 +153,47 @@ const filteredAndSortedObjects = useMemo(() => {
     setNewAddress('');
     setNewStartDate('');
     setNewEndDate('');
+    setCreateRole('CUSTOMER');      // ⭐ сброс роли
+    setForemanConfirmOpen(false);
   };
-const handleCreateObject = async () => {
-  if (!token || !newName || !newAddress || !newStartDate || !newEndDate) {
-    alert('Заполните все поля');
-    return;
-  }
-  
-  // ↓↓↓ ВАЛИДАЦИЯ ДАТ ↓↓↓
-  if (new Date(newEndDate) < new Date(newStartDate)) {
-    alert('❌ Дата окончания не может быть раньше даты начала!');
-    return;
-  }
-  // ↑↑↑ КОНЕЦ ВАЛИДАЦИИ ↑↑↑
-  
-  try {
-    const created = await createObject(token, {
-      name: newName,
-      address: newAddress,
-      startDate: newStartDate,
-      endDate: newEndDate,
-    });
-    setObjects(prev => [created, ...prev]);
-    handleCloseAddModal();
-  } catch (err: any) {
-    alert('Ошибка при создании объекта: ' + (err.response?.data?.message || err.message));
-  }
-};
+  // ⭐ Реальное создание (вызывается напрямую для Заказчика
+  //    или после подтверждения в модалке для Прораба)
+  const doCreateObject = async () => {
+    if (!token) return;
+    try {
+      const created = await createObject(token, {
+        name: newName,
+        address: newAddress,
+        startDate: newStartDate,
+        endDate: newEndDate,
+        role: createRole, // ⭐ передаём роль на бэкенд
+      });
+      setObjects(prev => [created, ...prev]);
+      setForemanConfirmOpen(false);
+      handleCloseAddModal();
+    } catch (err: any) {
+      alert('Ошибка при создании объекта: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  // ⭐ Точка входа: Прораб → сначала предупреждение, Заказчик → сразу создаём
+  const handleCreateObject = async () => {
+    if (!token || !newName || !newAddress || !newStartDate || !newEndDate) {
+      alert('Заполните все поля');
+      return;
+    }
+    // ↓↓↓ ВАЛИДАЦИЯ ДАТ ↓↓↓
+    if (new Date(newEndDate) < new Date(newStartDate)) {
+      alert('❌ Дата окончания не может быть раньше даты начала!');
+      return;
+    }
+    // ↑↑↑ КОНЕЦ ВАЛИДАЦИИ ↑↑↑
+    if (createRole === 'FOREMAN') {
+      setForemanConfirmOpen(true); // Прораб создаёт для заказчика → предупреждаем (ТЗ 3.4)
+      return;
+    }
+    await doCreateObject();
+  };
   
     const handleOpenEdit = (obj: ObjectData) => {
     setEditingObject(obj);
@@ -575,23 +593,43 @@ trailing: headerTrailing,
               onChange={(e) => setNewStartDate(e.target.value)}
               required
             />
-            <TextField
-              fullWidth
-              label="Дата окончания"
-              type="date"
-              InputLabelProps={{ shrink: true }}
-              value={newEndDate}
-              onChange={(e) => setNewEndDate(e.target.value)}
-              required
-            />
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
-              <Button variant="outlined" onClick={handleCloseAddModal}>
-                Отмена
-              </Button>
-              <Button variant="contained" onClick={handleCreateObject}>
-                Сохранить
-              </Button>
-            </Box>
+         <TextField
+           fullWidth
+           label="Дата окончания"
+           type="date"
+           InputLabelProps={{ shrink: true }}
+           value={newEndDate}
+           onChange={(e) => setNewEndDate(e.target.value)}
+           required
+         />
+
+         {/* ⭐ В какой роли создаёшь объект? (ТЗ 3.4) */}
+         <FormControl fullWidth>
+           <InputLabel id="create-role-label">В какой роли создаёшь?</InputLabel>
+           <Select
+             labelId="create-role-label"
+             value={createRole}
+             label="В какой роли создаёшь?"
+             onChange={(e) => setCreateRole(e.target.value as 'CUSTOMER' | 'FOREMAN')}
+           >
+             <MenuItem value="CUSTOMER">👑 Я Заказчик (хозяин объекта)</MenuItem>
+             <MenuItem value="FOREMAN">👷 Я Прораб (работаю на заказчика)</MenuItem>
+           </Select>
+           <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+             {createRole === 'CUSTOMER'
+               ? 'Заказчик: платит, утверждает сметы, видит все цены. Объект будет принадлежать вам.'
+               : 'Прораб: ведёт работы и фиксирует объёмы. Вы создаёте объект для заказчика и пригласите его.'}
+           </Typography>
+         </FormControl>
+
+         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
+           <Button variant="outlined" onClick={handleCloseAddModal}>
+             Отмена
+           </Button>
+           <Button variant="contained" onClick={handleCreateObject}>
+             Сохранить
+           </Button>
+         </Box>
           </Stack>
         </Paper>
       </Modal>
@@ -751,14 +789,52 @@ trailing: headerTrailing,
 >
               Отмена
             </Button>
-            <Button variant="contained" color="error" onClick={handleDeleteObject}>
-              Удалить
-            </Button>
-          </Box>
-        </Paper>
-      </Modal>
-    </Box>
-  );
-};
+        <Button variant="contained" color="error" onClick={handleDeleteObject}>
+          Удалить
+        </Button>
+      </Box>
+    </Paper>
+  </Modal>
 
+  {/* ⭐ Модалка-предупреждение: создание объекта в роли Прораба (ТЗ 3.4) */}
+  <Modal open={foremanConfirmOpen} onClose={() => setForemanConfirmOpen(false)}>
+    <Paper
+      sx={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: { xs: '90%', sm: 420 },
+        p: 3,
+        borderRadius: 2,
+        outline: 'none',
+      }}
+    >
+      <Typography variant="h6" gutterBottom>
+        👷 Создаёте объект в роли Прораб?
+      </Typography>
+      <Typography sx={{ mb: 2 }}>
+        Вы создаёте объект <b>для заказчика</b>. После создания:
+      </Typography>
+      <Box component="ul" sx={{ pl: 3, mb: 2, '& li': { mb: 0.5 } }}>
+        <li>Смета и цены будут видны приглашённому заказчику;</li>
+        <li>Ваши изменения потребуют его согласования;</li>
+        <li>Вы сможете пригласить заказчика на следующем шаге.</li>
+      </Box>
+      <Typography sx={{ mb: 3 }} color="text.secondary" variant="body2">
+        Если вы сами хозяин объекта — вернитесь и выберите роль «Заказчик».
+      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+        <Button variant="outlined" onClick={() => setForemanConfirmOpen(false)}>
+          Назад
+        </Button>
+        <Button variant="contained" onClick={doCreateObject}>
+          Да, создаю как Прораб
+        </Button>
+      </Box>
+    </Paper>
+  </Modal>
+</Box>
+);
+};
 export default Objects;

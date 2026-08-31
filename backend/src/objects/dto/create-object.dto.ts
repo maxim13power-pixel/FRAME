@@ -1,5 +1,4 @@
-import { IsString, IsNotEmpty, IsDateString, IsOptional, MaxLength } from 'class-validator';
-
+import { IsString, IsNotEmpty, IsDateString, IsOptional, MaxLength, IsIn } from 'class-validator';
 export class CreateObjectDto {
   @IsString()
   @IsNotEmpty({ message: 'Название объекта обязательно' })
@@ -25,4 +24,9 @@ export class CreateObjectDto {
   @IsString()
   @MaxLength(1000, { message: 'Заметка не более 1000 символов' })
   note?: string;
+
+  // ⭐ Роль создателя объекта: Заказчик или Прораб (ТЗ 3.4)
+  @IsOptional()
+  @IsIn(['CUSTOMER', 'FOREMAN'], { message: 'Роль должна быть CUSTOMER или FOREMAN' })
+  role?: 'CUSTOMER' | 'FOREMAN';
 }
