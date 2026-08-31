@@ -19,7 +19,7 @@ import AnalyticsIcon from '@mui/icons-material/Analytics';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import PeopleIcon from '@mui/icons-material/People';
 import SettingsIcon from '@mui/icons-material/Settings';
-//import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
+import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import { Outlet,useNavigate, useLocation } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import BottomNav from '../components/BottomNav';
@@ -35,6 +35,7 @@ const menuColors = [
 ];
 
 const menuItems = [
+  { label: 'Главная', path: '/', icon: <SpaceDashboardIcon /> },
   { label: 'Объекты', path: '/objects', icon: <HomeWorkIcon /> },
   { label: 'Бригады', path: '/brigades', icon: <EngineeringIcon /> },
   { label: 'Склад', path: '/warehouse', icon: <InventoryIcon /> },
