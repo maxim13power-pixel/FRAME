@@ -316,7 +316,7 @@ trailing: headerTrailing,
   }
 
   return (
-   <Box sx={{ mt: -1.7, maxWidth: 1000, mx: 'auto', width: '100%' }}>
+   <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
   {/* Меню сортировки (привязано к trailing-кнопке хэдера на мобилке) */}
   <Menu
     anchorEl={sortAnchorEl}

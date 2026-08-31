@@ -19,7 +19,7 @@ import AnalyticsIcon from '@mui/icons-material/Analytics';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import PeopleIcon from '@mui/icons-material/People';
 import SettingsIcon from '@mui/icons-material/Settings';
-
+//import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import { Outlet,useNavigate, useLocation } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import BottomNav from '../components/BottomNav';
@@ -40,12 +40,12 @@ const menuItems = [
   { label: 'Склад', path: '/warehouse', icon: <InventoryIcon /> },
   { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
   { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
-  { label: 'Помощь', path: '/help', icon: <HelpIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
   { label: 'Аналитика', path: '/analytics', icon: <AnalyticsIcon /> },
   { label: 'Отчеты', path: '/reports', icon: <AssessmentIcon /> },
   { label: 'Пользователи', path: '/users', icon: <PeopleIcon /> },
   { label: 'Настройки', path: '/settings', icon: <SettingsIcon /> },
+  { label: 'Помощь', path: '/help', icon: <HelpIcon /> },
 ];
 
 const Dashboard: React.FC = () => {
@@ -108,11 +108,12 @@ const location = useLocation();
               borderRight: '1px solid #e0e0e0',
               display: 'flex',
               flexDirection: 'column',
+              borderRadius: '0 12px 12px 0',
             },
           }}
         >
           {/* Логотип сверху */}
-          <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ p: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Logo size="small" onClick={handleLogoClick} />
           
          
@@ -156,6 +157,7 @@ const location = useLocation();
          flexDirection: 'column',
          alignItems: 'center',
          py: 1.5,
+         borderRadius: '0 12px 12px 0',
        }}
      >
        {/* Бургер сверху — раскрыть меню */}

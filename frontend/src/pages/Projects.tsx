@@ -440,7 +440,7 @@ onBack: () => navigate('/objects'),
   return (
     <Box sx={{ maxWidth: 1000, mx: 'auto', width: '100%' }}>
       {/* Заголовок (десктоп) + хлебные крошки — единый блок, как в Сметах */}
-      <Box sx={{ mb: 1, mt: { xs: -2, md: 0 } }}>
+            <Box sx={{ mb: 1, mt: { xs: -2, md: -1.5 } }}> {/* ⭐ на десктопе тоже поднимаем выше */}
         {/* Десктоп: заголовок с кнопкой "назад" */}
         {!isMobile && (
           <Box sx={{ display: 'flex', alignItems: 'center' }}>

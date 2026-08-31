@@ -28,12 +28,12 @@ const menuItems = [
   { label: 'Склад', path: '/warehouse', icon: <WarehouseIcon /> },
   { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
   { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
-  { label: 'Помощь', path: '/help', icon: <HelpIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
   { label: 'Аналитика', path: '/analytics', icon: <AnalyticsIcon /> },
   { label: 'Отчеты', path: '/reports', icon: <AssessmentIcon /> },
   { label: 'Пользователи', path: '/users', icon: <GroupIcon /> },
   { label: 'Настройки', path: '/settings', icon: <SettingsIcon /> },
+  { label: 'Помощь', path: '/help', icon: <HelpIcon /> },
 ];
 
 const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) => {

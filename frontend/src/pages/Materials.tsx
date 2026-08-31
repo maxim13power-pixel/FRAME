@@ -822,7 +822,7 @@ setSortAnchorEl(null);
   return (
     <Box>
       {/* Заголовок (десктоп; мобилка — в хэдере), крошки ниже */}
-      <Box sx={{ mb: { xs: 1, md: 2 }, mt: { xs: -2, md: 0 } }}>
+            <Box sx={{ mb: { xs: 1, md: 2 }, mt: { xs: -2, md: -1.5 } }}> {/* ⭐ на десктопе тоже поднимаем выше */}
         {!isMobile && (
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <IconButton
