@@ -13,7 +13,7 @@ export interface ObjectData {
   note?: string | null;
   progressPercent?: number; // честный % из проектов
   totalCost?: number;
-  role?: 'CUSTOMER' | 'FOREMAN'; // ⭐ роль создателя объекта
+  role?: 'CUSTOMER' | 'FOREMAN' | 'VIEWER'; // ⭐ роль создателя объекта
 }
 
 // Получить все объекты
