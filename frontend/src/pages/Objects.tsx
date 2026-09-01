@@ -17,6 +17,7 @@ import {
   LinearProgress,
   IconButton,
   Menu,
+  Divider,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddHomeIcon from '@mui/icons-material/AddHome';
@@ -30,6 +31,9 @@ import { useNavigate } from 'react-router-dom';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SettingsIcon from '@mui/icons-material/Settings';
 import PeopleIcon from '@mui/icons-material/People';
+import DeleteIcon from '@mui/icons-material/Delete';
+import { fetchAccessList, addAccess, updateAccess, removeAccess } from '../services/accessService';
+import type { AccessMember, AccessRole } from '../services/accessService';
 import { updateObject, deleteObject } from '../services/objectService';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
@@ -94,6 +98,12 @@ const [foremanConfirmOpen, setForemanConfirmOpen] = useState(false);
 // ⭐ Модалка управления доступом (участники)
 const [accessModalOpen, setAccessModalOpen] = useState(false);
 const [accessObject, setAccessObject] = useState<ObjectData | null>(null);
+const [accessMembers, setAccessMembers] = useState<AccessMember[]>([]);
+const [accessLoading, setAccessLoading] = useState(false);
+const [accessError, setAccessError] = useState('');
+// ⭐ Форма приглашения
+const [inviteIdentifier, setInviteIdentifier] = useState(''); // email или телефон
+const [inviteRole, setInviteRole] = useState<AccessRole>('FOREMAN');
 
   // Загрузка объектов при монтировании
 useEffect(() => {
@@ -250,10 +260,106 @@ const handleDeleteObject = async () => {
 };
 
 
+// ⭐ Текущая роль пользователя на объекте (для управления правами в UI)
+const myRole = accessObject?.role;
+const canManage = myRole === 'CUSTOMER'; // только Заказчик управляет ролями
+
+// ⭐ Загрузить список участников
+const loadAccessMembers = async (objectId: number) => {
+  if (!token) return;
+  setAccessLoading(true);
+  setAccessError('');
+  try {
+    const members = await fetchAccessList(token, objectId);
+    setAccessMembers(members);
+  } catch (err: any) {
+    setAccessError(err.response?.data?.message || 'Ошибка загрузки участников');
+  } finally {
+    setAccessLoading(false);
+  }
+};
+
 // ⭐ Открыть модалку участников
 const handleOpenAccess = (obj: ObjectData) => {
   setAccessObject(obj);
   setAccessModalOpen(true);
+  loadAccessMembers(obj.id);
+};
+
+// ⭐ Закрыть модалку и сбросить форму
+const handleCloseAccess = () => {
+  setAccessModalOpen(false);
+  setAccessObject(null);
+  setAccessMembers([]);
+  setAccessError('');
+  setInviteIdentifier('');
+  setInviteRole('FOREMAN');
+};
+
+// ⭐ Пригласить участника (определяем: это email или телефон)
+const handleInvite = async () => {
+  if (!token || !accessObject) return;
+  const ident = inviteIdentifier.trim();
+  if (!ident) {
+    setAccessError('Укажите email или телефон');
+    return;
+  }
+  setAccessLoading(true);
+  setAccessError('');
+  try {
+    const isEmail = ident.includes('@');
+    await addAccess(token, accessObject.id, {
+      ...(isEmail ? { email: ident } : { phone: ident }),
+      role: inviteRole,
+    });
+    setInviteIdentifier('');
+    await loadAccessMembers(accessObject.id);
+  } catch (err: any) {
+    setAccessError(err.response?.data?.message || 'Ошибка приглашения');
+  } finally {
+    setAccessLoading(false);
+  }
+};
+
+// ⭐ Сменить роль участника (только Заказчик)
+const handleChangeRole = async (accessId: number, newRole: AccessRole) => {
+  if (!token || !accessObject) return;
+  setAccessError('');
+  try {
+    await updateAccess(token, accessObject.id, accessId, { role: newRole });
+    await loadAccessMembers(accessObject.id);
+  } catch (err: any) {
+    setAccessError(err.response?.data?.message || 'Ошибка смены роли');
+  }
+};
+
+// ⭐ Отозвать доступ (уволить воригу 🚪)
+const handleRemoveAccess = async (accessId: number) => {
+  if (!token || !accessObject) return;
+  setAccessError('');
+  try {
+    await removeAccess(token, accessObject.id, accessId);
+    await loadAccessMembers(accessObject.id);
+  } catch (err: any) {
+    setAccessError(err.response?.data?.message || 'Ошибка удаления участника');
+  }
+};
+
+// ⭐ Подписи и цвета для ролей
+const roleLabel = (role: AccessRole) => {
+  switch (role) {
+    case 'CUSTOMER': return '👑 Заказчик';
+    case 'FOREMAN': return '👷 Прораб';
+    case 'VIEWER': return '👁 Наблюдатель';
+    default: return role;
+  }
+};
+const roleColor = (role: AccessRole): 'primary' | 'success' | 'default' => {
+  switch (role) {
+    case 'CUSTOMER': return 'success';
+    case 'FOREMAN': return 'primary';
+    default: return 'default';
+  }
 };
 
 // Обработчик открытия модалки для редактирования заметки
@@ -856,20 +962,14 @@ trailing: headerTrailing,
     </Modal>
 
     {/* ⭐ Модалка управления доступом (участники) */}
-    <Modal
-      open={accessModalOpen}
-      onClose={() => {
-        setAccessModalOpen(false);
-        setAccessObject(null);
-      }}
-    >
+    <Modal open={accessModalOpen} onClose={handleCloseAccess}>
       <Paper
         sx={{
           position: 'absolute',
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: { xs: '92%', sm: 480 },
+          width: { xs: '92%', sm: 520 },
           maxHeight: '85vh',
           overflowY: 'auto',
           p: 3,
@@ -881,23 +981,99 @@ trailing: headerTrailing,
           👥 Участники объекта «{accessObject?.name}»
         </Typography>
 
-        <Typography color="text.secondary" sx={{ mb: 2 }}>
-          Здесь будет список участников, приглашение и управление ролями.
-        </Typography>
+        {accessError && <Alert severity="error" sx={{ mb: 2 }}>{accessError}</Alert>}
 
-        {/* TODO: список участников + форма приглашения (шаг 34) */}
+        {accessLoading && accessMembers.length === 0 ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <>
+            {/* Список участников */}
+            {accessMembers.length === 0 ? (
+              <Alert severity="info" sx={{ mb: 2 }}>Пока нет участников. Пригласите первого!</Alert>
+            ) : (
+              <Box sx={{ mb: 2 }}>
+                {accessMembers.map((member) => (
+                  <Box
+                    key={member.id}
+                    sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5, mb: 1, bgcolor: '#f5f7fa', borderRadius: 2 }}
+                  >
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                        {member.user.fullName || member.user.email || member.user.phone || 'Без имени'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap>
+                        {member.user.email || member.user.phone || ''}
+                      </Typography>
+                    </Box>
 
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-          <Button
-            variant="outlined"
-            onClick={() => {
-              setAccessModalOpen(false);
-              setAccessObject(null);
-            }}
-          >
-            Закрыть
-          </Button>
-        </Box>
+                    {canManage ? (
+                      <Select
+                        size="small"
+                        value={member.role}
+                        onChange={(e) => handleChangeRole(member.id, e.target.value as AccessRole)}
+                        sx={{ minWidth: 130 }}
+                      >
+                        <MenuItem value="CUSTOMER">👑 Заказчик</MenuItem>
+                        <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
+                        <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
+                      </Select>
+                    ) : (
+                      <Chip label={roleLabel(member.role)} size="small" color={roleColor(member.role)} />
+                    )}
+
+                    {canManage && (
+                      <IconButton size="small" color="error" onClick={() => handleRemoveAccess(member.id)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
+                ))}
+              </Box>
+            )}
+
+            <Divider sx={{ my: 2 }} />
+
+            {/* Форма приглашения */}
+            {myRole === 'VIEWER' ? (
+              <Alert severity="warning">Наблюдатель не может приглашать участников.</Alert>
+            ) : (
+              <>
+                <Typography variant="subtitle1" gutterBottom>➕ Пригласить участника</Typography>
+                <Stack spacing={2}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Email или телефон"
+                    placeholder="email@example.com или +79990000000"
+                    value={inviteIdentifier}
+                    onChange={(e) => setInviteIdentifier(e.target.value)}
+                  />
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="invite-role-label">Роль</InputLabel>
+                    <Select
+                      labelId="invite-role-label"
+                      value={inviteRole}
+                      label="Роль"
+                      onChange={(e) => setInviteRole(e.target.value as AccessRole)}
+                    >
+                      {myRole === 'CUSTOMER' && <MenuItem value="CUSTOMER">👑 Заказчик</MenuItem>}
+                      <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
+                      <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+                    <Button variant="outlined" onClick={handleCloseAccess}>Закрыть</Button>
+                    <Button variant="contained" onClick={handleInvite} disabled={accessLoading || !inviteIdentifier.trim()}>
+                      Пригласить
+                    </Button>
+                  </Box>
+                </Stack>
+              </>
+            )}
+          </>
+        )}
       </Paper>
     </Modal>
   </Box>
