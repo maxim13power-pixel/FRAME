@@ -29,6 +29,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SettingsIcon from '@mui/icons-material/Settings';
+import PeopleIcon from '@mui/icons-material/People';
 import { updateObject, deleteObject } from '../services/objectService';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
@@ -88,8 +89,11 @@ const Objects: React.FC = () => {
   const [editNote, setEditNote] = useState('');
   // ⭐ Роль создателя объекта (по умолчанию — Заказчик)
   const [createRole, setCreateRole] = useState<'CUSTOMER' | 'FOREMAN'>('CUSTOMER');
-  // ⭐ Модалка-предупреждение при создании в роли Прораба
-  const [foremanConfirmOpen, setForemanConfirmOpen] = useState(false);
+// ⭐ Модалка-предупреждение при создании в роли Прораба
+const [foremanConfirmOpen, setForemanConfirmOpen] = useState(false);
+// ⭐ Модалка управления доступом (участники)
+const [accessModalOpen, setAccessModalOpen] = useState(false);
+const [accessObject, setAccessObject] = useState<ObjectData | null>(null);
 
   // Загрузка объектов при монтировании
 useEffect(() => {
@@ -245,6 +249,12 @@ const handleDeleteObject = async () => {
   }
 };
 
+
+// ⭐ Открыть модалку участников
+const handleOpenAccess = (obj: ObjectData) => {
+  setAccessObject(obj);
+  setAccessModalOpen(true);
+};
 
 // Обработчик открытия модалки для редактирования заметки
 const handleOpenNoteModal = (obj: ObjectData) => {
@@ -431,21 +441,31 @@ trailing: headerTrailing,
               <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1, fontSize: { xs: '1.05rem', md: '1.15rem' } }}>
                 {obj.name}
               </Typography>
-<IconButton 
-  size="small" 
-  onClick={(e) => { 
-    e.stopPropagation(); 
-    handleOpenNoteModal(obj); 
+<IconButton
+  size="small"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleOpenNoteModal(obj);
   }}
   sx={{ mr: 0.5, color: obj.note ? '#1976d2' : 'inherit' }}
 >
   <NoteAltIcon fontSize="small" />
 </IconButton>
-<IconButton 
-  size="small" 
-  onClick={(e) => { 
-    e.stopPropagation(); 
-    handleOpenEdit(obj); 
+<IconButton
+  size="small"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleOpenAccess(obj);
+  }}
+  sx={{ mr: 0.5, color: '#7b1fa2' }}
+>
+  <PeopleIcon fontSize="small" />
+</IconButton>
+<IconButton
+  size="small"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleOpenEdit(obj);
   }}
   sx={{ mr: 1 }}
 >
@@ -832,9 +852,56 @@ trailing: headerTrailing,
           Да, создаю как Прораб
         </Button>
       </Box>
-    </Paper>
-  </Modal>
-</Box>
+      </Paper>
+    </Modal>
+
+    {/* ⭐ Модалка управления доступом (участники) */}
+    <Modal
+      open={accessModalOpen}
+      onClose={() => {
+        setAccessModalOpen(false);
+        setAccessObject(null);
+      }}
+    >
+      <Paper
+        sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '92%', sm: 480 },
+          maxHeight: '85vh',
+          overflowY: 'auto',
+          p: 3,
+          borderRadius: 3,
+          outline: 'none',
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          👥 Участники объекта «{accessObject?.name}»
+        </Typography>
+
+        <Typography color="text.secondary" sx={{ mb: 2 }}>
+          Здесь будет список участников, приглашение и управление ролями.
+        </Typography>
+
+        {/* TODO: список участников + форма приглашения (шаг 34) */}
+
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setAccessModalOpen(false);
+              setAccessObject(null);
+            }}
+          >
+            Закрыть
+          </Button>
+        </Box>
+      </Paper>
+    </Modal>
+  </Box>
 );
 };
+
 export default Objects;
