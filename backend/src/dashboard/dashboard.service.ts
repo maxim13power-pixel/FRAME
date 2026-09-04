@@ -34,6 +34,12 @@ export class DashboardService {
       accesses: { some: { userId } },
       isArchived: false,
     };
+    // ⭐ Фильтр для ДЕНЕЖНЫХ данных: исключаем объекты, где у юзера скрыты цены
+    //    (флаг hidePrices или роль VIEWER — они видят объёмы, но не деньги)
+    const moneyVisibleObject = {
+      accesses: { some: { userId, hidePrices: false, role: { not: 'VIEWER' } } },
+      isArchived: false,
+    };
 
     // ── 1. KPI + Money — одним батчем Promise.all (5 SQL, без N+1) ─────────────
     const [
@@ -41,6 +47,7 @@ export class DashboardService {
       projectsCount,
       materialsCount,
       fixesLast7dCount,
+      volumeRows,
       moneyRows,
     ] = await Promise.all([
       this.prisma.object.count({ where: accessibleObject }),
@@ -73,11 +80,33 @@ export class DashboardService {
             WHERE oa."objectId" = o.id AND oa."userId" = ${userId}
           )
       `,
+      // ⭐ Деньги (смета/факт) — только по объектам, где юзер ВИДИТ цены
+      //    (исключаем флаг hidePrices и роль VIEWER)
+      this.prisma.$queryRaw<MoneyRow[]>`
+        SELECT
+          COALESCE(SUM((m."unitPrice" + m."materialUnitPrice") * m."specQuantity"), 0)::float AS estimate,
+          COALESCE(SUM(m."totalCost" + m."materialTotalCost"), 0)::float           AS actual,
+          0::float                                                                 AS total_used,
+          0::float                                                                 AS spec_quantity
+        FROM materials m
+        INNER JOIN "Project" p ON p.id = m."projectId"
+        INNER JOIN "Object" o ON o.id = p."objectId"
+        WHERE o."isArchived" = false
+          AND EXISTS (
+            SELECT 1 FROM object_access oa
+            WHERE oa."objectId" = o.id
+              AND oa."userId" = ${userId}
+              AND oa."hidePrices" = false
+              AND oa."role" <> 'VIEWER'
+          )
+      `,
     ]);
 
-    const money = moneyRows[0] ?? { estimate: 0, actual: 0, total_used: 0, spec_quantity: 0 };
-    const percent = money.spec_quantity > 0 ? money.total_used / money.spec_quantity : 0;
-
+    // ⭐ Объёмы/прогресс — по ВСЕМ доступным объектам (деньги тут не нужны)
+    const volume = volumeRows[0] ?? { total_used: 0, spec_quantity: 0 };
+    // ⭐ Смета/факт — только там, где юзер видит цены
+    const money = moneyRows[0] ?? { estimate: 0, actual: 0 };
+    const percent = volume.spec_quantity > 0 ? volume.total_used / volume.spec_quantity : 0;
     // ── 2. WeekChart — generate_series + LEFT JOIN material_fixes ───────────────
     // ⭐ Фиксации считаем только по доступным юзеру (и не архивным) объектам — через EXISTS.
     const weekRows = await this.prisma.$queryRaw<WeekPointRow[]>`
@@ -114,11 +143,11 @@ export class DashboardService {
         orderBy: { endDate: 'asc' },
         include: { object: { select: { id: true, name: true } } },
       }),
-      // 3b. NoPrice — топ-5 без расценок (unitPrice=0 ИЛИ materialUnitPrice=0)
+      // 3b. NoPrice — топ-5 без расценок (только «денежно-видимые» объекты)
       this.prisma.material.findMany({
         where: {
           OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
-          project: { object: accessibleObject },
+          project: { object: moneyVisibleObject },
         },
         orderBy: { updatedAt: 'desc' },
         take: 5,
@@ -134,7 +163,7 @@ export class DashboardService {
       this.prisma.material.count({
         where: {
           OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
-          project: { object: accessibleObject },
+          project: { object: moneyVisibleObject },
         },
       }),
       // 3d. RecentFixes — 10 последних с names material → project → object

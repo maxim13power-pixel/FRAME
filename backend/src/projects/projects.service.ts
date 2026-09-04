@@ -36,6 +36,13 @@ export class ProjectsService {
     return this.checkObjectAccess(project.objectId, userId);
   }
 
+  // ⭐ Нужно ли скрывать цены для этой записи доступа
+  private mustHidePrices(access?: { role?: string; hidePrices?: boolean } | null): boolean {
+    if (!access) return false;
+    if (access.role === 'VIEWER') return true;
+    return access.hidePrices ?? false;
+  }
+
   async create(dto: CreateProjectDto, userId: number) {
     // Валидация дат на уровне сервиса
     const startDate = new Date(dto.startDate);
@@ -69,8 +76,9 @@ export class ProjectsService {
   }
 
   async findAllByObject(objectId: number, userId: number) {
-    // ⭐ Проверяем доступ к объекту
-    await this.checkObjectAccess(objectId, userId);
+    // ⭐ Проверяем доступ к объекту (заодно получаем запись доступа)
+    const access = await this.checkObjectAccess(objectId, userId);
+    const hidePrices = this.mustHidePrices(access);
 
     const projects = await this.prisma.project.findMany({
       where: { objectId },
@@ -89,16 +97,19 @@ export class ProjectsService {
       return {
         ...rest,
         progressPercent: sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
-        totalCost: sumCost,
+        // ⭐ Скрываем стоимость, если у юзера скрыты цены
+        totalCost: hidePrices ? 0 : sumCost,
       };
     });
   }
 
   async findOne(id: number, userId?: number) {
-    // Если пришёл userId — проверяем доступ
+    // Если пришёл userId — проверяем доступ (запоминаем access для скрытия цен)
+    let access: any = null;
     if (userId) {
-      await this.checkProjectAccess(id, userId);
+      access = await this.checkProjectAccess(id, userId);
     }
+    const hidePrices = this.mustHidePrices(access);
     const project = await this.prisma.project.findUnique({
       where: { id },
       include: {
@@ -114,7 +125,8 @@ export class ProjectsService {
     return {
       ...rest,
       progressPercent: sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
-      totalCost: sumCost,
+      // ⭐ Скрываем стоимость, если у юзера скрыты цены
+      totalCost: hidePrices ? 0 : sumCost,
     };
   }
 
@@ -134,8 +146,8 @@ export class ProjectsService {
         note: dto.note !== undefined ? dto.note : undefined,
       },
     });
-    // ⭐ Возвращаем проект с честным процентом (та же форма, что в списке)
-    return this.findOne(id);
+     // ⭐ Возвращаем проект с честным процентом (та же форма, что в списке)
+    return this.findOne(id, userId);
   }
 
   async remove(id: number, userId?: number) {

@@ -168,7 +168,6 @@ export class MaterialsService {
     access = await this.checkMaterialAccess(materialId, userId);
   }
   const updated = await this.prisma.$transaction(async (tx) => {
-    // Блокируем строку материала: конкурентный addFix/editLastFix ждёт здесь, а не перезаписывает результат.
       // Блокируем строку материала: конкурентный addFix/editLastFix ждёт здесь, а не перезаписывает результат.
       // numeric-колонки Postgres приходят как Prisma.Decimal — поэтому ниже везде Number(...).
       const [material] = await tx.$queryRaw<
@@ -254,9 +253,10 @@ export class MaterialsService {
       throw new BadRequestException('Объём должен быть больше нуля');
     }
 
-    // ⭐ Проверка доступа через ObjectAccess
+       // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
+    let access: any = null;
     if (userId) {
-      await this.checkMaterialAccess(id, userId);
+      access = await this.checkMaterialAccess(id, userId);
     }
 
     // Фиксация, которую польрузке формы

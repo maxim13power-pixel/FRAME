@@ -70,6 +70,8 @@ export class ObjectsService {
             },
           },
         },
+        // ⭐ Записи доступа юзера (роль + hidePrices) по каждому объекту
+        accesses: { where: { userId }, select: { role: true, hidePrices: true } },
       },
     });
 
@@ -85,11 +87,18 @@ export class ObjectsService {
           sumCost += (m.totalCost || 0) + (m.materialTotalCost || 0);
         }),
       );
-      const { projects, ...rest } = o;
+      const { projects, accesses, ...rest } = o;
+      const myAccess = accesses[0];
+      const hidePrices =
+        myAccess?.role === 'VIEWER' || (myAccess?.hidePrices ?? false);
       return {
         ...rest,
         progressPercent: sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
-        totalCost: sumCost,
+        // ⭐ Деньги прячем, объёмы/прогресс оставляем
+        totalCost: hidePrices ? 0 : sumCost,
+        // ⭐ Роль и флаг юзера на объекте — фронту для UI-правил
+        role: myAccess?.role,
+        hidePrices,
       };
     });
   }
@@ -119,8 +128,15 @@ export class ObjectsService {
   }
 
   async findOne(id: number, userId: number) {
-    await this.checkAccess(id, userId);
-    return this.prisma.object.findUnique({ where: { id } });
+    const access = await this.checkAccess(id, userId);
+    const object = await this.prisma.object.findUnique({ where: { id } });
+    if (!object) return null;
+    // ⭐ Возвращаем роль и флаг юзера (фронт использует для UI-правил)
+    return {
+      ...object,
+      role: access.role,
+      hidePrices: access.role === 'VIEWER' || access.hidePrices,
+    };
   }
 
   async updateEndDate(id: number, newEndDate: string, userId: number) {
