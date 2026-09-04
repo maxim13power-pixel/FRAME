@@ -3,7 +3,7 @@ import { AccessRole } from '@prisma/client';
 
 export class CreateInviteDto {
   @IsEnum(AccessRole)
-  role: AccessRole;
+  role!: AccessRole;
 
   @IsOptional()
   @IsBoolean()

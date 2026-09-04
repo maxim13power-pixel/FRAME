@@ -18,6 +18,10 @@ import {
   IconButton,
   Menu,
   Divider,
+  Tabs,
+  Tab,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddHomeIcon from '@mui/icons-material/AddHome';
@@ -32,8 +36,13 @@ import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SettingsIcon from '@mui/icons-material/Settings';
 import PeopleIcon from '@mui/icons-material/People';
 import DeleteIcon from '@mui/icons-material/Delete';
+import LinkIcon from '@mui/icons-material/Link';
+import ShareIcon from '@mui/icons-material/Share';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { fetchAccessList, addAccess, updateAccess, removeAccess } from '../services/accessService';
 import type { AccessMember, AccessRole } from '../services/accessService';
+import { createInviteLink, fetchInviteLinks, revokeInviteLink } from '../services/inviteService';
+import type { InviteLink } from '../services/inviteService';
 import { updateObject, deleteObject } from '../services/objectService';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
@@ -104,6 +113,13 @@ const [accessError, setAccessError] = useState('');
 // ⭐ Форма приглашения
 const [inviteIdentifier, setInviteIdentifier] = useState(''); // email или телефон
 const [inviteRole, setInviteRole] = useState<AccessRole>('FOREMAN');
+// ⭐ Приглашение по ссылке (как в Google Docs)
+const [inviteTab, setInviteTab] = useState<'link' | 'direct'>('link');
+const [linkRole, setLinkRole] = useState<AccessRole>('FOREMAN');
+const [linkHidePrices, setLinkHidePrices] = useState(false);
+const [createdLinkUrl, setCreatedLinkUrl] = useState<string | null>(null);
+const [activeLinks, setActiveLinks] = useState<InviteLink[]>([]);
+const [linkCopied, setLinkCopied] = useState(false);
 
   // Загрузка объектов при монтировании
 useEffect(() => {
@@ -284,6 +300,7 @@ const handleOpenAccess = (obj: ObjectData) => {
   setAccessObject(obj);
   setAccessModalOpen(true);
   loadAccessMembers(obj.id);
+  loadInviteLinks(obj.id);
 };
 
 // ⭐ Закрыть модалку и сбросить форму
@@ -294,6 +311,12 @@ const handleCloseAccess = () => {
   setAccessError('');
   setInviteIdentifier('');
   setInviteRole('FOREMAN');
+  setInviteTab('link');
+  setLinkRole('FOREMAN');
+  setLinkHidePrices(false);
+  setCreatedLinkUrl(null);
+  setActiveLinks([]);
+  setLinkCopied(false);
 };
 
 // ⭐ Пригласить участника (определяем: это email или телефон)
@@ -342,6 +365,87 @@ const handleRemoveAccess = async (accessId: number) => {
     await loadAccessMembers(accessObject.id);
   } catch (err: any) {
     setAccessError(err.response?.data?.message || 'Ошибка удаления участника');
+  }
+};
+
+// ============================================================
+// ⭐ ПРИГЛАШЕНИЕ ПО ССЫЛКЕ (как в Google Docs / Notion)
+// ============================================================
+
+// Загрузить активные ссылки объекта
+const loadInviteLinks = async (objectId: number) => {
+  if (!token) return;
+  try {
+    const links = await fetchInviteLinks(token, objectId);
+    setActiveLinks(links);
+  } catch {
+    // не критично — список ссылок просто не покажется
+  }
+};
+
+// Создать ссылку-приглашение
+const handleCreateLink = async () => {
+  if (!token || !accessObject) return;
+  setAccessLoading(true);
+  setAccessError('');
+  try {
+    const link = await createInviteLink(token, accessObject.id, {
+      role: linkRole,
+      hidePrices: linkHidePrices,
+    });
+    setCreatedLinkUrl(`${window.location.origin}/invite/${link.token}`);
+    await loadInviteLinks(accessObject.id);
+  } catch (err: any) {
+    setAccessError(err.response?.data?.message || 'Ошибка создания ссылки');
+  } finally {
+    setAccessLoading(false);
+  }
+};
+
+// Скопировать ссылку в буфер обмена
+const handleCopyLink = async () => {
+  if (!createdLinkUrl) return;
+  try {
+    await navigator.clipboard.writeText(createdLinkUrl);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  } catch {
+    setAccessError('Не удалось скопировать ссылку');
+  }
+};
+
+// ⭐ Нативное «Поделиться» (на мобилке выедет системное меню: TG/WA/SMS)
+const handleShareLink = async () => {
+  if (!createdLinkUrl) return;
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: `Приглашение в FRAME — ${accessObject?.name}`,
+        text: `Вас приглашают в объект «${accessObject?.name}» в FRAME. Перейдите по ссылке:`,
+        url: createdLinkUrl,
+      });
+    } else {
+      // Десктоп без Web Share API → просто копируем
+      await handleCopyLink();
+    }
+  } catch (err: any) {
+    // Юзер отменил шеринг — это не ошибка
+    if (err?.name !== 'AbortError') {
+      await handleCopyLink();
+    }
+  }
+};
+
+// Отозвать ссылку-приглашение
+const handleRevokeLink = async (linkId: number) => {
+  if (!token || !accessObject) return;
+  setAccessError('');
+  try {
+    await revokeInviteLink(token, accessObject.id, linkId);
+    await loadInviteLinks(accessObject.id);
+    setCreatedLinkUrl(null);
+  } catch (err: any) {
+    setAccessError(err.response?.data?.message || 'Ошибка отзыва ссылки');
   }
 };
 
@@ -1041,41 +1145,147 @@ trailing: headerTrailing,
             ) : (
               <>
                 <Typography variant="subtitle1" gutterBottom>➕ Пригласить участника</Typography>
-                <Stack spacing={2}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Email или телефон"
-                    placeholder="email@example.com или +79990000000"
-                    value={inviteIdentifier}
-                    onChange={(e) => setInviteIdentifier(e.target.value)}
-                  />
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="invite-role-label">Роль</InputLabel>
-                    <Select
-                      labelId="invite-role-label"
-                      value={inviteRole}
-                      label="Роль"
-                      onChange={(e) => setInviteRole(e.target.value as AccessRole)}
+
+                {/* ⭐ Вкладки: ссылкой (главный способ) или напрямую */}
+                <Tabs
+                  value={inviteTab}
+                  onChange={(_, v) => setInviteTab(v)}
+                  sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+                >
+                  <Tab value="link" label="🔗 Ссылкой" />
+                  <Tab value="direct" label="✉️ Email / телефон" />
+                </Tabs>
+
+                {inviteTab === 'link' ? (
+                  /* ===== ВКЛАДКА: ПРИГЛАШЕНИЕ ССЫЛКОЙ ===== */
+                  <Stack spacing={2}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="link-role-label">Кого приглашаем</InputLabel>
+                      <Select
+                        labelId="link-role-label"
+                        value={linkRole}
+                        label="Кого приглашаем"
+                        onChange={(e) => setLinkRole(e.target.value as AccessRole)}
+                      >
+                        <MenuItem value="CUSTOMER">👑 Заказчик</MenuItem>
+                        <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
+                        <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
+                      </Select>
+                    </FormControl>
+
+                    {/* ⭐ Флаг «скрыть цены» — для субподрядчиков */}
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={linkHidePrices}
+                          onChange={(e) => setLinkHidePrices(e.target.checked)}
+                        />
+                      }
+                      label="🙈 Скрыть цены для приглашённых"
+                    />
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: -2 }}>
+                      {linkHidePrices
+                        ? 'Участник сможет вносить работы и объёмы, но не увидит цены — идеально для субподрядчиков.'
+                        : 'Участник будет видеть все цены и суммы объекта.'}
+                    </Typography>
+
+                    {createdLinkUrl ? (
+                      /* Ссылка создана — показываем её с кнопками */
+                      <Box sx={{ p: 2, bgcolor: '#f0f7ff', borderRadius: 2, border: '1px solid #90caf9' }}>
+                        <Typography variant="caption" color="text.secondary">
+                          ✅ Ссылка готова! Отправьте её участнику:
+                        </Typography>
+                        <Typography variant="body2" sx={{ wordBreak: 'break-all', my: 1, fontWeight: 600 }}>
+                          {createdLinkUrl}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Button size="small" variant="contained" startIcon={<ShareIcon />} onClick={handleShareLink}>
+                            Поделиться
+                          </Button>
+                          <Button size="small" variant="outlined" startIcon={linkCopied ? undefined : <ContentCopyIcon />} onClick={handleCopyLink}>
+                            {linkCopied ? '✓ Скопировано' : 'Копировать'}
+                          </Button>
+                          <Button size="small" color="error" onClick={() => setCreatedLinkUrl(null)}>
+                            Создать новую
+                          </Button>
+                        </Box>
+                      </Box>
+                    ) : (
+                      <Button
+                        variant="contained"
+                        startIcon={<LinkIcon />}
+                        onClick={handleCreateLink}
+                        disabled={accessLoading}
+                      >
+                        Создать ссылку-приглашение
+                      </Button>
+                    )}
+
+                    {/* Список активных ссылок */}
+                    {activeLinks.length > 0 && (
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Активные ссылки ({activeLinks.length}):
+                        </Typography>
+                        {activeLinks.map((link) => (
+                          <Box key={link.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                            <LinkIcon fontSize="small" sx={{ color: '#90a4ae' }} />
+                            <Typography variant="caption" sx={{ flexGrow: 1 }} noWrap>
+                              {roleLabel(link.role)}
+                              {link.hidePrices ? ' • 🙈 без цен' : ''} • использований: {link.usesCount}
+                              {link.maxUses ? `/${link.maxUses}` : ''}
+                            </Typography>
+                            <IconButton size="small" color="error" onClick={() => handleRevokeLink(link.id)}>
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
+                        ))}
+                      </Box>
+                    )}
+                  </Stack>
+                ) : (
+                  /* ===== ВКЛАДКА: ПРИГЛАШЕНИЕ ПО EMAIL/ТЕЛЕФОНУ ===== */
+                  <Stack spacing={2}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Email или телефон"
+                      placeholder="email@example.com или +79990000000"
+                      value={inviteIdentifier}
+                      onChange={(e) => setInviteIdentifier(e.target.value)}
+                    />
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="invite-role-label">Роль</InputLabel>
+                      <Select
+                        labelId="invite-role-label"
+                        value={inviteRole}
+                        label="Роль"
+                        onChange={(e) => setInviteRole(e.target.value as AccessRole)}
+                      >
+                        <MenuItem value="CUSTOMER">👑 Заказчик</MenuItem>
+                        <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
+                        <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+                      {inviteRole === 'CUSTOMER' && '👑 Заказчик: видит все цены, утверждает сметы и согласовывает изменения.'}
+                      {inviteRole === 'FOREMAN' && '👷 Прораб: ведёт работы и фиксирует объёмы. Его изменения ждут согласования заказчика.'}
+                      {inviteRole === 'VIEWER' && '👁 Наблюдатель: видит прогресс и объёмы, но без денег. Не может приглашать.'}
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      onClick={handleInvite}
+                      disabled={accessLoading || !inviteIdentifier.trim()}
                     >
-                      <MenuItem value="CUSTOMER">👑 Заказчик</MenuItem>
-                      <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
-                      <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
-                    </Select>
-                  </FormControl>
-                  {/* ⭐ Инлайн-описание выбранной роли (чтобы юзер понимал, кого зовёт) */}
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-                    {inviteRole === 'CUSTOMER' && '👑 Заказчик: видит все цены, утверждает сметы и согласовывает изменения.'}
-                    {inviteRole === 'FOREMAN' && '👷 Прораб: ведёт работы и фиксирует объёмы. Его изменения ждут согласования заказчика.'}
-                    {inviteRole === 'VIEWER' && '👁 Наблюдатель: видит прогресс и объёмы, но без денег. Не может приглашать.'}
-                  </Typography>
-                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-                    <Button variant="outlined" onClick={handleCloseAccess}>Закрыть</Button>
-                    <Button variant="contained" onClick={handleInvite} disabled={accessLoading || !inviteIdentifier.trim()}>
                       Пригласить
                     </Button>
-                  </Box>
-                </Stack>
+                  </Stack>
+                )}
+
+                {/* Кнопка закрытия — общая для обеих вкладок */}
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                  <Button variant="outlined" onClick={handleCloseAccess}>Закрыть</Button>
+                </Box>
               </>
             )}
           </>
