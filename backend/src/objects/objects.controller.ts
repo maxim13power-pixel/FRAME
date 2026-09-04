@@ -3,9 +3,10 @@ import { Controller, Get, Post, Body, Param, Delete, Patch, UseGuards, ParseIntP
 import { ObjectsService } from './objects.service';
 import { CreateObjectDto } from './dto/create-object.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ObjectAccessGuard } from '../auth/object-access.guard';
 
 @Controller('objects')
-@UseGuards(JwtAuthGuard) // все методы требуют авторизации
+@UseGuards(JwtAuthGuard, ObjectAccessGuard) // JWT + централизованная проверка доступа к объекту
 export class ObjectsController {
   constructor(private readonly objectsService: ObjectsService) {}
 

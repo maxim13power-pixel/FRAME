@@ -30,8 +30,10 @@ export class ObjectAccessGuard implements CanActivate {
       request.body?.objectId ??
       request.query?.objectId;
     const objectId = Number(raw);
+    // ⭐ Если objectId не указан (GET /objects, POST /objects и т.п.) — пропускаем.
+    // Проверка доступа для таких маршрутов остаётся в сервисах.
     if (!objectId || Number.isNaN(objectId)) {
-      throw new BadRequestException('objectId не указан');
+      return true;
     }
 
     // Проверяем что у юзера есть доступ к объекту
