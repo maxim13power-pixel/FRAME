@@ -9,6 +9,7 @@ import { MaterialsModule } from './materials/materials.module';
 import { PriceListModule } from './price-list/price-list.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AccessModule } from './access/access.module';
+import { InviteModule } from './invite/invite.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -22,6 +23,7 @@ import { AccessModule } from './access/access.module';
     PriceListModule,
     DashboardModule,
     AccessModule,
+    InviteModule,
   ],
   controllers: [AppController],
   providers: [AppService],
