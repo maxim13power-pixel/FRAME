@@ -1058,11 +1058,17 @@ trailing: headerTrailing,
                       label="Роль"
                       onChange={(e) => setInviteRole(e.target.value as AccessRole)}
                     >
-                      {myRole === 'CUSTOMER' && <MenuItem value="CUSTOMER">👑 Заказчик</MenuItem>}
+                      <MenuItem value="CUSTOMER">👑 Заказчик</MenuItem>
                       <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
                       <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
                     </Select>
                   </FormControl>
+                  {/* ⭐ Инлайн-описание выбранной роли (чтобы юзер понимал, кого зовёт) */}
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+                    {inviteRole === 'CUSTOMER' && '👑 Заказчик: видит все цены, утверждает сметы и согласовывает изменения.'}
+                    {inviteRole === 'FOREMAN' && '👷 Прораб: ведёт работы и фиксирует объёмы. Его изменения ждут согласования заказчика.'}
+                    {inviteRole === 'VIEWER' && '👁 Наблюдатель: видит прогресс и объёмы, но без денег. Не может приглашать.'}
+                  </Typography>
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
                     <Button variant="outlined" onClick={handleCloseAccess}>Закрыть</Button>
                     <Button variant="contained" onClick={handleInvite} disabled={accessLoading || !inviteIdentifier.trim()}>

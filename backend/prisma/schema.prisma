@@ -27,6 +27,7 @@ model User {
   proposedChanges   ChangeRequest[]  @relation("ProposedChanges")
   reviewedChanges   ChangeRequest[]  @relation("ReviewedChanges")
   ownedPriceItems   PriceItem[]
+  createdInvites    InviteToken[]  @relation("CreatedInvites")
 }
 
 model Object {
@@ -43,6 +44,7 @@ model Object {
   
   projects        Project[]
   accesses        ObjectAccess[] // Кто имеет доступ к объекту
+  inviteTokens    InviteToken[]  // Активные ссылки-приглашения
 }
 
 model Project {
@@ -182,15 +184,16 @@ enum AccessRole {
 }
 
 model ObjectAccess {
-  id        Int        @id @default(autoincrement())
-  userId    Int
-  objectId  Int
-  projectId Int?       // null = весь объект, иначе конкретный проект
-  role      AccessRole @default(FOREMAN)
-  invitedBy Int?
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  object    Object     @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  createdAt DateTime   @default(now())
+  id         Int        @id @default(autoincrement())
+  userId     Int
+  objectId   Int
+  projectId  Int?       // null = весь объект, иначе конкретный проект
+  role       AccessRole @default(FOREMAN)
+  hidePrices Boolean    @default(false)  // ⭐ скрывать ли цены для этого участника
+  invitedBy  Int?
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  object     Object     @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  createdAt  DateTime   @default(now())
 
   @@unique([userId, objectId, projectId])
   @@map("object_access")
@@ -219,4 +222,27 @@ model ChangeRequest {
   updatedAt   DateTime     @updatedAt
 
   @@map("change_requests")
+}
+
+// ============================================================
+// ПРИГЛАШЕНИЯ ССЫЛКОЙ (как в Notion/Figma)
+// ============================================================
+
+model InviteToken {
+  id         Int          @id @default(autoincrement())
+  token      String       @unique           // URL-safe токен (nanoid)
+  objectId   Int
+  createdBy  Int          // кто создал ссылку (прораб или заказчик)
+  role       AccessRole   @default(FOREMAN) // роль, с которой будет добавлен юзер
+  hidePrices Boolean      @default(false)   // ⭐ флаг «скрыть цены» для приглашённых
+  expiresAt  DateTime?    // срок жизни (null = бессрочно)
+  maxUses    Int?         // макс. использований (null = без лимита)
+  usesCount  Int          @default(0)       // счётчик использований
+  isActive   Boolean      @default(true)    // можно отозвать ссылку
+  createdAt  DateTime     @default(now())
+
+  object     Object       @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  creator    User         @relation("CreatedInvites", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@map("invite_tokens")
 }

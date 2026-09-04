@@ -66,12 +66,11 @@ export class AccessService {
   async addAccess(objectId: number, dto: AddAccessDto, actorUserId: number) {
     const myAccess = await this.getMyAccess(objectId, actorUserId);
 
-    // ⭐ Кто может приглашать: наблюдатель — нет; прораб — только прорабов/наблюдателей
+    // ⭐ Кто может приглашать: наблюдатель — нет; прораб и заказчик — могут.
+    // Прораб МОЖЕТ пригласить заказчика: кейс «хозяин недвижки сам объект не создаёт,
+    // прораб создаёт объект за него и зовёт его утверждать сметы».
     if (myAccess.role === AccessRole.VIEWER) {
       throw new ForbiddenException('Наблюдатель не может приглашать пользователей');
-    }
-    if (myAccess.role === AccessRole.FOREMAN && dto.role === AccessRole.CUSTOMER) {
-      throw new ForbiddenException('Прораб не может добавлять заказчика');
     }
 
     // Найти приглашаемого юзера
