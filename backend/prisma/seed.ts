@@ -449,7 +449,35 @@ async function main() {
       role: Role.FOREMAN,
     },
   });
-  console.log(`  ✓ User foreman@frame.app (id=${foreman.id})`);
+console.log(`✓ User foreman@frame.app (id=${foreman.id})`);
+
+  // 1.1. ⭐ Второй пользователь: Заказчик (для теста приглашений)
+  const customer = await prisma.user.upsert({
+    where: { email: 'customer@frame.app' },
+    update: { password: passwordHash },
+    create: {
+      email: 'customer@frame.app',
+      phone: '+79990000001',
+      password: passwordHash,
+      fullName: 'Заказчик Демо',
+      role: Role.CUSTOMER,
+    },
+  });
+  console.log(`✓ User customer@frame.app (id=${customer.id})`);
+
+  // 1.2. ⭐ Третий пользователь: Субподрядчик (для теста "скрыть цены")
+  const sub = await prisma.user.upsert({
+    where: { email: 'sub@frame.app' },
+    update: { password: passwordHash },
+    create: {
+      email: 'sub@frame.app',
+      phone: '+79990000002',
+      password: passwordHash,
+      fullName: 'Субподрядчик Демо',
+      role: Role.FOREMAN,
+    },
+  });
+  console.log(`✓ User sub@frame.app (id=${sub.id})`);
 
   // 2. Очистка старых seed-данных (идемпотентность).
   //    ПРАВИЛЬНЫЙ ПОРЯДОК ПО FK-СВЯЗЯМ:
