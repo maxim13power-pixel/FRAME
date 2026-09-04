@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -17,10 +18,21 @@ import Users from './pages/Users';
 import Settings from './pages/Settings';
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
+import AcceptInvite from './pages/AcceptInvite';
 
 const AppRoutes = () => {
   useLocation();
+  const navigate = useNavigate();
   const token = localStorage.getItem('token');
+
+  // ⭐ После логина возвращаем юзера на ссылку-приглашение (если он пришёл по ней)
+  useEffect(() => {
+    const pendingInvite = localStorage.getItem('pendingInviteToken');
+    if (token && pendingInvite) {
+      localStorage.removeItem('pendingInviteToken');
+      navigate(`/invite/${pendingInvite}`, { replace: true });
+    }
+  }, [token, navigate]);
   return (
     <Routes>
         {/* Публичный логин */}
@@ -59,6 +71,9 @@ const AppRoutes = () => {
           <Route path="users" element={<Users />} />
           <Route path="settings" element={<Settings />} />
         </Route>
+
+        {/* ⭐ Публичная страница приглашения (доступна без логина) */}
+        <Route path="/invite/:token" element={<AcceptInvite />} />
 
         {/* 404 редирект */}
         <Route path="*" element={<Navigate to="/" replace />} />
