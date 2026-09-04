@@ -37,7 +37,7 @@ export class DashboardService {
     // ⭐ Фильтр для ДЕНЕЖНЫХ данных: исключаем объекты, где у юзера скрыты цены
     //    (флаг hidePrices или роль VIEWER — они видят объёмы, но не деньги)
     const moneyVisibleObject = {
-      accesses: { some: { userId, hidePrices: false, role: { not: 'VIEWER' } } },
+      accesses: { some: { userId, hidePrices: false, role: { not: 'VIEWER' as const } } },
       isArchived: false,
     };
 
@@ -143,22 +143,22 @@ export class DashboardService {
         orderBy: { endDate: 'asc' },
         include: { object: { select: { id: true, name: true } } },
       }),
-      // 3b. NoPrice — топ-5 без расценок (только «денежно-видимые» объекты)
-      this.prisma.material.findMany({
-        where: {
-          OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
-          project: { object: moneyVisibleObject },
-        },
-        orderBy: { updatedAt: 'desc' },
-        take: 5,
-        select: {
-          id: true,
-          name: true,
-          unitPrice: true,
-          materialUnitPrice: true,
-          project: { select: { id: true, name: true } },
-        },
-      }),
+   // 3b. NoPrice — топ-5 без расценок (только «денежно-видимые» объекты)
+   this.prisma.material.findMany({
+     where: {
+       OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
+       project: { object: moneyVisibleObject },
+     },
+     orderBy: { updatedAt: 'desc' },
+     take: 5,
+     select: {
+       id: true,
+       name: true,
+       unitPrice: true,
+       materialUnitPrice: true,
+       project: { select: { id: true, name: true } },
+     },
+   }),
       // 3c. NoPrice — total count (для бейджа)
       this.prisma.material.count({
         where: {
