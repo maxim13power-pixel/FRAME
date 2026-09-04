@@ -23,6 +23,35 @@ const MATERIAL_INCLUDE = {
 export class MaterialsService {
   constructor(private prisma: PrismaService) {}
 
+  // ============================================================
+  // ⭐ СКРЫТИЕ ЦЕН (флаг hidePrices + роль VIEWER)
+  // ============================================================
+
+  /** Нужно ли скрывать цены для этой записи доступа (без лишнего запроса к БД) */
+  private mustHidePrices(access?: { role?: string; hidePrices?: boolean } | null): boolean {
+    if (!access) return false;
+    // Наблюдатель не видит деньги по определению роли
+    if (access.role === 'VIEWER') return true;
+    return access.hidePrices ?? false;
+  }
+
+  /** Обнулить все ценовые поля материала (для ответа клиенту) */
+  private stripPrices<T>(material: T): T {
+    const m = material as any;
+    if (!m) return material;
+    return {
+      ...m,
+      unitPrice: 0,
+      totalCost: 0,
+      materialUnitPrice: 0,
+      materialTotalCost: 0,
+      priceItem: m.priceItem ? { ...m.priceItem, price: 0 } : null,
+      materialItem: m.materialItem ? { ...m.materialItem, price: 0 } : null,
+    } as T;
+  }
+
+  /** Проверка: пользователь имеет доступ к объекту проекта */
+
   // ⭐ Хелпер: проверяет доступ юзера к ОБЪЕКТУ проекта. Кидает 403 если нет.
   private async checkProjectAccess(projectId: number, userId: number) {
     const project = await this.prisma.project.findUnique({
@@ -61,13 +90,18 @@ export class MaterialsService {
 
   // Все материалы проекта (с обеими расценками)
   async findAllByProject(projectId: number, userId: number) {
-    // ⭐ Проверяем доступ к проекту (вместо старой проверки по организации)
-    await this.checkProjectAccess(projectId, userId);
-    return this.prisma.material.findMany({
+    // ⭐ Проверяем доступ к проекту (заодно получаем запись доступа)
+    const access = await this.checkProjectAccess(projectId, userId);
+    const materials = await this.prisma.material.findMany({
       where: { projectId },
       orderBy: { id: 'asc' },
       include: MATERIAL_INCLUDE,
     });
+    // ⭐ Скрываем цены для VIEWER и юзеров с флагом hidePrices
+    if (this.mustHidePrices(access)) {
+      return materials.map((m) => this.stripPrices(m));
+    }
+    return materials;
   }
 
   // История фиксаций одного материала
@@ -82,8 +116,8 @@ export class MaterialsService {
 
   // Создание материала (+ snapshot цен работы и материала)
   async create(dto: CreateMaterialDto, userId: number) {
-    // ⭐ Проверяем доступ к проекту (вместо старой проверки по организации)
-    await this.checkProjectAccess(dto.projectId, userId);
+    // ⭐ Проверяем доступ к проекту (заодно получаем запись доступа)
+    const access = await this.checkProjectAccess(dto.projectId, userId);
 
     let unitPrice = 0;
     if (dto.priceItemId) {
@@ -99,7 +133,7 @@ export class MaterialsService {
       if (!materialItem.isActive) throw new BadRequestException('Расценка материала неактивна');
       materialUnitPrice = materialItem.price;
     }
-    return this.prisma.material.create({
+    const created = await this.prisma.material.create({
       data: {
         name: dto.name.trim(),
         article: dto.article?.trim() || null,
@@ -116,6 +150,8 @@ export class MaterialsService {
       },
       include: MATERIAL_INCLUDE,
     });
+    // ⭐ Скрываем цены в ответе, если нужно
+    return this.mustHidePrices(access) ? this.stripPrices(created) : created;
   }
 
   // ⭐ Фиксация объёма + пересчёт ОБЕИХ стоимостей
@@ -126,13 +162,13 @@ export class MaterialsService {
     if (!dto.amount || dto.amount <= 0) {
       throw new BadRequestException('Объём фиксации должен быть больше нуля');
     }
-
-    // ⭐ Проверка доступа через ObjectAccess
-    if (userId) {
-      await this.checkMaterialAccess(materialId, userId);
-    }
-
-    return this.prisma.$transaction(async (tx) => {
+  // ⭐ Проверка доступа через ObjectAccess (запоминаем access для проверки скрытия цен)
+  let access: any = null;
+  if (userId) {
+    access = await this.checkMaterialAccess(materialId, userId);
+  }
+  const updated = await this.prisma.$transaction(async (tx) => {
+    // Блокируем строку материала: конкурентный addFix/editLastFix ждёт здесь, а не перезаписывает результат.
       // Блокируем строку материала: конкурентный addFix/editLastFix ждёт здесь, а не перезаписывает результат.
       // numeric-колонки Postgres приходят как Prisma.Decimal — поэтому ниже везде Number(...).
       const [material] = await tx.$queryRaw<
@@ -168,44 +204,44 @@ export class MaterialsService {
         include: MATERIAL_INCLUDE,
       });
     });
+    // ⭐ Скрываем цены для VIEWER / юзеров с hidePrices
+    return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
   }
 
   // Обновление спеки + пересчёт процента
   async updateSpecQty(id: number, specQuantity: number, userId?: number) {
-    // ⭐ Проверка доступа через ObjectAccess
+    // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
+    let access: any = null;
     if (userId) {
-      await this.checkMaterialAccess(id, userId);
+      access = await this.checkMaterialAccess(id, userId);
     }
-
     const material = await this.prisma.material.findUnique({ where: { id } });
     if (!material) throw new NotFoundException('Материал не найден');
-
     const progress = specQuantity > 0
       ? Math.round((material.totalUsed / specQuantity) * 100)
       : 0;
-
-    return this.prisma.material.update({
+    const updated = await this.prisma.material.update({
       where: { id },
       data: { specQuantity, progressPercent: progress },
       include: MATERIAL_INCLUDE,
     });
+    return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
   }
-
   // 🔒 Переключение защиты спецификации
   async toggleSpecLock(id: number, userId?: number) {
-    // ⭐ Проверка доступа через ObjectAccess
+    // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
+    let access: any = null;
     if (userId) {
-      await this.checkMaterialAccess(id, userId);
+      access = await this.checkMaterialAccess(id, userId);
     }
-
     const material = await this.prisma.material.findUnique({ where: { id } });
     if (!material) throw new NotFoundException('Материал не найден');
-
-    return this.prisma.material.update({
+    const updated = await this.prisma.material.update({
       where: { id },
       data: { isSpecLocked: !material.isSpecLocked },
       include: MATERIAL_INCLUDE,
     });
+    return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
   }
 
   // ✏️ Исправление последней фиксации (72 часа)
@@ -223,7 +259,7 @@ export class MaterialsService {
       await this.checkMaterialAccess(id, userId);
     }
 
-    // Фиксация, которую пользователь видел последней при загрузке формы
+    // Фиксация, которую польрузке формы
     const expectedLastFix = await this.prisma.materialFix.findFirst({
       where: { materialId: id },
       orderBy: { fixedAt: 'desc' },
@@ -235,7 +271,7 @@ export class MaterialsService {
       throw new BadRequestException('Исправить можно только фиксацию младше 72 часов');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       // 1) Блокируем строку материала — сериализуемся с addFix и параллельным editLastFix
       const [material] = await tx.$queryRaw<
         { id: number; totalUsed: number; specQuantity: number; unitPrice: number; materialUnitPrice: number }[]
@@ -282,13 +318,16 @@ export class MaterialsService {
         include: MATERIAL_INCLUDE,
       });
     });
+    // ⭐ Скрываем цены для VIEWER / юзеров с hidePrices
+    return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
   }
 
   // ✏️ Полное редактирование (смена расценок работы и материала)
   async update(id: number, dto: UpdateMaterialDto, userId?: number) {
-    // ⭐ Проверка доступа через ObjectAccess
+    // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
+    let access: any = null;
     if (userId) {
-      await this.checkMaterialAccess(id, userId);
+      access = await this.checkMaterialAccess(id, userId);
     }
 
     const material = await this.prisma.material.findUnique({ where: { id } });
@@ -331,25 +370,26 @@ export class MaterialsService {
       ? Math.round((material.totalUsed / newSpecQty) * 100)
       : 0;
 
-    return this.prisma.material.update({
-      where: { id },
-      data: {
-        name: dto.name?.trim(),
-        article: dto.article !== undefined ? dto.article.trim() || null : undefined,
-        unit: dto.unit ? (dto.unit as Unit) : undefined,
-        note: dto.note !== undefined ? dto.note.trim() || null : undefined,
-        specQuantity: dto.specQuantity,
-        progressPercent: progress,
-        priceItemId,
-        unitPrice,
-        totalCost: material.totalUsed * unitPrice,
-        materialItemId,
-        materialUnitPrice,
-        materialTotalCost: material.totalUsed * materialUnitPrice,
-      },
-      include: MATERIAL_INCLUDE,
-    });
-  }
+  const updated = await this.prisma.material.update({
+    where: { id },
+    data: {
+      name: dto.name?.trim(),
+      article: dto.article !== undefined ? dto.article.trim() || null : undefined,
+      unit: dto.unit ? (dto.unit as Unit) : undefined,
+      note: dto.note !== undefined ? dto.note.trim() || null : undefined,
+      specQuantity: dto.specQuantity,
+      progressPercent: progress,
+      priceItemId,
+      unitPrice,
+      totalCost: material.totalUsed * unitPrice,
+      materialItemId,
+      materialUnitPrice,
+      materialTotalCost: material.totalUsed * materialUnitPrice,
+    },
+    include: MATERIAL_INCLUDE,
+  });
+  return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
+}
 
   // ✨ Создать расценку (+ опционально новую категорию) в одном запросе
   // ⭐ Новая модель: категории общие (без orgId), расценка → личный справочник (ownerId)
@@ -416,14 +456,14 @@ export class MaterialsService {
 
   // Удаление (фиксации удалятся каскадно)
   async remove(id: number, userId?: number) {
-    // ⭐ Проверка доступа через ObjectAccess
+    // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
+    let access: any = null;
     if (userId) {
-      await this.checkMaterialAccess(id, userId);
+      access = await this.checkMaterialAccess(id, userId);
     }
-
     const material = await this.prisma.material.findUnique({ where: { id } });
     if (!material) throw new NotFoundException('Материал не найден');
-
-    return this.prisma.material.delete({ where: { id } });
+    const deleted = await this.prisma.material.delete({ where: { id } });
+    return this.mustHidePrices(access) ? this.stripPrices(deleted) : deleted;
   }
 }
