@@ -161,6 +161,11 @@ const PriceList: React.FC = () => {
         setLoading(true);
         const data = await fetchCategoriesWithItems(token, activeTab);
         setCategories(data);
+        // ⭐ По умолчанию ВСЕ категории свёрнуты — справочник большой, тапнул и открыл
+        setCollapsed(data.reduce<Record<number, boolean>>((acc, c) => {
+          acc[c.id] = true;
+          return acc;
+        }, {}));
         setError('');
       } catch (err: any) {
         setError('Ошибка загрузки справочника');
@@ -883,26 +888,29 @@ const PriceList: React.FC = () => {
               value={itemArticle}
               onChange={e => setItemArticle(e.target.value)}
             />
-            <FormControl fullWidth>
-              <InputLabel>Единица измерения</InputLabel>
-              <Select
-                value={itemUnit}
-                label="Единица измерения"
-                onChange={e => setItemUnit(e.target.value)}
-              >
-                {UNIT_OPTIONS.map(opt => (
-                  <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              fullWidth
-              label="Цена, ₽"
-              type="number"
-              placeholder="0"
-              value={itemPrice}
-              onChange={e => setItemPrice(e.target.value)}
-            />
+         {/* ⭐ Компактно: цена + единица на одном этаже */}
+         <Stack direction="row" spacing={2}>
+           <TextField
+             fullWidth
+             label="Цена, ₽"
+             type="number"
+             placeholder="0"
+             value={itemPrice}
+             onChange={e => setItemPrice(e.target.value)}
+           />
+           <FormControl fullWidth sx={{ maxWidth: 100 }}>
+             <InputLabel>Ед. изм.</InputLabel>
+             <Select
+               value={itemUnit}
+               label="Ед. изм."
+               onChange={e => setItemUnit(e.target.value)}
+             >
+               {UNIT_OPTIONS.map(opt => (
+                 <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+               ))}
+             </Select>
+           </FormControl>
+         </Stack>
             <FormControl fullWidth>
               <InputLabel>Категория</InputLabel>
               <Select

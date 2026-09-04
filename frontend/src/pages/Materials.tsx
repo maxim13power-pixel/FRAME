@@ -1246,26 +1246,29 @@ onClose={() => setFilterAnchorEl(null)}
               value={newArticle}
               onChange={e => setNewArticle(e.target.value)}
             />
-        <FormControl fullWidth>
-          <InputLabel>Единица измерения</InputLabel>
-          <Select
-            value={newUnit}
-            label="Единица измерения"
-            onChange={e => setNewUnit(e.target.value)}
-          >
-            {UNIT_OPTIONS.map(opt => (
-              <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <TextField
-          fullWidth
-          label="Количество по спецификации"
-          type="number"
-          placeholder="0"
-          value={newSpecQuantity}
-          onChange={e => setNewSpecQuantity(e.target.value)}
-        />
+     {/* ⭐ Компактно: количество + единица на одном этаже */}
+     <Stack direction="row" spacing={2}>
+       <TextField
+         fullWidth
+         label="Кол-во по спецификации"
+         type="number"
+         placeholder="0"
+         value={newSpecQuantity}
+         onChange={e => setNewSpecQuantity(e.target.value)}
+       />
+       <FormControl fullWidth sx={{ maxWidth: 100 }}>
+         <InputLabel>Ед. изм.</InputLabel>
+         <Select
+           value={newUnit}
+           label="Ед. изм."
+           onChange={e => setNewUnit(e.target.value)}
+         >
+           {UNIT_OPTIONS.map(opt => (
+             <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+           ))}
+         </Select>
+       </FormControl>
+     </Stack>
         <TextField
           fullWidth
           label="Примечание"
@@ -1332,15 +1335,18 @@ renderInput={(params) => (
             {addPriceCategoryId === '__new__' && (
             <TextField fullWidth label="Название новой категории" value={addPriceCategoryName} onChange={e => setAddPriceCategoryName(e.target.value)} />
             )}
-            <FormControl fullWidth>
-            <InputLabel>Единица</InputLabel>
-            <Select value={addPriceUnit} label="Единица" onChange={e => setAddPriceUnit(e.target.value)}>
-            {UNIT_OPTIONS.map(opt => (
-            <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-            ))}
-            </Select>
-            </FormControl>
-            <TextField fullWidth label="Цена, ₽" type="number" value={addPricePrice} onChange={e => setAddPricePrice(e.target.value)} />
+ {/* ⭐ Компактно: цена + единица на одном этаже */}
+ <Stack direction="row" spacing={2}>
+   <TextField fullWidth label="Цена, ₽" type="number" value={addPricePrice} onChange={e => setAddPricePrice(e.target.value)} />
+   <FormControl fullWidth sx={{ maxWidth: 100 }}>
+     <InputLabel>Ед. изм.</InputLabel>
+     <Select value={addPriceUnit} label="Ед. изм." onChange={e => setAddPriceUnit(e.target.value)}>
+       {UNIT_OPTIONS.map(opt => (
+         <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+       ))}
+     </Select>
+   </FormControl>
+ </Stack>
             <Button size="small" variant="text" onClick={() => setAddCreatingNew(false)}>
               ← Выбрать из существующих
             </Button>
@@ -1389,13 +1395,18 @@ renderInput={(params) => (
     {addMatPriceCategoryId === '__new__' && (
     <TextField fullWidth label="Название новой категории" value={addMatPriceCategoryName} onChange={e => setAddMatPriceCategoryName(e.target.value)} />
     )}
-    <FormControl fullWidth>
-    <InputLabel>Единица</InputLabel>
-    <Select value={addMatPriceUnit} label="Единица" onChange={e => setAddMatPriceUnit(e.target.value)}>
-    {UNIT_OPTIONS.map(opt => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
-    </Select>
-    </FormControl>
-    <TextField fullWidth label="Цена, ₽" type="number" value={addMatPricePrice} onChange={e => setAddMatPricePrice(e.target.value)} />
+ {/* ⭐ Компактно: цена + единица на одном этаже */}
+ <Stack direction="row" spacing={2}>
+   <TextField fullWidth label="Цена, ₽" type="number" value={addMatPricePrice} onChange={e => setAddMatPricePrice(e.target.value)} />
+   <FormControl fullWidth sx={{ maxWidth: 100 }}>
+     <InputLabel>Ед. изм.</InputLabel>
+     <Select value={addMatPriceUnit} label="Ед. изм." onChange={e => setAddMatPriceUnit(e.target.value)}>
+       {UNIT_OPTIONS.map(opt => (
+         <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+       ))}
+     </Select>
+   </FormControl>
+ </Stack>
         <Button size="small" variant="text" onClick={() => setAddMatCreatingNew(false)}>
           ← Выбрать из существующих
         </Button>
@@ -1582,22 +1593,25 @@ textAlign: 'center',
 <TextField fullWidth label="Наименование" value={editName} onChange={e => setEditName(e.target.value)} required />
 <TextField fullWidth label="Артикул" value={editArticle} onChange={e => setEditArticle(e.target.value)} />
 
-<FormControl fullWidth>
-  <InputLabel>Единица измерения</InputLabel>
-  <Select value={editUnit} label="Единица измерения" onChange={e => setEditUnit(e.target.value)}>
-    {UNIT_OPTIONS.map(opt => (
-      <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-    ))}
-  </Select>
-</FormControl>
-<TextField
-  fullWidth
-  label="Количество по спецификации"
-  type="number"
-  placeholder="0"
-  value={editSpecQty}
-  onChange={e => setEditSpecQty(e.target.value)}
-/>
+{/* ⭐ Компактно: количество + единица на одном этаже */}
+<Stack direction="row" spacing={2}>
+  <TextField
+    fullWidth
+    label="Кол-во по спецификации"
+    type="number"
+    placeholder="0"
+    value={editSpecQty}
+    onChange={e => setEditSpecQty(e.target.value)}
+  />
+  <FormControl fullWidth sx={{ maxWidth: 100 }}>
+    <InputLabel>Ед. изм.</InputLabel>
+    <Select value={editUnit} label="Ед. изм." onChange={e => setEditUnit(e.target.value)}>
+      {UNIT_OPTIONS.map(opt => (
+        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+      ))}
+    </Select>
+  </FormControl>
+</Stack>
 <TextField fullWidth label="Примечание" multiline rows={2} value={editNote} onChange={e => setEditNote(e.target.value)} />
 
 <Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена работ</Typography></Divider>
@@ -1672,15 +1686,18 @@ textAlign: 'center',
     {newPriceCategoryId === '__new__' && (
       <TextField fullWidth label="Название новой категории" value={newPriceCategoryName} onChange={e => setNewPriceCategoryName(e.target.value)} />
     )}
-    <FormControl fullWidth>
-      <InputLabel>Единица</InputLabel>
-      <Select value={newPriceUnit} label="Единица" onChange={e => setNewPriceUnit(e.target.value)}>
-        {UNIT_OPTIONS.map(opt => (
-          <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-        ))}
-      </Select>
-    </FormControl>
-    <TextField fullWidth label="Цена, ₽" type="number" value={newPricePrice} onChange={e => setNewPricePrice(e.target.value)} />
+ {/* ⭐ Компактно: цена + единица на одном этаже */}
+ <Stack direction="row" spacing={2}>
+   <TextField fullWidth label="Цена, ₽" type="number" value={newPricePrice} onChange={e => setNewPricePrice(e.target.value)} />
+   <FormControl fullWidth sx={{ maxWidth: 100 }}>
+     <InputLabel>Ед. изм.</InputLabel>
+     <Select value={newPriceUnit} label="Ед. изм." onChange={e => setNewPriceUnit(e.target.value)}>
+       {UNIT_OPTIONS.map(opt => (
+         <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+       ))}
+     </Select>
+   </FormControl>
+ </Stack>
     <Button size="small" variant="text" onClick={() => setEditCreatingNew(false)}>
       ← Выбрать из существующих
     </Button>
@@ -1732,13 +1749,16 @@ renderInput={(params) => (
 {editMatPriceCategoryId === '__new__' && (
 <TextField fullWidth label="Название новой категории" value={editMatPriceCategoryName} onChange={e => setEditMatPriceCategoryName(e.target.value)} />
 )}
-<FormControl fullWidth>
-<InputLabel>Единица</InputLabel>
-<Select value={editMatPriceUnit} label="Единица" onChange={e => setEditMatPriceUnit(e.target.value)}>
-{UNIT_OPTIONS.map(opt => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
-</Select>
-</FormControl>
-<TextField fullWidth label="Цена, ₽" type="number" value={editMatPricePrice} onChange={e => setEditMatPricePrice(e.target.value)} />
+ {/* ⭐ Компактно: цена + единица на одном этаже */}
+ <Stack direction="row" spacing={2}>
+   <TextField fullWidth label="Цена, ₽" type="number" value={editMatPricePrice} onChange={e => setEditMatPricePrice(e.target.value)} />
+   <FormControl fullWidth sx={{ maxWidth: 100 }}>
+     <InputLabel>Ед. изм.</InputLabel>
+     <Select value={editMatPriceUnit} label="Ед. изм." onChange={e => setEditMatPriceUnit(e.target.value)}>
+       {UNIT_OPTIONS.map(opt => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
+     </Select>
+   </FormControl>
+ </Stack>
 <Button size="small" variant="text" onClick={() => setEditMatCreatingNew(false)}>← Выбрать из существующих</Button>
 </>
 )}
