@@ -132,44 +132,64 @@ export class InviteService {
   }
 
   // 5. Принять приглашение (авторизованный юзер)
+  // ⭐ Обёрнуто в транзакцию для защиты от race condition (двойной клик, параллельные запросы).
+  // Уникальность доступа гарантируется unique constraint @@unique([userId, objectId, projectId]).
   async acceptInvite(token: string, userId: number) {
-    const invite = await this.getInviteByToken(token);
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Читаем invite (с включёнными связями для возврата)
+      const invite = await tx.inviteToken.findUnique({
+        where: { token },
+        include: {
+          creator: { select: { id: true, fullName: true } },
+          object: { select: { id: true, name: true } },
+        },
+      });
 
-    // Проверка что юзер ещё не имеет доступа
-    const existingAccess = await this.prisma.objectAccess.findFirst({
-      where: {
-        userId,
-        objectId: invite.object.id,
-        projectId: null, // доступ на весь объект
-      },
-    });
+      if (!invite || !invite.isActive) {
+        throw new NotFoundException('Ссылка не найдена или отозвана');
+      }
 
-    if (existingAccess) {
-      throw new ConflictException('У вас уже есть доступ к этому объекту');
-    }
+      // 2. Проверка срока жизни
+      if (invite.expiresAt && invite.expiresAt < new Date()) {
+        throw new BadRequestException('Срок действия ссылки истёк');
+      }
 
-    // Создаём ObjectAccess
-    const access = await this.prisma.objectAccess.create({
-      data: {
-        userId,
-        objectId: invite.object.id,
-        projectId: null,
+      // 3. Проверка лимита использований
+      if (invite.maxUses !== null && invite.usesCount >= invite.maxUses) {
+        throw new BadRequestException('Лимит использований ссылки исчерпан');
+      }
+
+      // 4. Создаём доступ. Если уже есть — БД выбросит P2002 (unique constraint).
+      try {
+        await tx.objectAccess.create({
+          data: {
+            userId,
+            objectId: invite.objectId,
+            projectId: null,
+            role: invite.role,
+            hidePrices: invite.hidePrices,
+            invitedBy: invite.createdBy,
+          },
+        });
+      } catch (e: any) {
+        // P2002 = Unique constraint failed → юзер уже имеет доступ
+        if (e.code === 'P2002') {
+          throw new ConflictException('У вас уже есть доступ к этому объекту');
+        }
+        throw e;
+      }
+
+      // 5. Инкрементируем счётчик (внутри той же транзакции — атомарно)
+      await tx.inviteToken.update({
+        where: { token },
+        data: { usesCount: { increment: 1 } },
+      });
+
+      return {
+        message: 'Приглашение принято',
+        objectId: invite.objectId,
         role: invite.role,
-        hidePrices: invite.hidePrices,
-        invitedBy: invite.creator.id,
-      },
+      };
     });
-
-    // Увеличиваем счётчик использований
-    await this.prisma.inviteToken.update({
-      where: { token },
-      data: { usesCount: { increment: 1 } },
-    });
-
-    return {
-      message: 'Приглашение принято',
-      objectId: invite.object.id,
-      role: invite.role,
-    };
   }
 }
