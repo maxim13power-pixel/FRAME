@@ -13,7 +13,8 @@ export interface ObjectData {
   note?: string | null;
   progressPercent?: number; // честный % из проектов
   totalCost?: number;
-  role?: 'CUSTOMER' | 'FOREMAN' | 'VIEWER'; // ⭐ роль создателя объекта
+  role?: 'CUSTOMER' | 'FOREMAN' | 'VIEWER'; // ⭐ роль пользователя на объекте
+  hidePrices?: boolean; // ⭐ скрывать ли цены для этого участника
 }
 
 // Получить все объекты

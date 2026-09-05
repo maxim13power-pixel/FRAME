@@ -184,7 +184,9 @@ const [newPriceCategoryName, setNewPriceCategoryName] = useState('');
 const [newPriceUnit, setNewPriceUnit] = useState('PIECE');
 const [newPricePrice, setNewPricePrice] = useState('');
 const [allCategories, setAllCategories] = useState<{ id: number; name: string }[]>([]);
-  // ⭐ Воронка — ТОЛЬКО категории, которые реально есть в смете этого проекта
+// ⭐ Определяем нужно ли скрывать цены (VIEWER или hidePrices=true)
+const hidePrices = currentObject?.hidePrices === true || currentObject?.role === 'VIEWER';
+// ⭐ Воронка — ТОЛЬКО категории, которые реально есть в смете этого проекта
   // (категория попадает сюда, если в проекте есть хотя бы одна позиция с ней)
   const projectCategories = useMemo(() => {
     const map = new Map<number, { name: string; count: number }>();
@@ -913,26 +915,26 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
 </FormControl>
 )}
 
-{!isMobile && (
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleOpenAddModal}
-            sx={{
-              bgcolor: '#4caf50',
-              minWidth: '200px',
-              '&:hover': {
-                bgcolor: '#388e3c',
-                transform: 'translateY(-3px)',
-                boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
-              },
-              transition: 'all 0.3s ease',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Добавить позицию
-          </Button>
-        )}
+{!isMobile && !hidePrices && (
+  <Button
+    variant="contained"
+    startIcon={<AddIcon />}
+    onClick={handleOpenAddModal}
+    sx={{
+      bgcolor: '#4caf50',
+      minWidth: '200px',
+      '&:hover': {
+        bgcolor: '#388e3c',
+        transform: 'translateY(-3px)',
+        boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
+      },
+      transition: 'all 0.3s ease',
+      whiteSpace: 'nowrap',
+    }}
+  >
+    Добавить позицию
+  </Button>
+)}
       </Box>
       {/* Мобильное меню сортировки (открывается из иконки) */}
       <Menu
@@ -990,20 +992,23 @@ onClose={() => setFilterAnchorEl(null)}
 <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center', cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }} onClick={() => handleSortClick('percentage')}>
 % выполн.{renderSortIcon('percentage')}
 </TableCell>
-<TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'right' }}>Работ на тек. момент, руб.</TableCell>
-<TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'right' }}>Материал на тек. момент, руб.</TableCell>
-<TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'right' }}>Итого на тек. момент, руб.</TableCell>
-<TableCell colSpan={2} sx={{ fontWeight: 700, textAlign: 'center', borderLeft: '2px solid #90caf9' }}>Стоимость работ по смете (руб.)</TableCell>
-<TableCell colSpan={2} sx={{ fontWeight: 700, textAlign: 'center', borderLeft: '2px solid #90caf9' }}>Стоимость материалов по смете (руб.)</TableCell>
-<TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'right', borderLeft: '2px solid #90caf9' }}>Итого по смете, руб.</TableCell>
-<TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center' }}>Действия</TableCell>
-</TableRow>
-<TableRow sx={{ bgcolor: '#e3f2fd' }}>
-<TableCell sx={{ fontWeight: 600, textAlign: 'right', borderLeft: '2px solid #90caf9' }}>За ед.</TableCell>
-<TableCell sx={{ fontWeight: 600, textAlign: 'right' }}>Итого руб.</TableCell>
-<TableCell sx={{ fontWeight: 600, textAlign: 'right', borderLeft: '2px solid #90caf9' }}>За ед.</TableCell>
-<TableCell sx={{ fontWeight: 600, textAlign: 'right' }}>Итого руб.</TableCell>
-</TableRow>
+          {/* ⭐ Денежные колонки скрываем полностью при hidePrices */}
+          {!hidePrices && <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'right' }}>Работ на тек. момент, руб.</TableCell>}
+          {!hidePrices && <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'right' }}>Материал на тек. момент, руб.</TableCell>}
+          {!hidePrices && <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'right' }}>Итого на тек. момент, руб.</TableCell>}
+          {!hidePrices && <TableCell colSpan={2} sx={{ fontWeight: 700, textAlign: 'center', borderLeft: '2px solid #90caf9' }}>Стоимость работ по смете (руб.)</TableCell>}
+          {!hidePrices && <TableCell colSpan={2} sx={{ fontWeight: 700, textAlign: 'center', borderLeft: '2px solid #90caf9' }}>Стоимость материалов по смете (руб.)</TableCell>}
+          {!hidePrices && <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'right', borderLeft: '2px solid #90caf9' }}>Итого по смете, руб.</TableCell>}
+          <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center' }}>Действия</TableCell>
+        </TableRow>
+        {!hidePrices && (
+          <TableRow sx={{ bgcolor: '#e3f2fd' }}>
+            <TableCell sx={{ fontWeight: 600, textAlign: 'right', borderLeft: '2px solid #90caf9' }}>За ед.</TableCell>
+            <TableCell sx={{ fontWeight: 600, textAlign: 'right' }}>Итого руб.</TableCell>
+            <TableCell sx={{ fontWeight: 600, textAlign: 'right', borderLeft: '2px solid #90caf9' }}>За ед.</TableCell>
+            <TableCell sx={{ fontWeight: 600, textAlign: 'right' }}>Итого руб.</TableCell>
+          </TableRow>
+        )}
 </TableHead>
             <TableBody>
 {sortedMaterials.map((m, idx) => (
@@ -1025,31 +1030,32 @@ onClose={() => setFilterAnchorEl(null)}
 + фикс
 </Button>
 </TableCell>
-<TableCell sx={{ textAlign: 'center', fontWeight: 600, color: m.progressPercent >= 100 ? '#4caf50' : '#1976d2' }}>{m.progressPercent}%</TableCell>
-<TableCell sx={{ textAlign: 'right' }}>{m.totalCost > 0 ? `${m.totalCost.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>
-<TableCell sx={{ textAlign: 'right' }}>{m.materialTotalCost > 0 ? `${m.materialTotalCost.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>
-<TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{(m.totalCost + m.materialTotalCost) > 0 ? `${(m.totalCost + m.materialTotalCost).toLocaleString('ru-RU')} ₽` : '—'}</TableCell>
-<TableCell sx={{ textAlign: 'right', borderLeft: '2px solid #90caf9' }}>{m.unitPrice > 0 ? `${m.unitPrice.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>
-<TableCell sx={{ textAlign: 'right' }}>{(m.unitPrice * m.specQuantity) > 0 ? `${(m.unitPrice * m.specQuantity).toLocaleString('ru-RU')} ₽` : '—'}</TableCell>
-<TableCell sx={{ textAlign: 'right', borderLeft: '2px solid #90caf9' }}>{m.materialUnitPrice > 0 ? `${m.materialUnitPrice.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>
-<TableCell sx={{ textAlign: 'right' }}>{(m.materialUnitPrice * m.specQuantity) > 0 ? `${(m.materialUnitPrice * m.specQuantity).toLocaleString('ru-RU')} ₽` : '—'}</TableCell>
-<TableCell sx={{ textAlign: 'right', fontWeight: 700, borderLeft: '2px solid #90caf9' }}>
-{((m.unitPrice + m.materialUnitPrice) * m.specQuantity) > 0 ? `${((m.unitPrice + m.materialUnitPrice) * m.specQuantity).toLocaleString('ru-RU')} ₽` : '—'}
-</TableCell>
-<TableCell sx={{ textAlign: 'center' }}>
+              <TableCell sx={{ textAlign: 'center', fontWeight: 600, color: m.progressPercent >= 100 ? '#4caf50' : '#1976d2' }}>{m.progressPercent}%</TableCell>
+              {/* ⭐ Денежные ячейки скрываем при hidePrices */}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right' }}>{m.totalCost > 0 ? `${m.totalCost.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right' }}>{m.materialTotalCost > 0 ? `${m.materialTotalCost.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{(m.totalCost + m.materialTotalCost) > 0 ? `${(m.totalCost + m.materialTotalCost).toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', borderLeft: '2px solid #90caf9' }}>{m.unitPrice > 0 ? `${m.unitPrice.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right' }}>{(m.unitPrice * m.specQuantity) > 0 ? `${(m.unitPrice * m.specQuantity).toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', borderLeft: '2px solid #90caf9' }}>{m.materialUnitPrice > 0 ? `${m.materialUnitPrice.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right' }}>{(m.materialUnitPrice * m.specQuantity) > 0 ? `${(m.materialUnitPrice * m.specQuantity).toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, borderLeft: '2px solid #90caf9' }}>
+                {((m.unitPrice + m.materialUnitPrice) * m.specQuantity) > 0 ? `${((m.unitPrice + m.materialUnitPrice) * m.specQuantity).toLocaleString('ru-RU')} ₽` : '—'}
+              </TableCell>}
+              <TableCell sx={{ textAlign: 'center' }}>
 <IconButton size="small" onClick={() => handleOpenSettings(m)}>
 <SettingsIcon fontSize="small" />
 </IconButton>
 </TableCell>
 </TableRow>
 ))}
-              {filteredMaterials.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={17} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
-                    {materials.length === 0 ? 'Материалы не добавлены' : 'Ничего не найдено'}
-                  </TableCell>
-                </TableRow>
-              )}
+{filteredMaterials.length === 0 && (
+  <TableRow>
+    <TableCell colSpan={hidePrices ? 9 : 17} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
+      {materials.length === 0 ? 'Материалы не добавлены' : 'Ничего не найдено'}
+    </TableCell>
+  </TableRow>
+)}
             </TableBody>
 <TableFooter>
 <TableRow sx={{ bgcolor: '#FFF9C4' }}>
@@ -1057,16 +1063,17 @@ onClose={() => setFilterAnchorEl(null)}
 <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.sumSpecQuantity}</TableCell>
 <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.sumTotalUsed}</TableCell>
 <TableCell />
-<TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.weightedPercent}%</TableCell>
-<TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumWorkCurrent.toLocaleString('ru-RU')} ₽</TableCell>
-<TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumMatCurrent.toLocaleString('ru-RU')} ₽</TableCell>
-<TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumCurrentTotal.toLocaleString('ru-RU')} ₽</TableCell>
-<TableCell sx={{ borderLeft: '2px solid #90caf9' }} />
-<TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumWorkEstimate.toLocaleString('ru-RU')} ₽</TableCell>
-<TableCell sx={{ borderLeft: '2px solid #90caf9' }} />
-<TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumMatEstimate.toLocaleString('ru-RU')} ₽</TableCell>
-<TableCell sx={{ textAlign: 'right', fontWeight: 700, borderLeft: '2px solid #90caf9' }}>{totals.sumEstimate.toLocaleString('ru-RU')} ₽</TableCell>
-<TableCell />
+              <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.weightedPercent}%</TableCell>
+              {/* ⭐ Итоги по деньгам скрываем при hidePrices */}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumWorkCurrent.toLocaleString('ru-RU')} ₽</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumMatCurrent.toLocaleString('ru-RU')} ₽</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumCurrentTotal.toLocaleString('ru-RU')} ₽</TableCell>}
+              {!hidePrices && <TableCell sx={{ borderLeft: '2px solid #90caf9' }} />}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumWorkEstimate.toLocaleString('ru-RU')} ₽</TableCell>}
+              {!hidePrices && <TableCell sx={{ borderLeft: '2px solid #90caf9' }} />}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumMatEstimate.toLocaleString('ru-RU')} ₽</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, borderLeft: '2px solid #90caf9' }}>{totals.sumEstimate.toLocaleString('ru-RU')} ₽</TableCell>}
+              <TableCell />
 </TableRow>
 </TableFooter>
           </Table>
@@ -1114,23 +1121,25 @@ onClose={() => setFilterAnchorEl(null)}
                   {' • '}<Box component="span" color="text.secondary">Итого:</Box> <b>{m.totalUsed}</b>
                   {' • '}<Box component="span" color="text.secondary">Посл.:</Box> <b>{m.lastEntry ?? '—'}</b>
                 </Typography>
-                {/* Блок "На текущий момент" */}
-                <Box sx={{ bgcolor: '#f5f9ff', borderRadius: 1.5, p: 1, mb: 1, border: '1px solid #e3edf8' }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
-                    <Typography variant="caption" color="text.secondary">Работы:</Typography>
-                    <Typography variant="caption" fontWeight={600}>{m.totalCost > 0 ? `${m.totalCost.toLocaleString('ru-RU')} ₽` : '—'}</Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
-                    <Typography variant="caption" color="text.secondary">Материалы:</Typography>
-                    <Typography variant="caption" fontWeight={600}>{m.materialTotalCost > 0 ? `${m.materialTotalCost.toLocaleString('ru-RU')} ₽` : '—'}</Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" fontWeight={700}>Итого:</Typography>
-                    <Typography variant="body2" fontWeight={700} color="#1976d2">
-                      {(m.totalCost + m.materialTotalCost) > 0 ? `${(m.totalCost + m.materialTotalCost).toLocaleString('ru-RU')} ₽` : '—'}
-                    </Typography>
-                  </Box>
+            {/* ⭐ Блок "На текущий момент" — полностью скрыт при hidePrices */}
+            {!hidePrices && (
+              <Box sx={{ bgcolor: '#f5f9ff', borderRadius: 1.5, p: 1, mb: 1, border: '1px solid #e3edf8' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
+                  <Typography variant="caption" color="text.secondary">Работы:</Typography>
+                  <Typography variant="caption" fontWeight={600}>{m.totalCost > 0 ? `${m.totalCost.toLocaleString('ru-RU')} ₽` : '—'}</Typography>
                 </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
+                  <Typography variant="caption" color="text.secondary">Материалы:</Typography>
+                  <Typography variant="caption" fontWeight={600}>{m.materialTotalCost > 0 ? `${m.materialTotalCost.toLocaleString('ru-RU')} ₽` : '—'}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" fontWeight={700}>Итого:</Typography>
+                  <Typography variant="body2" fontWeight={700} color="#1976d2">
+                    {(m.totalCost + m.materialTotalCost) > 0 ? `${(m.totalCost + m.materialTotalCost).toLocaleString('ru-RU')} ₽` : '—'}
+                  </Typography>
+                </Box>
+              </Box>
+            )}
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button
                 variant="outlined"
@@ -1168,23 +1177,33 @@ onClose={() => setFilterAnchorEl(null)}
         </Stack>
       )}
 
-  {/* ⭐ 6.7 Липкая плашка итогов (Смета / Факт / %) внизу на мобилке */}
-  {isMobile && (
-    <Paper
-      elevation={8}
-      sx={{
-        position: 'fixed',
-        bottom: 64,
-        left: 8,
-        right: 8,
-        zIndex: 1100,
-        borderRadius: 2,
-        bgcolor: '#fff',
-        px: 2,
-        py: 1,
-        border: '1px solid #e0e0e0',
-      }}
-    >
+{/* ⭐ 6.7 Липкая плашка итогов — деньги скрыты при hidePrices, процент остаётся */}
+{isMobile && (
+  <Paper
+    elevation={8}
+    sx={{
+      position: 'fixed',
+      bottom: 64,
+      left: 8,
+      right: 8,
+      zIndex: 1100,
+      borderRadius: 2,
+      bgcolor: '#fff',
+      px: 2,
+      py: 1,
+      border: '1px solid #e0e0e0',
+    }}
+  >
+    {hidePrices ? (
+      // Для VIEWER показываем только процент
+      <Box sx={{ textAlign: 'center' }}>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Освоено</Typography>
+        <Typography variant="body2" fontWeight={700} color={totals.weightedPercent >= 100 ? '#4caf50' : '#ef6c00'}>
+          {totals.weightedPercent}%
+        </Typography>
+      </Box>
+    ) : (
+      // Для остальных показываем всё
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
         <Box sx={{ textAlign: 'left' }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Смета</Typography>
@@ -1205,18 +1224,19 @@ onClose={() => setFilterAnchorEl(null)}
           </Typography>
         </Box>
       </Box>
-    </Paper>
-  )}
-  {/* FAB для мобилки (поднят выше плашки итогов) */}
-  {isMobile && (
-    <Fab
-      color="primary"
-      sx={{ position: 'fixed', bottom: 130, right: 16, zIndex: 1000 }}
-      onClick={handleOpenAddModal}
-    >
-      <AddIcon />
-    </Fab>
-  )}
+    )}
+  </Paper>
+)}
+{/* FAB для мобилки (поднят выше плашки итогов) — скрыт при hidePrices */}
+{isMobile && !hidePrices && (
+  <Fab
+    color="primary"
+    sx={{ position: 'fixed', bottom: 130, right: 16, zIndex: 1000 }}
+    onClick={handleOpenAddModal}
+  >
+    <AddIcon />
+  </Fab>
+)}
 
       {/* Модалка добавления материала */}
       <Modal open={addModalOpen} onClose={handleCloseAddModal} disableRestoreFocus>
