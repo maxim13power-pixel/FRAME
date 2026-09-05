@@ -16,6 +16,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getInviteInfo, acceptInvite } from '../services/inviteService';
 import { useAuth } from '../contexts/AuthContext';
 import type { AccessRole } from '../services/accessService';
+import { useTheme, useMediaQuery } from '@mui/material';
+import DownloadIcon from '@mui/icons-material/Download';
+import { STORE_URLS } from '../config';
 
 // ⭐ Инфа о приглашении (приходит с публичного эндпоинта)
 interface InviteInfo {
@@ -39,6 +42,10 @@ const roleLabel = (role: AccessRole) => {
 };
 
 const AcceptInvite: React.FC = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  // ⭐ Есть ли в сторах наше приложение (появится позже)?
+  const hasAppInStores = Boolean(STORE_URLS.ruStore || STORE_URLS.appStore || STORE_URLS.playMarket);
   const { token: inviteToken } = useParams<{ token: string }>();
   const { token } = useAuth();
   const navigate = useNavigate();
@@ -89,8 +96,25 @@ const AcceptInvite: React.FC = () => {
     localStorage.setItem('pendingInviteToken', inviteToken);
     navigate('/login');
   };
-
-  return (
+      {/* ⭐ ЗАДЕЛ: плашка для мобильных пользователей без приложения.
+          Пока приложение не опубликовано в сторах — плашка неактивна.
+          Когда появится STORE_URLS — плашка станет активной. */}
+      {isMobile && !hasAppInStores && (
+        <Alert
+          severity="info"
+          icon={<DownloadIcon />}
+          sx={{ mb: 2, mx: 'auto', maxWidth: 500 }}
+        >
+          <b>📱 Скоро здесь будет кнопка «Открыть в приложении»</b>
+          <br />
+          <small>
+            Пока FRAME доступен только через браузер. Приложение для iOS / Android
+            появится в следующих версиях — ссылка-приглашение будет открывать
+            приложение сразу на нужном экране.
+          </small>
+        </Alert>
+      )}
+  return (    
     <Box
       sx={{
         minHeight: '100vh',

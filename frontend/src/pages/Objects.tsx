@@ -40,6 +40,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { fetchAccessList, addAccess, updateAccess, removeAccess } from '../services/accessService';
+import { APP_URL } from '../config';
 import type { AccessMember, AccessRole } from '../services/accessService';
 import { createInviteLink, fetchInviteLinks, revokeInviteLink } from '../services/inviteService';
 import type { InviteLink } from '../services/inviteService';
@@ -393,7 +394,8 @@ const handleCreateLink = async () => {
       role: linkRole,
       hidePrices: linkHidePrices,
     });
-    setCreatedLinkUrl(`${window.location.origin}/invite/${link.token}`);
+          // ⭐ Используем APP_URL из конфига (для Universal Links в будущем)
+      setCreatedLinkUrl(`${APP_URL}/invite/${link.token}`);
     await loadInviteLinks(accessObject.id);
   } catch (err: any) {
     setAccessError(err.response?.data?.message || 'Ошибка создания ссылки');
