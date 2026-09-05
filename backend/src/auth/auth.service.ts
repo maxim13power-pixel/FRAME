@@ -84,13 +84,14 @@ export class AuthService {
     } catch (e: any) {
       // P2002 = Unique constraint failed → email или телефон уже занят
       if (e.code === 'P2002') {
-        const field = e.meta?.target?.includes('email') ? 'email' : 'телефон';
-        throw new ConflictException(`Этот ${field} уже зарегистрирован`);
+        // ⭐ Явно проверяем какое поле конфликтует через target массив
+        const target: string[] = e.meta?.target ?? [];
+        const isEmailConflict = target.includes('email');
+        throw new ConflictException(
+          isEmailConflict ? 'Этот email уже зарегистрирован' : 'Этот телефон уже зарегистрирован',
+        );
       }
       throw e;
     }
-
-    // 5. Сразу логиним — возвращаем JWT + данные пользователя
-    //return this.login(user, false);
   }
 }
