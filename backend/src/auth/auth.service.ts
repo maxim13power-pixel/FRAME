@@ -8,7 +8,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RegisterDto } from './/dto/register.dto';
+import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
 export class AuthService {
@@ -40,7 +40,6 @@ export class AuthService {
       role: user.role,
     };
     const expiresIn = rememberMe ? '30d' : '1d';
-    console.log('rememberMe:', rememberMe, 'expiresIn:', expiresIn);
     const access_token = this.jwtService.sign(payload, { expiresIn });
 
     return {
@@ -63,40 +62,35 @@ export class AuthService {
       throw new BadRequestException('Укажите email или телефон');
     }
 
-    // 2. Проверка занятости email
-    if (dto.email) {
-      const exists = await this.prismaService.user.findUnique({
-        where: { email: dto.email },
-      });
-      if (exists) {
-        throw new ConflictException('Этот email уже зарегистрирован');
-      }
-    }
-
-    // 3. Проверка занятости телефона
-    if (dto.phone) {
-      const exists = await this.prismaService.user.findUnique({
-        where: { phone: dto.phone },
-      });
-      if (exists) {
-        throw new ConflictException('Этот телефон уже зарегистрирован');
-      }
-    }
-
-    // 4. Хэшируем пароль и создаём юзера
+    // 2-4. Проверка занятости + создание юзера.
+    // ⭐ Race condition protection: если два параллельных запроса с одинаковым email/phone
+    // пройдут проверку findUnique одновременно — БД выбросит P2002 (unique constraint).
+    // Перехватываем и возвращаем человекоразумую ошибку вместо 500.
     const hashedPassword = await bcrypt.hash(dto.password, 10);
-    const user = await this.prismaService.user.create({
-      data: {
-        email: dto.email ?? null,
-        phone: dto.phone ?? null,
-        password: hashedPassword,
-        fullName: dto.fullName,
-        // По умолчанию — Прораб. Заказчики обычно приходят через приглашение.
-        role: 'FOREMAN',
-      },
-    });
+    try {
+      const user = await this.prismaService.user.create({
+        data: {
+          email: dto.email ?? null,
+          phone: dto.phone ?? null,
+          password: hashedPassword,
+          fullName: dto.fullName,
+          // По умолчанию — Прораб. Заказчики обычно приходят через приглашение.
+          role: 'FOREMAN',
+        },
+      });
+
+      // 5. Сразу логиним — возвращаем JWT + данные пользователя
+      return this.login(user, false);
+    } catch (e: any) {
+      // P2002 = Unique constraint failed → email или телефон уже занят
+      if (e.code === 'P2002') {
+        const field = e.meta?.target?.includes('email') ? 'email' : 'телефон';
+        throw new ConflictException(`Этот ${field} уже зарегистрирован`);
+      }
+      throw e;
+    }
 
     // 5. Сразу логиним — возвращаем JWT + данные пользователя
-    return this.login(user, false);
+    //return this.login(user, false);
   }
 }
