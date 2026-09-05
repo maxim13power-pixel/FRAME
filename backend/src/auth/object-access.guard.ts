@@ -24,22 +24,43 @@ export class ObjectAccessGuard implements CanActivate {
     }
 
     // ⭐ Определяем контроллер: в ObjectsController параметр :id — это objectId,
-    // а в ProjectsController :id — это projectId (его проверяет сервис, не guard).
+    // а в ProjectsController :id — это projectId (нужен резолв).
     const controllerName = context.getClass().name;
 
     let raw: unknown;
+    let projectId: number | null = null;
+
     if (request.params?.objectId) {
       // Явный objectId в пути (например, /projects/object/:objectId)
       raw = request.params.objectId;
     } else if (controllerName === 'ObjectsController' && request.params?.id) {
       // Только для объектов :id означает objectId
       raw = request.params.id;
+    } else if (controllerName === 'ProjectsController' && request.params?.id) {
+      // Для проектов :id означает projectId — нужен резолв в objectId
+      projectId = Number(request.params.id);
+      if (!Number.isNaN(projectId) && projectId > 0) {
+        // Читаем проект и берём его objectId
+        const project = await this.prisma.project.findUnique({
+          where: { id: projectId },
+          select: { objectId: true },
+        });
+        if (project) {
+          raw = project.objectId;
+        }
+      }
+    }
+
+    // ⭐ Проверяем сырой raw, а не Number(raw).
+    // Это важно: Number(0) = 0, !0 = true → обход проверки.
+    if (raw === undefined || raw === null) {
+      // objectId не определён (создание, списки и т.п.) — пропускаем.
+      // Для таких маршрутов проверка доступа остаётся в сервисах.
+      return true;
     }
 
     const objectId = Number(raw);
-    // ⭐ Если objectId не определён (создание, списки, /projects/:id и т.п.) — пропускаем.
-    // Для таких маршрутов проверка доступа остаётся в сервисах.
-    if (!objectId || Number.isNaN(objectId)) {
+    if (Number.isNaN(objectId)) {
       return true;
     }
 
