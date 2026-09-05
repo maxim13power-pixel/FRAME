@@ -162,12 +162,17 @@ export class MaterialsService {
     if (!dto.amount || dto.amount <= 0) {
       throw new BadRequestException('Объём фиксации должен быть больше нуля');
     }
-  // ⭐ Проверка доступа через ObjectAccess (запоминаем access для проверки скрытия цен)
-  let access: any = null;
-  if (userId) {
-    access = await this.checkMaterialAccess(materialId, userId);
-  }
-  const updated = await this.prisma.$transaction(async (tx) => {
+    // ⭐ Проверка доступа через ObjectAccess (запоминаем access для проверки скрытия цен)
+    let access: any = null;
+    if (userId) {
+      access = await this.checkMaterialAccess(materialId, userId);
+      // 🔒 VIEWER не имеет права фиксировать объёмы (только смотреть)
+      if (access.role === 'VIEWER') {
+        throw new ForbiddenException('Наблюдатель не может фиксировать объёмы');
+      }
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
       // Блокируем строку материала: конкурентный addFix/editLastFix ждёт здесь, а не перезаписывает результат.
       // numeric-колонки Postgres приходят как Prisma.Decimal — поэтому ниже везде Number(...).
       const [material] = await tx.$queryRaw<
@@ -253,10 +258,14 @@ export class MaterialsService {
       throw new BadRequestException('Объём должен быть больше нуля');
     }
 
-       // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
+    // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
     let access: any = null;
     if (userId) {
       access = await this.checkMaterialAccess(id, userId);
+      // 🔒 VIEWER не имеет права редактировать фиксации
+      if (access.role === 'VIEWER') {
+        throw new ForbiddenException('Наблюдатель не может редактировать фиксации');
+      }
     }
 
     // Фиксация, которую польрузке формы
@@ -328,6 +337,10 @@ export class MaterialsService {
     let access: any = null;
     if (userId) {
       access = await this.checkMaterialAccess(id, userId);
+      // 🔒 VIEWER не имеет права редактировать материалы
+      if (access.role === 'VIEWER') {
+        throw new ForbiddenException('Наблюдатель не может редактировать материалы');
+      }
     }
 
     const material = await this.prisma.material.findUnique({ where: { id } });
@@ -460,7 +473,12 @@ export class MaterialsService {
     let access: any = null;
     if (userId) {
       access = await this.checkMaterialAccess(id, userId);
+      // 🔒 VIEWER не имеет права удалять материалы
+      if (access.role === 'VIEWER') {
+        throw new ForbiddenException('Наблюдатель не может удалять материалы');
+      }
     }
+
     const material = await this.prisma.material.findUnique({ where: { id } });
     if (!material) throw new NotFoundException('Материал не найден');
     const deleted = await this.prisma.material.delete({ where: { id } });

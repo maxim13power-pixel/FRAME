@@ -1019,17 +1019,20 @@ onClose={() => setFilterAnchorEl(null)}
 <TableCell>{UNIT_OPTIONS.find(u => u.value === m.unit)?.label || m.unit}</TableCell>
 <TableCell sx={{ textAlign: 'center' }}>{m.specQuantity}</TableCell>
 <TableCell sx={{ textAlign: 'center', fontWeight: 600 }}>{m.totalUsed}</TableCell>
-<TableCell sx={{ textAlign: 'center' }}>
-<Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
-<Typography variant="body2" fontWeight={600}>{m.lastEntry ?? '—'}</Typography>
-<IconButton size="small" sx={{ p: 0.3 }} onClick={() => setInfoModal({ open: true, text: '📷 Раздел фото в разработке — появится в версии 2' })}>
-<CameraAltIcon sx={{ fontSize: 16, color: '#757575' }} />
-</IconButton>
-</Box>
-<Button size="small" variant="outlined" onClick={() => handleOpenFixModal(m)} sx={{ textTransform: 'none', fontSize: 11, mt: 0.5 }}>
-+ фикс
-</Button>
-</TableCell>
+              <TableCell sx={{ textAlign: 'center' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                  <Typography variant="body2" fontWeight={600}>{m.lastEntry ?? '—'}</Typography>
+                  <IconButton size="small" sx={{ p: 0.3 }} onClick={() => setInfoModal({ open: true, text: '📷 Раздел фото в разработке — появится в версии 2' })}>
+                    <CameraAltIcon sx={{ fontSize: 16, color: '#757575' }} />
+                  </IconButton>
+                </Box>
+                {/* ⭐ Кнопка "+ фикс" скрыта для VIEWER (и на бэке addFix кидает 403) */}
+                {!hidePrices && (
+                  <Button size="small" variant="outlined" onClick={() => handleOpenFixModal(m)} sx={{ textTransform: 'none', fontSize: 11, mt: 0.5 }}>
+                    + фикс
+                  </Button>
+                )}
+              </TableCell>
               <TableCell sx={{ textAlign: 'center', fontWeight: 600, color: m.progressPercent >= 100 ? '#4caf50' : '#1976d2' }}>{m.progressPercent}%</TableCell>
               {/* ⭐ Денежные ячейки скрываем при hidePrices */}
               {!hidePrices && <TableCell sx={{ textAlign: 'right' }}>{m.totalCost > 0 ? `${m.totalCost.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
@@ -1043,10 +1046,13 @@ onClose={() => setFilterAnchorEl(null)}
                 {((m.unitPrice + m.materialUnitPrice) * m.specQuantity) > 0 ? `${((m.unitPrice + m.materialUnitPrice) * m.specQuantity).toLocaleString('ru-RU')} ₽` : '—'}
               </TableCell>}
               <TableCell sx={{ textAlign: 'center' }}>
-<IconButton size="small" onClick={() => handleOpenSettings(m)}>
-<SettingsIcon fontSize="small" />
-</IconButton>
-</TableCell>
+                {/* ⭐ Шестерёнка настроек скрыта для VIEWER (и на бэке update/remove/editLastFix кидают 403) */}
+                {!hidePrices && (
+                  <IconButton size="small" onClick={() => handleOpenSettings(m)}>
+                    <SettingsIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </TableCell>
 </TableRow>
 ))}
 {filteredMaterials.length === 0 && (
@@ -1085,16 +1091,19 @@ onClose={() => setFilterAnchorEl(null)}
     <Stack spacing={1}>
       {sortedMaterials.length > 0 ? (
         sortedMaterials.map((m) => (
-          <Paper key={m.id} sx={{ p: 1.5, borderRadius: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                  <InventoryIcon sx={{ color: '#1976d2', mr: 1, fontSize: 22 }} />
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>
-                    {m.name}
-                  </Typography>
-                  <IconButton size="small" onClick={() => handleOpenSettings(m)}>
-                    <SettingsIcon fontSize="small" />
-                  </IconButton>
-                </Box>
+            <Paper key={m.id} sx={{ p: 1.5, borderRadius: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <InventoryIcon sx={{ color: '#1976d2', mr: 1, fontSize: 22 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>
+                {m.name}
+              </Typography>
+              {/* ⭐ Шестерёнка настроек скрыта для VIEWER */}
+              {!hidePrices && (
+                <IconButton size="small" onClick={() => handleOpenSettings(m)}>
+                  <SettingsIcon fontSize="small" />
+                </IconButton>
+              )}
+            </Box>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                   {m.article || 'Без артикула'} • {UNIT_OPTIONS.find(u => u.value === m.unit)?.label}
                 </Typography>
@@ -1140,7 +1149,7 @@ onClose={() => setFilterAnchorEl(null)}
                 </Box>
               </Box>
             )}
-            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Box sx={{ display: 'flex', gap: 1 }}>
               <Button
                 variant="outlined"
                 size="small"
@@ -1155,15 +1164,18 @@ onClose={() => setFilterAnchorEl(null)}
               >
                 <CameraAltIcon fontSize="small" />
               </Button>
-              <Button
-                fullWidth
-                variant="contained"
-                size="small"
-                onClick={() => handleOpenFixModal(m)}
-                sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' } }}
-              >
-                + Зафиксировать объём
-              </Button>
+              {/* ⭐ Кнопка фиксации скрыта для VIEWER */}
+              {!hidePrices && (
+                <Button
+                  fullWidth
+                  variant="contained"
+                  size="small"
+                  onClick={() => handleOpenFixModal(m)}
+                  sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' } }}
+                >
+                  + Зафиксировать объём
+                </Button>
+              )}
             </Box>
               </Paper>
             ))
