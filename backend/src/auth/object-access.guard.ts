@@ -23,15 +23,22 @@ export class ObjectAccessGuard implements CanActivate {
       throw new UnauthorizedException('Не авторизован');
     }
 
-    // ⭐ Читаем objectId ТОЛЬКО из params (надёжный источник маршрута).
-    // body.objectId и query.objectId убраны — они ломали POST /objects и GET /objects?objectId=...
-    // params.id здесь — это objectId для /objects/:id (для /projects/:id это projectId, см. projects.controller)
-    const raw =
-      request.params?.objectId ??
-      request.params?.id;
+    // ⭐ Определяем контроллер: в ObjectsController параметр :id — это objectId,
+    // а в ProjectsController :id — это projectId (его проверяет сервис, не guard).
+    const controllerName = context.getClass().name;
+
+    let raw: unknown;
+    if (request.params?.objectId) {
+      // Явный objectId в пути (например, /projects/object/:objectId)
+      raw = request.params.objectId;
+    } else if (controllerName === 'ObjectsController' && request.params?.id) {
+      // Только для объектов :id означает objectId
+      raw = request.params.id;
+    }
+
     const objectId = Number(raw);
-    // ⭐ Если objectId не указан (GET /objects, POST /objects и т.п.) — пропускаем.
-    // Проверка доступа для таких маршрутов остаётся в сервисах.
+    // ⭐ Если objectId не определён (создание, списки, /projects/:id и т.п.) — пропускаем.
+    // Для таких маршрутов проверка доступа остаётся в сервисах.
     if (!objectId || Number.isNaN(objectId)) {
       return true;
     }
