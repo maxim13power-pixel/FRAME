@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import ProtectedRoute from './components/ProtectedRoute';
 import Objects from './pages/Objects';   
 import Projects from './pages/Projects'; 
@@ -35,11 +36,16 @@ const AppRoutes = () => {
   }, [token, navigate]);
   return (
     <Routes>
-        {/* Публичный логин */}
-        <Route
-          path="/login"
-          element={token ? <Navigate to="/" replace /> : <Login />}
-        />
+      {/* Публичный логин */}
+      <Route
+        path="/login"
+        element={token ? <Navigate to="/" replace /> : <Login />}
+      />
+      {/* ⭐ Публичная регистрация */}
+      <Route
+        path="/register"
+        element={token ? <Navigate to="/" replace /> : <Register />}
+      />
 
         {/* Гостям показываем лендинг, авторизованных ведём в приложение */}
         <Route

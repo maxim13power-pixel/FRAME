@@ -423,6 +423,24 @@ export class MaterialsService {
     kind?: string,
     userId?: number,
   ) {
+    // 🔒 Защита от VIEWER: если у юзера есть доступ к объектам,
+    // но ВСЕ записи — роль VIEWER, блокируем создание расценки.
+    // Если записей нет вообще (новый юзер без объектов) — разрешаем,
+    // чтобы он мог наполнить личный справочник до принятия приглашения.
+    if (userId) {
+      const anyAccess = await this.prisma.objectAccess.findFirst({
+        where: { userId },
+      });
+      if (anyAccess) {
+        const nonViewerAccess = await this.prisma.objectAccess.findFirst({
+          where: { userId, role: { not: 'VIEWER' } },
+        });
+        if (!nonViewerAccess) {
+          throw new ForbiddenException('Наблюдатель не может создавать расценки');
+        }
+      }
+    }
+
     let categoryId = itemDto.categoryId;
 
     // ⭐ Тип расценки: из параметра, из DTO, или WORK по умолчанию
