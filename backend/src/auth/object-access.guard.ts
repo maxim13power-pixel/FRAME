@@ -23,12 +23,12 @@ export class ObjectAccessGuard implements CanActivate {
       throw new UnauthorizedException('Не авторизован');
     }
 
-    // Ищем objectId: params.objectId → params.id → body.objectId → query.objectId
+    // ⭐ Читаем objectId ТОЛЬКО из params (надёжный источник маршрута).
+    // body.objectId и query.objectId убраны — они ломали POST /objects и GET /objects?objectId=...
+    // params.id здесь — это objectId для /objects/:id (для /projects/:id это projectId, см. projects.controller)
     const raw =
       request.params?.objectId ??
-      request.params?.id ??
-      request.body?.objectId ??
-      request.query?.objectId;
+      request.params?.id;
     const objectId = Number(raw);
     // ⭐ Если objectId не указан (GET /objects, POST /objects и т.п.) — пропускаем.
     // Проверка доступа для таких маршрутов остаётся в сервисах.
