@@ -118,7 +118,10 @@ export class MaterialsService {
   async create(dto: CreateMaterialDto, userId: number) {
     // ⭐ Проверяем доступ к проекту (заодно получаем запись доступа)
     const access = await this.checkProjectAccess(dto.projectId, userId);
-
+    // 🔒 VIEWER не имеет права создавать материалы
+    if (access.role === 'VIEWER') {
+      throw new ForbiddenException('Наблюдатель не может создавать материалы');
+    }
     let unitPrice = 0;
     if (dto.priceItemId) {
       const priceItem = await this.prisma.priceItem.findUnique({ where: { id: dto.priceItemId } });
@@ -218,6 +221,10 @@ export class MaterialsService {
     let access: any = null;
     if (userId) {
       access = await this.checkMaterialAccess(id, userId);
+      // 🔒 VIEWER не имеет права менять спецификацию
+      if (access.role === 'VIEWER') {
+        throw new ForbiddenException('Наблюдатель не может менять спецификацию');
+      }
     }
     const material = await this.prisma.material.findUnique({ where: { id } });
     if (!material) throw new NotFoundException('Материал не найден');
@@ -231,12 +238,16 @@ export class MaterialsService {
     });
     return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
   }
-  // 🔒 Переключение защиты спецификации
+    // 🔒 Переключение защиты спецификации
   async toggleSpecLock(id: number, userId?: number) {
     // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
     let access: any = null;
     if (userId) {
       access = await this.checkMaterialAccess(id, userId);
+      // 🔒 VIEWER не имеет права менять защиту спецификации
+      if (access.role === 'VIEWER') {
+        throw new ForbiddenException('Наблюдатель не может менять защиту спецификации');
+      }
     }
     const material = await this.prisma.material.findUnique({ where: { id } });
     if (!material) throw new NotFoundException('Материал не найден');
