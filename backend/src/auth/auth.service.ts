@@ -1,8 +1,14 @@
 // backend/src/auth/auth.service.ts
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RegisterDto } from './/dto/register.dto';
 
 @Injectable()
 export class AuthService {
@@ -47,5 +53,50 @@ export class AuthService {
         role: user.role,
       },
     };
+  }
+
+  // ⭐ Регистрация: email ИЛИ телефон + пароль + имя.
+  // Возвращаем JWT сразу — пользователь попадает в приложение без повторного логина.
+  async register(dto: RegisterDto) {
+    // 1. Валидация: нужно хотя бы одно из двух
+    if (!dto.email && !dto.phone) {
+      throw new BadRequestException('Укажите email или телефон');
+    }
+
+    // 2. Проверка занятости email
+    if (dto.email) {
+      const exists = await this.prismaService.user.findUnique({
+        where: { email: dto.email },
+      });
+      if (exists) {
+        throw new ConflictException('Этот email уже зарегистрирован');
+      }
+    }
+
+    // 3. Проверка занятости телефона
+    if (dto.phone) {
+      const exists = await this.prismaService.user.findUnique({
+        where: { phone: dto.phone },
+      });
+      if (exists) {
+        throw new ConflictException('Этот телефон уже зарегистрирован');
+      }
+    }
+
+    // 4. Хэшируем пароль и создаём юзера
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const user = await this.prismaService.user.create({
+      data: {
+        email: dto.email ?? null,
+        phone: dto.phone ?? null,
+        password: hashedPassword,
+        fullName: dto.fullName,
+        // По умолчанию — Прораб. Заказчики обычно приходят через приглашение.
+        role: 'FOREMAN',
+      },
+    });
+
+    // 5. Сразу логиним — возвращаем JWT + данные пользователя
+    return this.login(user, false);
   }
 }

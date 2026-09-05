@@ -1,7 +1,7 @@
 import { Body, Controller, Post, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-
+import { RegisterDto } from './dto/register.dto';
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -21,5 +21,13 @@ export class AuthController {
       throw new UnauthorizedException('Неверный телефон/email или пароль');
     }
     return this.authService.login(user, dto.rememberMe);
+  }
+
+  // ⭐ Регистрация нового пользователя
+  @Post('register')
+  async register(
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })) dto: RegisterDto,
+  ) {
+    return this.authService.register(dto);
   }
 }
