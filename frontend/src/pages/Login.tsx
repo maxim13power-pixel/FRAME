@@ -9,6 +9,7 @@ import {
   Checkbox,
   FormControlLabel,
   Link,
+  Alert,
 } from '@mui/material';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -24,6 +25,7 @@ const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
 const handleClickShowPassword = () => setShowPassword((show) => !show);
   const [error, setError] = useState('');
+const [loading, setLoading] = useState(false); // ⭐ кнопка не выглядит мёртвой при запросе
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -33,6 +35,7 @@ const handleClickShowPassword = () => setShowPassword((show) => !show);
 // Ошибка входа остаётся на экране, юзер её видит и понимает что неверный пароль.
 const doLogin = async () => {
   setError(''); // сбрасываем прошлую ошибку перед новой попыткой
+  setLoading(true);
   try {
     const response = await axios.post('/api/auth/login', {
       phone,
@@ -44,6 +47,8 @@ const doLogin = async () => {
   } catch (err: any) {
     // ⭐ Ошибка остаётся на экране, страница НЕ перезагружается
     setError(err.response?.data?.message || 'Ошибка входа');
+  } finally {
+    setLoading(false);
   }
 };
 
@@ -66,7 +71,7 @@ const handleKeyDown = (e: React.KeyboardEvent) => {
       }}
     >
       <Paper
-        elevation={3}
+        elevation={0}
         sx={{
           p: 4,
           borderRadius: 4,
@@ -78,14 +83,16 @@ const handleKeyDown = (e: React.KeyboardEvent) => {
           alignItems: 'center',
         }}
       >
+        {/* ⭐ Продуктовое решение (шаг 64): ссылка на ВНЕШНИЙ сайт-заглушку.
+            URL временный — позже заменишь на реальный сайт FRAME. */}
         <Link
-          component="button"
-          type="button"
-          onClick={() => navigate('/')}
+          href="https://web.max.ru/-77702883548569"
+          target="_blank"
+          rel="noopener noreferrer"
           underline="hover"
           sx={{ alignSelf: 'flex-start', mb: 1, color: '#1565c0', fontSize: '0.9rem', minHeight: 48, display: 'inline-flex', alignItems: 'center' }}
         >
-          ← На главную
+          ← Вернуться на сайт
         </Link>
         {/* Логотип + название */}
         <Box
@@ -136,32 +143,59 @@ const handleKeyDown = (e: React.KeyboardEvent) => {
           </Typography>
         </Box>
 
-    {/* ⭐ Форма без onSubmit + noValidate: нативный сабмит невозможен,
-        страница НЕ перезагружается при ошибке входа. */}
-     <Box component="form" noValidate width="100%" onKeyDown={handleKeyDown}>   
+    {/* ⭐ Строка-переход на регистрацию (стиль Smetter) */}
+    <Typography
+      variant="body2"
+      color="text.secondary"
+      sx={{ width: '100%', mb: 1, textAlign: 'left', fontSize: '0.9rem' }}
+    >
+      Если вы еще не зарегистрированы, пожалуйста, перейдите на страницу{' '}
+      <Link
+        component="button"
+        type="button"
+        onClick={() => navigate('/register')}
+        underline="always"
+        sx={{
+          color: '#1976d2',
+          fontSize: '0.9rem',
+          p: 0,
+          lineHeight: 'inherit',
+          verticalAlign: 'baseline',
+        }}
+      >
+        регистрации
+      </Link>
+    </Typography>
+
+    {/* Форма */}
+     <Box component="form" noValidate width="100%" onKeyDown={handleKeyDown}>
           {/* Поле телефона/email — нормальный размер, стандартный отступ */}
           <TextField
             margin="normal"               // нормальный вертикальный отступ
             required
             fullWidth
-            label="Телефон или Email"
+            label="Email"
             autoComplete="username"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                borderRadius: 2,
-                // Убираем чёрный цвет при наведении, ставим синий
-                '&:hover .MuiOutlinedInput-notchedOutline': {
-                  borderColor: '#1976d2',
-                },
-              },
-              // При фокусе — синий
-              '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                borderColor: '#1976d2',
-                borderWidth: 2,
-              },
-            }}
+         sx={{
+           '& .MuiOutlinedInput-root': {
+             borderRadius: 2,
+             backgroundColor: 'white',
+             // Убираем чёрный цвет при наведении, ставим синий
+             '&:hover .MuiOutlinedInput-notchedOutline': {
+               borderColor: '#1976d2',
+             },
+           },
+           // При фокусе — синий + голубая заливка (как у поля пароля и на Register)
+           '& .MuiOutlinedInput-root.Mui-focused': {
+             backgroundColor: '#e3f2fd',
+             '& .MuiOutlinedInput-notchedOutline': {
+               borderColor: '#1976d2',
+               borderWidth: 2,
+             },
+           },
+         }}
           />
 
           {/* Поле пароля — аналогично */}
@@ -229,76 +263,65 @@ const handleKeyDown = (e: React.KeyboardEvent) => {
   }}
 />
 
-          {/* Чекбокс "Запомнить меня" */}
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                color="primary"
-                sx={{
-                  '&.Mui-checked': {
-                    color: '#1976d2',
-                  },
-                }}
-              />
-            }
-            label="Запомнить меня"
-            sx={{ mt: 1, mb: 1 }}
-          />
+      {/* ⭐ Строка: «Запомнить меня» (мелкий шрифт) + «Забыли пароль?» справа (стиль Smetter) */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1, mb: 1 }}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              color="primary"
+              sx={{
+                '&.Mui-checked': {
+                  color: '#1976d2',
+                },
+              }}
+            />
+          }
+          label="Запомнить меня"
+          sx={{
+            mr: 0,
+            '& .MuiFormControlLabel-label': { fontSize: '0.875rem' },
+          }}
+        />
+        <Link
+          component="button"
+          type="button"
+          onClick={() => navigate('/forgot-password')}
+          underline="hover"
+          sx={{ color: '#1976d2', fontSize: '0.875rem' }}
+        >
+          Забыли пароль?
+        </Link>
+      </Box>
 
-          {error && (
-            <Typography color="error" variant="body2" sx={{ mt: 1 }}>
-              {error}
-            </Typography>
-          )}
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
 
        <Button
          type="button"
          onClick={doLogin}
+         disabled={loading}
          fullWidth
          variant="contained"
-            sx={{
-              mt: 2,
-              mb: 2,
-              py: 1.5,
-              borderRadius: 2,
-              bgcolor: '#1976d2',
-              '&:hover': {
-                bgcolor: '#1565C0',
-              },
-              fontWeight: 'bold',
-              fontSize: '1rem',
-            }}
-          >
-            Войти
-          </Button>
-
-          {/* Дополнительные способы входа */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-            <Link
-              href="#"
-              underline="hover"
-              sx={{ color: '#1976d2', fontSize: '0.9rem' }}
-              onClick={(e) => {
-                e.preventDefault();
-                alert('Функция входа по QR-коду в разработке');
-              }}
-            >
-              Вход по QR‑коду
-            </Link>
-            <Link
-              href="#"
-              underline="hover"
-              sx={{ color: '#1976d2', fontSize: '0.9rem' }}
-              onClick={(e) => {
-                e.preventDefault();
-                alert('Функция входа с ключом доступа в разработке');
-              }}
-            >
-              Вход с ключом доступа
-            </Link>
-          </Box>
+         sx={{
+           mt: 2,
+           mb: 2,
+           py: 1.5,
+           borderRadius: 2,
+           bgcolor: '#1976d2',
+           '&:hover': {
+             bgcolor: '#1565C0',
+           },
+           fontWeight: 'bold',
+           fontSize: '1rem',
+         }}
+       >
+         {loading ? 'Входим...' : 'Войти'}
+       </Button>
         </Box>
       </Paper>
     </Box>

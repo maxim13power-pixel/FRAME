@@ -10,23 +10,35 @@ import {
   InputAdornment,
   IconButton,
   Alert,
-  ToggleButton,
-  ToggleButtonGroup,
+  Checkbox,
+  FormControlLabel,
+  Stack,
 } from '@mui/material';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 
+// ⭐ Шаг 63: регистрация ТОЛЬКО по email (переключатель убран по продуктовому решению).
+// Стиль полей — ТОЧНО как на странице логина (outlined, белый фон, синяя рамка при фокусе).
+const fieldSx = {
+  '& .MuiOutlinedInput-root': {
+    borderRadius: 2,
+    backgroundColor: 'white',
+    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#1976d2' },
+    '&.Mui-focused': {
+      backgroundColor: '#e3f2fd',
+      '& .MuiOutlinedInput-notchedOutline': { borderColor: '#1976d2', borderWidth: 2 },
+    },
+  },
+};
+
 const Register: React.FC = () => {
-  // ⭐ Переключатель: регистрация по email или по телефону
-  const [mode, setMode] = useState<'email' | 'phone'>('email');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [passwordConfirm, setPasswordConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [consent, setConsent] = useState(false); // ⭐ 152-ФЗ: согласие обязательно
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -36,43 +48,30 @@ const Register: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    // Валидация на фронте
     if (!fullName.trim()) {
-      setError('Укажите имя');
+      setError('Укажите ваше имя');
       return;
     }
-    if (mode === 'email' && !email.trim()) {
-      setError('Укажите email');
-      return;
-    }
-    if (mode === 'phone' && !phone.trim()) {
-      setError('Укажите телефон');
+    if (!email.trim() || !email.includes('@')) {
+      setError('Укажите корректный E-mail');
       return;
     }
     if (password.length < 6) {
       setError('Пароль минимум 6 символов');
       return;
     }
-    if (password !== passwordConfirm) {
-      setError('Пароли не совпадают');
+    if (!consent) {
+      setError('Для продолжения необходимо согласие с условиями');
       return;
     }
-
     setLoading(true);
     try {
-      const payload = {
+      const response = await axios.post('/api/auth/register', {
         fullName: fullName.trim(),
         password,
-        ...(mode === 'email' ? { email: email.trim() } : { phone: phone.trim() }),
-      };
-      // ⭐ Прямой запрос на бэкенд (как в Login.tsx — без отдельного сервиса)
-      const response = await axios.post('/api/auth/register', payload);
-
-      // ⭐ Сразу логинимся — бэк возвращает JWT + данные юзера.
-      // Редирект здесь НЕ делаем: его обработает App.tsx (useEffect для
-      // отложенного приглашения) + защита маршрута /register (<Navigate to="/"/>).
-      // Так избегаем двойного редиректа (фикс аудита №60, п.1).
+        email: email.trim(),
+      });
+      // ⭐ Редирект делает App.tsx (useEffect + защита маршрута) — без дублей
       login(response.data.access_token, response.data.user);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Ошибка регистрации');
@@ -93,7 +92,7 @@ const Register: React.FC = () => {
       }}
     >
       <Paper
-        elevation={3}
+        elevation={0}
         sx={{
           p: 4,
           borderRadius: 4,
@@ -104,106 +103,98 @@ const Register: React.FC = () => {
           alignItems: 'center',
         }}
       >
+        {/* ⭐ Ссылка на внешний сайт-заглушку (единообразно с Login) */}
         <Link
-          component="button"
-          type="button"
-          onClick={() => navigate('/')}
+          href="https://web.max.ru/-77702883548569"
+          target="_blank"
+          rel="noopener noreferrer"
           underline="hover"
           sx={{ alignSelf: 'flex-start', mb: 1, color: '#1565c0', fontSize: '0.9rem' }}
         >
-          ← На главную
+          ← Вернуться на сайт
         </Link>
 
-        {/* Логотип */}
-        <Avatar
-          src="/images/frame-logo2.svg"
-          alt="FRAME"
-          sx={{ width: 80, height: 80, mb: 1 }}
-        />
-        <Typography variant="h5" sx={{ fontWeight: 700, color: '#04164b', mb: 2 }}>
-          Регистрация в FRAME
+        <Avatar src="/images/frame-logo2.svg" alt="FRAME" sx={{ width: 90, height: 90, mb: 1 }} />
+
+        {/* ⭐ Заголовок по центру, шрифт меньше (h5), отступ 16px */}
+        <Typography variant="h5" sx={{ fontWeight: 700, color: '#04164b', mb: 2, textAlign: 'center' }}>
+          Регистрация
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2, textAlign: 'left' }}>
+          Если вы уже зарегистрированы, пожалуйста перейдите на страницу{' '}
+          <Link
+            component="button"
+            type="button"
+            onClick={() => navigate('/login')}
+            underline="always"
+            sx={{ color: '#1976d2', p: 0, lineHeight: 'inherit', verticalAlign: 'baseline' }}
+          >
+            входа в систему
+          </Link>
         </Typography>
 
-        <Box component="form" onSubmit={handleSubmit} width="100%">
-          {/* Переключатель email/телефон */}
-          <ToggleButtonGroup
-            value={mode}
-            exclusive
-            onChange={(_, v) => v && setMode(v)}
-            fullWidth
-            size="small"
-            sx={{ mb: 2 }}
-          >
-            <ToggleButton value="email">📧 Email</ToggleButton>
-            <ToggleButton value="phone">📱 Телефон</ToggleButton>
-          </ToggleButtonGroup>
-
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="Ваше имя"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          />
-
-          {mode === 'email' ? (
+        <Box component="form" noValidate width="100%" onSubmit={handleSubmit}>
+          <Stack spacing={2}>
             <TextField
-              margin="normal"
-              required
               fullWidth
-              label="Email"
+              required
+              margin="none"
+              label="Ваше имя"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              sx={fieldSx}
+            />
+            <TextField
+              fullWidth
+              required
+              margin="none"
+              label="E-mail"
               type="email"
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              sx={fieldSx}
             />
-          ) : (
             <TextField
-              margin="normal"
-              required
               fullWidth
-              label="Телефон"
-              placeholder="+79990000000"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              required
+              margin="none"
+              label="Придумайте пароль"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              sx={fieldSx}
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
             />
-          )}
+          </Stack>
 
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="Пароль"
-            type={showPassword ? 'text' : 'password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-            slotProps={{
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="Повторите пароль"
-            type={showPassword ? 'text' : 'password'}
-            value={passwordConfirm}
-            onChange={(e) => setPasswordConfirm(e.target.value)}
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          {/* ⭐ 152-ФЗ: согласие обязательно, ссылки ведут на реальные страницы */}
+          <FormControlLabel
+            control={<Checkbox checked={consent} onChange={(e) => setConsent(e.target.checked)} color="primary" />}
+            label={
+              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
+                Я согласен с{' '}
+                <Link component="button" type="button" onClick={() => navigate('/terms')} sx={{ color: '#1976d2', fontSize: '0.8rem' }}>
+                  условиями обслуживания
+                </Link>{' '}
+                и{' '}
+                <Link component="button" type="button" onClick={() => navigate('/privacy')} sx={{ color: '#1976d2', fontSize: '0.8rem' }}>
+                  политикой конфиденциальности
+                </Link>
+              </Typography>
+            }
+            sx={{ mt: 2, alignItems: 'flex-start' }}
           />
 
           {error && (
@@ -218,29 +209,17 @@ const Register: React.FC = () => {
             variant="contained"
             disabled={loading}
             sx={{
-              mt: 3,
-              mb: 2,
+              mt: 2,
               py: 1.5,
               borderRadius: 2,
-              bgcolor: '#4caf50',
-              '&:hover': { bgcolor: '#388e3c' },
+              bgcolor: '#1976d2',
+              '&:hover': { bgcolor: '#1565c0' },
               fontWeight: 'bold',
+              fontSize: '1rem',
             }}
           >
-            {loading ? 'Создаём аккаунт...' : 'Создать аккаунт'}
+            {loading ? 'Создаём аккаунт...' : 'Продолжить'}
           </Button>
-
-          <Typography variant="body2" align="center" sx={{ mt: 1 }}>
-            Уже есть аккаунт?{' '}
-            <Link
-              component="button"
-              type="button"
-              onClick={() => navigate('/login')}
-              sx={{ color: '#1976d2', fontWeight: 600 }}
-            >
-              Войти
-            </Link>
-          </Typography>
         </Box>
       </Paper>
     </Box>

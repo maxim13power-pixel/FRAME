@@ -20,6 +20,9 @@ import Settings from './pages/Settings';
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import AcceptInvite from './pages/AcceptInvite';
+import ForgotPassword from './pages/ForgotPassword';
+import Terms from './pages/Terms';
+import Privacy from './pages/Privacy';
 
 const AppRoutes = () => {
   useLocation();
@@ -46,6 +49,14 @@ const AppRoutes = () => {
         path="/register"
         element={token ? <Navigate to="/" replace /> : <Register />}
       />
+      {/* ⭐ Восстановление пароля (только для гостей) */}
+      <Route
+        path="/forgot-password"
+        element={token ? <Navigate to="/" replace /> : <ForgotPassword />}
+      />
+      {/* ⭐ Публичные правовые документы (доступны и гостям до регистрации) */}
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/privacy" element={<Privacy />} />
 
         {/* Гостям показываем лендинг, авторизованных ведём в приложение */}
         <Route
