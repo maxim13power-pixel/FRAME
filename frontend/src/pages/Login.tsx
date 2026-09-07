@@ -27,20 +27,33 @@ const handleClickShowPassword = () => setShowPassword((show) => !show);
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+// ⭐ ФИКС БАГА: страница перезагружалась при ошибке входа из-за нативного
+// сабмита формы. Теперь логика в doLogin() БЕЗ события формы, а кнопка
+// имеет type="button" — нативный сабмит полностью исключён.
+// Ошибка входа остаётся на экране, юзер её видит и понимает что неверный пароль.
+const doLogin = async () => {
+  setError(''); // сбрасываем прошлую ошибку перед новой попыткой
+  try {
+    const response = await axios.post('/api/auth/login', {
+      phone,
+      password,
+      rememberMe,
+    });
+    login(response.data.access_token, response.data.user);
+    navigate('/');
+  } catch (err: any) {
+    // ⭐ Ошибка остаётся на экране, страница НЕ перезагружается
+    setError(err.response?.data?.message || 'Ошибка входа');
+  }
+};
+
+// ⭐ Enter в любом поле формы → логин (сохраняем удобство как было)
+const handleKeyDown = (e: React.KeyboardEvent) => {
+  if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
     e.preventDefault();
-    try {
-      const response = await axios.post('/api/auth/login', {
-        phone,
-        password,
-        rememberMe, // добавляем состояние чекбокса
-      });
-login(response.data.access_token, response.data.user);
-navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Ошибка входа');
-    }
-  };
+    doLogin();
+  }
+};
 
   return (
     <Box
@@ -123,8 +136,9 @@ navigate('/');
           </Typography>
         </Box>
 
-        {/* Форма */}
-        <Box component="form" onSubmit={handleSubmit} width="100%">
+    {/* ⭐ Форма без onSubmit + noValidate: нативный сабмит невозможен,
+        страница НЕ перезагружается при ошибке входа. */}
+     <Box component="form" noValidate width="100%" onKeyDown={handleKeyDown}>   
           {/* Поле телефона/email — нормальный размер, стандартный отступ */}
           <TextField
             margin="normal"               // нормальный вертикальный отступ
@@ -239,10 +253,11 @@ navigate('/');
             </Typography>
           )}
 
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
+       <Button
+         type="button"
+         onClick={doLogin}
+         fullWidth
+         variant="contained"
             sx={{
               mt: 2,
               mb: 2,

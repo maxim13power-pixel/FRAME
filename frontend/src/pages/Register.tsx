@@ -69,17 +69,11 @@ const Register: React.FC = () => {
       // ⭐ Прямой запрос на бэкенд (как в Login.tsx — без отдельного сервиса)
       const response = await axios.post('/api/auth/register', payload);
 
-      // Сразу логинимся — бэк возвращает JWT + данные юзера
+      // ⭐ Сразу логинимся — бэк возвращает JWT + данные юзера.
+      // Редирект здесь НЕ делаем: его обработает App.tsx (useEffect для
+      // отложенного приглашения) + защита маршрута /register (<Navigate to="/"/>).
+      // Так избегаем двойного редиректа (фикс аудита №60, п.1).
       login(response.data.access_token, response.data.user);
-
-      // ⭐ Если есть отложенное приглашение — ведём на него
-      const pendingInvite = localStorage.getItem('pendingInviteToken');
-      if (pendingInvite) {
-        localStorage.removeItem('pendingInviteToken');
-        navigate(`/invite/${pendingInvite}`, { replace: true });
-      } else {
-        navigate('/', { replace: true });
-      }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Ошибка регистрации');
     } finally {

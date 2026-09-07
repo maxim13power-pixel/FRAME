@@ -423,21 +423,16 @@ export class MaterialsService {
     kind?: string,
     userId?: number,
   ) {
-    // 🔒 Защита от VIEWER: если у юзера есть доступ к объектам,
-    // но ВСЕ записи — роль VIEWER, блокируем создание расценки.
-    // Если записей нет вообще (новый юзер без объектов) — разрешаем,
-    // чтобы он мог наполнить личный справочник до принятия приглашения.
+    // 🔒 Защита от VIEWER: один запрос вместо двух (фикс аудита №60, п.2).
+    // Читаем ВСЕ записи доступа юзера: если они есть и ВСЕ роль VIEWER →
+    // блокируем. Если записей нет (новый юзер) или есть не-VIEWER → разрешаем.
     if (userId) {
-      const anyAccess = await this.prisma.objectAccess.findFirst({
+      const accesses = await this.prisma.objectAccess.findMany({
         where: { userId },
+        select: { role: true },
       });
-      if (anyAccess) {
-        const nonViewerAccess = await this.prisma.objectAccess.findFirst({
-          where: { userId, role: { not: 'VIEWER' } },
-        });
-        if (!nonViewerAccess) {
-          throw new ForbiddenException('Наблюдатель не может создавать расценки');
-        }
+      if (accesses.length > 0 && accesses.every((a) => a.role === 'VIEWER')) {
+        throw new ForbiddenException('Наблюдатель не может создавать расценки');
       }
     }
 
