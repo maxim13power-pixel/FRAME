@@ -170,33 +170,32 @@ const handleKeyDown = (e: React.KeyboardEvent) => {
     {/* Форма */}
      <Box component="form" noValidate width="100%" onKeyDown={handleKeyDown}>
           {/* Поле телефона/email — нормальный размер, стандартный отступ */}
-          <TextField
-            margin="normal"               // нормальный вертикальный отступ
-            required
-            fullWidth
-            label="Email"
-            autoComplete="username"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+       <TextField
+         margin="normal"
+         required
+         fullWidth
+         label="Email"
+         autoComplete="username"
+         value={phone}
+         onChange={(e) => setPhone(e.target.value)}
          sx={{
            '& .MuiOutlinedInput-root': {
-             borderRadius: 2,
              backgroundColor: 'white',
-             // Убираем чёрный цвет при наведении, ставим синий
+             borderRadius: 2,
+             transition: 'background-color 0.2s', // ⭐ плавный переход как у поля пароля
              '&:hover .MuiOutlinedInput-notchedOutline': {
                borderColor: '#1976d2',
              },
-           },
-           // При фокусе — синий + голубая заливка (как у поля пароля и на Register)
-           '& .MuiOutlinedInput-root.Mui-focused': {
-             backgroundColor: '#e3f2fd',
-             '& .MuiOutlinedInput-notchedOutline': {
-               borderColor: '#1976d2',
-               borderWidth: 2,
+             '&.Mui-focused': {
+               backgroundColor: '#e3f2fd', // ⭐ голубая заливка как у поля пароля
+               '& .MuiOutlinedInput-notchedOutline': {
+                 borderColor: '#1976d2',
+                 borderWidth: 2,
+               },
              },
            },
          }}
-          />
+       />
 
           {/* Поле пароля — аналогично */}
 <TextField

@@ -127,7 +127,13 @@ const Register: React.FC = () => {
             type="button"
             onClick={() => navigate('/login')}
             underline="always"
-            sx={{ color: '#1976d2', p: 0, lineHeight: 'inherit', verticalAlign: 'baseline' }}
+            sx={{
+              color: '#1976d2',
+              fontSize: '0.9rem', // ⭐ как в Login (единообразие)
+              p: 0,
+              lineHeight: 'inherit',
+              verticalAlign: 'baseline',
+            }}
           >
             входа в систему
           </Link>
