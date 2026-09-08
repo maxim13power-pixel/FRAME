@@ -24,13 +24,24 @@ const ForgotPassword: React.FC = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: '#f0f4fa', p: 2 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: '#f0f4fa', p: 0 }}>
       <Paper elevation={0} sx={{ p: 4, borderRadius: 4, width: '100%', maxWidth: 400, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        {/* ⭐ Шаг 72: ссылка возврата наверх в стиле Login/Register, без подчёркивания */}
+        <Link
+          component="button"
+          type="button"
+          onClick={() => navigate('/login')}
+          underline="none"
+          sx={{ alignSelf: 'flex-start', mb: 1, color: '#1565c0', fontSize: '0.9rem' }}
+        >
+          ← Вернуться ко входу
+        </Link>
+
         <Avatar src="/images/frame-logo2.svg" alt="FRAME" sx={{ width: 90, height: 90, mb: 1 }} />
         <Typography variant="h5" sx={{ fontWeight: 700, color: '#04164b', mb: 2, textAlign: 'center' }}>
           Восстановление пароля
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2, textAlign: 'center' }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2, textAlign: 'left' }}>
           Введите E-mail, указанный при регистрации — пришлём ссылку для сброса пароля.
         </Typography>
 
@@ -65,9 +76,6 @@ const ForgotPassword: React.FC = () => {
               <Button type="submit" fullWidth variant="contained" sx={{ py: 1.5, borderRadius: 2, bgcolor: '#1976d2', '&:hover': { bgcolor: '#1565c0' }, fontWeight: 'bold' }}>
                 Восстановить пароль
               </Button>
-              <Link component="button" type="button" onClick={() => navigate('/login')} sx={{ color: '#1976d2', textAlign: 'left' }}>
-                ← Вернуться ко входу
-              </Link>
             </Stack>
           </Box>
         )}

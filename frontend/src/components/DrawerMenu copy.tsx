@@ -1,10 +1,9 @@
-import React from 'react';
-import {
-  Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
-  Box, Divider, IconButton, Avatar, Typography,
-} from '@mui/material';
+import React, { useState } from 'react';
+import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Box, Divider, IconButton, Avatar, Typography, Menu, MenuItem } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import PersonIcon from '@mui/icons-material/Person';
+import LogoutIcon from '@mui/icons-material/Logout';
 import HomeIcon from '@mui/icons-material/Home';
 import EngineeringIcon from '@mui/icons-material/Engineering';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
@@ -42,17 +41,32 @@ const menuItems = [
 ];
 
 const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [profileAnchor, setProfileAnchor] = useState<null | HTMLElement>(null);
 
-  // ⭐ Шаг 67: клик по профилю → страница «Пользователи» (там аккаунт и выход)
-  const handleGoProfile = () => {
-    onClose();
-    onNavigate('/users');
+  // ⭐ Открыть меню профиля
+  const handleOpenProfile = (e: React.MouseEvent<HTMLElement>) => {
+    setProfileAnchor(e.currentTarget);
+  };
+  const handleCloseProfile = () => setProfileAnchor(null);
+
+  // ⭐ Перейти в настройки аккаунта
+  const handleGoSettings = () => {
+    handleCloseProfile();
+    onNavigate('/settings');
+  };
+
+  // ⭐ Выход из аккаунта
+  const handleLogout = () => {
+    handleCloseProfile();
+    logout();
+    navigate('/login', { replace: true });
   };
 
   return (
     <Drawer anchor="left" open={open} onClose={onClose}>
-      <Box sx={{ width: 250, pt: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Box sx={{ width: 250, pt: 1 }}>
         {/* ⭐ Шапка: логотип + кнопка скрытия (как на десктопе) */}
         <Box sx={{ px: 2, pb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Logo size="small" />
@@ -65,7 +79,7 @@ const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) =>
           </IconButton>
         </Box>
         <Divider sx={{ mb: 1 }} />
-        <List sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto' }}>
+        <List>
           {menuItems.map((item) => (
             <ListItem key={item.path} disablePadding>
               <ListItemButton onClick={() => { onNavigate(item.path); onClose(); }}>
@@ -77,26 +91,69 @@ const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) =>
             </ListItem>
           ))}
         </List>
-        {/* ⭐ Профиль внизу: иконка + имя, клик → «Пользователи» (Z-паттерн) */}
+        {/* ⭐ Блок профиля внизу (Z-паттерн: глаз идёт сверху вниз, внизу — акцент) */}
         <Box sx={{ mt: 'auto' }}>
           <Divider />
           <ListItemButton
-            onClick={handleGoProfile}
-            sx={{ py: 1.5, px: 2, gap: 1.5, '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.08)' } }}
+            onClick={handleOpenProfile}
+            sx={{
+              py: 1.5,
+              px: 2,
+              gap: 1.5,
+              '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.08)' },
+            }}
           >
-            <Avatar sx={{ width: 36, height: 36, bgcolor: '#1976d2', fontSize: '1rem', fontWeight: 700 }}>
+            <Avatar
+              sx={{
+                width: 36,
+                height: 36,
+                bgcolor: '#1976d2',
+                fontSize: '1rem',
+                fontWeight: 700,
+              }}
+            >
               {user?.name?.[0]?.toUpperCase() || <PersonIcon />}
             </Avatar>
             <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-              <Typography variant="body2" noWrap sx={{ fontWeight: 600, color: '#04164b' }}>
+              <Typography
+                variant="body2"
+                noWrap
+                sx={{ fontWeight: 600, color: '#04164b' }}
+              >
                 {user?.name || 'Пользователь'}
               </Typography>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary' }}>
+              <Typography
+                variant="caption"
+                noWrap
+                sx={{ color: 'text.secondary' }}
+              >
                 {user?.email || user?.phone || ''}
               </Typography>
             </Box>
+            <IconButton size="small" sx={{ color: '#424242' }}>
+              <SettingsIcon fontSize="small" />
+            </IconButton>
           </ListItemButton>
         </Box>
+
+        {/* ⭐ Popup-меню профиля */}
+        <Menu
+          anchorEl={profileAnchor}
+          open={Boolean(profileAnchor)}
+          onClose={handleCloseProfile}
+          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        >
+          <MenuItem onClick={handleGoSettings}>
+            <ListItemIcon><SettingsIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Настройки аккаунта</ListItemText>
+          </MenuItem>
+          <Divider />
+          <MenuItem onClick={handleLogout} sx={{ color: '#d32f2f' }}>
+            <ListItemIcon><LogoutIcon fontSize="small" sx={{ color: '#d32f2f' }} /></ListItemIcon>
+            <ListItemText>Выйти</ListItemText>
+          </MenuItem>
+        </Menu>
       </Box>
     </Drawer>
   );

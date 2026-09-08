@@ -10,6 +10,7 @@ import {
   FormControlLabel,
   Link,
   Alert,
+  Stack,
 } from '@mui/material';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -23,42 +24,42 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-const handleClickShowPassword = () => setShowPassword((show) => !show);
+  const handleClickShowPassword = () => setShowPassword((show) => !show);
   const [error, setError] = useState('');
-const [loading, setLoading] = useState(false); // ⭐ кнопка не выглядит мёртвой при запросе
+  const [loading, setLoading] = useState(false); // ⭐ кнопка не выглядит мёртвой при запросе
   const navigate = useNavigate();
   const { login } = useAuth();
 
-// ⭐ ФИКС БАГА: страница перезагружалась при ошибке входа из-за нативного
-// сабмита формы. Теперь логика в doLogin() БЕЗ события формы, а кнопка
-// имеет type="button" — нативный сабмит полностью исключён.
-// Ошибка входа остаётся на экране, юзер её видит и понимает что неверный пароль.
-const doLogin = async () => {
-  setError(''); // сбрасываем прошлую ошибку перед новой попыткой
-  setLoading(true);
-  try {
-    const response = await axios.post('/api/auth/login', {
-      phone,
-      password,
-      rememberMe,
-    });
-    login(response.data.access_token, response.data.user);
-    navigate('/');
-  } catch (err: any) {
-    // ⭐ Ошибка остаётся на экране, страница НЕ перезагружается
-    setError(err.response?.data?.message || 'Ошибка входа');
-  } finally {
-    setLoading(false);
-  }
-};
+  // ⭐ ФИКС БАГА: страница перезагружалась при ошибке входа из-за нативного
+  // сабмита формы. Теперь логика в doLogin() БЕЗ события формы, а кнопка
+  // имеет type="button" — нативный сабмит полностью исключён.
+  // Ошибка входа остаётся на экране, юзер её видит и понимает что неверный пароль.
+  const doLogin = async () => {
+    setError(''); // сбрасываем прошлую ошибку перед новой попыткой
+    setLoading(true);
+    try {
+      const response = await axios.post('/api/auth/login', {
+        phone,
+        password,
+        rememberMe,
+      });
+      login(response.data.access_token, response.data.user);
+      navigate('/');
+    } catch (err: any) {
+      // ⭐ Ошибка остаётся на экране, страница НЕ перезагружается
+      setError(err.response?.data?.message || 'Ошибка входа');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-// ⭐ Enter в любом поле формы → логин (сохраняем удобство как было)
-const handleKeyDown = (e: React.KeyboardEvent) => {
-  if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
-    e.preventDefault();
-    doLogin();
-  }
-};
+  // ⭐ Enter в любом поле формы → логин (сохраняем удобство как было)
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
+      e.preventDefault();
+      doLogin();
+    }
+  };
 
   return (
     <Box
@@ -68,6 +69,7 @@ const handleKeyDown = (e: React.KeyboardEvent) => {
         justifyContent: 'center',
         minHeight: '100vh',
         backgroundColor: '#f0f4fa',
+        position: 'relative', // ⭐ Шаг 68: внешние отступы как у Register
       }}
     >
       <Paper
@@ -76,8 +78,7 @@ const handleKeyDown = (e: React.KeyboardEvent) => {
           p: 4,
           borderRadius: 4,
           width: '100%',
-          maxWidth: 380,
-          mx: 2,
+          maxWidth: 400, // ⭐ Шаг 68: ширина как у Register (было 380)
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -90,7 +91,7 @@ const handleKeyDown = (e: React.KeyboardEvent) => {
           target="_blank"
           rel="noopener noreferrer"
           underline="hover"
-          sx={{ alignSelf: 'flex-start', mb: 1, color: '#1565c0', fontSize: '0.9rem', minHeight: 48, display: 'inline-flex', alignItems: 'center' }}
+          sx={{ alignSelf: 'flex-start', mb: 1, color: '#1565c0', fontSize: '0.9rem' }}
         >
           ← Вернуться на сайт
         </Link>
@@ -136,191 +137,191 @@ const handleKeyDown = (e: React.KeyboardEvent) => {
               letterSpacing: '1px',
               color: '#04164b',
               textShadow: '1px 1px 2px rgba(0,0,0,0.05)',
-              fontSize: '1.8rem', 
+              fontSize: '1.8rem',
             }}
           >
             FRAME
           </Typography>
         </Box>
-
-    {/* ⭐ Строка-переход на регистрацию (стиль Smetter) */}
-    <Typography
-      variant="body2"
-      color="text.secondary"
-      sx={{ width: '100%', mb: 1, textAlign: 'left', fontSize: '0.9rem' }}
-    >
-      Если вы еще не зарегистрированы, пожалуйста, перейдите на страницу{' '}
-      <Link
-        component="button"
-        type="button"
-        onClick={() => navigate('/register')}
-        underline="always"
-        sx={{
-          color: '#1976d2',
-          fontSize: '0.9rem',
-          p: 0,
-          lineHeight: 'inherit',
-          verticalAlign: 'baseline',
-        }}
-      >
-        регистрации
-      </Link>
-    </Typography>
-
-    {/* Форма */}
-     <Box component="form" noValidate width="100%" onKeyDown={handleKeyDown}>
-          {/* Поле телефона/email — нормальный размер, стандартный отступ */}
-       <TextField
-         margin="normal"
-         required
-         fullWidth
-         label="Email"
-         autoComplete="username"
-         value={phone}
-         onChange={(e) => setPhone(e.target.value)}
-         sx={{
-           '& .MuiOutlinedInput-root': {
-             backgroundColor: 'white',
-             borderRadius: 2,
-             transition: 'background-color 0.2s', // ⭐ плавный переход как у поля пароля
-             '&:hover .MuiOutlinedInput-notchedOutline': {
-               borderColor: '#1976d2',
-             },
-             '&.Mui-focused': {
-               backgroundColor: '#e3f2fd', // ⭐ голубая заливка как у поля пароля
-               '& .MuiOutlinedInput-notchedOutline': {
-                 borderColor: '#1976d2',
-                 borderWidth: 2,
-               },
-             },
-           },
-         }}
-       />
-
-          {/* Поле пароля — аналогично */}
-<TextField
-  margin="normal"
-  required
-  fullWidth
-  label="Пароль"
-   autoComplete="current-password"
-  type={showPassword ? 'text' : 'password'}
-  value={password}
-  onChange={(e) => setPassword(e.target.value)}
-  slotProps={{
-    input: {
-      endAdornment: (
-        <InputAdornment position="end">
-          <IconButton
-            aria-label="toggle password visibility"
-            onClick={handleClickShowPassword}
-            edge="end"
-            disableRipple
+        {/* ⭐ Строка-переход на регистрацию (стиль Smetter) */}
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ width: '100%', mb: 2, textAlign: 'left', fontSize: '0.9rem' }}
+        >
+          Если вы еще не зарегистрированы, пожалуйста, перейдите на страницу{' '}
+          <Link
+            component="button"
+            type="button"
+            onClick={() => navigate('/register')}
+            underline="always"
             sx={{
-              backgroundColor: 'transparent !important',
-              '&:hover': { backgroundColor: 'transparent !important' },
-              '&:focus': { outline: 'none' },
+              color: '#1976d2',
+              fontSize: '0.9rem',
+              p: 0,
+              lineHeight: 'inherit',
+              verticalAlign: 'baseline',
             }}
           >
-            {showPassword ? <VisibilityOff /> : <Visibility />}
-          </IconButton>
-        </InputAdornment>
-      ),
-    },
-  }}
-  sx={{
-    '& .MuiOutlinedInput-root': {
-      backgroundColor: 'white',
-      borderRadius: 2,
-      transition: 'background-color 0.2s',
-      '&:hover .MuiOutlinedInput-notchedOutline': {
-        borderColor: '#1976d2',
-      },
-      '&.Mui-focused': {
-        backgroundColor: '#e3f2fd', // голубая заливка при фокусе
-        '& .MuiOutlinedInput-notchedOutline': {
-          borderColor: '#1976d2',
-          borderWidth: 2,
-        },
-      },
-    },
-    // прозрачный фон у области глазка всегда
-    '& .MuiInputAdornment-root': {
-      backgroundColor: 'transparent !important',
-    },
-    '& .MuiIconButton-root': {
-      backgroundColor: 'transparent !important',
-      outline: 'none',
-    },
-    // дополнительно при фокусе (чтобы перебить возможные стили)
-    '& .MuiOutlinedInput-root.Mui-focused .MuiInputAdornment-root': {
-      backgroundColor: 'transparent !important',
-    },
-    '& .MuiOutlinedInput-root.Mui-focused .MuiIconButton-root': {
-      backgroundColor: 'transparent !important',
-    }
-  }}
-/>
-
-      {/* ⭐ Строка: «Запомнить меня» (мелкий шрифт) + «Забыли пароль?» справа (стиль Smetter) */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1, mb: 1 }}>
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-              color="primary"
+            регистрации
+          </Link>
+        </Typography>
+        {/* Форма */}
+        <Box component="form" noValidate width="100%" onKeyDown={handleKeyDown}>
+          {/* ⭐ Шаг 68: поля в Stack с единым шагом 16px, как в Register (было margin="normal" = 32px между полями) */}
+          <Stack spacing={2}>
+            <TextField
+              fullWidth
+              required
+              margin="none"
+              label="Email"
+              autoComplete="username"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
               sx={{
-                '&.Mui-checked': {
-                  color: '#1976d2',
+                '& .MuiOutlinedInput-root': {
+                  backgroundColor: 'white',
+                  borderRadius: 2,
+                  transition: 'background-color 0.2s', // ⭐ плавный переход как у поля пароля
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#1976d2',
+                  },
+                  '&.Mui-focused': {
+                    backgroundColor: '#e3f2fd', // ⭐ голубая заливка как у поля пароля
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: '#1976d2',
+                      borderWidth: 2,
+                    },
+                  },
                 },
               }}
             />
-          }
-          label="Запомнить меня"
-          sx={{
-            mr: 0,
-            '& .MuiFormControlLabel-label': { fontSize: '0.875rem' },
-          }}
-        />
-        <Link
-          component="button"
-          type="button"
-          onClick={() => navigate('/forgot-password')}
-          underline="hover"
-          sx={{ color: '#1976d2', fontSize: '0.875rem' }}
-        >
-          Забыли пароль?
-        </Link>
-      </Box>
-
-        {error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
-          </Alert>
-        )}
-
-       <Button
-         type="button"
-         onClick={doLogin}
-         disabled={loading}
-         fullWidth
-         variant="contained"
-         sx={{
-           mt: 2,
-           mb: 2,
-           py: 1.5,
-           borderRadius: 2,
-           bgcolor: '#1976d2',
-           '&:hover': {
-             bgcolor: '#1565C0',
-           },
-           fontWeight: 'bold',
-           fontSize: '1rem',
-         }}
-       >
-         {loading ? 'Входим...' : 'Войти'}
-       </Button>
+            <TextField
+              fullWidth
+              required
+              margin="none"
+              label="Пароль"
+              autoComplete="current-password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label="toggle password visibility"
+                        onClick={handleClickShowPassword}
+                        edge="end"
+                        disableRipple
+                        sx={{
+                          backgroundColor: 'transparent !important',
+                          '&:hover': { backgroundColor: 'transparent !important' },
+                          '&:focus': { outline: 'none' },
+                        }}
+                      >
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  backgroundColor: 'white',
+                  borderRadius: 2,
+                  transition: 'background-color 0.2s',
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#1976d2',
+                  },
+                  '&.Mui-focused': {
+                    backgroundColor: '#e3f2fd', // голубая заливка при фокусе
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: '#1976d2',
+                      borderWidth: 2,
+                    },
+                  },
+                },
+                // прозрачный фон у области глазка всегда
+                '& .MuiInputAdornment-root': {
+                  backgroundColor: 'transparent !important',
+                },
+                '& .MuiIconButton-root': {
+                  backgroundColor: 'transparent !important',
+                  outline: 'none',
+                },
+                // дополнительно при фокусе (чтобы перебить возможные стили)
+                '& .MuiOutlinedInput-root.Mui-focused .MuiInputAdornment-root': {
+                  backgroundColor: 'transparent !important',
+                },
+                '& .MuiOutlinedInput-root.Mui-focused .MuiIconButton-root': {
+                  backgroundColor: 'transparent !important',
+                },
+              }}
+            />
+          </Stack>
+          {/* ⭐ Строка: «Запомнить меня» (мелкий шрифт) + «Забыли пароль?» справа (стиль Smetter) */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  color="primary"
+                  sx={{
+                    '&.Mui-checked': {
+                      color: '#1976d2',
+                    },
+                  }}
+                />
+              }
+              label="Запомнить меня"
+              sx={{
+                mr: 0,
+                '& .MuiFormControlLabel-label': { fontSize: '0.9rem' },
+              }}
+            />
+            <Link
+              component="button"
+              type="button"
+      onClick={() => navigate('/forgot-password')}
+      underline="always"
+      sx={{
+        color: '#1976d2',
+        fontSize: '0.9rem',
+        p: 0,
+        lineHeight: 'inherit',
+        verticalAlign: 'baseline',
+      }}
+    >
+      Забыли пароль?
+            </Link>
+          </Box>
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {error}
+            </Alert>
+          )}
+          <Button
+            type="button"
+            onClick={doLogin}
+            disabled={loading}
+            fullWidth
+            variant="contained"
+            sx={{
+              mt: 2,
+              py: 1.5,
+              borderRadius: 2,
+              bgcolor: '#1976d2',
+              '&:hover': {
+                bgcolor: '#1565C0',
+              },
+              fontWeight: 'bold',
+              fontSize: '1rem',
+            }}
+          >
+            {loading ? 'Входим...' : 'Войти'}
+          </Button>
         </Box>
       </Paper>
     </Box>

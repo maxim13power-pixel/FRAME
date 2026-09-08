@@ -88,7 +88,7 @@ const Register: React.FC = () => {
         justifyContent: 'center',
         minHeight: '100vh',
         backgroundColor: '#f0f4fa',
-        p: 2,
+        p: 0,
       }}
     >
       <Paper
@@ -189,13 +189,13 @@ const Register: React.FC = () => {
           <FormControlLabel
             control={<Checkbox checked={consent} onChange={(e) => setConsent(e.target.checked)} color="primary" />}
             label={
-              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
+              <Typography variant="body2" sx={{ fontSize: '0.88rem' }}>
                 Я согласен с{' '}
-                <Link component="button" type="button" onClick={() => navigate('/terms')} sx={{ color: '#1976d2', fontSize: '0.8rem' }}>
+                <Link component="button" type="button" onClick={() => navigate('/terms')} sx={{ color: '#1976d2', fontSize: '0.88rem' }}>
                   условиями обслуживания
                 </Link>{' '}
                 и{' '}
-                <Link component="button" type="button" onClick={() => navigate('/privacy')} sx={{ color: '#1976d2', fontSize: '0.8rem' }}>
+                <Link component="button" type="button" onClick={() => navigate('/privacy')} sx={{ color: '#1976d2', fontSize: '0.88rem' }}>
                   политикой конфиденциальности
                 </Link>
               </Typography>

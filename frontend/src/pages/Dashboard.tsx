@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import {
 Box, Container,  useMediaQuery, useTheme,
-//Paper, TextField, Button, Typography,
 Drawer, IconButton, List, ListItem, ListItemButton,
-ListItemIcon, ListItemText, Divider, Tooltip, //InputAdornment
+ListItemIcon, ListItemText, Divider, Tooltip, Avatar,//InputAdornment
 } from '@mui/material';
 //import SearchIcon from '@mui/icons-material/Search';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -20,13 +19,14 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import PeopleIcon from '@mui/icons-material/People';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
+import PersonIcon from '@mui/icons-material/Person';
 import { Outlet,useNavigate, useLocation } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import BottomNav from '../components/BottomNav';
 import DrawerMenu from '../components/DrawerMenu';
 import { MobileHeaderProvider } from '../contexts/MobileHeaderContext';
 import Logo from '../components/Logo'; // компонент логотипа
-
+import { useAuth } from '../contexts/AuthContext';
 
 // Цвета для пунктов меню
 const menuColors = [
@@ -58,7 +58,7 @@ const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [bottomNavValue, setBottomNavValue] = useState('objects');
-
+  const { user } = useAuth(); // ⭐ для иконки профиля в свёрнутом rail
 
   const handleNavigate = (path: string) => {
     navigate(path);
@@ -132,7 +132,7 @@ const location = useLocation();
           </Box>
           <Divider />
           {/* Пункты меню */}
-          <List sx={{ flexGrow: 1 }}>
+                 <List sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto' }}>
             {menuItems.map((item, index) => (
               <ListItem key={item.path} disablePadding>
                 <ListItemButton onClick={() => handleNavigate(item.path)}>
@@ -143,15 +143,45 @@ const location = useLocation();
                 </ListItemButton>
               </ListItem>
             ))}
-       </List>
-     </Drawer>
+    </List>
+    {/* ⭐ Шаг 67: профиль внизу раскрытого меню (иконка + имя, как в rail — гармония) */}
+    <Box sx={{ mt: 'auto' }}>
+      <Divider />
+      <ListItemButton
+        onClick={() => navigate('/users')}
+        sx={{ py: 1.5, px: 2, gap: 1.5, '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.08)' } }}
+      >
+        <ListItemIcon sx={{ minWidth: 40 }}>
+          <Avatar sx={{ width: 36, height: 36, bgcolor: '#1976d2', fontSize: '1rem', fontWeight: 700 }}>
+            {user?.name?.[0]?.toUpperCase() || <PersonIcon />}
+          </Avatar>
+        </ListItemIcon>
+        <ListItemText
+          primary={user?.name || 'Пользователь'}
+          secondary={user?.email || user?.phone || ''}
+          primaryTypographyProps={{ sx: { fontWeight: 600, color: '#04164b' } }}
+          secondaryTypographyProps={{ noWrap: true }}
+        />
+      </ListItemButton>
+    </Box>
+  </Drawer>
    )}
    {/* ⭐ Десктоп: свёрнутый rail-сайдбар (узкая полоса 64px) */}
    {!isMobile && !sidebarOpen && (
      <Box
-       sx={{
-         width: 64,
-         flexShrink: 0,
+            sx={{
+              width: 64,
+              flexShrink: 0,
+              // ⭐ Шаг 66: rail НЕ ездит при скролле (sticky на всю высоту экрана)
+              position: 'sticky',
+              top: 0,
+              height: '100vh',
+              alignSelf: 'flex-start',
+              // ⭐ Шаг 67: автоподгонка по высоте — если контент не влезает,
+              // rail скроллится ВНУТРИ себя, ничего не обрезается
+              maxHeight: '100vh',
+              overflowY: 'auto',
+              boxSizing: 'border-box',
          bgcolor: '#fff',
          borderRight: '1px solid #e0e0e0',
          display: 'flex',
@@ -175,7 +205,7 @@ const location = useLocation();
        </IconButton>
        <Divider sx={{ width: '70%', mb: 1.5 }} />
        {/* Иконки без подписей + tooltips */}
-       <Box sx={{ flexGrow: 1, overflowY: 'auto', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+       <Box sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         {menuItems.map((item) => {
           const active = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
           return (
@@ -195,9 +225,19 @@ const location = useLocation();
             </Tooltip>
           );
         })}
-       </Box>
-     </Box>
-   )}
+            </Box>
+            {/* ⭐ Шаг 66: иконка пользователя внизу свёрнутого rail (Z-паттерн:
+                глаз спускается по меню и упирается в профиль — клик ведёт на «Пользователи» /users) */}
+            <Divider sx={{ width: '70%', my: 1 }} />
+            <Tooltip title={user?.name || 'Профиль и настройки'} placement="right" arrow>
+              <IconButton onClick={() => navigate('/users')} aria-label="Моя страница">
+                <Avatar sx={{ width: 32, height: 32, bgcolor: '#1976d2', fontSize: '0.9rem', fontWeight: 700 }}>
+                  {user?.name?.[0]?.toUpperCase() || <PersonIcon />}
+                </Avatar>
+              </IconButton>
+            </Tooltip>
+          </Box>
+        )}
 
       {/* Основная область контента */}
    <Box
