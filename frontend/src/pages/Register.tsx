@@ -18,7 +18,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
-
+import SmartCaptcha from '../components/SmartCaptcha';
 // ⭐ Шаг 63: регистрация ТОЛЬКО по email (переключатель убран по продуктовому решению).
 // Стиль полей — ТОЧНО как на странице логина (outlined, белый фон, синяя рамка при фокусе).
 const fieldSx = {
@@ -41,7 +41,7 @@ const Register: React.FC = () => {
   const [consent, setConsent] = useState(false); // ⭐ 152-ФЗ: согласие обязательно
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -70,6 +70,7 @@ const Register: React.FC = () => {
         fullName: fullName.trim(),
         password,
         email: email.trim(),
+        captchaToken: captchaToken ?? undefined, // ⭐ токен капчи для бэка
       });
       // ⭐ Редирект делает App.tsx (useEffect + защита маршрута) — без дублей
       login(response.data.access_token, response.data.user);
@@ -184,7 +185,10 @@ const Register: React.FC = () => {
               }}
             />
           </Stack>
-
+{/* ⭐ Шаг 76: капча Yandex SmartCaptcha (защита от ботов) */}
+<Box sx={{ mt: 2 }}>
+  <SmartCaptcha onTokenChange={setCaptchaToken} />
+</Box>
           {/* ⭐ 152-ФЗ: согласие обязательно, ссылки ведут на реальные страницы */}
           <FormControlLabel
             control={<Checkbox checked={consent} onChange={(e) => setConsent(e.target.checked)} color="primary" />}
