@@ -1,5 +1,5 @@
 // frontend/src/components/SmartCaptcha.tsx
-import React, { useEffect, useRef, useState, useId } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, CircularProgress, Typography } from '@mui/material';
 
 declare global {
@@ -12,7 +12,6 @@ declare global {
       }) => string;
       reset: (containerId: string) => void;
       destroy: (containerId: string) => void;
-      init?: any;
     };
   }
 }
@@ -28,11 +27,11 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
   onTokenChange,
   sitekey = import.meta.env.VITE_SMARTCAPTCHA_CLIENT_KEY,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const captchaDivRef = useRef<HTMLDivElement | null>(null);
   const containerIdRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const uniqueId = useId(); // ⭐ уникальный id для каждого экземпляра
 
   useEffect(() => {
     if (!sitekey) {
@@ -40,6 +39,14 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
       setError(true);
       setLoading(false);
       return;
+    }
+
+    // ⭐ Создаём div для Яндекса через DOM API — React его не трогает
+    if (hostRef.current && !captchaDivRef.current) {
+      const div = document.createElement('div');
+      div.style.minHeight = '100px';
+      hostRef.current.appendChild(div);
+      captchaDivRef.current = div;
     }
 
     const loadScript = (): Promise<void> => {
@@ -51,7 +58,6 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
           existing.addEventListener('error', () => reject(new Error('Script load failed')));
           return;
         }
-
         const script = document.createElement('script');
         script.id = SCRIPT_ID;
         script.src = 'https://smartcaptcha.yandexcloud.net/captcha.js?render=onload';
@@ -66,45 +72,44 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
 
     loadScript()
       .then(() => {
-        if (cancelled) return;
+        if (cancelled || !captchaDivRef.current) return;
 
         const waitReady = setInterval(() => {
-          if (window.smartCaptcha && containerRef.current) {
+          if (window.smartCaptcha && captchaDivRef.current) {
             clearInterval(waitReady);
             try {
-              // ⭐ Проверяем что DOM-элемент существует
-              if (!containerRef.current) {
-                throw new Error('Container ref is null');
-              }
+              // ⭐ Защита: не рендерим дважды
+              if (containerIdRef.current) return;
 
-              // ⭐ Устанавливаем уникальный id
-              containerRef.current.id = `captcha-${uniqueId}`;
-
-              // ⭐ render принимает HTMLElement ИЛИ селектор
               containerIdRef.current = window.smartCaptcha!.render(
-                containerRef.current,
+                captchaDivRef.current,
                 {
                   sitekey,
-                  callback: (token: string) => onTokenChange(token),
+                  // ⭐ Стабильный callback: только при валидном токене
+                  callback: (token: string) => {
+                    if (!cancelled && token) {
+                      onTokenChange(token);
+                    }
+                  },
                   hl: 'ru',
                 }
               );
               setLoading(false);
             } catch (err) {
               console.error('SmartCaptcha init error:', err);
-              setError(true);
-              setLoading(false);
+              if (!cancelled) {
+                setError(true);
+                setLoading(false);
+              }
             }
           }
         }, 100);
 
         setTimeout(() => {
           clearInterval(waitReady);
-          if (!window.smartCaptcha || !containerRef.current) {
-            if (!cancelled) {
-              setError(true);
-              setLoading(false);
-            }
+          if (!cancelled && (!window.smartCaptcha || !captchaDivRef.current)) {
+            setError(true);
+            setLoading(false);
           }
         }, 10000);
       })
@@ -116,17 +121,32 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
         }
       });
 
+    // 🧹 Cleanup
     return () => {
       cancelled = true;
+      
+      // ⭐ НЕ сбрасываем токен в cleanup — он должен жить до отправки формы
+      // Иначе React StrictMode (двойной монтаж) уничтожит токен
+        
+      // Уничтожаем виджет Яндекса (игнорируем их внутренние ошибки)
       if (containerIdRef.current && window.smartCaptcha) {
         try {
           window.smartCaptcha.destroy(containerIdRef.current);
-        } catch {}
+        } catch {
+          // игнорируем их ошибки гидратации
+        }
         containerIdRef.current = null;
       }
-      onTokenChange(null);
+      
+      // Удаляем div
+      if (captchaDivRef.current && captchaDivRef.current.parentNode) {
+        captchaDivRef.current.parentNode.removeChild(captchaDivRef.current);
+      }
+      captchaDivRef.current = null;
     };
-  }, [sitekey, onTokenChange, uniqueId]);
+    // ⭐ onTokenChange убран из зависимостей — не нужен ререндер
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sitekey]);
 
   if (error) {
     return (
@@ -153,8 +173,7 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
           </Typography>
         </Box>
       )}
-      {/* ⭐ ref вместо глобального id */}
-      <Box ref={containerRef} sx={{ minHeight: 100 }} />
+      <Box ref={hostRef} sx={{ minHeight: 100 }} />
     </Box>
   );
 };

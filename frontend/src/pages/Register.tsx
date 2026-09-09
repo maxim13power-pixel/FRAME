@@ -187,7 +187,7 @@ const Register: React.FC = () => {
           </Stack>
 {/* ⭐ Шаг 76: капча Yandex SmartCaptcha (защита от ботов) */}
 <Box sx={{ mt: 2 }}>
-  <SmartCaptcha onTokenChange={setCaptchaToken} />
+<SmartCaptcha onTokenChange={(t) => { setCaptchaToken(t); console.log('✅ token:', t ? 'OK' : 'null'); }} />
 </Box>
           {/* ⭐ 152-ФЗ: согласие обязательно, ссылки ведут на реальные страницы */}
           <FormControlLabel
