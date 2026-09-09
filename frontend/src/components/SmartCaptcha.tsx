@@ -1,45 +1,39 @@
 // frontend/src/components/SmartCaptcha.tsx
-// ⭐ Yandex SmartCaptcha React-компонент
-// Документация: https://yandex.cloud/ru/docs/smartcaptcha/
+import React, { useEffect, useRef, useState, useId } from 'react';
+import { Box, CircularProgress, Typography } from '@mui/material';
 
-import React, { useEffect, useRef, useState } from 'react';
-import { Box, CircularProgress, Typography, Button } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
-
-// ⭐ Типизация глобального объекта window.smartCaptcha (создаётся скриптом Яндекса)
 declare global {
   interface Window {
     smartCaptcha?: {
-      init: (params: {
+      render: (container: string | HTMLElement, params: {
         sitekey: string;
-        container: string;
         callback?: (token: string) => void;
         hl?: string;
-        test?: boolean;
-      }) => number; // возвращает ID инстанса
-      reset: (id: number) => void;
-      destroy: (id: number) => void;
+      }) => string;
+      reset: (containerId: string) => void;
+      destroy: (containerId: string) => void;
+      init?: any;
     };
   }
 }
 
 interface SmartCaptchaProps {
   onTokenChange: (token: string | null) => void;
-  sitekey?: string; // если не передан — берём из env
+  sitekey?: string;
 }
 
 const SCRIPT_ID = 'yandex-smartcaptcha-script';
-const CONTAINER_ID = 'smart-captcha-container';
 
 const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
   onTokenChange,
   sitekey = import.meta.env.VITE_SMARTCAPTCHA_CLIENT_KEY,
 }) => {
-  const instanceIdRef = useRef<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const containerIdRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const uniqueId = useId(); // ⭐ уникальный id для каждого экземпляра
 
-  // ⭐ Загрузка внешнего скрипта (singleton — только один раз)
   useEffect(() => {
     if (!sitekey) {
       console.error('VITE_SMARTCAPTCHA_CLIENT_KEY не настроен');
@@ -50,7 +44,6 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
 
     const loadScript = (): Promise<void> => {
       return new Promise((resolve, reject) => {
-        // Если скрипт уже загружается или загружен — ждём window.smartCaptcha
         const existing = document.getElementById(SCRIPT_ID);
         if (existing) {
           if (window.smartCaptcha) return resolve();
@@ -63,7 +56,6 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
         script.id = SCRIPT_ID;
         script.src = 'https://smartcaptcha.yandexcloud.net/captcha.js?render=onload';
         script.async = true;
-        script.defer = true;
         script.onload = () => resolve();
         script.onerror = () => reject(new Error('Script load failed'));
         document.head.appendChild(script);
@@ -75,18 +67,28 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
     loadScript()
       .then(() => {
         if (cancelled) return;
-        // Ждём пока объект window.smartCaptcha станет доступен
+
         const waitReady = setInterval(() => {
-          if (window.smartCaptcha) {
+          if (window.smartCaptcha && containerRef.current) {
             clearInterval(waitReady);
             try {
-              // 🔒 Инициализация виджета
-              instanceIdRef.current = window.smartCaptcha!.init({
-                sitekey,
-                container: `#${CONTAINER_ID}`,
-                callback: (token: string) => onTokenChange(token),
-                hl: 'ru',
-              });
+              // ⭐ Проверяем что DOM-элемент существует
+              if (!containerRef.current) {
+                throw new Error('Container ref is null');
+              }
+
+              // ⭐ Устанавливаем уникальный id
+              containerRef.current.id = `captcha-${uniqueId}`;
+
+              // ⭐ render принимает HTMLElement ИЛИ селектор
+              containerIdRef.current = window.smartCaptcha!.render(
+                containerRef.current,
+                {
+                  sitekey,
+                  callback: (token: string) => onTokenChange(token),
+                  hl: 'ru',
+                }
+              );
               setLoading(false);
             } catch (err) {
               console.error('SmartCaptcha init error:', err);
@@ -96,12 +98,13 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
           }
         }, 100);
 
-        // Страховка: если через 10 сек не загрузилось — ошибка
         setTimeout(() => {
           clearInterval(waitReady);
-          if (!window.smartCaptcha) {
-            setError(true);
-            setLoading(false);
+          if (!window.smartCaptcha || !containerRef.current) {
+            if (!cancelled) {
+              setError(true);
+              setLoading(false);
+            }
           }
         }, 10000);
       })
@@ -113,28 +116,17 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
         }
       });
 
-    // 🧹 Cleanup при unmount
     return () => {
       cancelled = true;
-      if (instanceIdRef.current !== null && window.smartCaptcha) {
+      if (containerIdRef.current && window.smartCaptcha) {
         try {
-          window.smartCaptcha.destroy(instanceIdRef.current);
-        } catch {
-          // игнорируем ошибки дестроя
-        }
-        instanceIdRef.current = null;
+          window.smartCaptcha.destroy(containerIdRef.current);
+        } catch {}
+        containerIdRef.current = null;
       }
       onTokenChange(null);
     };
-  }, [sitekey, onTokenChange]);
-
-  // 🔄 Ручной сброс капчи
-  const handleReset = () => {
-    if (instanceIdRef.current !== null && window.smartCaptcha) {
-      window.smartCaptcha.reset(instanceIdRef.current);
-      onTokenChange(null);
-    }
-  };
+  }, [sitekey, onTokenChange, uniqueId]);
 
   if (error) {
     return (
@@ -143,21 +135,10 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
         borderRadius: 1,
         p: 2,
         bgcolor: '#ffebee',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1,
       }}>
-        <Typography variant="body2" sx={{ color: '#d32f2f', flexGrow: 1 }}>
+        <Typography variant="body2" sx={{ color: '#d32f2f' }}>
           Не удалось загрузить капчу. Попробуйте ещё раз.
         </Typography>
-        <Button
-          size="small"
-          startIcon={<RefreshIcon />}
-          onClick={() => window.location.reload()}
-          sx={{ color: '#d32f2f', textTransform: 'none' }}
-        >
-          Обновить
-        </Button>
       </Box>
     );
   }
@@ -172,8 +153,8 @@ const SmartCaptcha: React.FC<SmartCaptchaProps> = ({
           </Typography>
         </Box>
       )}
-      {/* ⭐ Контейнер для виджета Яндекса */}
-      <Box id={CONTAINER_ID} sx={{ minHeight: 100 }} />
+      {/* ⭐ ref вместо глобального id */}
+      <Box ref={containerRef} sx={{ minHeight: 100 }} />
     </Box>
   );
 };
