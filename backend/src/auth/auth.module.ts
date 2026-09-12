@@ -6,12 +6,23 @@ import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from './jwt.strategy';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { CaptchaModule } from '../captcha'; // ⭐ НОВОЕ
+
+function getJwtSecret(): string {
+const secret = process.env.JWT_SECRET?.trim();
+
+if (!secret) {
+throw new Error('JWT_SECRET is not set');
+}
+
+return secret;
+}
+
 @Module({
 imports: [
 PassportModule,
 CaptchaModule,
 JwtModule.register({
-secret: process.env.JWT_SECRET || 'SECRET_KEY',
+secret: getJwtSecret(),
 signOptions: { expiresIn: '1d' },
 }),
 PrismaModule,
