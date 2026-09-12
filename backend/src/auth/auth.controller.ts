@@ -1,4 +1,5 @@
-import { Body, Controller, Post, UnauthorizedException, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, Post, UnauthorizedException, ValidationPipe, Request } from '@nestjs/common';
+import type { Request as ExpressRequest } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -27,7 +28,15 @@ export class AuthController {
   @Post('register')
   async register(
     @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })) dto: RegisterDto,
+    @Request() request: ExpressRequest,
   ) {
-    return this.authService.register(dto);
+    // ⭐ Шаг 77: извлекаем IP из x-forwarded-for (Yandex SmartCaptcha требует реальный IP)
+    // Формат: "ip1, ip2, ip3" — берём первый (самый левый) элемент
+    const forwardedFor = request.headers['x-forwarded-for'] as string | undefined;
+    const ip = forwardedFor
+      ? forwardedFor.split(',')[0].trim()
+      : (request.connection as any)?.remoteAddress;
+
+    return this.authService.register(dto, ip);
   }
 }
