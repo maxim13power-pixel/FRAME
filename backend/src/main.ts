@@ -14,10 +14,19 @@ async function bootstrap() {
     }),
   );
 
-  app.enableCors({
-    origin: true,
-    credentials: true,
-  });
+// ⭐ P0-3: CORS whitelist — пускаем только фронтенд, а не любой домен.
+// Локально работают дефолты для Vite (:5000).
+// В проде (Railway) добавь в backend/.env:
+//   CORS_ORIGINS=https://твой-фронт-домен.up.railway.app
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5000,http://127.0.0.1:5000')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+app.enableCors({
+  origin: allowedOrigins,
+  credentials: true,
+});
 
   await app.listen(Number(process.env.PORT) || 3000, '0.0.0.0');
 }
