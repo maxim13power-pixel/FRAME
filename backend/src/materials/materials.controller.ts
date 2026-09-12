@@ -1,6 +1,7 @@
 // backend/src/materials/materials.controller.ts
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards, ValidationPipe } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ObjectAccessGuard } from '../auth/object-access.guard';
 import { MaterialsService } from './materials.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
@@ -9,7 +10,7 @@ import { UpdateSpecQtyDto } from './dto/update-spec-qty.dto';
 import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
 
 @Controller('materials')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ObjectAccessGuard)
 export class MaterialsController {
   constructor(private readonly materialsService: MaterialsService) {}
 
