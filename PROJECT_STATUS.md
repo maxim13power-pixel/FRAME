@@ -1,101 +1,111 @@
-# PROJECT FRAME — Статус v12 (09.09.2026)
+# PROJECT FRAME — Статус v14 (12.09.2026) — ЧАТ №9
 
-## 🎯 Проект
-SaaS для учёта строительных работ, материалов и оборудования.
-Роли: CUSTOMER (заказчик), FOREMAN (прораб), VIEWER (наблюдатель без денег).
-Стек: NestJS + Prisma + PostgreSQL (Railway) / React + TypeScript + MUI + React Router.
+## 0. ПРАВИЛА (копируются из чата в чат, ОБЯЗАТЕЛЬНО)
+1. Пошагово: 1 шаг = 1 сообщение, формат «Найди / Замени» с точными якорями.
+   Большие файлы — кусками, маленькие — целиком. Файл >300 строк — ВСЕГДА кусками.
+2. Ждать «Готово» перед следующим шагом. Тон «братан», пользователь — новичок.
+3. КОММИТ-РИТУАЛ в конце каждого ответа с кодом (одна строка, один copy-paste):
+   git add . ; git commit -m "№<N>:<scope>: <суть> (DD/MM)" ; git push
+   Нумерация продолжается с №79.
+4. 🔋 СЧЁТЧИК: старт 30, −1 за любой ответ; показывать в КАЖДОМ ответе;
+   ≤10 — предупреждение; 0 — довести шаг и предложить новый чат.
+5. Файла нет в контексте → НЕ гадать, просить прикрепить. Копии из старых чатов
+   устаревают: якоря брать ТОЛЬКО из файлов, приложенных в текущем чате.
+6. Алиасы: db (docker postgres :5433), be (бэкенд :3000), fe (фронт :5000).
+7. Танец EPERM/краша на Windows: Ctrl+C → taskkill /F /IM node.exe → старт.
+   Схему локально вести ТОЛЬКО через npx prisma db push (НЕ migrate dev).
+8. Qwen Code (VSCode) — только анализ/аудит, СТРОГО READ-ONLY, ТОЧЕЧНЫЕ файлы +
+   критерии («общие аудиты проекта» галлюцинирует). После шага с кодом — промт
+   аудитора; вместе с «Готово» требовать итог аудита.
+9. Перед каждым крупным шагом — прогнать аудит (промт в разделе 6).
+10. СЕКРЕТЫ: только backend/.env и frontend/.env (оба в .gitignore). В статусе,
+    коммитах и репо — ТОЛЬКО плейсхолдеры. Если GitHub Push Protection заблокировал:
+    reset --soft → чистый коммит → push --force-with-lease. Ключи НЕ перевыпускать.
+11. Vite читает .env только при старте → после правки .env рестарт npm run dev.
+12. Не выдумывать файлы/методы/API. После фикса не оставлять мёртвый код.
 
-## ✅ Реализовано (72 шага)
+## 1. СТЕК
+Monorepo: backend NestJS+Prisma+PostgreSQL (Docker localhost:5433, порт 3000),
+frontend React+TS+MUI+Vite (порт 5000). GitHub: maxim13power-pixel/FRAME.
+Деплой: Railway; мобилки — Capacitor (v2); сторы: PlayMarket, RuStore, AppStore.
+Цель: $5000+/мес подпиской. Тест-логины (пароль frame123):
+foreman@frame.app / +79990000000 (Прораб), customer@frame.app / +79990000001
+(Заказчик), sub@frame.app / +79990000002 (Субподрядчик, VIEWER+hidePrices).
+Вход по email ИЛИ телефону (validateUser детектит '@').
 
-### Backend
-- **Auth:** JWT + bcrypt, регистрация (email-only по решению продукта), логин email/phone по @, rememberMe (30d/1d)
-- **ObjectAccessGuard:** подключён к Objects/Projects/Invites; **ОТСУТСТВУЕТ на MaterialsController (P0!)**
-- **VIEWER protection:** все 8 мутирующих методов materials.service.ts защищены (create/addFix/editLastFix/update/remove/updateSpecQty/toggleSpecLock/createPriceItemWithCategory)
-- **Race conditions:** транзакции + SELECT FOR UPDATE в addFix/editLastFix/acceptInvite; P2002-retry в createPriceItemWithCategory
-- **Скрытие цен:** stripPrices + mustHidePrices в materials.service.ts, фильтрация в objects.service.ts
-- **Приглашения:** ссылки-приглашения (InviteToken), прямое приглашение email/phone, автопринятие после логина (pendingInviteToken в localStorage)
-- **Модель данных:** User, Object, Project, Material, MaterialFix, PriceCategory, PriceItem, ObjectAccess, InviteToken, ChangeRequest (модель есть, логики НЕТ — P1)
+## 2. ГОТОВО (чаты №6–8, шаги 28–78)
+- Доступ: ObjectAccess (role CUSTOMER/FOREMAN/VIEWER + hidePrices + projectId),
+  InviteToken (ссылки как в Notion), acceptInvite в транзакции (P2002), модалки
+  «Участники»/«Поделиться», AcceptInvite + pendingInviteToken.
+- Скрытие цен: stripPrices во всех методах materials.service; totalCost=0 в
+  objects/dashboard; фронт Materials.tsx прячет колонки/кнопки/FAB/плашку.
+- VIEWER: все мутирующие методы materials.service → 403.
+- Регистрация/вход: POST /auth/register (email ИЛИ телефон, race-фикс P2002),
+  страницы Login/Register/ForgotPassword(демо)/Terms/Privacy (152-ФЗ),
+  «лицо приложения» в стиле Smetter (единые поля, отступы 16px, maxWidth 400).
+- Капча (чат №8): CaptchaService (Yandex SmartCaptcha, fail-open, timeout 5s),
+  SmartCaptcha.tsx (render() API, изолированный DOM, StrictMode-защита),
+  капча на /register, RegisterDto.captchaToken, IP из x-forwarded-for. Аудит 10/10.
+- Git: секреты вычищены из истории (force-with-lease).
+- UI: Dashboard rail sticky + профиль→/users, DrawerMenu с профилем,
+  MobileHeaderContext, настраиваемый BottomNav (Settings), 20+ калькуляторов.
 
-### Frontend
-- **Auth pages:** Login, Register, ForgotPassword (демо), AcceptInvite — единый Smetter-стиль
-- **Основные страницы:** Objects, Projects, Materials (самая сложная — 1853 строки), PriceList, Calculators (15+ штук)
-- **Layout:** Dashboard с rail-сайдбаром (64px свёрнутый, 240px раскрытый), статичный через sticky+minHeight:0, профиль внизу с Z-паттерном
-- **Mobile:** AppHeader, BottomNav, DrawerMenu с профилем, MobileHeaderContext
-- **VIEWER UI:** скрытие денежных колонок/кнопок/модалок при hidePrices/role=VIEWER
-- **Правовые документы:** Terms.tsx, Privacy.tsx (шаблоны 152-ФЗ, TODO реквизиты)
+## 3. P0 / P1 / P2 (аудит)
+### 🔴 P0 — план чата №9
+1. MaterialsController БЕЗ ObjectAccessGuard (все методы + price-item)
+2. JWT_SECRET fallback 'SECRET_KEY' в jwt.strategy.ts И auth.module.ts → убрать, кидать ошибку при старте
+3. CORS origin:true в main.ts → whitelist origin фронтенда
+4. ForgotPassword: демо без бэка → endpoint + модель PasswordResetToken + Brevo SMTP
+5. RegisterDto: валидация «email ИЛИ phone обязательны» (сейчас оба @IsOptional)
+6. ChangeRequest: модель есть, логики НЕТ (controller/service/DTO) — розовые согласования
+7. auth.controller.spec.ts активен → 'Cannot find name describe' ломает tsc:
+   закомментировать целиком (как auth.service.spec.ts) ИЛИ npm i -D @types/jest
+### 🟡 P1
+- Objects.tsx (1301) / Materials.tsx (1853) — разбить на подкомпоненты
+- Почистить закомментированный код в Materials.tsx (LockIcon, DeleteIcon, старый handleAddFix)
+- Мёртвые файлы «Home copy*.tsx» и т.п. — НЕ трогать без команды
+- Terms/Privacy: реквизиты оператора (ИП/ООО, ИНН) перед сторами
+- Проверить Register.tsx НА ДИСКЕ: шлёт captchaToken (KB-копия устарела)
+- Изоляция проектов: ObjectAccess.projectId не участвует в проверках
+### 🟢 P2
+- STORE_URLS пусты (задел Universal Links готов); orgId-заглушка в dashboard.types.ts
+- ThrottlerModule на register/login; refresh-токены
+- Биллинг: модель Subscription, тарифы (Прораб ~490-790₽, Бригада ~1990₽), FREE-лимиты
 
-## 🔴 КРИТИЧНО (из аудита, P0 блокеры)
-1. MaterialsController без ObjectAccessGuard (все методы + price-item)
-2. JWT_SECRET fallback 'SECRET_KEY' в jwt.strategy.ts — убрать, кидать ошибку
-3. CORS origin:true в main.ts — ограничить одним origin фронтенда
-4. ForgotPassword — демо без бэкенда (реализовать POST /auth/forgot-password + Brevo)
-5. RegisterDto: email/phone @IsOptional — нужна кастомная валидация "хотя бы одно"
-6. ChangeRequest модель без логики (нет controller/service)
-7. **Капча Yandex SmartCaptcha — НЕ ПОДКЛЮЧЕНА** (ключи есть, интеграции нет)
+## 4. KNOWN ISSUES (НЕ баги, не чиним)
+- Консоль React #418/#423 + «robustness level» — внутри бандла Яндекса, влияния нет.
+- Vite .env — только рестарт (правило 11).
+- Cline+Ollama qwen3-coder:30b: контекст 32768, только точечные задачи.
+- OpenRouter free банит VPN-IP.
 
-## 🟡 ВНИМАНИЕ (P1)
-- Objects.tsx (1301 строка) и Materials.tsx (1853 строки) — слишком длинные, разбить на подкомпоненты
-- Закомментированный код в Materials.tsx (LockIcon, DeleteIcon) — почистить
-- Мёртвые файлы: Login copy.tsx, Home copy.tsx, Home copy 2.tsx
-- MobileHeaderContext не проверен на Warehouse/Analytics/Reports/Settings
-- Terms/Privacy — пустые реквизиты оператора (ИП/ООО, ИНН)
+## 5. СЕКРЕТЫ (НЕ в репо!)
+backend/.env: DATABASE_URL, JWT_SECRET, SMARTCAPTCHA_SERVER_KEY (ysc2_…), BREVO_*
+frontend/.env: VITE_SMARTCAPTCHA_CLIENT_KEY (ysc1_…)
+В статусе/коммитах — только плейсхолдеры (правило 10).
 
-## 🟢 ЗАМЕТКА (P2)
-- STORE_URLS в config.ts пустые (заполнить при публикации в сторы)
-- orgId в dashboard.types.ts — заглушка мульти-тенантности
-- Автофокус на email в ForgotPassword
-- Hover-эффект на avatar в rail
-- Placeholder "Email / телефон" в Login.tsx
+## 6. ПРОМТ ДЛЯ QWEN CODE (перед крупным шагом и после шага)
+Ты — senior full-stack аудитор (NestJS+Prisma+PostgreSQL+React+TS+MUI).
+Проведи READ-ONLY аудит, НИЧЕГО не изменяй. Контекст: PROJECT_STATUS v14 +
+приложенные файлы. Выведи: 🔴 КРИТИЧНО / 🟡 ВНИМАНИЕ / 🟢 ЗАМЕТКА.
+Каждый пункт: файл, строка, суть, как исправить. САМ НЕ ИСПРАВЛЯЙ.
+(Давай только точечные файлы, не «весь проект».)
 
-## 📊 Метрики
-- Backend: ~45 файлов
-- Frontend: ~60 файлов
-- Строк кода: ~25000
-- Шагов реализации: 72
-- Оценка аудита: 7.0/10
-# backend/.env
-DATABASE_URL="postgresql://..."  # Railway, уже настроено
-JWT_SECRET=...  # ⚠️ ПРОВЕРИТЬ что не 'SECRET_KEY'!
-SMARTCAPTCHA_SERVER_KEY="***_REDACTED_***"  # ЛОКАЛЬНО, не перевыпускать
-BREVO_API_KEY=...  # TODO: настроить
-BREVO_SENDER_EMAIL=...  # TODO
-BREVO_SENDER_NAME="FRAME"
-// frontend — публичные ключи
-SMARTCAPTCHA_CLIENT_KEY = "***_REDACTED_***"
-SITE_URL = "https://web.max.ru/-77702883548569"  // заглушка, заменить на реальный сайт
-// frontend — публичные ключи
-SMARTCAPTCHA_CLIENT_KEY = "***_REDACTED_***"
-SITE_URL = "https://web.max.ru/-77702883548569"  // заглушка, заменить на реальный сайт
-Цвета:
-  primary:       #1976d2
-  primary-dark:  #1565c0
-  text-dark:     #04164b
-  bg-page:       #f0f4fa
-  success:       #4caf50
-  success-dark:  #388e3c
-  warning:       #ed6c02 / #ff9800
-  error:         #d32f2f / #f44336
-  focus-bg:      #e3f2fd (голубая заливка полей)
+## 7. ДИЗАЙН-СИСТЕМА (для UI-шагов)
+Синий #1976d2; текст #04164b; фон страниц #f0f4fa; успех #4caf50;
+warning #ed6c02; error #d32f2f. Поля: outlined, белый фон, фокус — рамка
+#1976d2 2px + заливка #e3f2fd, borderRadius 2. Карточки: elevation 0,
+borderRadius 4, p 4; отступы Stack spacing 2 (16px). Login/Register/Forgot:
+maxWidth 400, мобилка full-bleed (borderRadius xs 0). Ссылки «регистрации» /
+«Забыли пароль?»: underline always + baseline sx (p:0, lineHeight inherit).
 
-Поля (fieldSx):
-  variant: outlined
-  borderRadius: 2
-  backgroundColor: white
-  transition: background-color 0.2s
-  hover border: #1976d2
-  focus: backgroundColor #e3f2fd, border #1976d2 width 2
+## 8. МЕТРИКИ И НОМЕРАЦИЯ
+Шагов сделано: 78. СЛЕДУЮЩИЙ КОММИТ: №79. Оценка аудита: 7.0/10 (цель 8.5 после P0).
+История: №1-4 база; №5 схема доступов; №6 приглашения+скрытие цен;
+№7 (шаги 47-72): guard, транзакция invite, регистрация, лицо приложения;
+№8 (шаги 73-78): капча Яндекс end-to-end, вычистка секретов.
 
-Карточки:
-  elevation: 0
-  borderRadius: 4
-  p: 4
-
-Отступы:
-  Stack spacing: 2 (16px)
-  Paper padding: 4 (32px)
-
-Typography:
-  h4: 1.8rem, weight 780 (FRAME на логине)
-  h5: weight 700 (заголовки страниц)
-  body2: weight 400
-  caption: weight 400, text.secondary
+## 9. ПЛАН ЧАТА №9
+1. Сверка нумерации: git log --oneline -15 (последний = №78)
+2. P0-7 spec → чистая сборка | 3. P0-2 JWT_SECRET | 4. P0-3 CORS
+5. P0-1 Guard на MaterialsController | 6. P0-5 RegisterDto | 7. P0-4 ForgotPassword+Brevo
+8. P0-6 ChangeRequest (если позволит счётчик) | 9. Передача в чат №10 с планом P1
