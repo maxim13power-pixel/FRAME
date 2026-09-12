@@ -25,4 +25,9 @@ export class RegisterDto {
   @IsString({ message: 'Имя обязательно' })
   @MinLength(2, { message: 'Имя минимум 2 символа' })
   fullName!: string;
+ 
+  // ⭐ Шаг 77: токен Yandex SmartCaptcha (опционально в dev, обязателен в prod)
+  @IsOptional()
+  @IsString()
+  captchaToken?: string;
 }

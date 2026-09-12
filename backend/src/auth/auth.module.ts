@@ -5,10 +5,11 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from './jwt.strategy';
 import { PrismaModule } from '../../prisma/prisma.module';
-
+import { CaptchaModule } from '../captcha'; // ⭐ НОВОЕ
 @Module({
 imports: [
 PassportModule,
+CaptchaModule,
 JwtModule.register({
 secret: process.env.JWT_SECRET || 'SECRET_KEY',
 signOptions: { expiresIn: '1d' },
