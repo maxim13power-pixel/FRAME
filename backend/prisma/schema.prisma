@@ -21,13 +21,14 @@ model User {
   role        Role            @default(FOREMAN)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
-  
+
   // Новые связи вместо Organization
   objectAccesses    ObjectAccess[]
   proposedChanges   ChangeRequest[]  @relation("ProposedChanges")
   reviewedChanges   ChangeRequest[]  @relation("ReviewedChanges")
   ownedPriceItems   PriceItem[]
   createdInvites    InviteToken[]  @relation("CreatedInvites")
+  passwordResetTokens PasswordResetToken[]  // ⭐ P0-4
 }
 
 model Object {
@@ -240,9 +241,25 @@ model InviteToken {
   usesCount  Int          @default(0)       // счётчик использований
   isActive   Boolean      @default(true)    // можно отозвать ссылку
   createdAt  DateTime     @default(now())
-
   object     Object       @relation(fields: [objectId], references: [id], onDelete: Cascade)
   creator    User         @relation("CreatedInvites", fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@map("invite_tokens")
+}
+
+// ============================================================
+// ВОССТАНОВЛЕНИЕ ПАРОЛЯ (P0-4)
+// ============================================================
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  token     String    @unique              // URL-safe токен (crypto.randomBytes)
+  expiresAt DateTime                     // срок действия (обычно 1 час)
+  usedAt    DateTime?                    // null = не использован, дата = использован
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("password_reset_tokens")
 }
