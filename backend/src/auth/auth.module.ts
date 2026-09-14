@@ -6,7 +6,7 @@ import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from './jwt.strategy';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { CaptchaModule } from '../captcha'; // ⭐ НОВОЕ
-
+import { EmailService } from './email.service'; // ⭐ P0-4
 function getJwtSecret(): string {
 const secret = process.env.JWT_SECRET?.trim();
 
@@ -28,6 +28,6 @@ signOptions: { expiresIn: '1d' },
 PrismaModule,
 ],
 controllers: [AuthController],
-providers: [AuthService, JwtStrategy],
+providers: [AuthService, JwtStrategy, EmailService],
 })
 export class AuthModule {}

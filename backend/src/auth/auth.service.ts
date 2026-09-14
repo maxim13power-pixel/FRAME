@@ -10,12 +10,17 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { CaptchaService } from '../captcha';
+import { EmailService } from './email.service'; // ⭐ P0-4
+import { ForgotPasswordDto } from './dto/forgot-password.dto'; // ⭐ P0-4
+import { ResetPasswordDto } from './dto/reset-password.dto'; // ⭐ P0-4
+import * as crypto from 'crypto'; // ⭐ P0-4
 @Injectable()
 export class AuthService {
   constructor(
     private jwtService: JwtService,
     private prismaService: PrismaService,
     private captchaService: CaptchaService,
+    private emailService: EmailService, // ⭐ P0-4
   ) {}
 
   async validateUser(login: string, pass: string): Promise<any> {
@@ -99,4 +104,78 @@ async register(dto: RegisterDto, ip: string) {
     throw e;
   }
 }
+  // ⭐ P0-4: Запрос восстановления пароля
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.prismaService.user.findUnique({
+      where: { email: dto.email },
+    });
+
+    // ⭐ Безопасность: ВСЕГДА возвращаем одинаковый ответ,
+    // чтобы злоумышленник не мог узнать, зарегистрирован ли email в системе.
+    const successMessage = 'Если аккаунт с этим email существует, мы отправили ссылку для восстановления.';
+
+    if (!user || !user.email) {
+      return { message: successMessage };
+    }
+
+    // 1. Генерируем безопасный токен (64 hex символа = 256 бит энтропии)
+    const plainToken = crypto.randomBytes(32).toString('hex');
+
+    // 2. Аннулируем все предыдущие активные токены для этого юзера
+    await this.prismaService.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    // 3. Создаём новый токен (действителен 1 час)
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 1);
+
+    await this.prismaService.passwordResetToken.create({
+      data: {
+        token: plainToken,
+        userId: user.id,
+        expiresAt,
+      },
+    });
+
+    // 4. Формируем ссылку и отправляем письмо
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5000';
+    const resetLink = `${frontendUrl}/reset-password?token=${plainToken}`;
+    
+    await this.emailService.sendPasswordResetEmail(user.email, resetLink);
+
+    return { message: successMessage };
+  }
+
+  // ⭐ P0-4: Сброс пароля по токену из письма
+  async resetPassword(dto: ResetPasswordDto) {
+    // Ищем активный и неистёкший токен
+    const resetToken = await this.prismaService.passwordResetToken.findUnique({
+      where: { token: dto.token },
+    });
+
+    const errorMessage = 'Неверная или истёкшая ссылка для восстановления.';
+
+    if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
+      throw new BadRequestException(errorMessage);
+    }
+
+    // Хэшируем новый пароль
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+
+    // Транзакция: обновляем пароль и помечаем токен как использованный
+    await this.prismaService.$transaction([
+      this.prismaService.user.update({
+        where: { id: resetToken.userId },
+        data: { password: hashedPassword },
+      }),
+      this.prismaService.passwordResetToken.update({
+        where: { id: resetToken.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    return { message: 'Пароль успешно изменён. Теперь вы можете войти.' };
+  }
 }

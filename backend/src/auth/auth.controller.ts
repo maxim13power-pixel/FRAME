@@ -3,6 +3,8 @@ import type { Request as ExpressRequest } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto'; // ⭐ P0-4
+import { ResetPasswordDto } from './dto/reset-password.dto'; // ⭐ P0-4
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -38,5 +40,20 @@ export class AuthController {
       : (request.connection as any)?.remoteAddress;
 
     return this.authService.register(dto, ip);
+  }
+  // ⭐ P0-4: Запрос ссылки на восстановление пароля
+  @Post('forgot-password')
+  async forgotPassword(
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })) dto: ForgotPasswordDto,
+  ) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  // ⭐ P0-4: Сброс пароля по токену из письма
+  @Post('reset-password')
+  async resetPassword(
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })) dto: ResetPasswordDto,
+  ) {
+    return this.authService.resetPassword(dto);
   }
 }
