@@ -215,6 +215,7 @@ model ChangeRequest {
   status      ChangeStatus @default(PENDING)
   proposedBy  Int          // прораб
   reviewedBy  Int?         // заказчик
+  reviewComment String?    // ⭐ P0-6: комментарий ревьюера (причина отклонения)
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   material    Material?    @relation(fields: [materialId], references: [id], onDelete: SetNull)
   proposer    User         @relation("ProposedChanges", fields: [proposedBy], references: [id], onDelete: Cascade)
