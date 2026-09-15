@@ -22,7 +22,10 @@ export class AtLeastOneConstraint implements ValidatorConstraintInterface {
   }
 }
 
-export function AtLeastOne(property: string, validationOptions?: ValidationOptions) {
+export function AtLeastOne(
+  property: string,
+  validationOptions?: ValidationOptions,
+) {
   return function (object: object, propertyName: string) {
     registerDecorator({
       target: object.constructor,

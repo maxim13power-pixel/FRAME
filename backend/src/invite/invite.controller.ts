@@ -25,7 +25,8 @@ export class InviteController {
   @UseGuards(JwtAuthGuard)
   createInvite(
     @Param('objectId', ParseIntPipe) objectId: number,
-    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })) dto: CreateInviteDto,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: CreateInviteDto,
     @Req() req,
   ) {
     return this.inviteService.createInviteLink(objectId, dto, req.user.userId);
@@ -55,10 +56,7 @@ export class InviteController {
   // POST /invite/:token/accept — принять приглашение (авторизованный)
   @Post('invite/:token/accept')
   @UseGuards(JwtAuthGuard)
-  acceptInvite(
-    @Param('token') token: string,
-    @Req() req,
-  ) {
+  acceptInvite(@Param('token') token: string, @Req() req) {
     return this.inviteService.acceptInvite(token, req.user.userId);
   }
 

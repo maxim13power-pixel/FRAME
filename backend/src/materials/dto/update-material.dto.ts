@@ -1,4 +1,12 @@
-import { IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { UNIT_VALUES } from './create-material.dto';
 
 export class UpdateMaterialDto {
@@ -26,8 +34,8 @@ export class UpdateMaterialDto {
 
   @IsOptional()
   @IsInt({ message: 'priceItemId должен быть целым числом' })
-  priceItemId?: number | null;  
-  
+  priceItemId?: number | null;
+
   @IsOptional()
   @IsInt({ message: 'materialItemId должен быть целым числом' })
   materialItemId?: number | null;

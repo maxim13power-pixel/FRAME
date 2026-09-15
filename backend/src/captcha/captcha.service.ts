@@ -13,9 +13,9 @@ import { AxiosResponse } from 'axios';
 // См. https://yandex.cloud/ru/docs/smartcaptcha/concepts/validation#response
 interface SmartCaptchaResponse {
   status: 'ok' | 'failed';
-  message?: string;        // человекочитаемое сообщение об ошибке
-  code?: number;           // внутренний код ошибки Яндекса
-  hostname?: string;       // домен, на котором проверялась капча
+  message?: string; // человекочитаемое сообщение об ошибке
+  code?: number; // внутренний код ошибки Яндекса
+  hostname?: string; // домен, на котором проверялась капча
 }
 
 // ⭐ Вспомогательный тип для RxJS: либо ответ Яндекса, либо null (fail-open)
@@ -28,7 +28,8 @@ export class CaptchaService {
 
   // 🔒 URL хардкодим НАМЕРЕННО — это публичный endpoint Яндекса,
   // не секрет. Делать его конфигурируемым = лишняя сложность без выгоды.
-  private readonly VALIDATE_URL = 'https://smartcaptcha.yandexcloud.net/validate';
+  private readonly VALIDATE_URL =
+    'https://smartcaptcha.yandexcloud.net/validate';
 
   // ⭐ Timeout в миллисекундах
   private readonly TIMEOUT_MS = 5000;
@@ -128,10 +129,10 @@ export class CaptchaService {
         yandexCode: data.code,
       });
       return false;
-
     } catch (error) {
       // 🔒 Финальная страховка: любая непредвиденная ошибка → fail-open
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Непредвиденная ошибка в CaptchaService: ${errorMessage}`,
         error instanceof Error ? error.stack : undefined,

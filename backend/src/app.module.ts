@@ -28,5 +28,4 @@ import { InviteModule } from './invite/invite.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {
-}
+export class AppModule {}

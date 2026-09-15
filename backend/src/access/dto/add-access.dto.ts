@@ -1,5 +1,12 @@
 // backend/src/access/dto/add-access.dto.ts
-import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export class AddAccessDto {
   // ⭐ Кого приглашаем: либо по userId (если фронт нашёл юзера), либо по email/телефону

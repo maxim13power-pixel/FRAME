@@ -62,48 +62,50 @@ export class AuthService {
 
   // ⭐ Регистрация: email ИЛИ телефон + пароль + имя.
   // Возвращаем JWT сразу — пользователь попадает в приложение без повторного логина.
-async register(dto: RegisterDto, ip: string) {
-  // 1. Валидация: нужно хотя бы одно из двух
-  if (!dto.email && !dto.phone) {
-    throw new BadRequestException('Укажите email или телефон');
-  }
+  async register(dto: RegisterDto, ip: string) {
+    // 1. Валидация: нужно хотя бы одно из двух
+    if (!dto.email && !dto.phone) {
+      throw new BadRequestException('Укажите email или телефон');
+    }
 
-  // ⭐ Шаг 77: проверка капчи (в dev опциональна для удобства)
-  const isProd = process.env.NODE_ENV === 'production';
-  if (isProd && !dto.captchaToken) {
-    throw new BadRequestException('Капча обязательна');
-  }
-  if (dto.captchaToken) {
-    const isValid = await this.captchaService.validate(dto.captchaToken, ip);
-    if (!isValid) {
-      throw new BadRequestException('Капча не пройдена. Попробуйте ещё раз.');
+    // ⭐ Шаг 77: проверка капчи (в dev опциональна для удобства)
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd && !dto.captchaToken) {
+      throw new BadRequestException('Капча обязательна');
+    }
+    if (dto.captchaToken) {
+      const isValid = await this.captchaService.validate(dto.captchaToken, ip);
+      if (!isValid) {
+        throw new BadRequestException('Капча не пройдена. Попробуйте ещё раз.');
+      }
+    }
+
+    // 2. Создание юзера (P2002 = email/phone занят)
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    try {
+      const user = await this.prismaService.user.create({
+        data: {
+          email: dto.email ?? null,
+          phone: dto.phone ?? null,
+          password: hashedPassword,
+          fullName: dto.fullName,
+          role: 'FOREMAN',
+        },
+      });
+      return this.login(user, false);
+    } catch (e: any) {
+      if (e.code === 'P2002') {
+        const target: string[] = e.meta?.target ?? [];
+        const isEmailConflict = target.includes('email');
+        throw new ConflictException(
+          isEmailConflict
+            ? 'Этот email уже зарегистрирован'
+            : 'Этот телефон уже зарегистрирован',
+        );
+      }
+      throw e;
     }
   }
-
-  // 2. Создание юзера (P2002 = email/phone занят)
-  const hashedPassword = await bcrypt.hash(dto.password, 10);
-  try {
-    const user = await this.prismaService.user.create({
-      data: {
-        email: dto.email ?? null,
-        phone: dto.phone ?? null,
-        password: hashedPassword,
-        fullName: dto.fullName,
-        role: 'FOREMAN',
-      },
-    });
-    return this.login(user, false);
-  } catch (e: any) {
-    if (e.code === 'P2002') {
-      const target: string[] = e.meta?.target ?? [];
-      const isEmailConflict = target.includes('email');
-      throw new ConflictException(
-        isEmailConflict ? 'Этот email уже зарегистрирован' : 'Этот телефон уже зарегистрирован',
-      );
-    }
-    throw e;
-  }
-}
   // ⭐ P0-4: Запрос восстановления пароля
   async forgotPassword(dto: ForgotPasswordDto) {
     const user = await this.prismaService.user.findUnique({
@@ -112,7 +114,8 @@ async register(dto: RegisterDto, ip: string) {
 
     // ⭐ Безопасность: ВСЕГДА возвращаем одинаковый ответ,
     // чтобы злоумышленник не мог узнать, зарегистрирован ли email в системе.
-    const successMessage = 'Если аккаунт с этим email существует, мы отправили ссылку для восстановления.';
+    const successMessage =
+      'Если аккаунт с этим email существует, мы отправили ссылку для восстановления.';
 
     if (!user || !user.email) {
       return { message: successMessage };
@@ -142,7 +145,7 @@ async register(dto: RegisterDto, ip: string) {
     // 4. Формируем ссылку и отправляем письмо
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5000';
     const resetLink = `${frontendUrl}/reset-password?token=${plainToken}`;
-    
+
     await this.emailService.sendPasswordResetEmail(user.email, resetLink);
 
     return { message: successMessage };

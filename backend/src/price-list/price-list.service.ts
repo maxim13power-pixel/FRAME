@@ -1,5 +1,9 @@
 // backend/src/price-list/price-list.service.ts
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PriceKind, Unit } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -50,7 +54,12 @@ export class PriceListService {
 
   // Поиск расценок (для Autocomplete в материалах): общие + личные юзера.
   // ⭐ Через явный AND, чтобы OR владельца и OR поиска не затёрли друг друга.
-  async searchItems(search?: string, categoryId?: number, kind?: string, userId?: number) {
+  async searchItems(
+    search?: string,
+    categoryId?: number,
+    kind?: string,
+    userId?: number,
+  ) {
     return this.prisma.priceItem.findMany({
       where: {
         AND: [
@@ -62,8 +71,15 @@ export class PriceListService {
             ? [
                 {
                   OR: [
-                    { name: { contains: search, mode: 'insensitive' as const } },
-                    { article: { contains: search, mode: 'insensitive' as const } },
+                    {
+                      name: { contains: search, mode: 'insensitive' as const },
+                    },
+                    {
+                      article: {
+                        contains: search,
+                        mode: 'insensitive' as const,
+                      },
+                    },
                   ],
                 },
               ]
@@ -143,16 +159,23 @@ export class PriceListService {
   }
 
   // Обновление расценки: можно менять ОБЩИЕ и СВОИ расценки
-  async updateItem(id: number, dto: Partial<CreatePriceItemDto>, userId?: number) {
+  async updateItem(
+    id: number,
+    dto: Partial<CreatePriceItemDto>,
+    userId?: number,
+  ) {
     const item = await this.prisma.priceItem.findFirst({
       where: { id, ...this.ownerFilter(userId) },
     });
-    if (!item) throw new NotFoundException('Расценка не найдена или нет доступа');
+    if (!item)
+      throw new NotFoundException('Расценка не найдена или нет доступа');
     return this.prisma.priceItem.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name?.trim() }),
-        ...(dto.article !== undefined && { article: dto.article?.trim() || null }),
+        ...(dto.article !== undefined && {
+          article: dto.article?.trim() || null,
+        }),
         ...(dto.unit != null && { unit: dto.unit as Unit }),
         ...(dto.price !== undefined && { price: dto.price }),
       },
@@ -165,7 +188,8 @@ export class PriceListService {
     const item = await this.prisma.priceItem.findFirst({
       where: { id, ...this.ownerFilter(userId) },
     });
-    if (!item) throw new NotFoundException('Расценка не найдена или нет доступа');
+    if (!item)
+      throw new NotFoundException('Расценка не найдена или нет доступа');
     return this.prisma.priceItem.update({
       where: { id },
       data: { isActive: false },

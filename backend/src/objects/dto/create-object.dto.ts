@@ -1,4 +1,11 @@
-import { IsString, IsNotEmpty, IsDateString, IsOptional, MaxLength, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsDateString,
+  IsOptional,
+  MaxLength,
+  IsIn,
+} from 'class-validator';
 export class CreateObjectDto {
   @IsString()
   @IsNotEmpty({ message: 'Название объекта обязательно' })
@@ -27,6 +34,8 @@ export class CreateObjectDto {
 
   // ⭐ Роль создателя объекта: Заказчик или Прораб (ТЗ 3.4)
   @IsOptional()
-  @IsIn(['CUSTOMER', 'FOREMAN'], { message: 'Роль должна быть CUSTOMER или FOREMAN' })
+  @IsIn(['CUSTOMER', 'FOREMAN'], {
+    message: 'Роль должна быть CUSTOMER или FOREMAN',
+  })
   role?: 'CUSTOMER' | 'FOREMAN';
 }

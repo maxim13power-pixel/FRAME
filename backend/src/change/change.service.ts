@@ -17,8 +17,13 @@ import { ReviewActionEnum, ReviewChangeDto } from './dto/review-change.dto';
 const MONEY_ROLES: AccessRole[] = [AccessRole.FOREMAN, AccessRole.CUSTOMER];
 // ⭐ Ценовые ключи payload — вырезаются для VIEWER и hidePrices
 const PRICE_KEYS = [
-  'unitPrice', 'materialUnitPrice', 'newUnitPrice', 'newMaterialUnitPrice',
-  'price', 'totalCost', 'materialTotalCost',
+  'unitPrice',
+  'materialUnitPrice',
+  'newUnitPrice',
+  'newMaterialUnitPrice',
+  'price',
+  'totalCost',
+  'materialTotalCost',
 ];
 // ⭐ N2: не дублируем enum — единицы берём прямо из Prisma
 const UNITS: string[] = Object.values(Unit);
@@ -55,8 +60,10 @@ export class ChangeService {
   // ─── Предложить изменение (FOREMAN/CUSTOMER) ───
   async create(userId: number, dto: CreateChangeDto) {
     const access = await this.getAccess(userId, dto.projectId);
-        if (!MONEY_ROLES.includes(access.role)) {
-      throw new ForbiddenException('Предлагать изменения могут прораб и заказчик');
+    if (!MONEY_ROLES.includes(access.role)) {
+      throw new ForbiddenException(
+        'Предлагать изменения могут прораб и заказчик',
+      );
     }
     // ⭐ IDOR-защита: materialId обязан принадлежать этому проекту
     if (dto.materialId !== undefined) {
@@ -65,23 +72,39 @@ export class ChangeService {
         select: { projectId: true },
       });
       if (!material || material.projectId !== dto.projectId) {
-        throw new BadRequestException('materialId: материал не найден в этом проекте');
+        throw new BadRequestException(
+          'materialId: материал не найден в этом проекте',
+        );
       }
     }
     // ⭐ payload чистим через whitelist: лишние ключи не проскочат
-        // ⭐ payload чистим через whitelist: лишние ключи не проскочат
     const payload = this.validatePayload(dto.type, dto.payload, dto.materialId);
 
-    // ⭐ W2: fail-fast — позиции справочника должны существовать и быть активными
-    for (const key of ['priceItemId', 'materialItemId'] as const) {
+    // ⭐ W2+A4: fail-fast — позиции справочника существуют, активны, правильного kind и доступны юзеру
+    const itemChecks: Array<{
+      key: 'priceItemId' | 'materialItemId';
+      kind: 'WORK' | 'MATERIAL';
+      label: string;
+    }> = [
+      { key: 'priceItemId', kind: 'WORK', label: 'работ' },
+      { key: 'materialItemId', kind: 'MATERIAL', label: 'материалов' },
+    ];
+    for (const { key, kind, label } of itemChecks) {
       const itemId = payload[key] as number | undefined;
       if (itemId !== undefined) {
         const item = await this.prisma.priceItem.findFirst({
-          where: { id: itemId, isActive: true },
+          where: {
+            id: itemId,
+            isActive: true,
+            kind,
+            OR: [{ ownerId: null }, { ownerId: userId }],
+          },
           select: { id: true },
         });
         if (!item) {
-          throw new BadRequestException(`payload.${key}: позиция справочника не найдена или неактивна`);
+          throw new BadRequestException(
+            `payload.${key}: позиция справочника ${label} не найдена, неактивна или недоступна`,
+          );
         }
       }
     }
@@ -127,8 +150,13 @@ export class ChangeService {
     const change = await this.prisma.changeRequest.findUnique({
       where: { id: changeId },
       select: {
-        id: true, projectId: true, materialId: true,
-        type: true, payload: true, status: true, proposedBy: true,
+        id: true,
+        projectId: true,
+        materialId: true,
+        type: true,
+        payload: true,
+        status: true,
+        proposedBy: true,
       },
     });
     if (!change) {
@@ -138,7 +166,9 @@ export class ChangeService {
     // ⭐ Доступ ПЕРЕД проверкой статуса — не утекают состояния чужих заявок
     const access = await this.getAccess(userId, change.projectId);
     if (!MONEY_ROLES.includes(access.role)) {
-      throw new ForbiddenException('Согласовывать могут только прораб и заказчик');
+      throw new ForbiddenException(
+        'Согласовывать могут только прораб и заказчик',
+      );
     }
     if (change.proposedBy === userId) {
       throw new ForbiddenException('Нельзя согласовать собственную заявку');
@@ -167,7 +197,7 @@ export class ChangeService {
       }
 
       if (status === ChangeStatus.APPROVED) {
-        await this.applyPayload(tx, change);
+        await this.applyPayload(tx, change, userId);
       }
 
       return tx.changeRequest.findUnique({
@@ -183,32 +213,53 @@ export class ChangeService {
   // ─── Применение payload при APPROVE (внутри транзакции) ───
   private async applyPayload(
     tx: Prisma.TransactionClient,
-    change: { projectId: number; materialId: number | null; type: string; payload: Prisma.JsonValue },
+    change: {
+      projectId: number;
+      materialId: number | null;
+      type: string;
+      payload: Prisma.JsonValue;
+    },
+    userId: number,
   ) {
     const payload = (change.payload ?? {}) as Record<string, any>;
 
     switch (change.type) {
       case ChangeTypeEnum.ADD_ROW: {
-        // ⭐ W2: SNAPSHOT цены берём ИЗ СПРАВОЧНИКА, payload-цену игнорируем
-        let unitPrice = payload.unitPrice ?? 0;
+        // ⭐ W2+A4: SNAPSHOT цены берём ТОЛЬКО ИЗ СПРАВОЧНИКА + проверяем kind и ownerId.
+        // priceItemId (без ownerId) = 0, как в materials.service.create.
+        let unitPrice = 0;
         if (payload.priceItemId !== undefined) {
           const workItem = await tx.priceItem.findFirst({
-            where: { id: payload.priceItemId, isActive: true },
+            where: {
+              id: payload.priceItemId,
+              isActive: true,
+              kind: 'WORK',
+              OR: [{ ownerId: null }, { ownerId: userId }],
+            },
             select: { price: true },
           });
           if (!workItem) {
-            throw new BadRequestException('Позиция справочника работ не найдена или неактивна');
+            throw new BadRequestException(
+              'Позиция справочника работ не найдена, неактивна или недоступна',
+            );
           }
           unitPrice = workItem.price;
         }
-        let materialUnitPrice = payload.materialUnitPrice ?? 0;
+        let materialUnitPrice = 0;
         if (payload.materialItemId !== undefined) {
           const matItem = await tx.priceItem.findFirst({
-            where: { id: payload.materialItemId, isActive: true },
+            where: {
+              id: payload.materialItemId,
+              isActive: true,
+              kind: 'MATERIAL',
+              OR: [{ ownerId: null }, { ownerId: userId }],
+            },
             select: { price: true },
           });
           if (!matItem) {
-            throw new BadRequestException('Позиция справочника материалов не найдена или неактивна');
+            throw new BadRequestException(
+              'Позиция справочника материалов не найдена, неактивна или недоступна',
+            );
           }
           materialUnitPrice = matItem.price;
         }
@@ -245,7 +296,10 @@ export class ChangeService {
           where: { id: change.materialId },
           data: {
             specQuantity,
-            progressPercent: specQuantity > 0 ? Math.round((totalUsed / specQuantity) * 100) : 0,
+            progressPercent:
+              specQuantity > 0
+                ? Math.round((totalUsed / specQuantity) * 100)
+                : 0,
           },
         });
         break;
@@ -263,7 +317,8 @@ export class ChangeService {
         }
         const totalUsed = Number(rows[0].totalUsed);
         const unitPrice: number | undefined = payload.newUnitPrice;
-        const materialUnitPrice: number | undefined = payload.newMaterialUnitPrice;
+        const materialUnitPrice: number | undefined =
+          payload.newMaterialUnitPrice;
         await tx.material.update({
           where: { id: change.materialId },
           data: {
@@ -271,11 +326,15 @@ export class ChangeService {
               ? { unitPrice, totalCost: totalUsed * unitPrice }
               : {}),
             ...(materialUnitPrice !== undefined
-              ? { materialUnitPrice, materialTotalCost: totalUsed * materialUnitPrice }
+              ? {
+                  materialUnitPrice,
+                  materialTotalCost: totalUsed * materialUnitPrice,
+                }
               : {}),
           },
         });
-        break;break;
+        break;
+        break;
       }
       default:
         throw new BadRequestException('Неизвестный тип заявки');
@@ -290,25 +349,37 @@ export class ChangeService {
   ): Record<string, any> {
     const clean: Record<string, any> = {};
 
-    const needNumber = (key: string, opts: { required?: boolean; min?: number } = {}) => {
+    const needNumber = (
+      key: string,
+      opts: { required?: boolean; min?: number } = {},
+    ) => {
       const value = payload[key];
       if (value === undefined) {
-        if (opts.required) throw new BadRequestException(`payload: не хватает "${key}"`);
+        if (opts.required)
+          throw new BadRequestException(`payload: не хватает "${key}"`);
         return;
       }
       if (typeof value !== 'number' || !Number.isFinite(value)) {
-        throw new BadRequestException(`payload.${key}: должно быть конечным числом`);
+        throw new BadRequestException(
+          `payload.${key}: должно быть конечным числом`,
+        );
       }
       if (opts.min !== undefined && value < opts.min) {
-        throw new BadRequestException(`payload.${key}: число не меньше ${opts.min}`);
+        throw new BadRequestException(
+          `payload.${key}: число не меньше ${opts.min}`,
+        );
       }
       clean[key] = value;
     };
 
-    const needString = (key: string, opts: { required?: boolean; max?: number } = {}) => {
+    const needString = (
+      key: string,
+      opts: { required?: boolean; max?: number } = {},
+    ) => {
       const value = payload[key];
       if (value === undefined) {
-        if (opts.required) throw new BadRequestException(`payload: не хватает "${key}"`);
+        if (opts.required)
+          throw new BadRequestException(`payload: не хватает "${key}"`);
         return;
       }
       if (typeof value !== 'string' || value.trim() === '') {
@@ -316,7 +387,9 @@ export class ChangeService {
       }
       // ⭐ W5: лимит длины, чтобы в Json/Material не уехал мегабайт текста
       if (opts.max !== undefined && value.trim().length > opts.max) {
-        throw new BadRequestException(`payload.${key}: максимум ${opts.max} символов`);
+        throw new BadRequestException(
+          `payload.${key}: максимум ${opts.max} символов`,
+        );
       }
       clean[key] = value.trim();
     };
@@ -335,15 +408,16 @@ export class ChangeService {
         needString('name', { required: true, max: 200 });
         needString('unit', { required: true });
         if (!UNITS.includes(clean.unit)) {
-          throw new BadRequestException(`payload.unit: допустимые значения ${UNITS.join(', ')}`);
+          throw new BadRequestException(
+            `payload.unit: допустимые значения ${UNITS.join(', ')}`,
+          );
         }
         needNumber('specQuantity', { required: true, min: 0 });
         needString('article', { max: 100 });
         needString('note', { max: 500 });
+        // ⭐ Только id из справочника — цены НЕ из payload, а из PriceItem.price
         needInt('priceItemId');
-        needNumber('unitPrice', { min: 0 });
         needInt('materialItemId');
-        needNumber('materialUnitPrice', { min: 0 });
         break;
       case ChangeTypeEnum.CHANGE_QTY:
         if (materialId === undefined) {
@@ -353,12 +427,19 @@ export class ChangeService {
         break;
       case ChangeTypeEnum.CHANGE_PRICE:
         if (materialId === undefined) {
-          throw new BadRequestException('Для CHANGE_PRICE обязателен materialId');
+          throw new BadRequestException(
+            'Для CHANGE_PRICE обязателен materialId',
+          );
         }
         needNumber('newUnitPrice', { min: 0 });
         needNumber('newMaterialUnitPrice', { min: 0 });
-        if (clean.newUnitPrice === undefined && clean.newMaterialUnitPrice === undefined) {
-          throw new BadRequestException('payload: нужен newUnitPrice или newMaterialUnitPrice');
+        if (
+          clean.newUnitPrice === undefined &&
+          clean.newMaterialUnitPrice === undefined
+        ) {
+          throw new BadRequestException(
+            'payload: нужен newUnitPrice или newMaterialUnitPrice',
+          );
         }
         break;
       default:

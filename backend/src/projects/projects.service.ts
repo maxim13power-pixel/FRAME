@@ -37,7 +37,9 @@ export class ProjectsService {
   }
 
   // ⭐ Нужно ли скрывать цены для этой записи доступа
-  private mustHidePrices(access?: { role?: string; hidePrices?: boolean } | null): boolean {
+  private mustHidePrices(
+    access?: { role?: string; hidePrices?: boolean } | null,
+  ): boolean {
     if (!access) return false;
     if (access.role === 'VIEWER') return true;
     return access.hidePrices ?? false;
@@ -54,7 +56,9 @@ export class ProjectsService {
       throw new BadRequestException('Невалидная дата окончания');
     }
     if (endDate < startDate) {
-      throw new BadRequestException('Дата окончания не может быть раньше даты начала');
+      throw new BadRequestException(
+        'Дата окончания не может быть раньше даты начала',
+      );
     }
 
     // ⭐ Проверяем доступ к объекту (вместо старой проверки по организации)
@@ -84,19 +88,25 @@ export class ProjectsService {
       where: { objectId },
       orderBy: { createdAt: 'desc' },
       include: {
-        materials: { select: { specQuantity: true, totalUsed: true, totalCost: true } },
+        materials: {
+          select: { specQuantity: true, totalUsed: true, totalCost: true },
+        },
       },
     });
 
     // ⭐ Честный процент: Σ Итого / Σ По спец × 100 по материалам проекта
     return projects.map((p) => {
-      const sumSpec = p.materials.reduce((a, m) => a + (m.specQuantity || 0), 0);
+      const sumSpec = p.materials.reduce(
+        (a, m) => a + (m.specQuantity || 0),
+        0,
+      );
       const sumUsed = p.materials.reduce((a, m) => a + (m.totalUsed || 0), 0);
       const sumCost = p.materials.reduce((a, m) => a + (m.totalCost || 0), 0);
       const { materials, ...rest } = p;
       return {
         ...rest,
-        progressPercent: sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
+        progressPercent:
+          sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
         // ⭐ Скрываем стоимость, если у юзера скрыты цены
         totalCost: hidePrices ? 0 : sumCost,
       };
@@ -113,14 +123,25 @@ export class ProjectsService {
     const project = await this.prisma.project.findUnique({
       where: { id },
       include: {
-        materials: { select: { specQuantity: true, totalUsed: true, totalCost: true } },
+        materials: {
+          select: { specQuantity: true, totalUsed: true, totalCost: true },
+        },
       },
     });
     if (!project) return null;
 
-    const sumSpec = project.materials.reduce((a, m) => a + (m.specQuantity || 0), 0);
-    const sumUsed = project.materials.reduce((a, m) => a + (m.totalUsed || 0), 0);
-    const sumCost = project.materials.reduce((a, m) => a + (m.totalCost || 0), 0);
+    const sumSpec = project.materials.reduce(
+      (a, m) => a + (m.specQuantity || 0),
+      0,
+    );
+    const sumUsed = project.materials.reduce(
+      (a, m) => a + (m.totalUsed || 0),
+      0,
+    );
+    const sumCost = project.materials.reduce(
+      (a, m) => a + (m.totalCost || 0),
+      0,
+    );
     const { materials, ...rest } = project;
     return {
       ...rest,
@@ -134,7 +155,9 @@ export class ProjectsService {
     if (userId) {
       const access = await this.checkProjectAccess(id, userId);
       if (access.role === AccessRole.VIEWER) {
-        throw new ForbiddenException('Наблюдатель не может редактировать проекты');
+        throw new ForbiddenException(
+          'Наблюдатель не может редактировать проекты',
+        );
       }
     }
     await this.prisma.project.update({
@@ -146,7 +169,7 @@ export class ProjectsService {
         note: dto.note !== undefined ? dto.note : undefined,
       },
     });
-     // ⭐ Возвращаем проект с честным процентом (та же форма, что в списке)
+    // ⭐ Возвращаем проект с честным процентом (та же форма, что в списке)
     return this.findOne(id, userId);
   }
 

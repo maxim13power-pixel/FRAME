@@ -37,7 +37,9 @@ export class DashboardService {
     // ⭐ Фильтр для ДЕНЕЖНЫХ данных: исключаем объекты, где у юзера скрыты цены
     //    (флаг hidePrices или роль VIEWER — они видят объёмы, но не деньги)
     const moneyVisibleObject = {
-      accesses: { some: { userId, hidePrices: false, role: { not: 'VIEWER' as const } } },
+      accesses: {
+        some: { userId, hidePrices: false, role: { not: 'VIEWER' as const } },
+      },
       isArchived: false,
     };
 
@@ -106,7 +108,8 @@ export class DashboardService {
     const volume = volumeRows[0] ?? { total_used: 0, spec_quantity: 0 };
     // ⭐ Смета/факт — только там, где юзер видит цены
     const money = moneyRows[0] ?? { estimate: 0, actual: 0 };
-    const percent = volume.spec_quantity > 0 ? volume.total_used / volume.spec_quantity : 0;
+    const percent =
+      volume.spec_quantity > 0 ? volume.total_used / volume.spec_quantity : 0;
     // ── 2. WeekChart — generate_series + LEFT JOIN material_fixes ───────────────
     // ⭐ Фиксации считаем только по доступным юзеру (и не архивным) объектам — через EXISTS.
     const weekRows = await this.prisma.$queryRaw<WeekPointRow[]>`
@@ -133,65 +136,66 @@ export class DashboardService {
     `;
 
     // ── 3. HotProjects + NoPrice(items, count) + RecentFixes — одним батчем ────
-    const [hotProjectRows, noPriceItems, noPriceCount, recentFixes] = await Promise.all([
-      // 3a. Hot projects: endDate ≤ today+7, доступные юзеру, с объектом для навигации
-      this.prisma.project.findMany({
-        where: {
-          endDate: { lte: todayPlus7 },
-          object: accessibleObject,
-        },
-        orderBy: { endDate: 'asc' },
-        include: { object: { select: { id: true, name: true } } },
-      }),
-   // 3b. NoPrice — топ-5 без расценок (только «денежно-видимые» объекты)
-   this.prisma.material.findMany({
-     where: {
-       OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
-       project: { object: moneyVisibleObject },
-     },
-     orderBy: { updatedAt: 'desc' },
-     take: 5,
-     select: {
-       id: true,
-       name: true,
-       unitPrice: true,
-       materialUnitPrice: true,
-       project: { select: { id: true, name: true } },
-     },
-   }),
-      // 3c. NoPrice — total count (для бейджа)
-      this.prisma.material.count({
-        where: {
-          OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
-          project: { object: moneyVisibleObject },
-        },
-      }),
-      // 3d. RecentFixes — 10 последних с names material → project → object
-      this.prisma.materialFix.findMany({
-        where: { material: { project: { object: accessibleObject } } },
-        orderBy: { fixedAt: 'desc' },
-        take: 10,
-        select: {
-          id: true,
-          amount: true,
-          note: true,
-          fixedAt: true,
-          material: {
-            select: {
-              id: true,
-              name: true,
-              project: {
-                select: {
-                  id: true,
-                  name: true,
-                  object: { select: { id: true, name: true } },
+    const [hotProjectRows, noPriceItems, noPriceCount, recentFixes] =
+      await Promise.all([
+        // 3a. Hot projects: endDate ≤ today+7, доступные юзеру, с объектом для навигации
+        this.prisma.project.findMany({
+          where: {
+            endDate: { lte: todayPlus7 },
+            object: accessibleObject,
+          },
+          orderBy: { endDate: 'asc' },
+          include: { object: { select: { id: true, name: true } } },
+        }),
+        // 3b. NoPrice — топ-5 без расценок (только «денежно-видимые» объекты)
+        this.prisma.material.findMany({
+          where: {
+            OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
+            project: { object: moneyVisibleObject },
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: 5,
+          select: {
+            id: true,
+            name: true,
+            unitPrice: true,
+            materialUnitPrice: true,
+            project: { select: { id: true, name: true } },
+          },
+        }),
+        // 3c. NoPrice — total count (для бейджа)
+        this.prisma.material.count({
+          where: {
+            OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
+            project: { object: moneyVisibleObject },
+          },
+        }),
+        // 3d. RecentFixes — 10 последних с names material → project → object
+        this.prisma.materialFix.findMany({
+          where: { material: { project: { object: accessibleObject } } },
+          orderBy: { fixedAt: 'desc' },
+          take: 10,
+          select: {
+            id: true,
+            amount: true,
+            note: true,
+            fixedAt: true,
+            material: {
+              select: {
+                id: true,
+                name: true,
+                project: {
+                  select: {
+                    id: true,
+                    name: true,
+                    object: { select: { id: true, name: true } },
+                  },
                 },
               },
             },
           },
-        },
-      }),
-    ]);
+        }),
+      ]);
 
     return {
       kpi: { objectsCount, projectsCount, materialsCount, fixesLast7dCount },

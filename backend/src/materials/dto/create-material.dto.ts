@@ -1,8 +1,24 @@
-import { IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export const UNIT_VALUES = [
-  'PIECE', 'METER', 'SQUARE_METER', 'CUBIC_METER', 'KILOGRAM',
-  'LITER', 'TON', 'BAG', 'PACKAGE', 'SET',
+  'PIECE',
+  'METER',
+  'SQUARE_METER',
+  'CUBIC_METER',
+  'KILOGRAM',
+  'LITER',
+  'TON',
+  'BAG',
+  'PACKAGE',
+  'SET',
 ];
 
 export class CreateMaterialDto {
@@ -29,7 +45,7 @@ export class CreateMaterialDto {
   @IsOptional()
   @IsInt({ message: 'priceItemId должен быть целым числом' })
   priceItemId?: number;
-  
+
   @IsOptional()
   @IsInt({ message: 'materialItemId должен быть целым числом' })
   materialItemId?: number;

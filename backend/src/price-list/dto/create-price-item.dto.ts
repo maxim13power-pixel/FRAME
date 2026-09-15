@@ -1,4 +1,12 @@
-import { IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { UNIT_VALUES } from '../../materials/dto/create-material.dto';
 
 export class CreatePriceItemDto {

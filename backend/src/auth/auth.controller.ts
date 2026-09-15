@@ -1,4 +1,11 @@
-import { Body, Controller, Post, UnauthorizedException, ValidationPipe, Request } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  UnauthorizedException,
+  ValidationPipe,
+  Request,
+} from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -11,7 +18,8 @@ export class AuthController {
 
   @Post('login')
   async login(
-    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })) dto: LoginDto,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: LoginDto,
   ) {
     // ⭐ Поддерживаем и phone, и email (согласно PROJECT_STATUS_v9.md)
     const identifier = dto.phone || dto.email;
@@ -29,12 +37,15 @@ export class AuthController {
   // ⭐ Регистрация нового пользователя
   @Post('register')
   async register(
-    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })) dto: RegisterDto,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: RegisterDto,
     @Request() request: ExpressRequest,
   ) {
     // ⭐ Шаг 77: извлекаем IP из x-forwarded-for (Yandex SmartCaptcha требует реальный IP)
     // Формат: "ip1, ip2, ip3" — берём первый (самый левый) элемент
-    const forwardedFor = request.headers['x-forwarded-for'] as string | undefined;
+    const forwardedFor = request.headers['x-forwarded-for'] as
+      | string
+      | undefined;
     const ip = forwardedFor
       ? forwardedFor.split(',')[0].trim()
       : (request.connection as any)?.remoteAddress;
@@ -44,7 +55,8 @@ export class AuthController {
   // ⭐ P0-4: Запрос ссылки на восстановление пароля
   @Post('forgot-password')
   async forgotPassword(
-    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })) dto: ForgotPasswordDto,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: ForgotPasswordDto,
   ) {
     return this.authService.forgotPassword(dto);
   }
@@ -52,7 +64,8 @@ export class AuthController {
   // ⭐ P0-4: Сброс пароля по токену из письма
   @Post('reset-password')
   async resetPassword(
-    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })) dto: ResetPasswordDto,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: ResetPasswordDto,
   ) {
     return this.authService.resetPassword(dto);
   }

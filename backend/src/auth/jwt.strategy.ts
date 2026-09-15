@@ -4,13 +4,13 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 
 function getJwtSecret(): string {
-const secret = process.env.JWT_SECRET?.trim();
+  const secret = process.env.JWT_SECRET?.trim();
 
-if (!secret) {
-throw new Error('JWT_SECRET is not set');
-}
+  if (!secret) {
+    throw new Error('JWT_SECRET is not set');
+  }
 
-return secret;
+  return secret;
 }
 
 @Injectable()

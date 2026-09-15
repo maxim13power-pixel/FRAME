@@ -1,11 +1,18 @@
 // backend/src/projects/dto/create-project.dto.ts
 //export class CreateProjectDto {
-  //name: string;
-  //startDate: string;
-  //endDate: string;
-  //objectId: number;
+//name: string;
+//startDate: string;
+//endDate: string;
+//objectId: number;
 //}
-import { IsString, IsNotEmpty, IsDateString, IsInt, IsOptional, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsDateString,
+  IsInt,
+  IsOptional,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateProjectDto {
   @IsString()

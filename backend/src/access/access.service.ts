@@ -29,7 +29,9 @@ export class AccessService {
   // ⭐ Хелпер: найти приглашаемого юзера (по userId / email / телефону)
   private async resolveUser(dto: AddAccessDto) {
     if (dto.userId) {
-      const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+      const user = await this.prisma.user.findUnique({
+        where: { id: dto.userId },
+      });
       if (!user) throw new NotFoundException('Пользователь не найден');
       return user;
     }
@@ -37,14 +39,16 @@ export class AccessService {
       const user = await this.prisma.user.findUnique({
         where: { email: dto.email.trim().toLowerCase() },
       });
-      if (!user) throw new NotFoundException('Пользователь с таким email не найден');
+      if (!user)
+        throw new NotFoundException('Пользователь с таким email не найден');
       return user;
     }
     if (dto.phone) {
       const user = await this.prisma.user.findUnique({
         where: { phone: dto.phone.trim() },
       });
-      if (!user) throw new NotFoundException('Пользователь с таким телефоном не найден');
+      if (!user)
+        throw new NotFoundException('Пользователь с таким телефоном не найден');
       return user;
     }
     throw new BadRequestException('Укажите userId, email или телефон');
@@ -56,7 +60,9 @@ export class AccessService {
     return this.prisma.objectAccess.findMany({
       where: { objectId },
       include: {
-        user: { select: { id: true, fullName: true, email: true, phone: true } },
+        user: {
+          select: { id: true, fullName: true, email: true, phone: true },
+        },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -70,7 +76,9 @@ export class AccessService {
     // Прораб МОЖЕТ пригласить заказчика: кейс «хозяин недвижки сам объект не создаёт,
     // прораб создаёт объект за него и зовёт его утверждать сметы».
     if (myAccess.role === AccessRole.VIEWER) {
-      throw new ForbiddenException('Наблюдатель не может приглашать пользователей');
+      throw new ForbiddenException(
+        'Наблюдатель не может приглашать пользователей',
+      );
     }
 
     // Найти приглашаемого юзера
@@ -90,7 +98,9 @@ export class AccessService {
       },
     });
     if (existing) {
-      throw new ConflictException('Пользователь уже имеет доступ к этому объекту/проекту');
+      throw new ConflictException(
+        'Пользователь уже имеет доступ к этому объекту/проекту',
+      );
     }
 
     return this.prisma.objectAccess.create({
@@ -102,13 +112,20 @@ export class AccessService {
         invitedBy: actorUserId,
       },
       include: {
-        user: { select: { id: true, fullName: true, email: true, phone: true } },
+        user: {
+          select: { id: true, fullName: true, email: true, phone: true },
+        },
       },
     });
   }
 
   // 3. Сменить роль участника
-  async updateAccess(objectId: number, accessId: number, dto: UpdateAccessDto, actorUserId: number) {
+  async updateAccess(
+    objectId: number,
+    accessId: number,
+    dto: UpdateAccessDto,
+    actorUserId: number,
+  ) {
     const myAccess = await this.getMyAccess(objectId, actorUserId);
 
     // Найти изменяемую запись доступа
@@ -121,7 +138,9 @@ export class AccessService {
 
     // ⭐ Менять роли может ТОЛЬКО заказчик
     if (myAccess.role !== AccessRole.CUSTOMER) {
-      throw new ForbiddenException('Только заказчик может менять роли участников');
+      throw new ForbiddenException(
+        'Только заказчик может менять роли участников',
+      );
     }
 
     // ⭐ Нельзя менять собственную роль
@@ -133,7 +152,9 @@ export class AccessService {
       where: { id: accessId },
       data: { role: dto.role },
       include: {
-        user: { select: { id: true, fullName: true, email: true, phone: true } },
+        user: {
+          select: { id: true, fullName: true, email: true, phone: true },
+        },
       },
     });
   }
@@ -159,7 +180,10 @@ export class AccessService {
     if (myAccess.role === AccessRole.VIEWER) {
       throw new ForbiddenException('Наблюдатель не может отзывать доступ');
     }
-    if (myAccess.role === AccessRole.FOREMAN && target.role === AccessRole.CUSTOMER) {
+    if (
+      myAccess.role === AccessRole.FOREMAN &&
+      target.role === AccessRole.CUSTOMER
+    ) {
       throw new ForbiddenException('Прораб не может отозвать доступ заказчика');
     }
 

@@ -1,5 +1,17 @@
 // backend/src/materials/materials.controller.ts
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards, ValidationPipe } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+  ValidationPipe,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ObjectAccessGuard } from '../auth/object-access.guard';
 import { MaterialsService } from './materials.service';
@@ -15,7 +27,10 @@ export class MaterialsController {
   constructor(private readonly materialsService: MaterialsService) {}
 
   @Get('project/:projectId')
-  findAllByProject(@Param('projectId', ParseIntPipe) projectId: number, @Req() req) {
+  findAllByProject(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Req() req,
+  ) {
     return this.materialsService.findAllByProject(projectId, req.user.userId);
   }
 
@@ -25,7 +40,10 @@ export class MaterialsController {
   }
 
   @Post()
-  create(@Body(new ValidationPipe({ whitelist: true })) dto: CreateMaterialDto, @Req() req) {
+  create(
+    @Body(new ValidationPipe({ whitelist: true })) dto: CreateMaterialDto,
+    @Req() req,
+  ) {
     return this.materialsService.create(dto, req.user.userId);
   }
 
@@ -58,7 +76,8 @@ export class MaterialsController {
 
   @Post('price-item')
   createPriceItem(
-    @Body(new ValidationPipe({ whitelist: true })) body: {
+    @Body(new ValidationPipe({ whitelist: true }))
+    body: {
       item: CreatePriceItemDto;
       newCategoryName?: string;
       kind?: 'WORK' | 'MATERIAL';
@@ -79,7 +98,11 @@ export class MaterialsController {
     @Body(new ValidationPipe({ whitelist: true })) dto: UpdateSpecQtyDto,
     @Req() req,
   ) {
-    return this.materialsService.updateSpecQty(id, dto.specQuantity, req.user.userId);
+    return this.materialsService.updateSpecQty(
+      id,
+      dto.specQuantity,
+      req.user.userId,
+    );
   }
 
   @Patch(':id/lock')

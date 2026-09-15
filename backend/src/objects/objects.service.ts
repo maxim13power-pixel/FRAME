@@ -71,7 +71,10 @@ export class ObjectsService {
           },
         },
         // ⭐ Записи доступа юзера (роль + hidePrices) по каждому объекту
-        accesses: { where: { userId }, select: { role: true, hidePrices: true } },
+        accesses: {
+          where: { userId },
+          select: { role: true, hidePrices: true },
+        },
       },
     });
 
@@ -93,7 +96,8 @@ export class ObjectsService {
         myAccess?.role === 'VIEWER' || (myAccess?.hidePrices ?? false);
       return {
         ...rest,
-        progressPercent: sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
+        progressPercent:
+          sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
         // ⭐ Деньги прячем, объёмы/прогресс оставляем
         totalCost: hidePrices ? 0 : sumCost,
         // ⭐ Роль и флаг юзера на объекте — фронту для UI-правил

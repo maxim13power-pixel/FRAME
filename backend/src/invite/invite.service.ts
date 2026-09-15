@@ -25,16 +25,24 @@ export class InviteService {
   }
 
   // 1. Создать ссылку-приглашение
-  async createInviteLink(objectId: number, dto: CreateInviteDto, actorUserId: number) {
+  async createInviteLink(
+    objectId: number,
+    dto: CreateInviteDto,
+    actorUserId: number,
+  ) {
     const myAccess = await this.checkObjectAccess(objectId, actorUserId);
 
     // Только CUSTOMER и FOREMAN могут создавать ссылки
     if (myAccess.role === 'VIEWER') {
-      throw new ForbiddenException('Наблюдатель не может создавать ссылки-приглашения');
+      throw new ForbiddenException(
+        'Наблюдатель не может создавать ссылки-приглашения',
+      );
     }
 
     // Проверка что объект существует
-    const object = await this.prisma.object.findUnique({ where: { id: objectId } });
+    const object = await this.prisma.object.findUnique({
+      where: { id: objectId },
+    });
     if (!object) {
       throw new NotFoundException('Объект не найден');
     }
@@ -53,7 +61,9 @@ export class InviteService {
         maxUses: dto.maxUses ?? null,
       },
       include: {
-        creator: { select: { id: true, fullName: true, email: true, phone: true } },
+        creator: {
+          select: { id: true, fullName: true, email: true, phone: true },
+        },
         object: { select: { id: true, name: true, address: true } },
       },
     });
@@ -86,7 +96,9 @@ export class InviteService {
     // Только создатель или заказчик может отозвать
     const myAccess = await this.checkObjectAccess(objectId, userId);
     if (invite.createdBy !== userId && myAccess.role !== 'CUSTOMER') {
-      throw new ForbiddenException('Только создатель ссылки или заказчик может её отозвать');
+      throw new ForbiddenException(
+        'Только создатель ссылки или заказчик может её отозвать',
+      );
     }
 
     return this.prisma.inviteToken.update({
@@ -100,7 +112,9 @@ export class InviteService {
     const invite = await this.prisma.inviteToken.findUnique({
       where: { token },
       include: {
-        creator: { select: { id: true, fullName: true, email: true, phone: true } },
+        creator: {
+          select: { id: true, fullName: true, email: true, phone: true },
+        },
         object: { select: { id: true, name: true, address: true } },
       },
     });

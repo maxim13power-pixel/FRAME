@@ -5,9 +5,9 @@
 import { IsEnum, IsInt, IsObject, IsOptional } from 'class-validator';
 
 export enum ChangeTypeEnum {
-  ADD_ROW = 'ADD_ROW',             // новая строка сметы
-  CHANGE_QTY = 'CHANGE_QTY',       // изменить количество
-  CHANGE_PRICE = 'CHANGE_PRICE',   // изменить цену
+  ADD_ROW = 'ADD_ROW', // новая строка сметы
+  CHANGE_QTY = 'CHANGE_QTY', // изменить количество
+  CHANGE_PRICE = 'CHANGE_PRICE', // изменить цену
 }
 
 export class CreateChangeDto {
@@ -18,7 +18,9 @@ export class CreateChangeDto {
   @IsInt({ message: 'materialId: целое число или ничего' })
   materialId?: number;
 
-  @IsEnum(ChangeTypeEnum, { message: 'type: ADD_ROW, CHANGE_QTY или CHANGE_PRICE' })
+  @IsEnum(ChangeTypeEnum, {
+    message: 'type: ADD_ROW, CHANGE_QTY или CHANGE_PRICE',
+  })
   type!: ChangeTypeEnum;
 
   @IsObject({ message: 'payload: обязателен (JSON с данными изменения)' })

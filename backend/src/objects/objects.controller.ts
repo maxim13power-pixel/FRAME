@@ -1,5 +1,16 @@
 // backend/src/objects/objects.controller.ts
-import { Controller, Get, Post, Body, Param, Delete, Patch, UseGuards, ParseIntPipe, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Delete,
+  Patch,
+  UseGuards,
+  ParseIntPipe,
+  Req,
+} from '@nestjs/common';
 import { ObjectsService } from './objects.service';
 import { CreateObjectDto } from './dto/create-object.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -21,7 +32,11 @@ export class ObjectsController {
   }
 
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: Partial<CreateObjectDto>, @Req() req) {
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: Partial<CreateObjectDto>,
+    @Req() req,
+  ) {
     return this.objectsService.update(id, dto, req.user.userId);
   }
 

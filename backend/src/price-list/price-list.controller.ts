@@ -1,5 +1,18 @@
 // backend/src/price-list/price-list.controller.ts
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards, ValidationPipe, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+  ValidationPipe,
+  Req,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PriceListService } from './price-list.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -37,7 +50,10 @@ export class PriceListController {
   }
 
   @Post('categories')
-  createCategory(@Body(new ValidationPipe({ whitelist: true })) dto: CreateCategoryDto, @Req() req) {
+  createCategory(
+    @Body(new ValidationPipe({ whitelist: true })) dto: CreateCategoryDto,
+    @Req() req,
+  ) {
     return this.priceListService.createCategory(dto, req.user.userId);
   }
 
@@ -56,14 +72,18 @@ export class PriceListController {
   }
 
   @Post('items')
-  createItem(@Body(new ValidationPipe({ whitelist: true })) dto: CreatePriceItemDto, @Req() req) {
+  createItem(
+    @Body(new ValidationPipe({ whitelist: true })) dto: CreatePriceItemDto,
+    @Req() req,
+  ) {
     return this.priceListService.createItem(dto, req.user.userId);
   }
 
   @Patch('items/:id')
   updateItem(
     @Param('id', ParseIntPipe) id: number,
-    @Body(new ValidationPipe({ whitelist: true })) dto: Partial<CreatePriceItemDto>,
+    @Body(new ValidationPipe({ whitelist: true }))
+    dto: Partial<CreatePriceItemDto>,
     @Req() req,
   ) {
     return this.priceListService.updateItem(id, dto, req.user.userId);

@@ -36,47 +36,47 @@ export class ObjectAccessGuard implements CanActivate {
     } else if (controllerName === 'ObjectsController' && request.params?.id) {
       // Только для объектов :id означает objectId
       raw = request.params.id;
-} else if (controllerName === 'ProjectsController' && request.params?.id) {
-  // Для проектов :id означает projectId — нужен резолв в objectId
-  projectId = Number(request.params.id);
-  if (!Number.isNaN(projectId) && projectId > 0) {
-    // Читаем проект и берём его objectId
-    const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      select: { objectId: true },
-    });
-    if (project) {
-      raw = project.objectId;
-    }
-  }
-} else if (controllerName === 'MaterialsController') {
-  // ⭐ P0-1: MaterialsController — резолв projectId/materialId → objectId
-  if (request.params?.projectId) {
-    // Маршрут /materials/project/:projectId
-    projectId = Number(request.params.projectId);
-    if (!Number.isNaN(projectId) && projectId > 0) {
-      const project = await this.prisma.project.findUnique({
-        where: { id: projectId },
-        select: { objectId: true },
-      });
-      if (project) {
-        raw = project.objectId;
+    } else if (controllerName === 'ProjectsController' && request.params?.id) {
+      // Для проектов :id означает projectId — нужен резолв в objectId
+      projectId = Number(request.params.id);
+      if (!Number.isNaN(projectId) && projectId > 0) {
+        // Читаем проект и берём его objectId
+        const project = await this.prisma.project.findUnique({
+          where: { id: projectId },
+          select: { objectId: true },
+        });
+        if (project) {
+          raw = project.objectId;
+        }
+      }
+    } else if (controllerName === 'MaterialsController') {
+      // ⭐ P0-1: MaterialsController — резолв projectId/materialId → objectId
+      if (request.params?.projectId) {
+        // Маршрут /materials/project/:projectId
+        projectId = Number(request.params.projectId);
+        if (!Number.isNaN(projectId) && projectId > 0) {
+          const project = await this.prisma.project.findUnique({
+            where: { id: projectId },
+            select: { objectId: true },
+          });
+          if (project) {
+            raw = project.objectId;
+          }
+        }
+      } else if (request.params?.id) {
+        // Маршруты с materialId (:id/fixes, :id/fix, :id и т.д.)
+        const materialId = Number(request.params.id);
+        if (!Number.isNaN(materialId) && materialId > 0) {
+          const material = await this.prisma.material.findUnique({
+            where: { id: materialId },
+            select: { project: { select: { objectId: true } } },
+          });
+          if (material?.project) {
+            raw = material.project.objectId;
+          }
+        }
       }
     }
-  } else if (request.params?.id) {
-    // Маршруты с materialId (:id/fixes, :id/fix, :id и т.д.)
-    const materialId = Number(request.params.id);
-    if (!Number.isNaN(materialId) && materialId > 0) {
-      const material = await this.prisma.material.findUnique({
-        where: { id: materialId },
-        select: { project: { select: { objectId: true } } },
-      });
-      if (material?.project) {
-        raw = material.project.objectId;
-      }
-    }
-  }
-}
 
     // ⭐ Проверяем сырой raw, а не Number(raw).
     // Это важно: Number(0) = 0, !0 = true → обход проверки.

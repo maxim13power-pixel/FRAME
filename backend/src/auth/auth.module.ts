@@ -8,26 +8,26 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { CaptchaModule } from '../captcha'; // ⭐ НОВОЕ
 import { EmailService } from './email.service'; // ⭐ P0-4
 function getJwtSecret(): string {
-const secret = process.env.JWT_SECRET?.trim();
+  const secret = process.env.JWT_SECRET?.trim();
 
-if (!secret) {
-throw new Error('JWT_SECRET is not set');
-}
+  if (!secret) {
+    throw new Error('JWT_SECRET is not set');
+  }
 
-return secret;
+  return secret;
 }
 
 @Module({
-imports: [
-PassportModule,
-CaptchaModule,
-JwtModule.register({
-secret: getJwtSecret(),
-signOptions: { expiresIn: '1d' },
-}),
-PrismaModule,
-],
-controllers: [AuthController],
-providers: [AuthService, JwtStrategy, EmailService],
+  imports: [
+    PassportModule,
+    CaptchaModule,
+    JwtModule.register({
+      secret: getJwtSecret(),
+      signOptions: { expiresIn: '1d' },
+    }),
+    PrismaModule,
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy, EmailService],
 })
 export class AuthModule {}

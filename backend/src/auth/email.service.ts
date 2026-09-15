@@ -15,8 +15,12 @@ export class EmailService {
     const pass = process.env.BREVO_SMTP_PASS;
 
     if (!host || !user || !pass) {
-      this.logger.warn('⚠️ Brevo SMTP не настроен — письма отправляться не будут');
-      this.logger.warn('Добавь в backend/.env: BREVO_SMTP_HOST, BREVO_SMTP_USER, BREVO_SMTP_PASS');
+      this.logger.warn(
+        '⚠️ Brevo SMTP не настроен — письма отправляться не будут',
+      );
+      this.logger.warn(
+        'Добавь в backend/.env: BREVO_SMTP_HOST, BREVO_SMTP_USER, BREVO_SMTP_PASS',
+      );
       this.transporter = null as any;
       return;
     }
@@ -32,31 +36,34 @@ export class EmailService {
     });
   }
 
-// ⭐ HOTFIX: XSS-экранирование для безопасности
-private escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-async sendPasswordResetEmail(email: string, resetLink: string): Promise<boolean> {
-  if (!this.transporter) {
-    this.logger.warn(`[DEV MODE] Письмо для ${email}: ${resetLink}`);
-    return true;
+  // ⭐ HOTFIX: XSS-экранирование для безопасности
+  private escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
-  // ⭐ Экранируем ссылку для защиты от XSS
-  const escapedLink = this.escapeHtml(resetLink);
+  async sendPasswordResetEmail(
+    email: string,
+    resetLink: string,
+  ): Promise<boolean> {
+    if (!this.transporter) {
+      this.logger.warn(`[DEV MODE] Письмо для ${email}: ${resetLink}`);
+      return true;
+    }
 
-  try {
-    await this.transporter.sendMail({
-      from: process.env.BREVO_FROM_EMAIL || 'noreply@frame.app',
-      to: email,
-      subject: 'Восстановление пароля — FRAME',
-      html: `
+    // ⭐ Экранируем ссылку для защиты от XSS
+    const escapedLink = this.escapeHtml(resetLink);
+
+    try {
+      await this.transporter.sendMail({
+        from: process.env.BREVO_FROM_EMAIL || 'noreply@frame.app',
+        to: email,
+        subject: 'Восстановление пароля — FRAME',
+        html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #1976d2;">Восстановление пароля</h2>
           <p>Вы запросили сброс пароля для аккаунта FRAME.</p>
@@ -68,7 +75,7 @@ async sendPasswordResetEmail(email: string, resetLink: string): Promise<boolean>
           <p style="color: #999; font-size: 12px;">Если вы не запрашивали сброс пароля, проигнорируйте это письмо.</p>
         </div>
       `,
-    });
+      });
       this.logger.log(`✅ Письмо отправлено на ${email}`);
       return true;
     } catch (error) {

@@ -1,4 +1,11 @@
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsDateString, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsDateString,
+  Min,
+} from 'class-validator';
 import { AccessRole } from '@prisma/client';
 
 export class CreateInviteDto {
