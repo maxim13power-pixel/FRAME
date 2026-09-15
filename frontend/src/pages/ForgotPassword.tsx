@@ -1,27 +1,38 @@
 import React, { useState } from 'react';
-import { TextField, Button, Box, Typography, Paper, Avatar, Link, Alert, Stack } from '@mui/material';
+import { TextField, Button, Box, Typography, Paper, Avatar, Link, Alert, Stack, CircularProgress } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-
+import { forgotPassword } from '../services/authService'; // ⭐ P0-4
 // ⭐ Шаг 63: страница восстановления пароля (поле email).
 // TODO (шаг 64): подключить бэкенд POST /auth/forgot-password + отправку письма (Brevo).
 // Пока — демо-режим: показываем стандартное безопасное сообщение
 // (одинаковое для существующих и несуществующих email — не утекают данные о том, кто зарегистрирован).
 const ForgotPassword: React.FC = () => {
-  const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState('');
-  const navigate = useNavigate();
+const [email, setEmail] = useState('');
+const [sent, setSent] = useState(false);
+const [error, setError] = useState('');
+const [loading, setLoading] = useState(false); // ⭐ P0-4
+const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (!email.trim() || !email.includes('@')) {
-      setError('Укажите корректный E-mail');
-      return;
-    }
-    // TODO (шаг 64): axios.post('/api/auth/forgot-password', { email })
-    setSent(true);
-  };
+const handleSubmit = async (e: React.FormEvent) => {
+e.preventDefault();
+setError('');
+if (!email.trim() || !email.includes('@')) {
+setError('Укажите корректный E-mail');
+return;
+}
+// ⭐ P0-4: реальный вызов бэкенда
+setLoading(true);
+try {
+await forgotPassword(email.trim());
+setSent(true);
+} catch (err: any) {
+// Бэкенд всегда возвращает 200 с одинаковым сообщением,
+// но на случай сетевой ошибки показываем fallback
+setError('Не удалось отправить запрос. Проверьте интернет и попробуйте снова.');
+} finally {
+setLoading(false);
+}
+};
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: '#f0f4fa', p: 0 }}>
@@ -73,9 +84,15 @@ const ForgotPassword: React.FC = () => {
                 }}
               />
               {error && <Alert severity="error">{error}</Alert>}
-              <Button type="submit" fullWidth variant="contained" sx={{ py: 1.5, borderRadius: 2, bgcolor: '#1976d2', '&:hover': { bgcolor: '#1565c0' }, fontWeight: 'bold' }}>
-                Восстановить пароль
-              </Button>
+<Button 
+type="submit" 
+fullWidth 
+variant="contained" 
+disabled={loading} // ⭐ P0-4
+sx={{ py: 1.5, borderRadius: 2, bgcolor: '#1976d2', '&:hover': { bgcolor: '#1565c0' }, fontWeight: 'bold' }}
+>
+{loading ? <CircularProgress size={24} color="inherit" /> : 'Восстановить пароль'}
+</Button>
             </Stack>
           </Box>
         )}

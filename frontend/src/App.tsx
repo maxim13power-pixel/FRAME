@@ -23,6 +23,7 @@ import AcceptInvite from './pages/AcceptInvite';
 import ForgotPassword from './pages/ForgotPassword';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
+import ResetPassword from './pages/ResetPassword'; // ⭐ P0-4
 
 const AppRoutes = () => {
   useLocation();
@@ -54,6 +55,7 @@ const AppRoutes = () => {
         path="/forgot-password"
         element={token ? <Navigate to="/" replace /> : <ForgotPassword />}
       />
+      <Route path="/reset-password" element={<ResetPassword />} /> {/* ⭐ P0-4 */}
       {/* ⭐ Публичные правовые документы (доступны и гостям до регистрации) */}
       <Route path="/terms" element={<Terms />} />
       <Route path="/privacy" element={<Privacy />} />

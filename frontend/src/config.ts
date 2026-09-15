@@ -34,3 +34,15 @@ export const STORE_URLS = {
   ruStore: '',    // TODO: добавить ссылку на RuStore
   playMarket: '', // TODO: добавить ссылку на Google Play
 };
+
+/**
+ * URL бэкенда для API-запросов.
+ * В dev-режиме: http://localhost:3000
+ * В проде: https://твой-бэкенд.up.railway.app
+ * 
+ * ВАЖНО: Vite читает .env только при старте → после изменения VITE_API_BASE_URL
+ * нужно перезапустить npm run dev
+ */
+export const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL as string) ||
+  (import.meta.env.DEV ? 'http://localhost:3000' : 'https://frame-backend.up.railway.app');
