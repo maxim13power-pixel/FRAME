@@ -10,6 +10,7 @@ import { PriceListModule } from './price-list/price-list.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AccessModule } from './access/access.module';
 import { InviteModule } from './invite/invite.module';
+import { ChangeModule } from './change/change.module'; // ⭐ P0-6
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -24,6 +25,7 @@ import { InviteModule } from './invite/invite.module';
     DashboardModule,
     AccessModule,
     InviteModule,
+    ChangeModule, // ⭐ P0-6
   ],
   controllers: [AppController],
   providers: [AppService],
