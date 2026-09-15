@@ -13,18 +13,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ChangeTypeEnum, CreateChangeDto } from './dto/create-change.dto';
 import { ReviewActionEnum, ReviewChangeDto } from './dto/review-change.dto';
 
-// ⭐ Whitelist ролей (не «по отрицанию»): новая роль в схеме не откроет доступ сама
-const PROPOSER_ROLES: AccessRole[] = [AccessRole.FOREMAN, AccessRole.CUSTOMER];
-const REVIEWER_ROLES: AccessRole[] = [AccessRole.FOREMAN, AccessRole.CUSTOMER];
+// ⭐ N7: политика одна — предлагать и согласовывать могут прораб и заказчик
+const MONEY_ROLES: AccessRole[] = [AccessRole.FOREMAN, AccessRole.CUSTOMER];
 // ⭐ Ценовые ключи payload — вырезаются для VIEWER и hidePrices
 const PRICE_KEYS = [
   'unitPrice', 'materialUnitPrice', 'newUnitPrice', 'newMaterialUnitPrice',
   'price', 'totalCost', 'materialTotalCost',
 ];
-const UNITS: string[] = [
-  'PIECE', 'METER', 'SQUARE_METER', 'CUBIC_METER', 'KILOGRAM',
-  'LITER', 'TON', 'BAG', 'PACKAGE', 'SET',
-];
+// ⭐ N2: не дублируем enum — единицы берём прямо из Prisma
+const UNITS: string[] = Object.values(Unit);
 
 @Injectable()
 export class ChangeService {
@@ -39,15 +36,18 @@ export class ChangeService {
     if (!project) {
       throw new NotFoundException('Проект не найден');
     }
-    const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId: project.objectId },
-    });
+    // ⭐ R1: детерминированный выбор строки доступа:
+    // сначала проектная (scope), потом общая на объект. Никакого «первого попавшегося».
+    const access =
+      (await this.prisma.objectAccess.findFirst({
+        where: { userId, objectId: project.objectId, projectId },
+      })) ??
+      (await this.prisma.objectAccess.findFirst({
+        where: { userId, objectId: project.objectId, projectId: null },
+      }));
     if (!access) {
-      // ⭐ 404 вместо 403 — не раскрываем существование чужих проектов
+      // ⭐ W1: 404 вместо 403 — не раскрываем существование чужих проектов
       throw new NotFoundException('Проект не найден');
-    }
-    if (access.projectId !== null && access.projectId !== projectId) {
-      throw new ForbiddenException('Нет доступа к этому проекту');
     }
     return access;
   }
@@ -55,7 +55,7 @@ export class ChangeService {
   // ─── Предложить изменение (FOREMAN/CUSTOMER) ───
   async create(userId: number, dto: CreateChangeDto) {
     const access = await this.getAccess(userId, dto.projectId);
-    if (!PROPOSER_ROLES.includes(access.role)) {
+        if (!MONEY_ROLES.includes(access.role)) {
       throw new ForbiddenException('Предлагать изменения могут прораб и заказчик');
     }
     // ⭐ IDOR-защита: materialId обязан принадлежать этому проекту
@@ -69,7 +69,22 @@ export class ChangeService {
       }
     }
     // ⭐ payload чистим через whitelist: лишние ключи не проскочат
+        // ⭐ payload чистим через whitelist: лишние ключи не проскочат
     const payload = this.validatePayload(dto.type, dto.payload, dto.materialId);
+
+    // ⭐ W2: fail-fast — позиции справочника должны существовать и быть активными
+    for (const key of ['priceItemId', 'materialItemId'] as const) {
+      const itemId = payload[key] as number | undefined;
+      if (itemId !== undefined) {
+        const item = await this.prisma.priceItem.findFirst({
+          where: { id: itemId, isActive: true },
+          select: { id: true },
+        });
+        if (!item) {
+          throw new BadRequestException(`payload.${key}: позиция справочника не найдена или неактивна`);
+        }
+      }
+    }
 
     return this.prisma.changeRequest.create({
       data: {
@@ -122,7 +137,7 @@ export class ChangeService {
 
     // ⭐ Доступ ПЕРЕД проверкой статуса — не утекают состояния чужих заявок
     const access = await this.getAccess(userId, change.projectId);
-    if (!REVIEWER_ROLES.includes(access.role)) {
+    if (!MONEY_ROLES.includes(access.role)) {
       throw new ForbiddenException('Согласовывать могут только прораб и заказчик');
     }
     if (change.proposedBy === userId) {
@@ -174,6 +189,29 @@ export class ChangeService {
 
     switch (change.type) {
       case ChangeTypeEnum.ADD_ROW: {
+        // ⭐ W2: SNAPSHOT цены берём ИЗ СПРАВОЧНИКА, payload-цену игнорируем
+        let unitPrice = payload.unitPrice ?? 0;
+        if (payload.priceItemId !== undefined) {
+          const workItem = await tx.priceItem.findFirst({
+            where: { id: payload.priceItemId, isActive: true },
+            select: { price: true },
+          });
+          if (!workItem) {
+            throw new BadRequestException('Позиция справочника работ не найдена или неактивна');
+          }
+          unitPrice = workItem.price;
+        }
+        let materialUnitPrice = payload.materialUnitPrice ?? 0;
+        if (payload.materialItemId !== undefined) {
+          const matItem = await tx.priceItem.findFirst({
+            where: { id: payload.materialItemId, isActive: true },
+            select: { price: true },
+          });
+          if (!matItem) {
+            throw new BadRequestException('Позиция справочника материалов не найдена или неактивна');
+          }
+          materialUnitPrice = matItem.price;
+        }
         await tx.material.create({
           data: {
             projectId: change.projectId,
@@ -183,9 +221,9 @@ export class ChangeService {
             specQuantity: payload.specQuantity,
             note: payload.note ?? null,
             priceItemId: payload.priceItemId ?? null,
-            unitPrice: payload.unitPrice ?? 0,
+            unitPrice,
             materialItemId: payload.materialItemId ?? null,
-            materialUnitPrice: payload.materialUnitPrice ?? 0,
+            materialUnitPrice,
           },
         });
         break;
@@ -194,9 +232,21 @@ export class ChangeService {
         if (change.materialId === null) {
           throw new BadRequestException('В заявке нет материала');
         }
+        // ⭐ W3+W4: блокируем строку (FOR UPDATE) и пересчитываем прогресс
+        const rows = await tx.$queryRaw<Array<{ totalUsed: number }>>`
+          SELECT "totalUsed" FROM "materials" WHERE id = ${change.materialId} FOR UPDATE
+        `;
+        if (rows.length === 0) {
+          throw new BadRequestException('Материал не найден');
+        }
+        const totalUsed = Number(rows[0].totalUsed);
+        const specQuantity = Number(payload.newSpecQuantity);
         await tx.material.update({
           where: { id: change.materialId },
-          data: { specQuantity: payload.newSpecQuantity },
+          data: {
+            specQuantity,
+            progressPercent: specQuantity > 0 ? Math.round((totalUsed / specQuantity) * 100) : 0,
+          },
         });
         break;
       }
@@ -204,27 +254,28 @@ export class ChangeService {
         if (change.materialId === null) {
           throw new BadRequestException('В заявке нет материала');
         }
-        const material = await tx.material.findUnique({
-          where: { id: change.materialId },
-          select: { totalUsed: true },
-        });
-        if (!material) {
+        // ⭐ W4: SELECT ... FOR UPDATE — параллельная фиксация не собьёт totalCost
+        const rows = await tx.$queryRaw<Array<{ totalUsed: number }>>`
+          SELECT "totalUsed" FROM "materials" WHERE id = ${change.materialId} FOR UPDATE
+        `;
+        if (rows.length === 0) {
           throw new BadRequestException('Материал не найден');
         }
+        const totalUsed = Number(rows[0].totalUsed);
         const unitPrice: number | undefined = payload.newUnitPrice;
         const materialUnitPrice: number | undefined = payload.newMaterialUnitPrice;
         await tx.material.update({
           where: { id: change.materialId },
           data: {
             ...(unitPrice !== undefined
-              ? { unitPrice, totalCost: material.totalUsed * unitPrice }
+              ? { unitPrice, totalCost: totalUsed * unitPrice }
               : {}),
             ...(materialUnitPrice !== undefined
-              ? { materialUnitPrice, materialTotalCost: material.totalUsed * materialUnitPrice }
+              ? { materialUnitPrice, materialTotalCost: totalUsed * materialUnitPrice }
               : {}),
           },
         });
-        break;
+        break;break;
       }
       default:
         throw new BadRequestException('Неизвестный тип заявки');
@@ -245,20 +296,27 @@ export class ChangeService {
         if (opts.required) throw new BadRequestException(`payload: не хватает "${key}"`);
         return;
       }
-      if (typeof value !== 'number' || !Number.isFinite(value) || (opts.min !== undefined && value < opts.min)) {
-        throw new BadRequestException(`payload.${key}: число не меньше ${opts.min ?? 0}`);
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new BadRequestException(`payload.${key}: должно быть конечным числом`);
+      }
+      if (opts.min !== undefined && value < opts.min) {
+        throw new BadRequestException(`payload.${key}: число не меньше ${opts.min}`);
       }
       clean[key] = value;
     };
 
-    const needString = (key: string, required = false) => {
+    const needString = (key: string, opts: { required?: boolean; max?: number } = {}) => {
       const value = payload[key];
       if (value === undefined) {
-        if (required) throw new BadRequestException(`payload: не хватает "${key}"`);
+        if (opts.required) throw new BadRequestException(`payload: не хватает "${key}"`);
         return;
       }
       if (typeof value !== 'string' || value.trim() === '') {
         throw new BadRequestException(`payload.${key}: непустая строка`);
+      }
+      // ⭐ W5: лимит длины, чтобы в Json/Material не уехал мегабайт текста
+      if (opts.max !== undefined && value.trim().length > opts.max) {
+        throw new BadRequestException(`payload.${key}: максимум ${opts.max} символов`);
       }
       clean[key] = value.trim();
     };
@@ -274,14 +332,14 @@ export class ChangeService {
 
     switch (type) {
       case ChangeTypeEnum.ADD_ROW:
-        needString('name', true);
-        needString('unit', true);
+        needString('name', { required: true, max: 200 });
+        needString('unit', { required: true });
         if (!UNITS.includes(clean.unit)) {
           throw new BadRequestException(`payload.unit: допустимые значения ${UNITS.join(', ')}`);
         }
         needNumber('specQuantity', { required: true, min: 0 });
-        needString('article');
-        needString('note');
+        needString('article', { max: 100 });
+        needString('note', { max: 500 });
         needInt('priceItemId');
         needNumber('unitPrice', { min: 0 });
         needInt('materialItemId');
