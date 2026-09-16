@@ -218,6 +218,7 @@ export class ChangeService {
       materialId: number | null;
       type: string;
       payload: Prisma.JsonValue;
+      proposedBy: number;
     },
     userId: number,
   ) {
@@ -234,7 +235,7 @@ export class ChangeService {
               id: payload.priceItemId,
               isActive: true,
               kind: 'WORK',
-              OR: [{ ownerId: null }, { ownerId: userId }],
+              OR: [{ ownerId: null }, { ownerId: userId }, { ownerId: change.proposedBy }],
             },
             select: { price: true },
           });
@@ -252,7 +253,7 @@ export class ChangeService {
               id: payload.materialItemId,
               isActive: true,
               kind: 'MATERIAL',
-              OR: [{ ownerId: null }, { ownerId: userId }],
+              OR: [{ ownerId: null }, { ownerId: userId }, { ownerId: change.proposedBy }],
             },
             select: { price: true },
           });
