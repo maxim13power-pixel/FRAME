@@ -5,6 +5,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRentalDto } from './dto/create-rental.dto';
 import { ExtendRentalDto } from './dto/extend-rental.dto';
+import { UpdateRentalDto } from './dto/update-rental.dto';
 
 @Injectable()
 export class RentalsService {
@@ -58,6 +59,38 @@ export class RentalsService {
           totalSpent: { increment: dto.price },
         },
       });
+    });
+  }
+
+  // ─── Редактировать аренду (name/location/responsible/даты/note) ───
+  async update(userId: number, id: number, dto: UpdateRentalDto) {
+    // ⭐ Проверка владения: 404 вместо 403 — не раскрываем существование чужих записей
+    const rental = await this.prisma.rental.findFirst({
+      where: { id, userId },
+    });
+    if (!rental) {
+      throw new NotFoundException('Аренда не найдена');
+    }
+
+    // ⭐ Мердж дат: если передана только одна — вторая берётся из записи
+    const start = dto.startDate ? new Date(dto.startDate) : rental.startDate;
+    const end = dto.endDate ? new Date(dto.endDate) : rental.endDate;
+    if (end.getTime() < start.getTime()) {
+      throw new BadRequestException('endDate: не может быть раньше startDate');
+    }
+
+    return this.prisma.rental.update({
+      where: { id: rental.id },
+      data: {
+        name: dto.name !== undefined ? dto.name.trim() : undefined,
+        location: dto.location !== undefined ? dto.location.trim() || null : undefined,
+        responsible:
+          dto.responsible !== undefined ? dto.responsible.trim() || null : undefined,
+        startDate: dto.startDate ? start : undefined,
+        endDate: dto.endDate ? end : undefined,
+        note: dto.note !== undefined ? dto.note.trim() || null : undefined,
+        // ⭐ price и totalSpent НЕ ТРОГАЕМ — финансовая история («всего потрачено»)
+      },
     });
   }
 

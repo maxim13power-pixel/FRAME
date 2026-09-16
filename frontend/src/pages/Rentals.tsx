@@ -29,10 +29,10 @@ import EventIcon from '@mui/icons-material/Event';
 import PersonIcon from '@mui/icons-material/Person';
 import EngineeringIcon from '@mui/icons-material/Engineering';
 import UpdateIcon from '@mui/icons-material/Update';
-import DeleteIcon from '@mui/icons-material/Delete';
+import SettingsIcon from '@mui/icons-material/Settings';
 import SortIcon from '@mui/icons-material/Sort';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { fetchRentals, createRental, extendRental, deleteRental } from '../services/rentalsService';
+import { fetchRentals, createRental, extendRental, updateRental, deleteRental } from '../services/rentalsService';
 import type { RentalData } from '../services/rentalsService';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -126,9 +126,20 @@ const Rentals: React.FC = () => {
   const [extPrice, setExtPrice] = useState('');
   const [extendError, setExtendError] = useState('');
 
-  // ⭐ Удаление (через ConfirmDialog)
+  // ⭐ Удаление (через ConfirmDialog, кнопка внутри модалки редактирования)
   const [deletingRental, setDeletingRental] = useState<RentalData | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  // ⭐ Редактирование аренды (шестерёнка на карточке)
+  const [editingRental, setEditingRental] = useState<RentalData | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editResponsible, setEditResponsible] = useState('');
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [editError, setEditError] = useState('');
 
   // Загрузка аренд при монтировании
   useEffect(() => {
@@ -319,6 +330,53 @@ const Rentals: React.FC = () => {
     }
   };
 
+  // Открыть модалку редактирования (предзаполняем поля из записи)
+  const handleOpenEdit = (rental: RentalData) => {
+    setEditingRental(rental);
+    setEditName(rental.name);
+    setEditLocation(rental.location ?? '');
+    setEditResponsible(rental.responsible ?? '');
+    setEditStartDate(toInputDate(rental.startDate));
+    setEditEndDate(toInputDate(rental.endDate));
+    setEditNote(rental.note ?? '');
+    setEditError('');
+    setEditModalOpen(true);
+  };
+
+  // ⭐ Сохранить редактирование: price/totalSpent не трогаем (финансовая история)
+  const handleUpdateRental = async () => {
+    if (!token || !editingRental) return;
+    if (!editName.trim()) {
+      setEditError('Введите название оборудования');
+      return;
+    }
+    if (!editStartDate || !editEndDate) {
+      setEditError('Укажите даты аренды');
+      return;
+    }
+    if (new Date(editEndDate).getTime() < new Date(editStartDate).getTime()) {
+      setEditError('Дата окончания не может быть раньше даты начала');
+      return;
+    }
+    try {
+      setSaving(true);
+      const updated = await updateRental(token, editingRental.id, {
+        name: editName.trim(),
+        location: editLocation.trim(),
+        responsible: editResponsible.trim(),
+        startDate: editStartDate,
+        endDate: editEndDate,
+        note: editNote.trim(),
+      });
+      setRentals((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      setEditModalOpen(false);
+    } catch (err: any) {
+      setEditError(extractError(err, 'Ошибка сохранения аренды'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ⭐ Удалить аренду (после подтверждения в ConfirmDialog)
   const handleDelete = async () => {
     if (!token || !deletingRental) return;
@@ -330,6 +388,7 @@ const Rentals: React.FC = () => {
     } finally {
       setDeleteConfirmOpen(false);
       setDeletingRental(null);
+      setEditModalOpen(false); // ⭐ удалили из модалки редактирования — закрываем её тоже
     }
   };
 
@@ -482,17 +541,14 @@ const Rentals: React.FC = () => {
                   >
                     <UpdateIcon fontSize="small" />
                   </IconButton>
+                  {/* ⭐ Шестерёнка: редактирование + удаление (внутри модалки) */}
                   <IconButton
                     size="small"
-                    color="error"
-                    onClick={() => {
-                      setDeletingRental(rental);
-                      setDeleteConfirmOpen(true);
-                    }}
-                    title="Удалить"
-                    sx={{ mr: 1 }}
+                    onClick={() => handleOpenEdit(rental)}
+                    title="Настройки"
+                    sx={{ mr: 0.5, color: '#424242' }}
                   >
-                    <DeleteIcon fontSize="small" />
+                    <SettingsIcon fontSize="small" />
                   </IconButton>
                   {/* ⭐ Чип суммы — всего потрачено (price + все продления) */}
                   <Chip
@@ -756,6 +812,112 @@ const Rentals: React.FC = () => {
               >
                 Продлить
               </Button>
+            </Box>
+          </Stack>
+        </Paper>
+      </Modal>
+
+      {/* ⭐ Модалка редактирования аренды (открывается с шестерёнки) */}
+      <Modal open={editModalOpen} onClose={() => setEditModalOpen(false)}>
+        <Paper
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '90%', sm: 400 },
+            maxWidth: 400,
+            bgcolor: 'background.paper',
+            p: 4,
+            borderRadius: 2,
+            outline: 'none',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Редактировать аренду
+          </Typography>
+          {editingRental && (
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              {editingRental.name}
+            </Typography>
+          )}
+          {/* ⭐ Ошибки — Alert внутри модалки (не window.alert) */}
+          {editError && (
+            <Alert severity="error" sx={{ mb: 2, mt: 1 }}>
+              {editError}
+            </Alert>
+          )}
+          <Stack spacing={2}>
+            <TextField
+              fullWidth
+              label="Что за оборудование"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              required
+            />
+            <TextField
+              fullWidth
+              label="Где лежит"
+              value={editLocation}
+              onChange={(e) => setEditLocation(e.target.value)}
+              helperText="необязательно"
+            />
+            <TextField
+              fullWidth
+              label="Ответственный"
+              value={editResponsible}
+              onChange={(e) => setEditResponsible(e.target.value)}
+              helperText="необязательно"
+            />
+            <TextField
+              fullWidth
+              label="Дата начала"
+              type="date"
+              InputLabelProps={{ shrink: true }}
+              value={editStartDate}
+              onChange={(e) => setEditStartDate(e.target.value)}
+              required
+            />
+            <TextField
+              fullWidth
+              label="Дата окончания"
+              type="date"
+              InputLabelProps={{ shrink: true }}
+              value={editEndDate}
+              onChange={(e) => setEditEndDate(e.target.value)}
+              required
+            />
+            <TextField
+              fullWidth
+              multiline
+              rows={3}
+              label="Заметка"
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              helperText="необязательно"
+            />
+            {/* ⭐ Слева удаление, справа Отмена/Сохранить (как в Objects) */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={() => {
+                  setDeletingRental(editingRental); // запоминаем аренду для удаления
+                  setDeleteConfirmOpen(true); // ConfirmDialog УЖЕ есть — просто открываем
+                }}
+              >
+                Удалить
+              </Button>
+              <Box>
+                <Button variant="outlined" onClick={() => setEditModalOpen(false)} sx={{ mr: 1 }}>
+                  Отмена
+                </Button>
+                <Button variant="contained" onClick={handleUpdateRental} disabled={saving}>
+                  Сохранить
+                </Button>
+              </Box>
             </Box>
           </Stack>
         </Paper>

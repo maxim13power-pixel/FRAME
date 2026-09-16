@@ -2,8 +2,9 @@
 // ⭐ Раздел «Аренда»: API личного оборудования пользователя.
 // Токен — первым аргументом, Authorization Bearer (как в objectService).
 import axios from 'axios';
+import { API_BASE_URL } from '../config'; // ⭐ без хардкода localhost — берём из централизованного конфига
 
-const API_URL = 'http://localhost:3000/rentals';
+const API_URL = `${API_BASE_URL}/rentals`;
 
 export interface RentalData {
   id: number;
@@ -52,6 +53,25 @@ export const extendRental = async (
   data: { newEndDate: string; price: number }
 ) => {
   const response = await axios.patch(`${API_URL}/${id}/extend`, data, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
+};
+
+// Редактировать аренду (все поля опциональны; price/totalSpent не трогаем)
+export const updateRental = async (
+  token: string,
+  id: number,
+  data: {
+    name?: string;
+    location?: string;
+    responsible?: string;
+    startDate?: string;
+    endDate?: string;
+    note?: string;
+  }
+) => {
+  const response = await axios.patch(`${API_URL}/${id}`, data, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return response.data;

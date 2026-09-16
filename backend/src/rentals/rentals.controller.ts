@@ -18,6 +18,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RentalsService } from './rentals.service';
 import { CreateRentalDto } from './dto/create-rental.dto';
 import { ExtendRentalDto } from './dto/extend-rental.dto';
+import { UpdateRentalDto } from './dto/update-rental.dto';
 
 @Controller('rentals')
 @UseGuards(JwtAuthGuard)
@@ -49,6 +50,18 @@ export class RentalsController {
     @Req() req,
   ) {
     return this.rentalsService.extend(req.user.userId, id, dto);
+  }
+
+  // ⭐ Редактировать аренду (name/location/responsible/даты/note)
+  // ВАЖНО: маршрут объявлен ПОСЛЕ PATCH ':id/extend', чтобы NestJS корректно разрулил роутинг
+  @Patch(':id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: UpdateRentalDto,
+    @Req() req,
+  ) {
+    return this.rentalsService.update(req.user.userId, id, dto);
   }
 
   // ⭐ Удалить аренду
