@@ -1,7 +1,8 @@
 // frontend/src/pages/ResetPassword.tsx
 // ⭐ P0-4: страница сброса пароля (переход из письма)
 import React, { useState } from 'react';
-import { TextField, Button, Box, Typography, Paper, Avatar, Link, Alert, Stack, CircularProgress } from '@mui/material';
+import { TextField, Button, Box, Typography, Paper, Avatar, Link, Alert, Stack, CircularProgress, IconButton, InputAdornment } from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { resetPassword } from '../services/authService';
 
@@ -10,6 +11,8 @@ const ResetPassword: React.FC = () => {
   const token = searchParams.get('token') || '';
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -74,10 +77,24 @@ const ResetPassword: React.FC = () => {
                 fullWidth
                 required
                 label="Новый пароль"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label="toggle password visibility"
+                        onClick={() => setShowPassword(!showPassword)}
+                        edge="end"
+                        size="small"
+                      >
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     borderRadius: 2,
@@ -91,10 +108,24 @@ const ResetPassword: React.FC = () => {
                 fullWidth
                 required
                 label="Повторите пароль"
-                type="password"
+                type={showConfirmPassword ? 'text' : 'password'}
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label="toggle confirm password visibility"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        edge="end"
+                        size="small"
+                      >
+                        {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     borderRadius: 2,
