@@ -4,7 +4,7 @@ import { IsString, MinLength, Length } from 'class-validator';
 
 export class ResetPasswordDto {
   @IsString({ message: 'Токен обязателен' })
-  @Length(32, 32, { message: 'Некорректный токен' })
+  @Length(64, 64, { message: 'Некорректный токен (64 символа)' })
   token!: string;
 
   @IsString({ message: 'Пароль обязателен' })
