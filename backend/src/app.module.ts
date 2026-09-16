@@ -11,6 +11,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { AccessModule } from './access/access.module';
 import { InviteModule } from './invite/invite.module';
 import { ChangeModule } from './change/change.module'; // ⭐ P0-6
+import { RentalsModule } from './rentals/rentals.module'; // ⭐ Аренда
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -26,6 +27,7 @@ import { ChangeModule } from './change/change.module'; // ⭐ P0-6
     AccessModule,
     InviteModule,
     ChangeModule, // ⭐ P0-6
+    RentalsModule, // ⭐ Аренда
   ],
   controllers: [AppController],
   providers: [AppService],
