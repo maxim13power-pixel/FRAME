@@ -335,7 +335,6 @@ export class ChangeService {
           },
         });
         break;
-        break;
       }
       default:
         throw new BadRequestException('Неизвестный тип заявки');
