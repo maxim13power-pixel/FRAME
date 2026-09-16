@@ -71,7 +71,10 @@ export class InviteService {
 
   // 2. Получить список активных ссылок объекта
   async getInviteLinks(objectId: number, userId: number) {
-    await this.checkObjectAccess(objectId, userId);
+    const access = await this.checkObjectAccess(objectId, userId);
+    if (access.role === 'VIEWER') {
+      return []; // VIEWER не видит инвайт-ссылок
+    }
 
     return this.prisma.inviteToken.findMany({
       where: { objectId, isActive: true },
