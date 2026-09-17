@@ -39,6 +39,7 @@ import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { updateObjectEndDate } from '../services/objectService';
+import { getApiErrorText } from '../utils/errors';
 
 const Projects: React.FC = () => {
   const { objectId } = useParams<{ objectId: string }>();
@@ -108,7 +109,7 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   };
 
   const filteredAndSortedProjects = useMemo(() => {
-    let filtered = projects.filter(proj =>
+    const filtered = projects.filter(proj =>
       proj.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
     switch (sortBy) {
@@ -139,7 +140,7 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
         const data = await fetchProjectsByObject(parseInt(objectId));
         setProjects(data);
         setError('');
-      } catch (err: any) {
+      } catch (err: unknown) {
         setError('Ошибка загрузки проектов');
         console.error(err);
       } finally {
@@ -155,7 +156,7 @@ useEffect(() => {
     try {
       const obj = await fetchObjectById(parseInt(objectId));
       setCurrentObject(obj);
-    } catch (err) {
+    } catch {
       console.error('Не удалось загрузить объект');
     }
   };
@@ -232,7 +233,7 @@ const createProjectAction = async (projectData?: {
     setProjects(prev => [created, ...prev]);
     handleCloseAddModal();
     setPendingProject(null); // очищаем
-  } catch (err: any) {
+  } catch {
     alert('Ошибка при создании проекта');
   }
 };
@@ -304,9 +305,9 @@ const handleConfirmDateUpdate = async () => {
       alert('Ошибка: нет данных проекта');
     }
     
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('❌ Ошибка в handleConfirmDateUpdate:', err);
-    alert('Ошибка: ' + (err.response?.data?.message || err.message));
+    alert('Ошибка: ' + getApiErrorText(err, 'неизвестная ошибка'));
   }
 };
 
@@ -359,7 +360,7 @@ const updateProjectAction = async () => {
     });
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
     handleCloseEdit();
-  } catch (err) {
+  } catch {
     alert('Ошибка обновления проекта');
   }
 };
@@ -384,8 +385,8 @@ const handleSaveNote = async () => {
     });
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
     handleCloseNoteModal();
-  } catch (err: any) {
-    alert('Ошибка обновления заметки: ' + (err.response?.data?.message || err.message));
+  } catch (err: unknown) {
+    alert('Ошибка обновления заметки: ' + getApiErrorText(err, 'неизвестная ошибка'));
   }
 };
 
@@ -397,7 +398,7 @@ const handleSaveNote = async () => {
       setProjects(prev => prev.filter(p => p.id !== deletingProject.id));
       setDeleteConfirmOpen(false);
       setDeletingProject(null);
-    } catch (err) {
+    } catch {
       alert('Ошибка удаления проекта');
     }
   };

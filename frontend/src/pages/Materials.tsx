@@ -65,6 +65,7 @@ import type { ObjectData } from '../services/objectService';
 import { searchPriceItems } from '../services/priceListService';
 import type { PriceItemData } from '../services/priceListService';
 import { fetchCategoriesWithItems } from '../services/priceListService';
+import { getApiErrorText } from '../utils/errors';
 
 const UNIT_OPTIONS = [
   { value: 'PIECE', label: 'шт' },
@@ -300,7 +301,7 @@ useEffect(() => {
       const objData = await fetchObjectById(parseInt(objectId));
       setCurrentObject(objData);
       setError('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError('Ошибка загрузки');
       console.error(err);
     } finally {
@@ -439,8 +440,8 @@ setPriceLoading(false);
       setMaterials(prev => [created, ...prev]);
       loadCategories();
       handleCloseAddModal();
-    } catch (err: any) {
-      alert('Ошибка при создании материала: ' + (err.response?.data?.message || err.message));
+    } catch (err: unknown) {
+      alert('Ошибка при создании материала: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -479,8 +480,8 @@ setPriceLoading(false);
       });
       setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
       handleCloseFixModal();
-    } catch (err: any) {
-      alert('Ошибка фиксации: ' + (err.response?.data?.message || err.message));
+    } catch (err: unknown) {
+      alert('Ошибка фиксации: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -509,8 +510,8 @@ setPriceLoading(false);
       setMaterials(prev => prev.filter(m => m.id !== deletingMaterial.id));
       setDeleteConfirmOpen(false);
       setDeletingMaterial(null);
-    } catch (err: any) {
-      alert('Ошибка удаления: ' + (err.response?.data?.message || err.message));
+    } catch (err: unknown) {
+      alert('Ошибка удаления: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -533,8 +534,8 @@ const handleOpenEditFix = async () => {
     setEditFixNote(last.note || '');
     setSettingsModalOpen(false);
     setEditFixModalOpen(true);
-  } catch (err: any) {
-    setInfoModal({ open: true, text: 'Ошибка: ' + (err.response?.data?.message || err.message) });
+  } catch (err: unknown) {
+    setInfoModal({ open: true, text: 'Ошибка: ' + getApiErrorText(err, 'неизвестная ошибка') });
   }
 };
 
@@ -551,8 +552,8 @@ const handleSaveEditFix = async () => {
     });
     setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
     setEditFixModalOpen(false);
-  } catch (err: any) {
-    setInfoModal({ open: true, text: 'Ошибка: ' + (err.response?.data?.message || err.message) });
+  } catch (err: unknown) {
+    setInfoModal({ open: true, text: 'Ошибка: ' + getApiErrorText(err, 'неизвестная ошибка') });
   }
 };
 
@@ -727,8 +728,8 @@ const handleSaveEdit = async () => {
     setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
     loadCategories(); // ⭐ обновить категории фильтра
     setEditModalOpen(false);
-  } catch (err: any) {
-    setInfoModal({ open: true, text: 'Ошибка: ' + (err.response?.data?.message || err.message) });
+  } catch (err: unknown) {
+    setInfoModal({ open: true, text: 'Ошибка: ' + getApiErrorText(err, 'неизвестная ошибка') });
   }
 };
 // Применение сортировки из мобильного меню
@@ -1352,7 +1353,7 @@ renderInput={(params) => (
             <Select
             value={addPriceCategoryId}
             label="Категория"
-            onChange={e => setAddPriceCategoryId(e.target.value as any)}
+            onChange={e => setAddPriceCategoryId(e.target.value as number | '' | '__new__')}
             >
             <MenuItem value="__new__"><em>➕ Создать новую категорию...</em></MenuItem>
             {allCategories.map(c => (
@@ -1415,7 +1416,7 @@ renderInput={(params) => (
     <TextField fullWidth label="Название расценки" value={addMatPriceName} onChange={e => setAddMatPriceName(e.target.value)} />
     <FormControl fullWidth>
     <InputLabel>Категория</InputLabel>
-    <Select value={addMatPriceCategoryId} label="Категория" onChange={e => setAddMatPriceCategoryId(e.target.value as any)}>
+    <Select value={addMatPriceCategoryId} label="Категория" onChange={e => setAddMatPriceCategoryId(e.target.value as number | '' | '__new__')}>
     <MenuItem value="__new__"><em>➕ Создать новую категорию...</em></MenuItem>
     {materialCategories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
     </Select>
@@ -1652,7 +1653,7 @@ textAlign: 'center',
       value={editSelectedPriceItem}
       onChange={(_e, value) => {
         // Специальное значение — открыть режим создания
-        if ((value as any)?.__new__) {
+        if ((value as { __new__?: boolean } | null)?.__new__) {
           setEditCreatingNew(true);
           setNewPriceName(editName); // подставляем название материала
           return;
@@ -1662,7 +1663,7 @@ textAlign: 'center',
       }}
       onInputChange={(_e, value) => handleEditPriceSearch(value)}
       getOptionLabel={(option) => {
-        if ((option as any)?.__new__) return '➕ Создать новую расценку...';
+        if ((option as { __new__?: boolean } | null)?.__new__) return '➕ Создать новую расценку...';
         const o = option as PriceItemData;
         return `${o.name} — ${o.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`;
       }}
@@ -1701,7 +1702,7 @@ textAlign: 'center',
       <Select
         value={newPriceCategoryId}
         label="Категория"
-        onChange={e => setNewPriceCategoryId(e.target.value as any)}
+        onChange={e => setNewPriceCategoryId(e.target.value as number | '' | '__new__')}
       >
         <MenuItem value="__new__">
           <em>➕ Создать новую категорию...</em>
@@ -1769,7 +1770,7 @@ renderInput={(params) => (
 <TextField fullWidth label="Название расценки" value={editMatPriceName} onChange={e => setEditMatPriceName(e.target.value)} />
 <FormControl fullWidth>
 <InputLabel>Категория</InputLabel>
-<Select value={editMatPriceCategoryId} label="Категория" onChange={e => setEditMatPriceCategoryId(e.target.value as any)}>
+<Select value={editMatPriceCategoryId} label="Категория" onChange={e => setEditMatPriceCategoryId(e.target.value as number | '' | '__new__')}>
 <MenuItem value="__new__"><em>➕ Создать новую категорию...</em></MenuItem>
 {materialCategories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
 </Select>

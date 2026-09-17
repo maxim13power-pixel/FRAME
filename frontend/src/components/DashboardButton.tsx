@@ -13,7 +13,7 @@ const DashboardButton: React.FC<DashboardButtonProps> = ({ label, icon, onClick 
       variant="contained"
       fullWidth
       onClick={onClick}
-      sx={(_theme) => ({
+      sx={() => ({
         py: 3,
         borderRadius: 2,
         bgcolor: '#1976d2',

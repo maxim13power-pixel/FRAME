@@ -55,6 +55,7 @@ import {
   deletePriceItem,
 } from '../services/priceListService';
 import type { PriceCategoryData, PriceItemData } from '../services/priceListService';
+import { getApiErrorText } from '../utils/errors';
 
 // Единицы измерения — точно как в Materials.tsx (единообразие)
 const UNIT_OPTIONS = [
@@ -167,7 +168,7 @@ const PriceList: React.FC = () => {
           return acc;
         }, {}));
         setError('');
-      } catch (err: any) {
+      } catch (err: unknown) {
         setError('Ошибка загрузки справочника');
         console.error(err);
       } finally {
@@ -229,8 +230,8 @@ const PriceList: React.FC = () => {
       const created = await createCategory({ name: newCatName.trim(), kind: activeTab });
       setCategories(prev => [...prev, { ...created, items: [] }]);
       handleCloseCatModal();
-    } catch (err: any) {
-      alert('Ошибка при создании категории: ' + (err.response?.data?.message || err.message));
+    } catch (err: unknown) {
+      alert('Ошибка при создании категории: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -335,8 +336,8 @@ const PriceList: React.FC = () => {
         );
       }
       handleCloseItemModal();
-    } catch (err: any) {
-      alert('Ошибка при сохранении: ' + (err.response?.data?.message || err.message));
+    } catch (err: unknown) {
+      alert('Ошибка при сохранении: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -360,8 +361,8 @@ const PriceList: React.FC = () => {
       );
       setDeleteConfirmOpen(false);
       setDeletingItem(null);
-    } catch (err: any) {
-      alert('Ошибка удаления: ' + (err.response?.data?.message || err.message));
+    } catch (err: unknown) {
+      alert('Ошибка удаления: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
   // ============================================================
@@ -394,8 +395,8 @@ const PriceList: React.FC = () => {
         prev.map(cat => (cat.id === updated.id ? { ...cat, name: updated.name } : cat))
       );
       handleCloseCategorySettings();
-    } catch (err: any) {
-      alert('Ошибка переименования: ' + (err.response?.data?.message || err.message));
+    } catch (err: unknown) {
+      alert('Ошибка переименования: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -419,8 +420,8 @@ const PriceList: React.FC = () => {
       setCategories(prev => prev.filter(cat => cat.id !== settingsCategory.id));
       setDeleteCatConfirmOpen(false);
       handleCloseCategorySettings();
-    } catch (err: any) {
-      alert('Ошибка удаления: ' + (err.response?.data?.message || err.message));
+    } catch (err: unknown) {
+      alert('Ошибка удаления: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
   // ============================================================

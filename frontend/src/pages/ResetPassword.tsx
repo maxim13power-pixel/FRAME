@@ -5,6 +5,7 @@ import { TextField, Button, Box, Typography, Paper, Avatar, Link, Alert, Stack, 
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { resetPassword } from '../services/authService';
+import { getApiErrorMessage } from '../utils/errors';
 
 const ResetPassword: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -39,8 +40,8 @@ const ResetPassword: React.FC = () => {
     try {
       await resetPassword(token, password);
       setSuccess(true);
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Не удалось сбросить пароль. Ссылка могла устареть.';
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, 'Не удалось сбросить пароль. Ссылка могла устареть.');
       setError(msg);
     } finally {
       setLoading(false);

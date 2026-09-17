@@ -19,6 +19,7 @@ import type { AccessRole } from '../services/accessService';
 import { useTheme, useMediaQuery } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import { STORE_URLS } from '../config';
+import { getApiErrorMessage } from '../utils/errors';
 
 // ⭐ Инфа о приглашении (приходит с публичного эндпоинта)
 interface InviteInfo {
@@ -64,8 +65,8 @@ const AcceptInvite: React.FC = () => {
         setLoading(true);
         const data = await getInviteInfo(inviteToken);
         setInfo(data);
-      } catch (err: any) {
-        setError(err.response?.data?.message || 'Не удалось загрузить приглашение');
+      } catch (err: unknown) {
+        setError(getApiErrorMessage(err, 'Не удалось загрузить приглашение'));
       } finally {
         setLoading(false);
       }
@@ -83,8 +84,8 @@ const AcceptInvite: React.FC = () => {
       setAccepted(true);
       // Через 1.5 сек уводим в список объектов
       setTimeout(() => navigate('/objects'), 1500);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Не удалось принять приглашение');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Не удалось принять приглашение'));
     } finally {
       setAccepting(false);
     }
@@ -96,10 +97,11 @@ const AcceptInvite: React.FC = () => {
     localStorage.setItem('pendingInviteToken', inviteToken);
     navigate('/login');
   };
-      {/* ⭐ ЗАДЕЛ: плашка для мобильных пользователей без приложения.
-          Пока приложение не опубликовано в сторах — плашка неактивна.
-          Когда появится STORE_URLS — плашка станет активной. */}
-      {isMobile && !hasAppInStores && (
+      // TODO(P2): плашка «скоро в сторах» СЕЙЧАС НЕ РЕНДЕРИТСЯ — блок стоит ВНЕ return.
+      // UI молча не меняем (нужно дизайн-решение) — помечаем выражение намеренно неиспользуемым.
+      // Перенести блок в разметку ниже — задача P2.
+      void (
+      isMobile && !hasAppInStores && (
         <Alert
           severity="info"
           icon={<DownloadIcon />}
@@ -113,7 +115,7 @@ const AcceptInvite: React.FC = () => {
             приложение сразу на нужном экране.
           </small>
         </Alert>
-      )}
+      ));
   return (    
     <Box
       sx={{
