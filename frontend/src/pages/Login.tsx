@@ -13,7 +13,7 @@ import {
   Stack,
 } from '@mui/material';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import InputAdornment from '@mui/material/InputAdornment';
 import IconButton from '@mui/material/IconButton';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
@@ -28,6 +28,10 @@ const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false); // ⭐ кнопка не выглядит мёртвой при запросе
   const navigate = useNavigate();
+  const location = useLocation();
+  // ⭐ Шаг 99 (P1-6): возвращаем юзера на страницу, с которой его выбросило на логин
+  // (ProtectedRoute кладёт исходный адрес в location.state.from)
+  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/';
   const { login } = useAuth();
 
   // ⭐ ФИКС БАГА: страница перезагружалась при ошибке входа из-за нативного
@@ -44,7 +48,7 @@ const Login: React.FC = () => {
         rememberMe,
       });
       login(response.data.access_token, response.data.user);
-      navigate('/');
+      navigate(from, { replace: true });
     } catch (err: any) {
       // ⭐ Ошибка остаётся на экране, страница НЕ перезагружается
       setError(err.response?.data?.message || 'Ошибка входа');

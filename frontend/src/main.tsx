@@ -2,13 +2,15 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
-import { AuthProvider } from './contexts/AuthContext'   // <-- добавить эту строку
-import './services/axiosInterceptor'; // добавить после остальных импортов
+import { AuthProvider } from './contexts/AuthContext'
+
+// ⭐ Шаг 99 (P1-6): отдельный импорт services/axiosInterceptor больше не нужен —
+// Bearer-токен и обработка 401 перенесены в единый инстанс services/api.ts
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>      {/* <-- обернуть */}
+    <AuthProvider>
       <App />
-    </AuthProvider>     {/* <-- закрыть */}
+    </AuthProvider>
   </StrictMode>,
 )

@@ -1,7 +1,7 @@
-import axios from 'axios';
+// frontend/src/services/materialService.ts
+// ⭐ Шаг 99: все запросы идут через единый api-инстанс — Bearer подставляет интерцептор.
+import api from './api';
 import type { ProjectData } from './projectService';
-
-const API_URL = 'http://localhost:3000/materials';
 
 // Снапшот расценки из справочника (приходит вместе с материалом)
 export interface PriceItemSnapshot {
@@ -32,19 +32,19 @@ export interface MaterialData {
   note?: string | null;
   progressPercent: number;
   isSpecLocked: boolean;
-  
+
   // Работы
   priceItemId?: number | null;
   priceItem?: PriceItemSnapshot | null;
   unitPrice: number;
   totalCost: number;
-  
+
   // Материалы
   materialItemId?: number | null;
   materialItem?: PriceItemSnapshot | null;
   materialUnitPrice: number;
   materialTotalCost: number;
-  
+
   projectId: number;
   createdAt?: string;
   updatedAt?: string;
@@ -60,29 +60,22 @@ export interface MaterialFixData {
 
 // Все материалы проекта
 export const fetchMaterialsByProject = async (
-  token: string,
   projectId: number
 ): Promise<MaterialData[]> => {
-  const response = await axios.get(`${API_URL}/project/${projectId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await api.get(`/materials/project/${projectId}`);
   return response.data;
 };
 
 // История фиксаций одного материала
 export const fetchFixesByMaterial = async (
-  token: string,
   materialId: number
 ): Promise<MaterialFixData[]> => {
-  const response = await axios.get(`${API_URL}/${materialId}/fixes`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await api.get(`/materials/${materialId}/fixes`);
   return response.data;
 };
 
 // Создание материала
 export const createMaterial = async (
-  token: string,
   data: {
     name: string;
     article?: string;
@@ -94,64 +87,51 @@ export const createMaterial = async (
     materialItemId?: number;
   }
 ): Promise<MaterialData> => {
-  const response = await axios.post(API_URL, data, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await api.post('/materials', data);
   return response.data;
 };
 
 // ⭐ Фиксация объёма (главная фича из старого кода)
 export const addFix = async (
-  token: string,
   materialId: number,
   data: { amount: number; note?: string }
 ): Promise<MaterialData> => {
-  const response = await axios.post(`${API_URL}/${materialId}/fix`, data, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await api.post(`/materials/${materialId}/fix`, data);
   return response.data;
 };
 
 // Обновление количества по спецификации
 export const updateSpecQuantity = async (
-  token: string,
   materialId: number,
   specQuantity: number
 ): Promise<MaterialData> => {
-  const response = await axios.patch(
-    `${API_URL}/${materialId}/spec`,
-    { specQuantity },
-    { headers: { Authorization: `Bearer ${token}` } }
+  const response = await api.patch(
+    `/materials/${materialId}/spec`,
+    { specQuantity }
   );
   return response.data;
 };
 
 // Переключение замка спецификации
 export const toggleSpecLock = async (
-  token: string,
   materialId: number
 ): Promise<MaterialData> => {
-  const response = await axios.patch(
-    `${API_URL}/${materialId}/lock`,
-    {},
-    { headers: { Authorization: `Bearer ${token}` } }
+  const response = await api.patch(
+    `/materials/${materialId}/lock`,
+    {}
   );
   return response.data;
 };
 // ✏️ Правка последней фиксации (только младше 24 часов)
 export const editLastFix = async (
-  token: string,
   materialId: number,
   data: { amount: number; note?: string }
 ): Promise<MaterialData> => {
-  const response = await axios.patch(`${API_URL}/${materialId}/last-fix`, data, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await api.patch(`/materials/${materialId}/last-fix`, data);
   return response.data;
 };
 // ✨ Создать новую расценку (+ опционально новую категорию)
 export const createPriceItemForMaterial = async (
-  token: string,
   item: {
     name: string;
     article?: string;
@@ -162,17 +142,15 @@ export const createPriceItemForMaterial = async (
   newCategoryName?: string,
   kind?: 'WORK' | 'MATERIAL'
 ) => {
-  const response = await axios.post(
-    `${API_URL}/price-item`,
-    { item, newCategoryName, kind },
-    { headers: { Authorization: `Bearer ${token}` } }
+  const response = await api.post(
+    '/materials/price-item',
+    { item, newCategoryName, kind }
   );
   return response.data;
 };
 
 // ✏️ Полное редактирование материала
 export const updateMaterial = async (
-  token: string,
   materialId: number,
   data: {
     name?: string;
@@ -184,30 +162,21 @@ export const updateMaterial = async (
     materialItemId?: number | null;
   }
 ): Promise<MaterialData> => {
-  const response = await axios.patch(`${API_URL}/${materialId}`, data, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await api.patch(`/materials/${materialId}`, data);
   return response.data;
 };
 // Удаление материала
 export const deleteMaterial = async (
-  token: string,
   materialId: number
 ): Promise<void> => {
-  await axios.delete(`${API_URL}/${materialId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  await api.delete(`/materials/${materialId}`);
 };
 
 
 // Загрузка проекта по ID (для хлебных крошек)
 export const fetchProjectById = async (
-  token: string,
   projectId: number
 ): Promise<ProjectData> => {
-  const response = await axios.get(
-    `http://localhost:3000/projects/${projectId}`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
+  const response = await api.get(`/projects/${projectId}`);
   return response.data;
 };

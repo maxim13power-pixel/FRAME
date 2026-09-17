@@ -136,7 +136,7 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
     const loadProjects = async () => {
       try {
         setLoading(true);
-        const data = await fetchProjectsByObject(token, parseInt(objectId));
+        const data = await fetchProjectsByObject(parseInt(objectId));
         setProjects(data);
         setError('');
       } catch (err: any) {
@@ -153,7 +153,7 @@ useEffect(() => {
   if (!token || !objectId) return;
   const loadObject = async () => {
     try {
-      const obj = await fetchObjectById(token, parseInt(objectId));
+      const obj = await fetchObjectById(parseInt(objectId));
       setCurrentObject(obj);
     } catch (err) {
       console.error('Не удалось загрузить объект');
@@ -223,7 +223,7 @@ const createProjectAction = async (projectData?: {
   }
   
   try {
-    const created = await createProject(token!, {
+    const created = await createProject({
       name: data.name,
       startDate: data.startDate,
       endDate: data.endDate,
@@ -251,7 +251,6 @@ const handleConfirmDateUpdate = async () => {
     
     // 1. Обновляем дату окончания объекта
     await updateObjectEndDate(
-      token, 
       currentObject.id, 
       dateConflictDialog.projectEndDate
     );
@@ -270,7 +269,7 @@ const handleConfirmDateUpdate = async () => {
     if (pendingProject) {
       // ====== СОЗДАНИЕ НОВОГО ПРОЕКТА ======
       //console.log('🟢 Шаг 2: Создаём новый проект...');
-      const created = await createProject(token, {
+      const created = await createProject({
         name: pendingProject.name,
         startDate: pendingProject.startDate,
         endDate: pendingProject.endDate,
@@ -289,7 +288,7 @@ const handleConfirmDateUpdate = async () => {
       console.log('editStartDate:', editStartDate);
       console.log('editEndDate:', editEndDate);
       
-      const updated = await updateProject(token, Number(editingProject.id), {
+      const updated = await updateProject(Number(editingProject.id), {
         name: editName,
         startDate: editStartDate,
         endDate: editEndDate,
@@ -353,7 +352,7 @@ const handleUpdateProject = async () => {
 
 const updateProjectAction = async () => {
   try {
-    const updated = await updateProject(token!, Number(editingProject!.id), {
+    const updated = await updateProject(Number(editingProject!.id), {
       name: editName,
       startDate: editStartDate,
       endDate: editEndDate,
@@ -380,7 +379,7 @@ const handleCloseNoteModal = () => {
 const handleSaveNote = async () => {
   if (!token || !editingNoteProject) return;
   try {
-    const updated = await updateProject(token, Number(editingNoteProject.id), {
+    const updated = await updateProject(Number(editingNoteProject.id), {
       note: editNote.trim() !== '' ? editNote.trim() : null,
     });
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
@@ -394,7 +393,7 @@ const handleSaveNote = async () => {
   const handleDeleteProject = async () => {
     if (!token || !deletingProject) return;
     try {
-      await deleteProject(token, Number(deletingProject.id));
+      await deleteProject(Number(deletingProject.id));
       setProjects(prev => prev.filter(p => p.id !== deletingProject.id));
       setDeleteConfirmOpen(false);
       setDeletingProject(null);

@@ -1,6 +1,6 @@
-import axios from 'axios';
-
-const API_URL = 'http://localhost:3000/dashboard';
+// frontend/src/services/dashboardService.ts
+// ⭐ Шаг 99: все запросы идут через единый api-инстанс — Bearer подставляет интерцептор.
+import api from './api';
 
 export interface DashboardSummary {
   kpi: {
@@ -41,9 +41,7 @@ export interface DashboardSummary {
   }[];
 }
 
-export const fetchDashboardSummary = async (token: string): Promise<DashboardSummary> => {
-  const response = await axios.get(`${API_URL}/summary`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export const fetchDashboardSummary = async (): Promise<DashboardSummary> => {
+  const response = await api.get('/dashboard/summary');
   return response.data;
 };

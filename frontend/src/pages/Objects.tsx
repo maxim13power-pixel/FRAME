@@ -134,7 +134,7 @@ useEffect(() => {
     try {
       console.log('Загружаем объекты...');
       setLoading(true);
-      const data = await fetchObjects(token);
+      const data = await fetchObjects();
       setObjects(data);
       //console.log('Получены объекты:', data);
       setError('');
@@ -192,7 +192,7 @@ const filteredAndSortedObjects = useMemo(() => {
   const doCreateObject = async () => {
     if (!token) return;
     try {
-      const created = await createObject(token, {
+      const created = await createObject({
         name: newName,
         address: newAddress,
         startDate: newStartDate,
@@ -251,7 +251,7 @@ const handleUpdateObject = async () => {
   // ↑↑↑ КОНЕЦ ВАЛИДАЦИИ ↑↑↑
   
   try {
-    const updated = await updateObject(token, Number(editingObject.id), {
+    const updated = await updateObject(Number(editingObject.id), {
       name: editName,
       address: editAddress,
       startDate: editStartDate,
@@ -267,7 +267,7 @@ const handleUpdateObject = async () => {
 const handleDeleteObject = async () => {
   if (!token || !deletingObject) return;
   try {
-    await deleteObject(token, Number(deletingObject.id));
+    await deleteObject(Number(deletingObject.id));
     setObjects(prev => prev.filter(obj => obj.id !== deletingObject.id));
     setDeleteConfirmOpen(false);
     setDeletingObject(null); // очищаем
@@ -287,7 +287,7 @@ const loadAccessMembers = async (objectId: number) => {
   setAccessLoading(true);
   setAccessError('');
   try {
-    const members = await fetchAccessList(token, objectId);
+    const members = await fetchAccessList(objectId);
     setAccessMembers(members);
   } catch (err: any) {
     setAccessError(err.response?.data?.message || 'Ошибка загрузки участников');
@@ -332,7 +332,7 @@ const handleInvite = async () => {
   setAccessError('');
   try {
     const isEmail = ident.includes('@');
-    await addAccess(token, accessObject.id, {
+    await addAccess(accessObject.id, {
       ...(isEmail ? { email: ident } : { phone: ident }),
       role: inviteRole,
     });
@@ -350,7 +350,7 @@ const handleChangeRole = async (accessId: number, newRole: AccessRole) => {
   if (!token || !accessObject) return;
   setAccessError('');
   try {
-    await updateAccess(token, accessObject.id, accessId, { role: newRole });
+    await updateAccess(accessObject.id, accessId, { role: newRole });
     await loadAccessMembers(accessObject.id);
   } catch (err: any) {
     setAccessError(err.response?.data?.message || 'Ошибка смены роли');
@@ -362,7 +362,7 @@ const handleRemoveAccess = async (accessId: number) => {
   if (!token || !accessObject) return;
   setAccessError('');
   try {
-    await removeAccess(token, accessObject.id, accessId);
+    await removeAccess(accessObject.id, accessId);
     await loadAccessMembers(accessObject.id);
   } catch (err: any) {
     setAccessError(err.response?.data?.message || 'Ошибка удаления участника');
@@ -377,7 +377,7 @@ const handleRemoveAccess = async (accessId: number) => {
 const loadInviteLinks = async (objectId: number) => {
   if (!token) return;
   try {
-    const links = await fetchInviteLinks(token, objectId);
+    const links = await fetchInviteLinks(objectId);
     setActiveLinks(links);
   } catch {
     // не критично — список ссылок просто не покажется
@@ -390,7 +390,7 @@ const handleCreateLink = async () => {
   setAccessLoading(true);
   setAccessError('');
   try {
-    const link = await createInviteLink(token, accessObject.id, {
+    const link = await createInviteLink(accessObject.id, {
       role: linkRole,
       hidePrices: linkHidePrices,
     });
@@ -443,7 +443,7 @@ const handleRevokeLink = async (linkId: number) => {
   if (!token || !accessObject) return;
   setAccessError('');
   try {
-    await revokeInviteLink(token, accessObject.id, linkId);
+    await revokeInviteLink(accessObject.id, linkId);
     await loadInviteLinks(accessObject.id);
     setCreatedLinkUrl(null);
   } catch (err: any) {
@@ -486,7 +486,7 @@ const handleSaveNote = async () => {
   if (!token || !editingNoteObject) return;
   
   try {
-    const updated = await updateObject(token, Number(editingNoteObject.id), {
+    const updated = await updateObject(Number(editingNoteObject.id), {
       note: editNote.trim() !== '' ? editNote.trim() : null,
     });
     setObjects(prev => prev.map(obj => obj.id === updated.id ? updated : obj));
