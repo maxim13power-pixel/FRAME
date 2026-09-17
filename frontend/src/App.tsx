@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { Box, CircularProgress } from '@mui/material';
 import ProtectedRoute from './components/ProtectedRoute';
 import theme from './theme';
+import { AuthProvider } from './contexts/AuthContext';
 import { PENDING_INVITE_KEY, getToken, safeGetString } from './utils/storage';
 
 // ⭐ Шаг 99 (P1-6): React.lazy — каждая страница грузится своим чанком.
@@ -122,10 +123,13 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter>
-        {/* ⭐ Suspense для lazy-страниц */}
-        <Suspense fallback={<PageLoader />}>
-          <AppRoutes />
-        </Suspense>
+        {/* ⭐ Шаг 100 (P1-8): AuthProvider ВНУТРИ Router — контексту доступен useNavigate (soft logout) */}
+        <AuthProvider>
+          {/* ⭐ Suspense для lazy-страниц */}
+          <Suspense fallback={<PageLoader />}>
+            <AppRoutes />
+          </Suspense>
+        </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>
   );

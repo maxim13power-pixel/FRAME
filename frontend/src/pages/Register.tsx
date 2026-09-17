@@ -14,11 +14,12 @@ import {
   FormControlLabel,
   Stack,
 } from '@mui/material';
-import axios from 'axios';
+import api from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import SmartCaptcha from '../components/SmartCaptcha';
+import { getApiErrorMessage } from '../utils/errors';
 // ⭐ Шаг 63: регистрация ТОЛЬКО по email (переключатель убран по продуктовому решению).
 // Стиль полей — ТОЧНО как на странице логина (outlined, белый фон, синяя рамка при фокусе).
 const fieldSx = {
@@ -66,7 +67,7 @@ const Register: React.FC = () => {
     }
     setLoading(true);
     try {
-      const response = await axios.post('/api/auth/register', {
+      const response = await api.post('/auth/register', {
         fullName: fullName.trim(),
         password,
         email: email.trim(),
@@ -74,8 +75,8 @@ const Register: React.FC = () => {
       });
       // ⭐ Редирект делает App.tsx (useEffect + защита маршрута) — без дублей
       login(response.data.access_token, response.data.user);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Ошибка регистрации');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Ошибка регистрации'));
     } finally {
       setLoading(false);
     }

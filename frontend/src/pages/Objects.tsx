@@ -51,6 +51,7 @@ import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import SortIcon from '@mui/icons-material/Sort';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { getApiErrorText, getApiErrorMessage } from '../utils/errors';
 
 // Вспомогательная функция для форматирования даты
 const formatDate = (dateStr: string) => {
@@ -138,8 +139,8 @@ useEffect(() => {
       setObjects(data);
       //console.log('Получены объекты:', data);
       setError('');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Ошибка загрузки объектов');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Ошибка загрузки объектов'));
       console.error(err);
     } finally {
       setLoading(false);
@@ -152,7 +153,7 @@ useEffect(() => {
   // Фильтрация по поиску
 const filteredAndSortedObjects = useMemo(() => {
   // Сначала фильтруем
-  let filtered = objects.filter(obj =>
+  const filtered = objects.filter(obj =>
     obj.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     obj.address.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -202,8 +203,8 @@ const filteredAndSortedObjects = useMemo(() => {
       setObjects(prev => [created, ...prev]);
       setForemanConfirmOpen(false);
       handleCloseAddModal();
-    } catch (err: any) {
-      alert('Ошибка при создании объекта: ' + (err.response?.data?.message || err.message));
+    } catch (err: unknown) {
+      alert('Ошибка при создании объекта: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -259,7 +260,7 @@ const handleUpdateObject = async () => {
     });
     setObjects(prev => prev.map(obj => obj.id === updated.id ? updated : obj));
     handleCloseEdit();
-  } catch (err) {
+  } catch {
     alert('Ошибка обновления');
   }
 };
@@ -271,7 +272,7 @@ const handleDeleteObject = async () => {
     setObjects(prev => prev.filter(obj => obj.id !== deletingObject.id));
     setDeleteConfirmOpen(false);
     setDeletingObject(null); // очищаем
-  } catch (err) {
+  } catch {
     alert('Ошибка удаления');
   }
 };
@@ -289,8 +290,8 @@ const loadAccessMembers = async (objectId: number) => {
   try {
     const members = await fetchAccessList(objectId);
     setAccessMembers(members);
-  } catch (err: any) {
-    setAccessError(err.response?.data?.message || 'Ошибка загрузки участников');
+  } catch (err: unknown) {
+    setAccessError(getApiErrorMessage(err, 'Ошибка загрузки участников'));
   } finally {
     setAccessLoading(false);
   }
@@ -338,8 +339,8 @@ const handleInvite = async () => {
     });
     setInviteIdentifier('');
     await loadAccessMembers(accessObject.id);
-  } catch (err: any) {
-    setAccessError(err.response?.data?.message || 'Ошибка приглашения');
+  } catch (err: unknown) {
+    setAccessError(getApiErrorMessage(err, 'Ошибка приглашения'));
   } finally {
     setAccessLoading(false);
   }
@@ -352,8 +353,8 @@ const handleChangeRole = async (accessId: number, newRole: AccessRole) => {
   try {
     await updateAccess(accessObject.id, accessId, { role: newRole });
     await loadAccessMembers(accessObject.id);
-  } catch (err: any) {
-    setAccessError(err.response?.data?.message || 'Ошибка смены роли');
+  } catch (err: unknown) {
+    setAccessError(getApiErrorMessage(err, 'Ошибка смены роли'));
   }
 };
 
@@ -364,8 +365,8 @@ const handleRemoveAccess = async (accessId: number) => {
   try {
     await removeAccess(accessObject.id, accessId);
     await loadAccessMembers(accessObject.id);
-  } catch (err: any) {
-    setAccessError(err.response?.data?.message || 'Ошибка удаления участника');
+  } catch (err: unknown) {
+    setAccessError(getApiErrorMessage(err, 'Ошибка удаления участника'));
   }
 };
 
@@ -397,8 +398,8 @@ const handleCreateLink = async () => {
           // ⭐ Используем APP_URL из конфига (для Universal Links в будущем)
       setCreatedLinkUrl(`${APP_URL}/invite/${link.token}`);
     await loadInviteLinks(accessObject.id);
-  } catch (err: any) {
-    setAccessError(err.response?.data?.message || 'Ошибка создания ссылки');
+  } catch (err: unknown) {
+    setAccessError(getApiErrorMessage(err, 'Ошибка создания ссылки'));
   } finally {
     setAccessLoading(false);
   }
@@ -430,9 +431,9 @@ const handleShareLink = async () => {
       // Десктоп без Web Share API → просто копируем
       await handleCopyLink();
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Юзер отменил шеринг — это не ошибка
-    if (err?.name !== 'AbortError') {
+    if ((err as { name?: string })?.name !== 'AbortError') {
       await handleCopyLink();
     }
   }
@@ -446,8 +447,8 @@ const handleRevokeLink = async (linkId: number) => {
     await revokeInviteLink(accessObject.id, linkId);
     await loadInviteLinks(accessObject.id);
     setCreatedLinkUrl(null);
-  } catch (err: any) {
-    setAccessError(err.response?.data?.message || 'Ошибка отзыва ссылки');
+  } catch (err: unknown) {
+    setAccessError(getApiErrorMessage(err, 'Ошибка отзыва ссылки'));
   }
 };
 
@@ -491,7 +492,7 @@ const handleSaveNote = async () => {
     });
     setObjects(prev => prev.map(obj => obj.id === updated.id ? updated : obj));
     handleCloseNoteModal();
-  } catch (err) {
+  } catch {
     alert('Ошибка обновления заметки');
   }
 };

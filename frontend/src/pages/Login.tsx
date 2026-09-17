@@ -12,12 +12,13 @@ import {
   Alert,
   Stack,
 } from '@mui/material';
-import axios from 'axios';
+import api from '../services/api';
 import { useLocation, useNavigate } from 'react-router-dom';
 import InputAdornment from '@mui/material/InputAdornment';
 import IconButton from '@mui/material/IconButton';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext'; // добавить эту строку
+import { getApiErrorMessage } from '../utils/errors';
 
 const Login: React.FC = () => {
   const [phone, setPhone] = useState('');
@@ -42,16 +43,16 @@ const Login: React.FC = () => {
     setError(''); // сбрасываем прошлую ошибку перед новой попыткой
     setLoading(true);
     try {
-      const response = await axios.post('/api/auth/login', {
+      const response = await api.post('/auth/login', {
         phone,
         password,
         rememberMe,
       });
       login(response.data.access_token, response.data.user);
       navigate(from, { replace: true });
-    } catch (err: any) {
+    } catch (err: unknown) {
       // ⭐ Ошибка остаётся на экране, страница НЕ перезагружается
-      setError(err.response?.data?.message || 'Ошибка входа');
+      setError(getApiErrorMessage(err, 'Ошибка входа'));
     } finally {
       setLoading(false);
     }

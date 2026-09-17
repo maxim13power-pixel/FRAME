@@ -2,7 +2,8 @@
 //  Шаг 99 (P1-6): единый axios-инстанс для ВСЕХ запросов к бэкенду.
 // - baseURL берётся из .env (VITE_API_URL) с fallback на API_BASE_URL из config.ts
 // - request-interceptor сам цепляет Authorization: Bearer <token> из localStorage
-// - response-interceptor на 401 (кроме публичных auth-ручек) чистит сессию и уводит на /login
+// - response-interceptor на 401 (кроме публичных auth-ручек) чистит сессию и
+//   диспатчит 'auth:logout' — редирект делает AuthContext через роутер (soft logout)
 import axios from 'axios';
 import { API_BASE_URL } from '../config';
 import { clearAuthStorage, getToken } from '../utils/storage';
@@ -39,7 +40,6 @@ api.interceptors.request.use((config) => {
 });
 
 // ⭐ Response: централизованный обработчик ошибок
-// (перенос логики из services/axiosInterceptor.ts, который больше не нужен).
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -47,12 +47,12 @@ api.interceptors.response.use(
     const url: string | undefined = error?.config?.url;
 
     if (status === 401 && !isPublicAuthRequest(url)) {
+      // ⭐ Шаг 100 (P1-8): НИКАКОГО window.location.href здесь.
+      // Жёсткая перезагрузка убивала SPA-состояние и давала React #418/#423.
+      // Чистим сессию и сообщаем об этом событием — AuthContext сам сделает
+      // navigate('/login', { replace: true }) через react-router.
       clearAuthStorage();
-      // AuthContext подписан на это событие → обновит состояние без «жёсткой» перезагрузки
       window.dispatchEvent(new Event('auth:logout'));
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
-      }
     }
 
     // 403 и 500 тоже ловим — раньше молча проглатывались
@@ -60,7 +60,7 @@ api.interceptors.response.use(
       console.warn('⚠️ Доступ запрещён:', error?.response?.data?.message);
     }
     if (status && status >= 500) {
-      console.error(' Ошибка сервера:', error?.response?.data?.message || error?.message);
+      console.error('❌ Ошибка сервера:', error?.response?.data?.message || error?.message);
     }
 
     return Promise.reject(error);

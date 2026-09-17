@@ -25,7 +25,7 @@ setLoading(true);
 try {
 await forgotPassword(email.trim());
 setSent(true);
-} catch (err: any) {
+} catch {
 // Бэкенд всегда возвращает 200 с одинаковым сообщением,
 // но на случай сетевой ошибки показываем fallback
 setError('Не удалось отправить запрос. Проверьте интернет и попробуйте снова.');

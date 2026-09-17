@@ -38,6 +38,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { getApiErrorMessage } from '../utils/errors';
 
 // Вспомогательная функция для форматирования даты (как в Objects)
 const formatDate = (dateStr: string) => {
@@ -86,13 +87,6 @@ const getDaysChip = (days: number) => {
   return { color: 'success' as const, label: `${days} дн.` };
 };
 
-// ⭐ Сообщение об ошибке из axios (class-validator присылает массив)
-const extractError = (err: any, fallback: string) => {
-  const m = err?.response?.data?.message;
-  if (Array.isArray(m)) return m[0];
-  if (typeof m === 'string') return m;
-  return fallback;
-};
 
 const Rentals: React.FC = () => {
   const theme = useTheme();
@@ -155,8 +149,8 @@ const Rentals: React.FC = () => {
         const data = await fetchRentals();
         setRentals(data);
         setError('');
-      } catch (err: any) {
-        setError(extractError(err, 'Ошибка загрузки аренд'));
+      } catch (err: unknown) {
+        setError(getApiErrorMessage(err, 'Ошибка загрузки аренд'));
         console.error(err);
       } finally {
         setLoading(false);
@@ -168,7 +162,7 @@ const Rentals: React.FC = () => {
   // Фильтрация по name/location + сортировка
   const filteredAndSortedRentals = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    let filtered = rentals.filter(
+    const filtered = rentals.filter(
       (r) =>
         r.name.toLowerCase().includes(q) ||
         (r.location ?? '').toLowerCase().includes(q)
@@ -283,8 +277,8 @@ const Rentals: React.FC = () => {
       });
       setRentals((prev) => [created, ...prev]);
       setAddModalOpen(false);
-    } catch (err: any) {
-      setAddError(extractError(err, 'Ошибка создания аренды'));
+    } catch (err: unknown) {
+      setAddError(getApiErrorMessage(err, 'Ошибка создания аренды'));
     } finally {
       setSaving(false);
     }
@@ -323,8 +317,8 @@ const Rentals: React.FC = () => {
       });
       setRentals((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       setExtendModalOpen(false);
-    } catch (err: any) {
-      setExtendError(extractError(err, 'Ошибка продления аренды'));
+    } catch (err: unknown) {
+      setExtendError(getApiErrorMessage(err, 'Ошибка продления аренды'));
     } finally {
       setSaving(false);
     }
@@ -370,8 +364,8 @@ const Rentals: React.FC = () => {
       });
       setRentals((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       setEditModalOpen(false);
-    } catch (err: any) {
-      setEditError(extractError(err, 'Ошибка сохранения аренды'));
+    } catch (err: unknown) {
+      setEditError(getApiErrorMessage(err, 'Ошибка сохранения аренды'));
     } finally {
       setSaving(false);
     }
@@ -383,8 +377,8 @@ const Rentals: React.FC = () => {
     try {
       await deleteRental(deletingRental.id);
       setRentals((prev) => prev.filter((r) => r.id !== deletingRental.id));
-    } catch (err: any) {
-      setError(extractError(err, 'Ошибка удаления аренды'));
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Ошибка удаления аренды'));
     } finally {
       setDeleteConfirmOpen(false);
       setDeletingRental(null);
