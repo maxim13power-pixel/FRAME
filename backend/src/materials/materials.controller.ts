@@ -19,8 +19,8 @@ import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { UpdateSpecQtyDto } from './dto/update-spec-qty.dto';
-import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
-
+//import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
+import { CreatePriceItemWithCategoryDto } from './dto/create-price-item-with-category.dto';
 @Controller('materials')
 @UseGuards(JwtAuthGuard, ObjectAccessGuard)
 export class MaterialsController {
@@ -74,23 +74,36 @@ export class MaterialsController {
     return this.materialsService.update(id, dto, req.user.userId);
   }
 
-  @Post('price-item')
-  createPriceItem(
-    @Body(new ValidationPipe({ whitelist: true }))
-    body: {
-      item: CreatePriceItemDto;
-      newCategoryName?: string;
-      kind?: 'WORK' | 'MATERIAL';
-    },
-    @Req() req,
-  ) {
-    return this.materialsService.createPriceItemWithCategory(
-      body.item,
-      body.newCategoryName,
-      body.kind,
-      req.user.userId,
-    );
-  }
+  //@Post('price-item')
+  //createPriceItem(
+    //@Body(new ValidationPipe({ whitelist: true }))
+    //body: {
+      //item: CreatePriceItemDto;
+      //newCategoryName?: string;
+      //kind?: 'WORK' | 'MATERIAL';
+    //},
+    //@Req() req,
+  //) {
+    //return this.materialsService.createPriceItemWithCategory(
+      //body.item,
+      //body.newCategoryName,
+      //body.kind,
+      //req.user.userId,
+    //);
+  //}
+@Post('price-item')
+createPriceItem(
+@Body(new ValidationPipe({ whitelist: true, transform: true }))
+body: CreatePriceItemWithCategoryDto,
+@Req() req,
+) {
+return this.materialsService.createPriceItemWithCategory(
+body.item,
+body.newCategoryName,
+body.kind,
+req.user.userId,
+);
+}
 
   @Patch(':id/spec')
   updateSpecQty(
