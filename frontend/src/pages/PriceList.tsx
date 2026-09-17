@@ -159,7 +159,7 @@ const PriceList: React.FC = () => {
     const loadData = async () => {
       try {
         setLoading(true);
-        const data = await fetchCategoriesWithItems(token, activeTab);
+        const data = await fetchCategoriesWithItems(activeTab);
         setCategories(data);
         // ⭐ По умолчанию ВСЕ категории свёрнуты — справочник большой, тапнул и открыл
         setCollapsed(data.reduce<Record<number, boolean>>((acc, c) => {
@@ -226,7 +226,7 @@ const PriceList: React.FC = () => {
       return;
     }
     try {
-      const created = await createCategory(token, { name: newCatName.trim(), kind: activeTab });
+      const created = await createCategory({ name: newCatName.trim(), kind: activeTab });
       setCategories(prev => [...prev, { ...created, items: [] }]);
       handleCloseCatModal();
     } catch (err: any) {
@@ -291,7 +291,7 @@ const PriceList: React.FC = () => {
     try {
       if (editingItem) {
         // ===== РЕДАКТИРОВАНИЕ =====
-        const updated = await updatePriceItem(token, editingItem.id, {
+        const updated = await updatePriceItem(editingItem.id, {
           name: itemName.trim(),
           article: itemArticle.trim(), // '' = очистить артикул; отсутствие ключа = не трогать
           unit: itemUnit,
@@ -310,7 +310,7 @@ const PriceList: React.FC = () => {
         let categoryId: number;
             if (itemCategoryId === NEW_CATEGORY_VALUE) {
         // 1) Сначала создаём категорию
-        const createdCat = await createCategory(token, { name: newCategoryName.trim(), kind: activeTab });
+        const createdCat = await createCategory({ name: newCategoryName.trim(), kind: activeTab });
           setCategories(prev => [...prev, { ...createdCat, items: [] }]);
           setCollapsed(prev => ({ ...prev, [createdCat.id]: false }));
           categoryId = createdCat.id;
@@ -318,7 +318,7 @@ const PriceList: React.FC = () => {
           categoryId = Number(itemCategoryId);
         }
         // 2) Потом создаём расценку внутри категории
-        const created = await createPriceItem(token, {
+        const created = await createPriceItem({
           name: itemName.trim(),
           article: itemArticle.trim() || undefined,
           unit: itemUnit,
@@ -351,7 +351,7 @@ const PriceList: React.FC = () => {
   const handleDeleteConfirm = async () => {
     if (!token || !deletingItem) return;
     try {
-      await deletePriceItem(token, deletingItem.id);
+      await deletePriceItem(deletingItem.id);
       setCategories(prev =>
         prev.map(cat => ({
           ...cat,
@@ -387,7 +387,7 @@ const PriceList: React.FC = () => {
       return;
     }
     try {
-      const updated = await updateCategory(token, settingsCategory.id, {
+      const updated = await updateCategory(settingsCategory.id, {
         name: settingsCatName.trim(),
       });
       setCategories(prev =>
@@ -415,7 +415,7 @@ const PriceList: React.FC = () => {
   const handleDeleteCategoryConfirm = async () => {
     if (!token || !settingsCategory) return;
     try {
-      await deleteCategory(token, settingsCategory.id);
+      await deleteCategory(settingsCategory.id);
       setCategories(prev => prev.filter(cat => cat.id !== settingsCategory.id));
       setDeleteCatConfirmOpen(false);
       handleCloseCategorySettings();

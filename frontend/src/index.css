@@ -1,5 +1,25 @@
+/* frontend/src/index.css
+   ⭐ Шаг 99 (P1-6): базовый скаффолд приложения.
+   Ниже — только сброс и базовая типографика; остальное задаёт тема MUI (theme.ts + CssBaseline). */
+
+/* 1. Единая box-модель для всего дерева */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* 2. Сброс margin/padding у body и корня приложения */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+}
+
+/* 3. Базовая типографика (font-family совпадает с theme.ts) */
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Roboto', system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -9,19 +29,10 @@
 }
 
 body {
-  margin: 0;
   min-width: 320px;
   min-height: 100vh;
   background-color: #f0f4fa;
 }
-
-/*body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}*/
 
 h1 {
   font-size: 3.2em;

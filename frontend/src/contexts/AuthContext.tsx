@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
+import { clearAuthStorage, getToken, safeParse, USER_KEY } from '../utils/storage';
 
 interface AuthContextType {
   token: string | null;
@@ -10,8 +11,10 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
-  const [user, setUser] = useState<any | null>(JSON.parse(localStorage.getItem('user') || 'null'));
+  // ⭐ Шаг 99 (P1-6): читаем сессию через безопасные хелперы —
+  // битый JSON в 'user' больше не роняет приложение при старте.
+  const [token, setToken] = useState<string | null>(getToken());
+  const [user, setUser] = useState<any | null>(safeParse(USER_KEY));
 
   const login = (newToken: string, newUser: any) => {
     localStorage.setItem('token', newToken);
@@ -21,8 +24,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    // ⭐ Шаг 99: ключи чистятся в одном месте (utils/storage.ts)
+    clearAuthStorage();
     setToken(null);
     setUser(null);
   };

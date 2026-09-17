@@ -44,7 +44,7 @@ const Home: React.FC = () => {
     if (!token) return;
     try {
       setLoading(true);
-      setData(await fetchDashboardSummary(token));
+      setData(await fetchDashboardSummary());
       setError('');
     } catch (e) {
       console.error(e);

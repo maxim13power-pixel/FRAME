@@ -10,6 +10,7 @@ import SellIcon from '@mui/icons-material/Sell';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import HelpIcon from '@mui/icons-material/Help';
+import { safeParse } from '../utils/storage';
 
 // ⭐ ВСЕ доступные табы (в Настройках юзер сможет выбрать любые 5)
 export const ALL_BOTTOM_TABS: {
@@ -32,19 +33,14 @@ export const ALL_BOTTOM_TABS: {
 export const DEFAULT_BOTTOM_TABS = ['home', 'objects', 'brigades', 'settings', 'profile'];
 
 // ⭐ Конфиг нижних кнопок (Шаг 12: Настройки будут писать сюда)
+// ⭐ Шаг 99 (P1-6): safeParse вместо голого JSON.parse — битый JSON возвращает null,
+// а не бросает исключение; недоступный localStorage тоже больше не роняет навигацию.
 export const getBottomNavConfig = (): string[] => {
-  try {
-    const raw = localStorage.getItem('frame_bottom_nav');
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr) && arr.length >= 3 && arr.length <= 5) {
-        // только известные табы
-        const valid = arr.filter(v => ALL_BOTTOM_TABS.some(t => t.value === v));
-        if (valid.length >= 3) return valid;
-      }
-    }
-  } catch {
-    // битый JSON — используем дефолт
+  const arr = safeParse<string[]>('frame_bottom_nav');
+  if (Array.isArray(arr) && arr.length >= 3 && arr.length <= 5) {
+    // только известные табы
+    const valid = arr.filter(v => ALL_BOTTOM_TABS.some(t => t.value === v));
+    if (valid.length >= 3) return valid;
   }
   return DEFAULT_BOTTOM_TABS;
 };

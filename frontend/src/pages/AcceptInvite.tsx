@@ -79,7 +79,7 @@ const AcceptInvite: React.FC = () => {
     setAccepting(true);
     setError('');
     try {
-      await acceptInvite(token, inviteToken);
+      await acceptInvite(inviteToken);
       setAccepted(true);
       // Через 1.5 сек уводим в список объектов
       setTimeout(() => navigate('/objects'), 1500);

@@ -152,7 +152,7 @@ const Rentals: React.FC = () => {
     const loadRentals = async () => {
       try {
         setLoading(true);
-        const data = await fetchRentals(token);
+        const data = await fetchRentals();
         setRentals(data);
         setError('');
       } catch (err: any) {
@@ -272,7 +272,7 @@ const Rentals: React.FC = () => {
     }
     try {
       setSaving(true);
-      const created = await createRental(token, {
+      const created = await createRental({
         name: newName.trim(),
         location: newLocation.trim() || undefined,
         responsible: newResponsible.trim() || undefined,
@@ -317,7 +317,7 @@ const Rentals: React.FC = () => {
     }
     try {
       setSaving(true);
-      const updated = await extendRental(token, extendingRental.id, {
+      const updated = await extendRental(extendingRental.id, {
         newEndDate: extEndDate,
         price,
       });
@@ -360,7 +360,7 @@ const Rentals: React.FC = () => {
     }
     try {
       setSaving(true);
-      const updated = await updateRental(token, editingRental.id, {
+      const updated = await updateRental(editingRental.id, {
         name: editName.trim(),
         location: editLocation.trim(),
         responsible: editResponsible.trim(),
@@ -381,7 +381,7 @@ const Rentals: React.FC = () => {
   const handleDelete = async () => {
     if (!token || !deletingRental) return;
     try {
-      await deleteRental(token, deletingRental.id);
+      await deleteRental(deletingRental.id);
       setRentals((prev) => prev.filter((r) => r.id !== deletingRental.id));
     } catch (err: any) {
       setError(extractError(err, 'Ошибка удаления аренды'));

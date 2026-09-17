@@ -209,8 +209,8 @@ const loadCategories = async () => {
   if (!token) return;
   try {
     const [all, mats] = await Promise.all([
-      fetchCategoriesWithItems(token),
-      fetchCategoriesWithItems(token, 'MATERIAL'),
+      fetchCategoriesWithItems(),
+      fetchCategoriesWithItems('MATERIAL'),
     ]);
     setAllCategories(all.map(c => ({ id: c.id, name: c.name })));
     setMaterialCategories(mats.map(c => ({ id: c.id, name: c.name })));
@@ -290,14 +290,14 @@ useEffect(() => {
       setLoading(true);
       // Параллельная загрузка материалов, проекта и объекта
       const [materialsData, projectData] = await Promise.all([
-        fetchMaterialsByProject(token, parseInt(projectId)),
-        fetchProjectById(token, parseInt(projectId)),
+        fetchMaterialsByProject(parseInt(projectId)),
+        fetchProjectById(parseInt(projectId)),
       ]);
       setMaterials(materialsData);
       setCurrentProject(projectData);
       // Загружаем объект (для названия)
       //const { fetchObjectById } = await import('../services/objectService');
-      const objData = await fetchObjectById(token, parseInt(objectId));
+      const objData = await fetchObjectById(parseInt(objectId));
       setCurrentObject(objData);
       setError('');
     } catch (err: any) {
@@ -319,7 +319,7 @@ const handleOpenAddModal = () => {
   setAddPricePrice('');
   // Подгружаем категории для создания новой расценки
   if (token) {
-    fetchCategoriesWithItems(token)
+    fetchCategoriesWithItems()
       .then(cats => setAllCategories(cats.map(c => ({ id: c.id, name: c.name }))))
       .catch(e => console.error('Не удалось загрузить категории', e));
   }
@@ -344,7 +344,7 @@ const handlePriceSearch = async (value: string) => {
 if (!token) return;
 try {
 setPriceLoading(true);
-const data = await searchPriceItems(token, value || undefined, undefined, 'WORK');
+const data = await searchPriceItems(value || undefined, undefined, 'WORK');
 setPriceOptions(data);
 } catch (err) {
 console.error('Ошибка поиска расценок:', err);
@@ -381,7 +381,6 @@ setPriceLoading(false);
           return;
         }
         const createdPrice = await createPriceItemForMaterial(
-          token,
           {
             name: addPriceName.trim(),
             unit: addPriceUnit,
@@ -415,7 +414,6 @@ setPriceLoading(false);
           return;
         }
         const createdMatPrice = await createPriceItemForMaterial(
-          token,
           {
             name: addMatPriceName.trim(),
             unit: addMatPriceUnit,
@@ -428,7 +426,7 @@ setPriceLoading(false);
         materialItemId = createdMatPrice.id;
       }
 
-      const created = await createMaterial(token, {
+      const created = await createMaterial({
         name: newName,
         article: newArticle || undefined,
         unit: newUnit,
@@ -466,7 +464,7 @@ setPriceLoading(false);
       //return;
     //}
     //try {
-      //const updated = await addFix(token, fixingMaterial.id, {
+      //const updated = await addFix(fixingMaterial.id, {
         //amount: fixAmount,
   const handleAddFix = async () => {
     const amount = parseFloat(fixAmount);
@@ -475,7 +473,7 @@ setPriceLoading(false);
       return;
     }
     try {
-      const updated = await addFix(token, fixingMaterial.id, {
+      const updated = await addFix(fixingMaterial.id, {
         amount,
         note: fixNote || undefined,
       });
@@ -507,7 +505,7 @@ setPriceLoading(false);
   const handleDeleteConfirm = async () => {
     if (!token || !deletingMaterial) return;
     try {
-      await deleteMaterial(token, deletingMaterial.id);
+      await deleteMaterial(deletingMaterial.id);
       setMaterials(prev => prev.filter(m => m.id !== deletingMaterial.id));
       setDeleteConfirmOpen(false);
       setDeletingMaterial(null);
@@ -520,7 +518,7 @@ setPriceLoading(false);
 const handleOpenEditFix = async () => {
   if (!token || !settingsMaterial) return;
   try {
-    const fixes = await fetchFixesByMaterial(token, settingsMaterial.id);
+    const fixes = await fetchFixesByMaterial(settingsMaterial.id);
     if (fixes.length === 0) {
       setInfoModal({ open: true, text: 'У материала ещё нет фиксаций' });
       return;
@@ -547,7 +545,7 @@ const handleSaveEditFix = async () => {
     return;
   }
   try {
-    const updated = await editLastFix(token, settingsMaterial.id, {
+    const updated = await editLastFix(settingsMaterial.id, {
       amount,
       note: editFixNote || undefined,
     });
@@ -586,7 +584,7 @@ const handleOpenEdit = async () => {
   setEditModalOpen(true);
   // Подгружаем категории для создания новой расценки
   try {
-    const cats = await fetchCategoriesWithItems(token);
+    const cats = await fetchCategoriesWithItems();
     setAllCategories(cats.map(c => ({ id: c.id, name: c.name })));
   } catch (e) {
     console.error('Не удалось загрузить категории', e);
@@ -598,7 +596,7 @@ const handleEditPriceSearch = async (value: string) => {
   if (!token) return;
   try {
     setEditPriceLoading(true);
-    const data = await searchPriceItems(token, value || undefined, undefined, 'WORK');
+    const data = await searchPriceItems(value || undefined, undefined, 'WORK');
     setEditPriceOptions(data);
   } catch (err) {
     console.error('Ошибка поиска расценок:', err);
@@ -612,7 +610,7 @@ const handleMaterialPriceSearch = async (value: string) => {
   if (!token) return;
   try {
     setMaterialLoading(true);
-    const data = await searchPriceItems(token, value || undefined, undefined, 'MATERIAL');
+    const data = await searchPriceItems(value || undefined, undefined, 'MATERIAL');
     setMaterialOptions(data);
   } catch (err) {
     console.error('Ошибка поиска расценок материалов:', err);
@@ -626,7 +624,7 @@ const handleEditMaterialPriceSearch = async (value: string) => {
   if (!token) return;
   try {
     setEditMaterialLoading(true);
-    const data = await searchPriceItems(token, value || undefined, undefined, 'MATERIAL');
+    const data = await searchPriceItems(value || undefined, undefined, 'MATERIAL');
     setEditMaterialOptions(data);
   } catch (err) {
     console.error('Ошибка поиска расценок материалов:', err);
@@ -671,7 +669,6 @@ const handleSaveEdit = async () => {
         return;
       }
       const createdPrice = await createPriceItemForMaterial(
-        token,
         {
           name: newPriceName.trim(),
           unit: newPriceUnit,
@@ -706,7 +703,6 @@ const handleSaveEdit = async () => {
         return;
       }
       const createdMat = await createPriceItemForMaterial(
-        token,
         {
           name: editMatPriceName.trim(),
           unit: editMatPriceUnit,
@@ -719,7 +715,7 @@ const handleSaveEdit = async () => {
       materialItemIdToSend = createdMat.id;
     }
 
-    const updated = await updateMaterial(token, settingsMaterial.id, {
+    const updated = await updateMaterial(settingsMaterial.id, {
       name: editName.trim(),
       article: editArticle,
       unit: editUnit,

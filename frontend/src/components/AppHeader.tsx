@@ -6,6 +6,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
 import { useLocation } from 'react-router-dom';
+import { safeGetString } from '../utils/storage';
 import { useHeaderConfig } from '../contexts/MobileHeaderContext';
 
 // Заголовки по умолчанию для страниц, которые ещё не подключили useMobileHeader
@@ -36,7 +37,8 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
 
   const editableKey = config?.editableKey;
   React.useEffect(() => {
-    setCustom(editableKey ? localStorage.getItem(editableKey) || '' : '');
+    // ⭐ Шаг 99 (P1-6): safeGetString — не падаем, если localStorage недоступен
+    setCustom(editableKey ? safeGetString(editableKey) : '');
     setEditing(false);
   }, [editableKey]);
 

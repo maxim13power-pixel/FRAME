@@ -1,6 +1,6 @@
-import axios from 'axios';
-
-const API_URL = 'http://localhost:3000/price-list';
+// frontend/src/services/priceListService.ts
+// ⭐ Шаг 99: все запросы идут через единый api-инстанс — Bearer подставляет интерцептор.
+import api from './api';
 
 // ============================================================
 // ТИПЫ ДАННЫХ (соответствуют моделям Prisma: PriceCategory, PriceItem)
@@ -33,11 +33,9 @@ export interface PriceItemData {
 
 // Все категории (для селектов)
 export const fetchCategories = async (
-  token: string,
   kind?: 'WORK' | 'MATERIAL'
 ): Promise<PriceCategoryData[]> => {
-  const response = await axios.get(`${API_URL}/categories`, {
-    headers: { Authorization: `Bearer ${token}` },
+  const response = await api.get('/price-list/categories', {
     params: kind ? { kind } : {},
   });
   return response.data;
@@ -46,11 +44,9 @@ export const fetchCategories = async (
 // Категории вместе с активными расценками (для страницы справочника)
 // GET /price-list/categories/full
 export const fetchCategoriesWithItems = async (
-  token: string,
   kind?: 'WORK' | 'MATERIAL'
 ): Promise<PriceCategoryData[]> => {
-  const response = await axios.get(`${API_URL}/categories/full`, {
-    headers: { Authorization: `Bearer ${token}` },
+  const response = await api.get('/price-list/categories/full', {
     params: kind ? { kind } : {},
   });
   return response.data;
@@ -59,37 +55,28 @@ export const fetchCategoriesWithItems = async (
 // Создать категорию
 // POST /price-list/categories
 export const createCategory = async (
-  token: string,
   data: { name: string; sortOrder?: number; kind?: 'WORK' | 'MATERIAL' }
 ): Promise<PriceCategoryData> => {
-  const response = await axios.post(`${API_URL}/categories`, data, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await api.post('/price-list/categories', data);
   return response.data;
 };
 
 // Переименовать категорию
 // PATCH /price-list/categories/:id
 export const updateCategory = async (
-  token: string,
   id: number,
   data: { name: string }
 ): Promise<PriceCategoryData> => {
-  const response = await axios.patch(`${API_URL}/categories/${id}`, data, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await api.patch(`/price-list/categories/${id}`, data);
   return response.data;
 };
 
 // Удалить категорию (бэкенд пропустит ТОЛЬКО пустую — двойная защита)
 // DELETE /price-list/categories/:id
 export const deleteCategory = async (
-  token: string,
   id: number
 ): Promise<PriceCategoryData> => {
-  const response = await axios.delete(`${API_URL}/categories/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await api.delete(`/price-list/categories/${id}`);
   return response.data;
 };
 // ============================================================
@@ -99,13 +86,11 @@ export const deleteCategory = async (
 // Поиск расценок (для Autocomplete в материалах и для фильтра на странице справочника)
 // GET /price-list/items/search?search=&categoryId=
 export const searchPriceItems = async (
-  token: string,
   search?: string,
   categoryId?: number,
   kind?: 'WORK' | 'MATERIAL'
 ): Promise<PriceItemData[]> => {
-  const response = await axios.get(`${API_URL}/items/search`, {
-    headers: { Authorization: `Bearer ${token}` },
+  const response = await api.get('/price-list/items/search', {
     params: {
       ...(search ? { search } : {}),
       ...(categoryId ? { categoryId } : {}),
@@ -118,7 +103,6 @@ export const searchPriceItems = async (
 // Создать расценку
 // POST /price-list/items
 export const createPriceItem = async (
-  token: string,
   data: {
     name: string;
     article?: string;
@@ -128,16 +112,13 @@ export const createPriceItem = async (
     kind?: 'WORK' | 'MATERIAL';
   }
 ): Promise<PriceItemData> => {
-  const response = await axios.post(`${API_URL}/items`, data, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await api.post('/price-list/items', data);
   return response.data;
 };
 
 // Обновить расценку
 // PATCH /price-list/items/:id
 export const updatePriceItem = async (
-  token: string,
   id: number,
   data: Partial<{
     name: string;
@@ -146,9 +127,7 @@ export const updatePriceItem = async (
     price: number;
   }>
 ): Promise<PriceItemData> => {
-  const response = await axios.patch(`${API_URL}/items/${id}`, data, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await api.patch(`/price-list/items/${id}`, data);
   return response.data;
 };
 
@@ -156,11 +135,8 @@ export const updatePriceItem = async (
 // старые сметы остаются нетронутыми, см. price-list.service.ts → removeItem)
 // DELETE /price-list/items/:id
 export const deletePriceItem = async (
-  token: string,
   id: number
 ): Promise<PriceItemData> => {
-  const response = await axios.delete(`${API_URL}/items/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await api.delete(`/price-list/items/${id}`);
   return response.data;
 };
