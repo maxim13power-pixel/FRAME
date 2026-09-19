@@ -85,9 +85,10 @@ export class ObjectsService {
       let sumCost = 0;
       o.projects.forEach((p) =>
         p.materials.forEach((m) => {
-          sumSpec += m.specQuantity || 0;
-          sumUsed += m.totalUsed || 0;
-          sumCost += (m.totalCost || 0) + (m.materialTotalCost || 0);
+          // 🔒 P1-3: поля Decimal — приводим к number, иначе += склеивает строки
+          sumSpec += Number(m.specQuantity || 0);
+          sumUsed += Number(m.totalUsed || 0);
+          sumCost += Number(m.totalCost || 0) + Number(m.materialTotalCost || 0);
         }),
       );
       const { projects, accesses, ...rest } = o;

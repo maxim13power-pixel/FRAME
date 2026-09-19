@@ -134,7 +134,7 @@ export class MaterialsService {
       if (!priceItem) throw new NotFoundException('Расценка не найдена');
       if (!priceItem.isActive)
         throw new BadRequestException('Выбранная расценка неактивна');
-      unitPrice = priceItem.price;
+      unitPrice = Number(priceItem.price);
     }
     let materialUnitPrice = 0;
     if (dto.materialItemId) {
@@ -145,7 +145,7 @@ export class MaterialsService {
         throw new NotFoundException('Расценка материала не найдена');
       if (!materialItem.isActive)
         throw new BadRequestException('Расценка материала неактивна');
-      materialUnitPrice = materialItem.price;
+      materialUnitPrice = Number(materialItem.price);
     }
     const created = await this.prisma.material.create({
       data: {
@@ -468,7 +468,7 @@ export class MaterialsService {
           if (!priceItem) throw new NotFoundException('Расценка не найдена');
           if (!priceItem.isActive)
             throw new BadRequestException('Расценка неактивна');
-          unitPrice = priceItem.price;
+          unitPrice = Number(priceItem.price);
           priceItemId = priceItem.id;
         }
       }
@@ -491,7 +491,7 @@ export class MaterialsService {
             throw new NotFoundException('Расценка материала не найдена');
           if (!materialItem.isActive)
             throw new BadRequestException('Расценка материала неактивна');
-          materialUnitPrice = materialItem.price;
+          materialUnitPrice = Number(materialItem.price);
           materialItemId = materialItem.id;
         }
       }

@@ -244,7 +244,7 @@ export class ChangeService {
               'Позиция справочника работ не найдена, неактивна или недоступна',
             );
           }
-          unitPrice = workItem.price;
+          unitPrice = Number(workItem.price);
         }
         let materialUnitPrice = 0;
         if (payload.materialItemId !== undefined) {
@@ -262,7 +262,7 @@ export class ChangeService {
               'Позиция справочника материалов не найдена, неактивна или недоступна',
             );
           }
-          materialUnitPrice = matItem.price;
+          materialUnitPrice = Number(matItem.price);
         }
         await tx.material.create({
           data: {

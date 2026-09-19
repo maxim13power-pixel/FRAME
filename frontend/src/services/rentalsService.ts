@@ -1,7 +1,10 @@
 // frontend/src/services/rentalsService.ts
 // ⭐ Раздел «Аренда»: API личного оборудования пользователя.
 // ⭐ Шаг 99: токен больше не передаём аргументом — Bearer подставляет api.ts.
+// ⭐ Шаг 103 (P1-3): price/totalSpent хранятся в DECIMAL и приходят СТРОКАМИ —
+// приводим к number на границе API (иначе сортировка и Σ склеивают строки).
 import api from './api';
+import { parseDecimal } from '../utils/decimal';
 
 export interface RentalData {
   id: number;
@@ -16,10 +19,17 @@ export interface RentalData {
   createdAt?: string;
 }
 
+// 🔒 P1-3: Decimal (строка с бэкенда) -> number на границе API
+const normalizeRental = (r: RentalData): RentalData => ({
+  ...r,
+  price: parseDecimal(r.price),
+  totalSpent: parseDecimal(r.totalSpent),
+});
+
 // Получить все аренды текущего пользователя
 export const fetchRentals = async (): Promise<RentalData[]> => {
   const response = await api.get('/rentals');
-  return response.data;
+  return response.data.map(normalizeRental);
 };
 
 // Создать аренду
@@ -35,7 +45,7 @@ export const createRental = async (
   }
 ) => {
   const response = await api.post('/rentals', data);
-  return response.data;
+  return normalizeRental(response.data);
 };
 
 // Продлить аренду (новая дата окончания + цена продления)
@@ -44,7 +54,7 @@ export const extendRental = async (
   data: { newEndDate: string; price: number }
 ) => {
   const response = await api.patch(`/rentals/${id}/extend`, data);
-  return response.data;
+  return normalizeRental(response.data);
 };
 
 // Редактировать аренду (все поля опциональны; price/totalSpent не трогаем)
@@ -60,7 +70,7 @@ export const updateRental = async (
   }
 ) => {
   const response = await api.patch(`/rentals/${id}`, data);
-  return response.data;
+  return normalizeRental(response.data);
 };
 
 // Удалить аренду

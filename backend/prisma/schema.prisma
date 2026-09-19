@@ -95,25 +95,25 @@ model Material {
   name            String
   article         String?
   unit            Unit           @default(PIECE)
-  specQuantity    Float          // количество по спецификации (план)
-  totalUsed       Float          @default(0)  // фактический расход (автосчёт)
-  lastEntry       Float?         // последняя фиксация
+  specQuantity    Decimal        @db.Decimal(14, 3) // количество по спецификации (план)
+  totalUsed       Decimal        @default(0) @db.Decimal(14, 3) // фактический расход (автосчёт)
+  lastEntry       Decimal?       @db.Decimal(14, 3) // последняя фиксация
   lastEntryDate   DateTime?      // дата последней фиксации
   note            String?
-  progressPercent Float          @default(0)  // % выполнения
+  progressPercent Float          @default(0)  // % выполнения (процент — не деньги/объём, остаётся Float)
   isSpecLocked    Boolean        @default(true) // защита спецификации
 
   // Работы (из справочника "Цены на работы")
   priceItemId     Int?
   priceItem       PriceItem?     @relation("WorkPrice", fields: [priceItemId], references: [id], onDelete: SetNull)
-  unitPrice       Float          @default(0)  // SNAPSHOT цены работы
-  totalCost       Float          @default(0)  // totalUsed × unitPrice (работы на тек. момент)
+  unitPrice       Decimal        @default(0) @db.Decimal(14, 2) // SNAPSHOT цены работы
+  totalCost       Decimal        @default(0) @db.Decimal(14, 2) // totalUsed × unitPrice (работы на тек. момент)
 
   // Материалы (из справочника "Цены на материалы")
   materialItemId  Int?
   materialItem    PriceItem?     @relation("MaterialPrice", fields: [materialItemId], references: [id], onDelete: SetNull)
-  materialUnitPrice Float        @default(0)  // SNAPSHOT цены материала
-  materialTotalCost Float        @default(0)  // totalUsed × materialUnitPrice (материалы на тек. момент)
+  materialUnitPrice Decimal      @default(0) @db.Decimal(14, 2) // SNAPSHOT цены материала
+  materialTotalCost Decimal      @default(0) @db.Decimal(14, 2) // totalUsed × materialUnitPrice (материалы на тек. момент)
 
   projectId       Int
   project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -130,7 +130,7 @@ model MaterialFix {
   id          Int       @id @default(autoincrement())
   materialId  Int
   material    Material  @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  amount      Float     // объём этой фиксации
+  amount      Decimal   @db.Decimal(14, 3) // объём этой фиксации
   note        String?   // примечание к фиксации
   fixedAt     DateTime  @default(now())  // когда зафиксировано
   userId      Int?      // кто зафиксировал
@@ -160,7 +160,7 @@ model PriceItem {
   name       String
   article    String?
   unit       Unit          @default(PIECE)
-  price      Float         @default(0)
+  price      Decimal       @default(0) @db.Decimal(14, 2)
   categoryId Int
   category   PriceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   isActive   Boolean       @default(true)
@@ -277,8 +277,8 @@ model Rental {
   responsible String?              // кто ответственный (необязательно)
   startDate   DateTime
   endDate     DateTime
-  price       Float                // цена аренды при создании
-  totalSpent  Float                // всего потрачено (price + все продления)
+  price       Decimal              @db.Decimal(14, 2) // цена аренды при создании
+  totalSpent  Decimal              @db.Decimal(14, 2) // всего потрачено (price + все продления)
   note        String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -215,9 +215,19 @@ export class DashboardService {
         objectId: p.object.id,
         objectName: p.object.name,
       })),
-      noPrice: { items: noPriceItems, count: noPriceCount },
+      noPrice: {
+        items: noPriceItems.map((n) => ({
+          ...n,
+          // 🔒 P1-3: Decimal -> number (DTO ждёт число, JSON отдаёт строку)
+          unitPrice: Number(n.unitPrice),
+          materialUnitPrice: Number(n.materialUnitPrice),
+        })),
+        count: noPriceCount,
+      },
       recentFixes: recentFixes.map((f) => ({
         ...f,
+        // 🔒 P1-3: Decimal -> number по контракту DTO
+        amount: Number(f.amount),
         fixedAt: f.fixedAt.toISOString(), // ⭐ Date → ISO-строка по контракту DTO
       })),
     };

@@ -96,12 +96,19 @@ export class ProjectsService {
 
     // ⭐ Честный процент: Σ Итого / Σ По спец × 100 по материалам проекта
     return projects.map((p) => {
+      // 🔒 P1-3: Decimal-поля приводим к number (иначе reduce склеивает строки)
       const sumSpec = p.materials.reduce(
-        (a, m) => a + (m.specQuantity || 0),
+        (a, m) => a + Number(m.specQuantity || 0),
         0,
       );
-      const sumUsed = p.materials.reduce((a, m) => a + (m.totalUsed || 0), 0);
-      const sumCost = p.materials.reduce((a, m) => a + (m.totalCost || 0), 0);
+      const sumUsed = p.materials.reduce(
+        (a, m) => a + Number(m.totalUsed || 0),
+        0,
+      );
+      const sumCost = p.materials.reduce(
+        (a, m) => a + Number(m.totalCost || 0),
+        0,
+      );
       const { materials, ...rest } = p;
       return {
         ...rest,
@@ -131,15 +138,15 @@ export class ProjectsService {
     if (!project) return null;
 
     const sumSpec = project.materials.reduce(
-      (a, m) => a + (m.specQuantity || 0),
+      (a, m) => a + Number(m.specQuantity || 0),
       0,
     );
     const sumUsed = project.materials.reduce(
-      (a, m) => a + (m.totalUsed || 0),
+      (a, m) => a + Number(m.totalUsed || 0),
       0,
     );
     const sumCost = project.materials.reduce(
-      (a, m) => a + (m.totalCost || 0),
+      (a, m) => a + Number(m.totalCost || 0),
       0,
     );
     const { materials, ...rest } = project;
