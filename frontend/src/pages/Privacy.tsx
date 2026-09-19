@@ -13,8 +13,17 @@ const SECTIONS: { title: string; text: string }[] = [
   { title: '6. Передача третьим лицам', text: '6.1. ПДн не передаются третьим лицам, за исключением: провайдеров хостинга и email-рассылок (по договору поручения), а также случаев, предусмотренных законом (по запросу уполномоченных органов). 6.2. Продажи ПДн не осуществляются.' },
   { title: '7. Права субъекта ПДн', text: '7.1. Пользователь вправе запросить сведения об обработке, потребовать уточнения, блокирования или уничтожения ПДн, отозвать согласие — направив запрос на email Оператора. 7.2. Отзыв согласия влечёт удаление аккаунта и данных в срок до 30 дней, за исключением данных, хранение которых обязательно по закону.' },
   { title: '8. Меры защиты и cookies', text: '8.1. Оператор применяет меры по ст. 19 152-ФЗ: шифрование передачи (TLS), хэширование паролей, разграничение доступа, журналы аудита. 8.2. Сервис использует cookie для поддержания сессии; отключение cookie может нарушить работу Сервиса.' },
-  { title: '9. Изменения политики', text: '9.1. Политика может изменяться; новая редакция публикуется в Сервисе. Дата редакции: 08.09.2026.' },
+  { title: '9. Изменения политики', text: '9.1. Политика может изменяться; новая редакция публикуется в Сервисе. Дата редакции: 19.09.2026.' },
 ];
+
+// ⭐ Реквизиты Оператора (заглушка под ООО — перед публикацией заменить на реальные).
+const OPERATOR_DETAILS = `Оператор персональных данных:
+ООО «КОНСУЛ»
+ИНН: 6311077769
+КПП: 631701001
+ОГРН: 1056311034680
+Адрес: 443001, Самарская Область, г.о. Самара, г. Самара, ул. Братьев Коростелевых, д. 268, кв. 78
+Email: info@frame-app.ru`;
 
 const Privacy: React.FC = () => {
   const navigate = useNavigate();
@@ -23,9 +32,21 @@ const Privacy: React.FC = () => {
       <Paper elevation={0} sx={{ maxWidth: 800, mx: 'auto', p: 4, borderRadius: 3, my: 4 }}>
         <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>Политика конфиденциальности</Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 3 }}>
-          Редакция от 08.09.2026 • Составлена в соответствии с ФЗ № 152-ФЗ
+          Последнее обновление: 19.09.2026 • Составлена в соответствии с ФЗ № 152-ФЗ
         </Typography>
-        {SECTIONS.map((s) => (
+        {SECTIONS.slice(0, -1).map((s) => (
+          <Box key={s.title} sx={{ mb: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{s.title}</Typography>
+            <Typography variant="body2" color="text.secondary">{s.text}</Typography>
+          </Box>
+        ))}
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Оператор персональных данных</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-line' }}>
+            {OPERATOR_DETAILS}
+          </Typography>
+        </Box>
+        {SECTIONS.slice(-1).map((s) => (
           <Box key={s.title} sx={{ mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{s.title}</Typography>
             <Typography variant="body2" color="text.secondary">{s.text}</Typography>

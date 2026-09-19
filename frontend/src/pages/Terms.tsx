@@ -15,6 +15,15 @@ const SECTIONS: { title: string; text: string }[] = [
   { title: '8. Заключительные положения', text: '8.1. Соглашение регулируется законодательством Российской Федерации. 8.2. Оператор вправе изменять Соглашение с публикацией новой редакции в Сервисе; продолжение использования означает принятие изменений. 8.3. Реквизиты Оператора: [УКАЗАТЬ: форма собственности, наименование, ИНН, ОГРН/ОГРНИП, адрес, email поддержки].' },
 ];
 
+// ⭐ Реквизиты Оператора (заглушка под ООО — перед публикацией заменить на реальные).
+const OPERATOR_DETAILS = `Оператор персональных данных:
+ООО «КОНСУЛ»
+ИНН: 6311077769
+КПП: 631701001
+ОГРН: 1056311034680
+Адрес: 443001, Самарская Область, г.о. Самара, г. Самара, ул. Братьев Коростелевых, д. 268, кв. 78
+Email: info@frame-app.ru`;
+
 const Terms: React.FC = () => {
   const navigate = useNavigate();
   return (
@@ -22,9 +31,21 @@ const Terms: React.FC = () => {
       <Paper elevation={0} sx={{ maxWidth: 800, mx: 'auto', p: 4, borderRadius: 3, my: 4 }}>
         <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>Условия обслуживания</Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 3 }}>
-          Редакция от 08.09.2026
+          Последнее обновление: 19.09.2026
         </Typography>
-        {SECTIONS.map((s) => (
+        {SECTIONS.slice(0, -1).map((s) => (
+          <Box key={s.title} sx={{ mb: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{s.title}</Typography>
+            <Typography variant="body2" color="text.secondary">{s.text}</Typography>
+          </Box>
+        ))}
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Оператор персональных данных</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-line' }}>
+            {OPERATOR_DETAILS}
+          </Typography>
+        </Box>
+        {SECTIONS.slice(-1).map((s) => (
           <Box key={s.title} sx={{ mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{s.title}</Typography>
             <Typography variant="body2" color="text.secondary">{s.text}</Typography>
