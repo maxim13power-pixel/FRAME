@@ -692,8 +692,8 @@ console.log(`✓ User foreman@frame.app (id=${foreman.id})`);
   // 10. Создаём материалы; для первых 6 — суммарно и фиксации за последние 7 дней.
   for (let i = 0; i < materialsData.length; i++) {
     const md = materialsData[i];
-    const unitPrice = md.workItem.price;
-    const materialUnitPrice = md.materialItem.price;
+    const unitPrice = Number(md.workItem.price);
+    const materialUnitPrice = Number(md.materialItem.price);
     const willHaveFixes = i < 6; // первые 6 с фиксациями
 
     let totalUsed = 0;

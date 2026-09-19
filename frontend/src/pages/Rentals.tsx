@@ -39,6 +39,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { getApiErrorMessage } from '../utils/errors';
+import { parseDecimal } from '../utils/decimal'; // 🔒 P1-3: Decimal с бэкенда — строка
 
 // Вспомогательная функция для форматирования даты (как в Objects)
 const formatDate = (dateStr: string) => {
@@ -71,9 +72,11 @@ const rentalProgress = (startDate: string, endDate: string) => {
 };
 
 // ⭐ Сумма для Chip: 15000 → «15 000», 15000.5 → «15 000,5»
-const formatMoney = (v: number) => {
-  const hasFraction = Math.abs(v % 1) > 0.001;
-  return v.toLocaleString('ru-RU', {
+const formatMoney = (v: number | string) => {
+  // 🔒 P1-3: price/totalSpent с бэкенда приходят Decimal-строкой → число для форматирования
+  const num = parseDecimal(v);
+  const hasFraction = Math.abs(num % 1) > 0.001;
+  return num.toLocaleString('ru-RU', {
     minimumFractionDigits: hasFraction ? 2 : 0,
     maximumFractionDigits: 2,
   });

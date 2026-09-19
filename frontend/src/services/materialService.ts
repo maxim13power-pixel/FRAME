@@ -1,6 +1,10 @@
 // frontend/src/services/materialService.ts
 // ⭐ Шаг 99: все запросы идут через единый api-инстанс — Bearer подставляет интерцептор.
+// ⭐ Шаг 103 (P1-3): бэкенд хранит деньги/объёмы в DECIMAL и отдаёт их СТРОКАМИ —
+// на границе API всё приводится к number (normalizeMaterial/normalizeFix), чтобы
+// UI продолжал работать с числами (иначе «100.00» + «50.00» = «100.0050.00»).
 import api from './api';
+import { parseDecimal } from '../utils/decimal';
 import type { ProjectData } from './projectService';
 
 // Снапшот расценки из справочника (приходит вместе с материалом)
@@ -58,12 +62,37 @@ export interface MaterialFixData {
   userId?: number | null;
 }
 
+// 🔒 P1-3: Decimal (строка с бэкенда) -> number на границе API
+const normalizePriceSnapshot = (p: PriceItemSnapshot): PriceItemSnapshot => ({
+  ...p,
+  price: parseDecimal(p.price),
+});
+
+const normalizeMaterial = (m: MaterialData): MaterialData => ({
+  ...m,
+  specQuantity: parseDecimal(m.specQuantity),
+  totalUsed: parseDecimal(m.totalUsed),
+  lastEntry: m.lastEntry == null ? null : parseDecimal(m.lastEntry),
+  unitPrice: parseDecimal(m.unitPrice),
+  totalCost: parseDecimal(m.totalCost),
+  materialUnitPrice: parseDecimal(m.materialUnitPrice),
+  materialTotalCost: parseDecimal(m.materialTotalCost),
+  progressPercent: parseDecimal(m.progressPercent),
+  priceItem: m.priceItem ? normalizePriceSnapshot(m.priceItem) : m.priceItem,
+  materialItem: m.materialItem ? normalizePriceSnapshot(m.materialItem) : m.materialItem,
+});
+
+const normalizeFix = (f: MaterialFixData): MaterialFixData => ({
+  ...f,
+  amount: parseDecimal(f.amount),
+});
+
 // Все материалы проекта
 export const fetchMaterialsByProject = async (
   projectId: number
 ): Promise<MaterialData[]> => {
   const response = await api.get(`/materials/project/${projectId}`);
-  return response.data;
+  return response.data.map(normalizeMaterial);
 };
 
 // История фиксаций одного материала
@@ -71,7 +100,7 @@ export const fetchFixesByMaterial = async (
   materialId: number
 ): Promise<MaterialFixData[]> => {
   const response = await api.get(`/materials/${materialId}/fixes`);
-  return response.data;
+  return response.data.map(normalizeFix);
 };
 
 // Создание материала
@@ -88,7 +117,7 @@ export const createMaterial = async (
   }
 ): Promise<MaterialData> => {
   const response = await api.post('/materials', data);
-  return response.data;
+  return normalizeMaterial(response.data);
 };
 
 // ⭐ Фиксация объёма (главная фича из старого кода)
@@ -97,7 +126,7 @@ export const addFix = async (
   data: { amount: number; note?: string }
 ): Promise<MaterialData> => {
   const response = await api.post(`/materials/${materialId}/fix`, data);
-  return response.data;
+  return normalizeMaterial(response.data);
 };
 
 // Обновление количества по спецификации
@@ -109,7 +138,7 @@ export const updateSpecQuantity = async (
     `/materials/${materialId}/spec`,
     { specQuantity }
   );
-  return response.data;
+  return normalizeMaterial(response.data);
 };
 
 // Переключение замка спецификации
@@ -120,7 +149,7 @@ export const toggleSpecLock = async (
     `/materials/${materialId}/lock`,
     {}
   );
-  return response.data;
+  return normalizeMaterial(response.data);
 };
 // ✏️ Правка последней фиксации (только младше 24 часов)
 export const editLastFix = async (
@@ -128,7 +157,7 @@ export const editLastFix = async (
   data: { amount: number; note?: string }
 ): Promise<MaterialData> => {
   const response = await api.patch(`/materials/${materialId}/last-fix`, data);
-  return response.data;
+  return normalizeMaterial(response.data);
 };
 // ✨ Создать новую расценку (+ опционально новую категорию)
 export const createPriceItemForMaterial = async (
@@ -146,7 +175,8 @@ export const createPriceItemForMaterial = async (
     '/materials/price-item',
     { item, newCategoryName, kind }
   );
-  return response.data;
+  // 🔒 P1-3: цена созданной расценки приходит Decimal-строкой
+  return { ...response.data, price: parseDecimal(response.data?.price) };
 };
 
 // ✏️ Полное редактирование материала
@@ -163,7 +193,7 @@ export const updateMaterial = async (
   }
 ): Promise<MaterialData> => {
   const response = await api.patch(`/materials/${materialId}`, data);
-  return response.data;
+  return normalizeMaterial(response.data);
 };
 // Удаление материала
 export const deleteMaterial = async (

@@ -13,8 +13,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { fetchDashboardSummary } from '../services/dashboardService';
 import type { DashboardSummary } from '../services/dashboardService';
+import { parseDecimal } from '../utils/decimal'; // 🔒 P1-3: бэкенд отдаёт Decimal строкой
 
-const fmtMoney = (v: number) => Math.round(v).toLocaleString('ru-RU');
+// 🔒 Шаг 103 (P1-3): принимаем number | string — Decimal с бэкенда приходит строкой
+const fmtMoney = (v: number | string) =>
+  Math.round(parseDecimal(v)).toLocaleString('ru-RU');
 const DAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const dayLabel = (iso: string) => DAY_LABELS[new Date(iso).getDay()];
 const daysLeft = (iso: string) => {

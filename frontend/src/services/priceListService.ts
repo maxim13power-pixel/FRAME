@@ -1,6 +1,9 @@
 // frontend/src/services/priceListService.ts
 // ⭐ Шаг 99: все запросы идут через единый api-инстанс — Bearer подставляет интерцептор.
+// ⭐ Шаг 103 (P1-3): цена расценки хранится в DECIMAL и приходит СТРОКОЙ —
+// на границе API приводим к number (normalizePriceItem / normalizeCategory).
 import api from './api';
+import { parseDecimal } from '../utils/decimal';
 
 // ============================================================
 // ТИПЫ ДАННЫХ (соответствуют моделям Prisma: PriceCategory, PriceItem)
@@ -27,6 +30,17 @@ export interface PriceItemData {
   updatedAt?: string;
 }
 
+// 🔒 P1-3: Decimal (строка с бэкенда) -> number на границе API
+const normalizePriceItem = (item: PriceItemData): PriceItemData => ({
+  ...item,
+  price: parseDecimal(item.price),
+});
+
+const normalizeCategory = (c: PriceCategoryData): PriceCategoryData => ({
+  ...c,
+  items: c.items ? c.items.map(normalizePriceItem) : c.items,
+});
+
 // ============================================================
 // КАТЕГОРИИ
 // ============================================================
@@ -38,7 +52,7 @@ export const fetchCategories = async (
   const response = await api.get('/price-list/categories', {
     params: kind ? { kind } : {},
   });
-  return response.data;
+  return response.data.map(normalizeCategory);
 };
 
 // Категории вместе с активными расценками (для страницы справочника)
@@ -49,7 +63,7 @@ export const fetchCategoriesWithItems = async (
   const response = await api.get('/price-list/categories/full', {
     params: kind ? { kind } : {},
   });
-  return response.data;
+  return response.data.map(normalizeCategory);
 };
 
 // Создать категорию
@@ -97,7 +111,7 @@ export const searchPriceItems = async (
       ...(kind ? { kind } : {}),
     },
   });
-  return response.data;
+  return response.data.map(normalizePriceItem);
 };
 
 // Создать расценку
@@ -113,7 +127,7 @@ export const createPriceItem = async (
   }
 ): Promise<PriceItemData> => {
   const response = await api.post('/price-list/items', data);
-  return response.data;
+  return normalizePriceItem(response.data);
 };
 
 // Обновить расценку
@@ -128,7 +142,7 @@ export const updatePriceItem = async (
   }>
 ): Promise<PriceItemData> => {
   const response = await api.patch(`/price-list/items/${id}`, data);
-  return response.data;
+  return normalizePriceItem(response.data);
 };
 
 // «Удалить» расценку (на самом деле бэкенд делает isActive: false —
@@ -138,5 +152,5 @@ export const deletePriceItem = async (
   id: number
 ): Promise<PriceItemData> => {
   const response = await api.delete(`/price-list/items/${id}`);
-  return response.data;
+  return normalizePriceItem(response.data);
 };
