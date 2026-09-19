@@ -14,9 +14,10 @@ export class InviteService {
   constructor(private prisma: PrismaService) {}
 
   // ⭐ Проверка доступа юзера к объекту
+  // Детерминированный резолв: объектный контекст → только общая запись (projectId: null).
   private async checkObjectAccess(objectId: number, userId: number) {
     const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId },
+      where: { userId, objectId, projectId: null },
     });
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');
