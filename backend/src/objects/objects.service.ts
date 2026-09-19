@@ -1,7 +1,7 @@
 // backend/src/objects/objects.service.ts
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { AccessRole } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateObjectDto } from './dto/create-object.dto';
 
 @Injectable()

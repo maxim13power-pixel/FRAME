@@ -9,7 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AccessRole, ChangeStatus, Prisma, Unit } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { ChangeTypeEnum, CreateChangeDto } from './dto/create-change.dto';
 import { ReviewActionEnum, ReviewChangeDto } from './dto/review-change.dto';
 
