@@ -63,9 +63,14 @@ export class MaterialsService {
     if (!project) {
       throw new NotFoundException('Проект не найден');
     }
-    const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId: project.objectId },
-    });
+    // ⭐ Детерминированный резолв: проектная запись → общая на объект.
+    const access =
+      (await this.prisma.objectAccess.findFirst({
+        where: { userId, objectId: project.objectId, projectId },
+      })) ??
+      (await this.prisma.objectAccess.findFirst({
+        where: { userId, objectId: project.objectId, projectId: null },
+      }));
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому проекту');
     }
@@ -76,14 +81,26 @@ export class MaterialsService {
   private async checkMaterialAccess(materialId: number, userId: number) {
     const material = await this.prisma.material.findUnique({
       where: { id: materialId },
-      select: { project: { select: { objectId: true } } },
+      select: {
+        projectId: true,
+        project: { select: { objectId: true } },
+      },
     });
     if (!material) {
       throw new NotFoundException('Материал не найден');
     }
-    const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId: material.project.objectId },
-    });
+    // ⭐ Детерминированный резолв: проектная запись → общая на объект.
+    const access =
+      (await this.prisma.objectAccess.findFirst({
+        where: {
+          userId,
+          objectId: material.project.objectId,
+          projectId: material.projectId,
+        },
+      })) ??
+      (await this.prisma.objectAccess.findFirst({
+        where: { userId, objectId: material.project.objectId, projectId: null },
+      }));
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому материалу');
     }

@@ -10,9 +10,10 @@ export class ObjectsService {
 
   // ⭐ Хелпер: проверяет доступ юзера к объекту. Кидает 403 если доступа нет.
   // Возвращает запись доступа (там роль — пригодится для проверок прав).
+  // Детерминированный резолв: объектный контекст требует общую запись (projectId: null).
   private async checkAccess(objectId: number, userId: number) {
     const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId },
+      where: { userId, objectId, projectId: null },
     });
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');

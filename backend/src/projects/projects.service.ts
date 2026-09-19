@@ -14,9 +14,10 @@ export class ProjectsService {
   constructor(private prisma: PrismaService) {}
 
   // ⭐ Хелпер: проверяет доступ к объекту. Кидает 403 если доступа нет.
+  // Детерминированный резолв: объектный контекст требует общую запись (projectId: null).
   private async checkObjectAccess(objectId: number, userId: number) {
     const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId },
+      where: { userId, objectId, projectId: null },
     });
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');
@@ -24,7 +25,8 @@ export class ProjectsService {
     return access;
   }
 
-  // ⭐ Хелпер: проверяет доступ к объекту ЧЕРЕЗ проект (находит objectId проекта)
+  // ⭐ Хелпер: проверяет доступ к объекту ЧЕРЕЗ проект (находит objectId проекта).
+  // Детерминированный резолв: сначала проектная запись (projectId), потом общая (null).
   private async checkProjectAccess(projectId: number, userId: number) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -33,7 +35,17 @@ export class ProjectsService {
     if (!project) {
       throw new NotFoundException('Проект не найден');
     }
-    return this.checkObjectAccess(project.objectId, userId);
+    const access =
+      (await this.prisma.objectAccess.findFirst({
+        where: { userId, objectId: project.objectId, projectId },
+      })) ??
+      (await this.prisma.objectAccess.findFirst({
+        where: { userId, objectId: project.objectId, projectId: null },
+      }));
+    if (!access) {
+      throw new ForbiddenException('Нет доступа к этому объекту');
+    }
+    return access;
   }
 
   // ⭐ Нужно ли скрывать цены для этой записи доступа

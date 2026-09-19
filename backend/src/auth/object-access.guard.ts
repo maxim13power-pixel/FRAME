@@ -91,10 +91,15 @@ export class ObjectAccessGuard implements CanActivate {
       return true;
     }
 
-    // Проверяем что у юзера есть доступ к объекту
-    const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId },
-    });
+    // ⭐ Детерминированный резолв: сначала проектная запись доступа (с projectId),
+    // потом общая на объект (projectId: null). Никакого «первого попавшегося».
+    const access =
+      (await this.prisma.objectAccess.findFirst({
+        where: { userId, objectId, projectId: projectId ?? null },
+      })) ??
+      (await this.prisma.objectAccess.findFirst({
+        where: { userId, objectId, projectId: null },
+      }));
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
