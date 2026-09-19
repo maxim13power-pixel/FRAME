@@ -16,9 +16,10 @@ export class AccessService {
   constructor(private prisma: PrismaService) {}
 
   // ⭐ Хелпер: получить запись доступа юзера к объекту (или кинуть 403)
+  // Детерминированный резолв: объектный контекст → только общая запись (projectId: null).
   private async getMyAccess(objectId: number, userId: number) {
     const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId },
+      where: { userId, objectId, projectId: null },
     });
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');
