@@ -47,10 +47,12 @@ foreman@frame.app / +79990000000 (Прораб), customer@frame.app / +799900000
   модель Rental, CRUD+extend (totalSpent инкремент), страница в стиле Objects
   (баннер ≤10 дней, Σ-чип, прогресс, продление с ценой, ConfirmDialog).
 - Проведено 5 точечных аудитов + триаж внешнего (все «критичные» внешнего = устаревшие).
+- ✅ P1-1 Baseline-миграция создана (20260920000000_baseline_all_tables, 12 таблиц + 5 enum),
+  история миграций сконсолидирована — чистая БД поднимается через `npx prisma migrate deploy`.
 
 ## 3. P1 — ПЛАН ЧАТА №10 (по порядку)
-1. Baseline-миграции: 9 таблиц вне migrations → prisma migrate diff + resolve --applied,
-   либо задокументировать db push в деплое. Иначе чистая БД = P2021.
+1. ✅ ГОТОВО: Baseline-миграции (prisma migrate diff --from-empty → одна baseline-миграция,
+   старые add_models/float_to_decimal/add_indexes заменены; чистая БД = migrate deploy OK).
 2. materials.service.update(): FOR UPDATE + totalCost от заблокированного totalUsed;
    то же в updateSpecQty; enforce isSpecLocked (409); lastEntry/lastEntryDate в editLastFix;
    orderBy tie-break [{fixedAt desc},{id desc}].
