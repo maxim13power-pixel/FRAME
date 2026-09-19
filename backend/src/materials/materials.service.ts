@@ -110,9 +110,11 @@ export class MaterialsService {
   async findFixes(materialId: number, userId: number) {
     // ⭐ Проверяем доступ к материалу
     await this.checkMaterialAccess(materialId, userId);
+    // 🔒 P1-2: tie-break по id — две фиксации могут получить одинаковый fixedAt,
+    // без второго ключа порядок на клиенте «прыгает» между запросами.
     return this.prisma.materialFix.findMany({
       where: { materialId },
-      orderBy: { fixedAt: 'desc' },
+      orderBy: [{ fixedAt: 'desc' }, { id: 'desc' }],
     });
   }
 
@@ -244,16 +246,38 @@ export class MaterialsService {
         );
       }
     }
-    const material = await this.prisma.material.findUnique({ where: { id } });
-    if (!material) throw new NotFoundException('Материал не найден');
-    const progress =
-      specQuantity > 0
-        ? Math.round((material.totalUsed / specQuantity) * 100)
-        : 0;
-    const updated = await this.prisma.material.update({
-      where: { id },
-      data: { specQuantity, progressPercent: progress },
-      include: MATERIAL_INCLUDE,
+    // 🔒 P1-2 (гонки): транзакция + SELECT ... FOR UPDATE на строку материала —
+    // сериализуемся с addFix / editLastFix / update. Прогресс считаем от
+    // ЗАБЛОКИРОВАННОГО totalUsed, а не от значения, прочитанного до транзакции
+    // (иначе параллельная фиксация теряется в расчёте — lost update).
+    // numeric-колонки Postgres приходят как Prisma.Decimal → ниже везде Number(...).
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const [material] = await tx.$queryRaw<
+        {
+          id: number;
+          totalUsed: number;
+          specQuantity: number;
+          isSpecLocked: boolean;
+        }[]
+      >`SELECT id, "totalUsed", "specQuantity", "isSpecLocked" FROM "materials" WHERE id = ${id} FOR UPDATE`;
+
+      if (!material) throw new NotFoundException('Материал не найден');
+
+      // 🔒 Спецификация заблокирована — менять объём по спеке нельзя (409 Conflict)
+      if (material.isSpecLocked) {
+        throw new ConflictException('Спецификация заблокирована');
+      }
+
+      // ⭐ Пересчёт прогресса от ЗАБЛОКИРОВАННОГО totalUsed
+      const totalUsed = Number(material.totalUsed);
+      const progress =
+        specQuantity > 0 ? Math.round((totalUsed / specQuantity) * 100) : 0;
+
+      return tx.material.update({
+        where: { id },
+        data: { specQuantity, progressPercent: progress },
+        include: MATERIAL_INCLUDE,
+      });
     });
     return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
   }
@@ -366,6 +390,10 @@ export class MaterialsService {
         data: {
           totalUsed: newTotal,
           lastEntry: dto.amount,
+          // 🔒 P1-2: правка последней фиксации должна обновлять и «когда последняя
+          // фиксация» — раньше lastEntry/lastEntryDate оставались от старого значения.
+          // Берём дату самой фиксации (fixedAt при правке не меняется), а не new Date().
+          lastEntryDate: lastFix.fixedAt,
           progressPercent: progress,
           totalCost: newTotal * Number(material.unitPrice),
           materialTotalCost: newTotal * Number(material.materialUnitPrice),
@@ -391,76 +419,108 @@ export class MaterialsService {
       }
     }
 
-    const material = await this.prisma.material.findUnique({ where: { id } });
-    if (!material) throw new NotFoundException('Материал не найден');
+    // 🔒 P1-2 (гонки): вся логика внутри транзакции с SELECT ... FOR UPDATE на
+    // строку материала — сериализуемся с addFix / editLastFix / updateSpecQty.
+    // totalCost и materialTotalCost считаем от ЗАБЛОКИРОВАННОГО totalUsed, а не от
+    // значения, прочитанного до транзакции (иначе параллельная фиксация «теряется»).
+    // numeric-колонки Postgres приходят как Prisma.Decimal → ниже везде Number(...).
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const [material] = await tx.$queryRaw<
+        {
+          id: number;
+          totalUsed: number;
+          specQuantity: number;
+          isSpecLocked: boolean;
+          priceItemId: number | null;
+          unitPrice: number;
+          materialItemId: number | null;
+          materialUnitPrice: number;
+        }[]
+      >`SELECT id, "totalUsed", "specQuantity", "isSpecLocked", "priceItemId", "unitPrice", "materialItemId", "materialUnitPrice"
+          FROM "materials" WHERE id = ${id} FOR UPDATE`;
 
-    // Смена расценки РАБОТЫ
-    let unitPrice = material.unitPrice;
-    let priceItemId: number | null = material.priceItemId;
-    if (
-      dto.priceItemId !== undefined &&
-      dto.priceItemId !== material.priceItemId
-    ) {
-      if (dto.priceItemId === null) {
-        unitPrice = 0;
-        priceItemId = null;
-      } else {
-        const priceItem = await this.prisma.priceItem.findUnique({
-          where: { id: dto.priceItemId },
-        });
-        if (!priceItem) throw new NotFoundException('Расценка не найдена');
-        if (!priceItem.isActive)
-          throw new BadRequestException('Расценка неактивна');
-        unitPrice = priceItem.price;
-        priceItemId = priceItem.id;
+      if (!material) throw new NotFoundException('Материал не найден');
+
+      // 🔒 Спецификация заблокирована — менять specQuantity нельзя (409 Conflict).
+      // Если клиент прислал то же значение — это не изменение, блокировать не нужно.
+      if (
+        material.isSpecLocked &&
+        dto.specQuantity !== undefined &&
+        Number(dto.specQuantity) !== Number(material.specQuantity)
+      ) {
+        throw new ConflictException('Спецификация заблокирована');
       }
-    }
 
-    // ⭐ Смена расценки МАТЕРИАЛА
-    let materialUnitPrice = material.materialUnitPrice;
-    let materialItemId: number | null = material.materialItemId;
-    if (
-      dto.materialItemId !== undefined &&
-      dto.materialItemId !== material.materialItemId
-    ) {
-      if (dto.materialItemId === null) {
-        materialUnitPrice = 0;
-        materialItemId = null;
-      } else {
-        const materialItem = await this.prisma.priceItem.findUnique({
-          where: { id: dto.materialItemId },
-        });
-        if (!materialItem)
-          throw new NotFoundException('Расценка материала не найдена');
-        if (!materialItem.isActive)
-          throw new BadRequestException('Расценка материала неактивна');
-        materialUnitPrice = materialItem.price;
-        materialItemId = materialItem.id;
+      // Смена расценки РАБОТЫ (сравниваем с заблокированной строкой)
+      let unitPrice = Number(material.unitPrice);
+      let priceItemId: number | null = material.priceItemId;
+      if (
+        dto.priceItemId !== undefined &&
+        dto.priceItemId !== material.priceItemId
+      ) {
+        if (dto.priceItemId === null) {
+          unitPrice = 0;
+          priceItemId = null;
+        } else {
+          const priceItem = await tx.priceItem.findUnique({
+            where: { id: dto.priceItemId },
+          });
+          if (!priceItem) throw new NotFoundException('Расценка не найдена');
+          if (!priceItem.isActive)
+            throw new BadRequestException('Расценка неактивна');
+          unitPrice = priceItem.price;
+          priceItemId = priceItem.id;
+        }
       }
-    }
 
-    const newSpecQty = dto.specQuantity ?? material.specQuantity;
-    const progress =
-      newSpecQty > 0 ? Math.round((material.totalUsed / newSpecQty) * 100) : 0;
+      // ⭐ Смена расценки МАТЕРИАЛА
+      let materialUnitPrice = Number(material.materialUnitPrice);
+      let materialItemId: number | null = material.materialItemId;
+      if (
+        dto.materialItemId !== undefined &&
+        dto.materialItemId !== material.materialItemId
+      ) {
+        if (dto.materialItemId === null) {
+          materialUnitPrice = 0;
+          materialItemId = null;
+        } else {
+          const materialItem = await tx.priceItem.findUnique({
+            where: { id: dto.materialItemId },
+          });
+          if (!materialItem)
+            throw new NotFoundException('Расценка материала не найдена');
+          if (!materialItem.isActive)
+            throw new BadRequestException('Расценка материала неактивна');
+          materialUnitPrice = materialItem.price;
+          materialItemId = materialItem.id;
+        }
+      }
 
-    const updated = await this.prisma.material.update({
-      where: { id },
-      data: {
-        name: dto.name?.trim(),
-        article:
-          dto.article !== undefined ? dto.article.trim() || null : undefined,
-        unit: dto.unit ? (dto.unit as Unit) : undefined,
-        note: dto.note !== undefined ? dto.note.trim() || null : undefined,
-        specQuantity: dto.specQuantity,
-        progressPercent: progress,
-        priceItemId,
-        unitPrice,
-        totalCost: material.totalUsed * unitPrice,
-        materialItemId,
-        materialUnitPrice,
-        materialTotalCost: material.totalUsed * materialUnitPrice,
-      },
-      include: MATERIAL_INCLUDE,
+      // ⭐ totalCost / materialTotalCost — от ЗАБЛОКИРОВАННОГО totalUsed
+      const totalUsed = Number(material.totalUsed);
+      const newSpecQty = dto.specQuantity ?? Number(material.specQuantity);
+      const progress =
+        newSpecQty > 0 ? Math.round((totalUsed / newSpecQty) * 100) : 0;
+
+      return tx.material.update({
+        where: { id },
+        data: {
+          name: dto.name?.trim(),
+          article:
+            dto.article !== undefined ? dto.article.trim() || null : undefined,
+          unit: dto.unit ? (dto.unit as Unit) : undefined,
+          note: dto.note !== undefined ? dto.note.trim() || null : undefined,
+          specQuantity: dto.specQuantity,
+          progressPercent: progress,
+          priceItemId,
+          unitPrice,
+          totalCost: totalUsed * unitPrice,
+          materialItemId,
+          materialUnitPrice,
+          materialTotalCost: totalUsed * materialUnitPrice,
+        },
+        include: MATERIAL_INCLUDE,
+      });
     });
     return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
   }
