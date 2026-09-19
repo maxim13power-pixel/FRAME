@@ -30,6 +30,8 @@ async function bootstrap() {
     credentials: true,
   });
 
+  app.enableShutdownHooks();
+
   await app.listen(Number(process.env.PORT) || 3000, '0.0.0.0');
 }
 bootstrap();

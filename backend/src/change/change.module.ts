@@ -3,7 +3,7 @@
 import { Module } from '@nestjs/common';
 import { ChangeService } from './change.service';
 import { ChangeController } from './change.controller';
-import { PrismaModule } from '../../prisma/prisma.module';
+import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
   imports: [PrismaModule],

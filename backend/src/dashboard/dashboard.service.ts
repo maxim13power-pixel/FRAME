@@ -1,6 +1,6 @@
 // backend/src/dashboard/dashboard.service.ts
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import type { DashboardSummaryDto } from './dashboard.types';
 
 // Сырые строки из $queryRaw приходят в snake_case — мапим во внутренний тип.

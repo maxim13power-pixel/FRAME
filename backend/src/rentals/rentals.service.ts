@@ -2,7 +2,7 @@
 // ⭐ Раздел «Аренда»: личное оборудование ПОЛЬЗОВАТЕЛЯ (userId из JWT).
 // Никаких ролей/ObjectAccess/объектов — владелец = автор запроса.
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateRentalDto } from './dto/create-rental.dto';
 import { ExtendRentalDto } from './dto/extend-rental.dto';
 import { UpdateRentalDto } from './dto/update-rental.dto';
