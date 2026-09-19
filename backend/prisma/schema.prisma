@@ -63,6 +63,7 @@ model Project {
   note        String?
 
   @@index([endDate])
+  @@index([objectId])
 }
 
 enum Role {
@@ -172,6 +173,7 @@ model PriceItem {
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
+  @@index([categoryId, ownerId])
   @@map("price_items")
 }
 
@@ -198,6 +200,7 @@ model ObjectAccess {
   createdAt  DateTime   @default(now())
 
   @@unique([userId, objectId, projectId])
+  @@index([objectId])
   @@map("object_access")
 }
 
@@ -224,6 +227,7 @@ model ChangeRequest {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
+  @@index([projectId, createdAt])
   @@map("change_requests")
 }
 
@@ -246,6 +250,7 @@ model InviteToken {
   object     Object       @relation(fields: [objectId], references: [id], onDelete: Cascade)
   creator    User         @relation("CreatedInvites", fields: [createdBy], references: [id], onDelete: Cascade)
 
+  @@index([objectId])
   @@map("invite_tokens")
 }
 
@@ -262,7 +267,6 @@ model PasswordResetToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@index([token])
   @@map("password_reset_tokens")
 }
 
