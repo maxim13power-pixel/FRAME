@@ -55,6 +55,10 @@ foreman@frame.app / +79990000000 (Прораб), customer@frame.app / +799900000
   D) frontend railway.json: `npm run preview` → `serve -s dist -l tcp://0.0.0.0:$PORT` (SPA-fallback);
   docker-compose healthcheck → `pg_isready -U frame_user -d frame_db`; backend .gitignore +`*.tsbuildinfo`;
   удалён мусор из репо (Stop=SilentlyContinue, cline-diff-frontend.txt, full-structure.txt, fe-dev.log, lint-fe.log).
+- ✅ Мобильный UX (ветка cline-mobile-summary): сводная плашка «Смета/Факт/Освоено» в Materials.tsx
+  скрывается при скролле вниз и выезжает при скролле вверх — хук useScrollDirection.ts (passive + rAF,
+  порог 8px, cleanup при unmount), transform: translateY + transition 0.2s ease; скрытие только на мобилке
+  (<900px, десктоп всегда видим); tsc -b и npm run build → 0.
 
 
 ## 3. P1 — ПЛАН ЧАТА №10 (по порядку)

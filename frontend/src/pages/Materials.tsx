@@ -47,6 +47,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import { useScrollDirection } from '../hooks/useScrollDirection';
 import {
   fetchMaterialsByProject,
   createMaterial,
@@ -86,6 +87,7 @@ const Materials: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
+  const direction = useScrollDirection();
 
   const [materials, setMaterials] = useState<MaterialData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1201,6 +1203,8 @@ onClose={() => setFilterAnchorEl(null)}
       px: 2,
       py: 1,
       border: '1px solid #e0e0e0',
+      transform: direction === 'down' ? 'translateY(120%)' : 'translateY(0)',
+      transition: 'transform 0.2s ease',
     }}
   >
     {hidePrices ? (
