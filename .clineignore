@@ -6,3 +6,59 @@ dist
 *.map
 coverage
 .next
+
+# Сгенерированный Prisma клиент — ОГРОМНЫЙ, бесполезен агенту
+backend/generated/
+backend/node_modules/.prisma/
+
+# Build-кэши (только что обсуждали — ловушка с бэкендом!)
+*.tsbuildinfo
+
+# Миграции (если не работаем с ними в этой задаче)
+# раскомментируй если нужно:
+# backend/prisma/migrations/
+
+# Бинарные ассеты (картинки, шрифты — агенту не нужны)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# Большие файлы (бэкапы, диффы, дампы)
+*.sql
+*.bak
+*.old
+*.orig
+*.zip
+*.rar
+*.tar.gz
+_diffs/
+_backups/
+*-diff*.txt
+full-structure.txt
+cline-diff-*.txt
+
+# Логи
+*.log
+fe-dev.log
+lint-fe.log
+
+# Системный мусор (нашёл Qwen в аудите)
+Stop=SilentlyContinue
+
+# IDE и агенты
+.vscode/
+.idea/
+.cline/
+.agents/
+
+# Временные копии (мусор из аудита)
+* copy*.tsx
+* copy*.ts
+* copy*.txt
