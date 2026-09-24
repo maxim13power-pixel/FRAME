@@ -49,6 +49,13 @@ foreman@frame.app / +79990000000 (Прораб), customer@frame.app / +799900000
 - Проведено 5 точечных аудитов + триаж внешнего (все «критичные» внешнего = устаревшие).
 - ✅ P1-1 Baseline-миграция создана (20260920000000_baseline_all_tables, 12 таблиц + 5 enum),
   история миграций сконсолидирована — чистая БД поднимается через `npx prisma migrate deploy`.
+- ✅ Подготовка к первому деплою завершена (блокеры B/C/D + мелочи):
+  B) backend/.env.example = BREVO_SMTP_HOST/PORT/USER/PASS + BREVO_FROM_EMAIL (убраны неиспользуемые BREVO_API_KEY/BREVO_SENDER_*);
+  C) frontend/.env.example = VITE_API_BASE_URL/VITE_APP_URL/VITE_API_URL(override)/VITE_SMARTCAPTCHA_CLIENT_KEY;
+  D) frontend railway.json: `npm run preview` → `serve -s dist -l tcp://0.0.0.0:$PORT` (SPA-fallback);
+  docker-compose healthcheck → `pg_isready -U frame_user -d frame_db`; backend .gitignore +`*.tsbuildinfo`;
+  удалён мусор из репо (Stop=SilentlyContinue, cline-diff-frontend.txt, full-structure.txt, fe-dev.log, lint-fe.log).
+
 
 ## 3. P1 — ПЛАН ЧАТА №10 (по порядку)
 1. ✅ ГОТОВО: Baseline-миграции (prisma migrate diff --from-empty → одна baseline-миграция,
@@ -57,7 +64,7 @@ foreman@frame.app / +79990000000 (Прораб), customer@frame.app / +799900000
    то же в updateSpecQty; enforce isSpecLocked (409); lastEntry/lastEntryDate в editLastFix;
    orderBy tie-break [{fixedAt desc},{id desc}].
 3. Деньги Float → Decimal(14,2) (объёмы 14,3) — отдельный шаг с бэкапом БД.
-4. Деплой-блокеры: tsconfig.build.json rootDir=src (dist/main.js!); .env.example×2;
+4. ✅ ГОТОВО: Деплой-блокеры: tsconfig.build.json rootDir=src (dist/main.js!); .env.example×2;
    railway.json×2; GET /health + enableShutdownHooks; postinstall prisma generate;
    engines node>=20; SPA-fallback для BrowserRouter; docker-compose healthcheck.
 5. ObjectAccess: детерминированный резолв (проектная→общая) во ВСЕХ сервисах и guard;
