@@ -68,6 +68,11 @@ import type { PriceItemData } from '../services/priceListService';
 import { fetchCategoriesWithItems } from '../services/priceListService';
 import { getApiErrorText } from '../utils/errors';
 
+// ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено».
+const BOTTOM_NAV_HEIGHT = 56; // высота BottomNav (MUI BottomNavigation по умолчанию)
+const SUMMARY_BAR_BOTTOM = BOTTOM_NAV_HEIGHT + 8; // плашка над меню с зазором 8px
+const SUMMARY_LIST_CLEARANCE_PX = 64; // доп. отступ списка, чтобы кнопка «Зафиксировать объём» не пряталась под плашку
+
 const UNIT_OPTIONS = [
   { value: 'PIECE', label: 'шт' },
   { value: 'METER', label: 'м' },
@@ -1087,7 +1092,7 @@ onClose={() => setFilterAnchorEl(null)}
 
   {/* Карточки для мобилки */}
   {isMobile && (
-    <Stack spacing={1}>
+    <Stack spacing={1} sx={{ pb: direction === 'none' ? 0 : `${SUMMARY_LIST_CLEARANCE_PX}px` }}>
       {sortedMaterials.length > 0 ? (
         sortedMaterials.map((m) => (
             <Paper key={m.id} sx={{ p: 1.5, borderRadius: 2 }}>
@@ -1193,17 +1198,21 @@ onClose={() => setFilterAnchorEl(null)}
   <Paper
     elevation={8}
     sx={{
-      position: 'fixed',
-      bottom: 64,
+      position: direction === 'none' ? 'static' : 'fixed',
+      bottom: SUMMARY_BAR_BOTTOM,
       left: 8,
       right: 8,
-      zIndex: 1100,
+      zIndex: 9, // < zIndex BottomNav (10) — при скролле плашка уезжает ПОД меню
       borderRadius: 2,
       bgcolor: '#fff',
       px: 2,
       py: 1,
       border: '1px solid #e0e0e0',
-      transform: direction === 'down' ? 'translateY(120%)' : 'translateY(0)',
+      mt: direction === 'none' ? 1 : 0,
+      transform:
+        direction === 'down'
+          ? `translateY(calc(100% + ${SUMMARY_BAR_BOTTOM}px))`
+          : 'translateY(0)',
       transition: 'transform 0.2s ease',
     }}
   >

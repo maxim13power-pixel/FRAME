@@ -59,6 +59,12 @@ foreman@frame.app / +79990000000 (Прораб), customer@frame.app / +799900000
   скрывается при скролле вниз и выезжает при скролле вверх — хук useScrollDirection.ts (passive + rAF,
   порог 8px, cleanup при unmount), transform: translateY + transition 0.2s ease; скрытие только на мобилке
   (<900px, десктоп всегда видим); tsc -b и npm run build → 0.
+- ✅ Мобильный UX v2 (ветка cline-mobile-summary-v2): плашка «Смета/Факт/Освоено» больше не
+  перекрывает BottomNav — z-index 9 (< BottomNav 10), bottom = 56+8px, при скролле вниз уезжает
+  translateY(calc(100% + 64px)) ПОД меню; короткий контент без скролла → useScrollDirection
+  возвращает 'none' (scrollHeight ≤ innerHeight) и плашка становится position: static, поэтому
+  кнопка «Зафиксировать объём» всегда доступна; добавлен отступ списка, чтобы последняя карточка
+  не пряталась под плашку; tsc -b и npm run build → 0.
 
 
 ## 3. P1 — ПЛАН ЧАТА №10 (по порядку)
