@@ -8,18 +8,14 @@ ListItemIcon, ListItemText, Divider, Tooltip, Avatar,//InputAdornment
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
-import EngineeringIcon from '@mui/icons-material/Engineering';
-import InventoryIcon from '@mui/icons-material/Inventory';
 import SellIcon from '@mui/icons-material/Sell';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import HelpIcon from '@mui/icons-material/Help';
 import HandshakeIcon from '@mui/icons-material/Handshake';
-import AnalyticsIcon from '@mui/icons-material/Analytics';
-import AssessmentIcon from '@mui/icons-material/Assessment';
-import PeopleIcon from '@mui/icons-material/People';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import PersonIcon from '@mui/icons-material/Person';
+import LogoutIcon from '@mui/icons-material/Logout';
 import { Outlet,useNavigate, useLocation } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import BottomNav from '../components/BottomNav';
@@ -37,14 +33,9 @@ const menuColors = [
 const menuItems = [
   { label: 'Главная', path: '/', icon: <SpaceDashboardIcon /> },
   { label: 'Объекты', path: '/objects', icon: <HomeWorkIcon /> },
-  { label: 'Бригады', path: '/brigades', icon: <EngineeringIcon /> },
-  { label: 'Склад', path: '/warehouse', icon: <InventoryIcon /> },
   { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
   { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
-  { label: 'Аналитика', path: '/analytics', icon: <AnalyticsIcon /> },
-  { label: 'Отчеты', path: '/reports', icon: <AssessmentIcon /> },
-  { label: 'Пользователи', path: '/users', icon: <PeopleIcon /> },
   { label: 'Настройки', path: '/settings', icon: <SettingsIcon /> },
   { label: 'Помощь', path: '/help', icon: <HelpIcon /> },
 ];
@@ -58,10 +49,16 @@ const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [bottomNavValue, setBottomNavValue] = useState('objects');
-  const { user } = useAuth(); // ⭐ для иконки профиля в свёрнутом rail
+  const { user, logout } = useAuth(); // ⭐ для иконки профиля в свёрнутом rail
 
   const handleNavigate = (path: string) => {
     navigate(path);
+  };
+
+  // ⭐ Выход прямо из меню профиля (не только через страницу /users)
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
   };
 
   const handleBottomNavChange = (newValue: string) => {
@@ -163,6 +160,19 @@ const location = useLocation();
           secondaryTypographyProps={{ noWrap: true }}
         />
       </ListItemButton>
+      {/* ⭐ Выход доступен прямо из меню профиля (не только через /users) */}
+      <ListItemButton
+        onClick={handleLogout}
+        sx={{ py: 1.5, px: 2, gap: 1.5, '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.08)' } }}
+      >
+        <ListItemIcon sx={{ minWidth: 40, color: '#d32f2f' }}>
+          <LogoutIcon />
+        </ListItemIcon>
+        <ListItemText
+          primary="Выйти"
+          primaryTypographyProps={{ sx: { fontWeight: 600, color: '#d32f2f' } }}
+        />
+      </ListItemButton>
     </Box>
   </Drawer>
    )}
@@ -234,6 +244,11 @@ const location = useLocation();
                 <Avatar sx={{ width: 32, height: 32, bgcolor: '#1976d2', fontSize: '0.9rem', fontWeight: 700 }}>
                   {user?.name?.[0]?.toUpperCase() || <PersonIcon />}
                 </Avatar>
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Выйти" placement="right" arrow>
+              <IconButton onClick={handleLogout} aria-label="Выйти" sx={{ color: '#d32f2f' }}>
+                <LogoutIcon />
               </IconButton>
             </Tooltip>
           </Box>

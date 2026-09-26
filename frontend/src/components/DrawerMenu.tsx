@@ -6,18 +6,14 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import PersonIcon from '@mui/icons-material/Person';
 import HomeIcon from '@mui/icons-material/Home';
-import EngineeringIcon from '@mui/icons-material/Engineering';
-import WarehouseIcon from '@mui/icons-material/Warehouse';
 import SellIcon from '@mui/icons-material/Sell';
 import HandshakeIcon from '@mui/icons-material/Handshake';
-import AnalyticsIcon from '@mui/icons-material/Analytics';
-import AssessmentIcon from '@mui/icons-material/Assessment';
-import GroupIcon from '@mui/icons-material/Group';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import HelpIcon from '@mui/icons-material/Help';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
+import LogoutIcon from '@mui/icons-material/Logout';
 import Logo from './Logo';
 
 interface DrawerMenuProps {
@@ -29,25 +25,27 @@ interface DrawerMenuProps {
 const menuItems = [
   { label: 'Главная', path: '/', icon: <SpaceDashboardIcon /> },
   { label: 'Объекты', path: '/objects', icon: <HomeIcon /> },
-  { label: 'Бригады', path: '/brigades', icon: <EngineeringIcon /> },
-  { label: 'Склад', path: '/warehouse', icon: <WarehouseIcon /> },
   { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
   { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
-  { label: 'Аналитика', path: '/analytics', icon: <AnalyticsIcon /> },
-  { label: 'Отчеты', path: '/reports', icon: <AssessmentIcon /> },
-  { label: 'Пользователи', path: '/users', icon: <GroupIcon /> },
   { label: 'Настройки', path: '/settings', icon: <SettingsIcon /> },
   { label: 'Помощь', path: '/help', icon: <HelpIcon /> },
 ];
 
 const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   // ⭐ Шаг 67: клик по профилю → страница «Пользователи» (там аккаунт и выход)
   const handleGoProfile = () => {
     onClose();
     onNavigate('/users');
+  };
+
+  // ⭐ Выход прямо из меню профиля (не только через страницу /users)
+  const handleLogout = () => {
+    onClose();
+    logout();
+    onNavigate('/login');
   };
 
   return (
@@ -95,6 +93,16 @@ const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) =>
                 {user?.email || user?.phone || ''}
               </Typography>
             </Box>
+          </ListItemButton>
+          {/* ⭐ Выход доступен прямо из меню профиля (не только через /users) */}
+          <ListItemButton
+            onClick={handleLogout}
+            sx={{ py: 1.5, px: 2, gap: 1.5, '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.08)' } }}
+          >
+            <ListItemIcon sx={{ minWidth: 36, color: '#d32f2f' }}>
+              <LogoutIcon />
+            </ListItemIcon>
+            <ListItemText primary="Выйти" primaryTypographyProps={{ sx: { fontWeight: 600, color: '#d32f2f' } }} />
           </ListItemButton>
         </Box>
       </Box>
