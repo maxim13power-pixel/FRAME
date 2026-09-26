@@ -12,6 +12,7 @@ import { AccessModule } from './access/access.module';
 import { InviteModule } from './invite/invite.module';
 import { ChangeModule } from './change/change.module'; // ⭐ P0-6
 import { RentalsModule } from './rentals/rentals.module'; // ⭐ Аренда
+import { UsersModule } from './users/users.module'; // ⭐ Участники (сводный список)
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -28,6 +29,7 @@ import { RentalsModule } from './rentals/rentals.module'; // ⭐ Аренда
     InviteModule,
     ChangeModule, // ⭐ P0-6
     RentalsModule, // ⭐ Аренда
+    UsersModule, // ⭐ Участники (сводный список)
   ],
   controllers: [AppController],
   providers: [AppService],

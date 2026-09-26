@@ -16,7 +16,7 @@ const DEFAULT_TITLES: { prefix: string; title: string }[] = [
   { prefix: '/calculators', title: 'Калькуляторы' },
   { prefix: '/help', title: 'Помощь' },
   { prefix: '/settings', title: 'Настройки' },
-  { prefix: '/users', title: 'Пользователи' },
+  { prefix: '/users', title: 'Участники' },
   { prefix: '/brigades', title: 'Бригады' },
   { prefix: '/warehouse', title: 'Склад' },
   { prefix: '/analytics', title: 'Аналитика' },
