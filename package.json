@@ -1,4 +1,9 @@
 {
+  "name": "frame",
+  "private": true,
+  "scripts": {
+    "verify": "npm --prefix backend run build && npm --prefix frontend run build"
+  },
   "dependencies": {
     "@mui/icons-material": "^7.3.8"
   }

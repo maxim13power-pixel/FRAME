@@ -3,12 +3,9 @@ import { BottomNavigation, BottomNavigationAction, Paper } from '@mui/material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import HomeIcon from '@mui/icons-material/Home';
-import EngineeringIcon from '@mui/icons-material/Engineering';
 import SettingsIcon from '@mui/icons-material/Settings';
-import PersonIcon from '@mui/icons-material/Person';
 import SellIcon from '@mui/icons-material/Sell';
 import CalculateIcon from '@mui/icons-material/Calculate';
-import WarehouseIcon from '@mui/icons-material/Warehouse';
 import HelpIcon from '@mui/icons-material/Help';
 import { safeParse } from '../utils/storage';
 
@@ -21,16 +18,13 @@ export const ALL_BOTTOM_TABS: {
 }[] = [
   { value: 'home', label: 'Главная', path: '/', icon: SpaceDashboardIcon },
   { value: 'objects', label: 'Объекты', path: '/objects', icon: HomeIcon },
-  { value: 'brigades', label: 'Бригады', path: '/brigades', icon: EngineeringIcon },
   { value: 'price-list', label: 'Цены', path: '/price-list', icon: SellIcon },
   { value: 'calculators', label: 'Калькуляторы', path: '/calculators', icon: CalculateIcon },
-  { value: 'warehouse', label: 'Склад', path: '/warehouse', icon: WarehouseIcon },
   { value: 'help', label: 'Помощь', path: '/help', icon: HelpIcon },
   { value: 'settings', label: 'Настройки', path: '/settings', icon: SettingsIcon },
-  { value: 'profile', label: 'Профиль', path: '/users', icon: PersonIcon },
 ];
 
-export const DEFAULT_BOTTOM_TABS = ['home', 'objects', 'brigades', 'settings', 'profile'];
+export const DEFAULT_BOTTOM_TABS = ['home', 'objects', 'settings'];
 
 // ⭐ Конфиг нижних кнопок (Шаг 12: Настройки будут писать сюда)
 // ⭐ Шаг 99 (P1-6): safeParse вместо голого JSON.parse — битый JSON возвращает null,
