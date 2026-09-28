@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -30,6 +30,7 @@ import {
   InputLabel,
   LinearProgress,
   Divider,
+  Snackbar,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
@@ -67,6 +68,10 @@ import { searchPriceItems } from '../services/priceListService';
 import type { PriceItemData } from '../services/priceListService';
 import { fetchCategoriesWithItems } from '../services/priceListService';
 import { getApiErrorText } from '../utils/errors';
+import { exportMaterialsXlsx, exportMaterialsPdf } from '../utils/exportMaterials';
+import type { ExportMeta } from '../utils/exportMaterials';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import TableChartIcon from '@mui/icons-material/TableChart';
 
 // ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено».
 const BOTTOM_NAV_HEIGHT = 56; // высота BottomNav (MUI BottomNavigation по умолчанию)
@@ -194,6 +199,46 @@ const [newPricePrice, setNewPricePrice] = useState('');
 const [allCategories, setAllCategories] = useState<{ id: number; name: string }[]>([]);
 // ⭐ Определяем нужно ли скрывать цены (VIEWER или hidePrices=true)
 const hidePrices = currentObject?.hidePrices === true || currentObject?.role === 'VIEWER';
+
+// ⭐ Экспорт XLSX/PDF (клиентская генерация)
+const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
+const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+  open: false,
+  message: '',
+  severity: 'success',
+});
+
+const handleExport = useCallback(
+  async (kind: 'xlsx' | 'pdf') => {
+    if (materials.length === 0) {
+      setSnackbar({ open: true, message: 'Нет материалов для выгрузки', severity: 'error' });
+      return;
+    }
+    setExporting(kind);
+    // ⭐ даём React отрисовать спиннер до синхронной генерации файла
+    await new Promise((r) => setTimeout(r, 50));
+    try {
+      const meta: ExportMeta = {
+        objectName: currentObject?.name || '',
+        projectName: currentProject?.name || '',
+        exportedAt: new Date(),
+        projectId: projectId ?? '',
+      };
+      const includePrices = !hidePrices;
+      if (kind === 'xlsx') {
+        exportMaterialsXlsx(materials, meta, includePrices);
+      } else {
+        exportMaterialsPdf(materials, meta, includePrices);
+      }
+      setSnackbar({ open: true, message: 'Файл скачан', severity: 'success' });
+    } catch (err: unknown) {
+      setSnackbar({ open: true, message: getApiErrorText(err, 'Ошибка выгрузки'), severity: 'error' });
+    } finally {
+      setExporting(null);
+    }
+  },
+  [materials, currentObject, currentProject, projectId, hidePrices],
+);
 // ⭐ Воронка — ТОЛЬКО категории, которые реально есть в смете этого проекта
   // (категория попадает сюда, если в проекте есть хотя бы одна позиция с ней)
   const projectCategories = useMemo(() => {
@@ -802,8 +847,24 @@ setSortAnchorEl(null);
           <FilterAltIcon />
         </IconButton>
       )}
+      <IconButton
+        onClick={() => handleExport('xlsx')}
+        disabled={exporting !== null}
+        aria-label="Экспорт XLSX"
+        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
+      >
+        {exporting === 'xlsx' ? <CircularProgress size={18} /> : <TableChartIcon />}
+      </IconButton>
+      <IconButton
+        onClick={() => handleExport('pdf')}
+        disabled={exporting !== null}
+        aria-label="Экспорт PDF"
+        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
+      >
+        {exporting === 'pdf' ? <CircularProgress size={18} /> : <PictureAsPdfIcon />}
+      </IconButton>
     </>
-    ) : undefined, [isMobile, sortBy, categoryFilter, projectCategories.length]);
+    ) : undefined, [isMobile, sortBy, categoryFilter, projectCategories.length, exporting, handleExport]);
 
   useMobileHeader({
     title: 'Сметы',
@@ -938,6 +999,30 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
   >
     Добавить позицию
   </Button>
+)}
+{!isMobile && (
+  <>
+    <Button
+      variant="outlined"
+      size="small"
+      onClick={() => handleExport('xlsx')}
+      disabled={exporting !== null}
+      startIcon={exporting === 'xlsx' ? <CircularProgress size={16} /> : <TableChartIcon />}
+      sx={{ color: '#1976d2', borderColor: '#1976d2', borderRadius: 2, whiteSpace: 'nowrap' }}
+    >
+      Экспорт XLSX
+    </Button>
+    <Button
+      variant="outlined"
+      size="small"
+      onClick={() => handleExport('pdf')}
+      disabled={exporting !== null}
+      startIcon={exporting === 'pdf' ? <CircularProgress size={16} /> : <PictureAsPdfIcon />}
+      sx={{ color: '#1976d2', borderColor: '#1976d2', borderRadius: 2, whiteSpace: 'nowrap' }}
+    >
+      Экспорт PDF
+    </Button>
+  </>
 )}
       </Box>
       {/* Мобильное меню сортировки (открывается из иконки) */}
@@ -1856,6 +1941,23 @@ renderInput={(params) => (
           </Box>
         </Paper>
       </Modal>
+
+      {/* ⭐ Snackbar для экспорта (успех/ошибка) */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
