@@ -1,42 +1,35 @@
 // backend/src/auth/email.service.ts
-// ⭐ P0-4: Сервис отправки писем через Brevo SMTP
+// ⭐ Переделано: использование Brevo HTTP API вместо SMTP
 import { Injectable, Logger } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
+import axios from 'axios';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private transporter: nodemailer.Transporter;
+  private apiKey: string;
+  private fromEmail: string;
+  private fromName: string = 'FRAME';
+  private brevoApiUrl = 'https://api.brevo.com/v3/smtp/email';
 
   constructor() {
-    const host = process.env.BREVO_SMTP_HOST;
-    const port = Number(process.env.BREVO_SMTP_PORT) || 587;
-    const user = process.env.BREVO_SMTP_USER;
-    const pass = process.env.BREVO_SMTP_PASS;
+    // Используем BREVO_API_KEY для HTTP API вместо SMTP
+    this.apiKey = process.env.BREVO_API_KEY;
+    this.fromEmail = process.env.BREVO_FROM_EMAIL || 'noreply@frame-app.ru';
 
-    if (!host || !user || !pass) {
+    if (!this.apiKey) {
       this.logger.warn(
-        '⚠️ Brevo SMTP не настроен — письма отправляться не будут',
+        '⚠️ Brevo API Key не настроен — письма отправляться не будут',
       );
       this.logger.warn(
-        'Добавь в backend/.env: BREVO_SMTP_HOST, BREVO_SMTP_USER, BREVO_SMTP_PASS',
+        'Добавь в переменные окружения: BREVO_API_KEY',
       );
-      this.transporter = null as any;
       return;
     }
 
-    this.transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: {
-        user,
-        pass,
-      },
-    });
+    this.logger.log('✅ Brevo API инициализирован');
   }
 
-  // ⭐ HOTFIX: XSS-экранирование для безопасности
+  // ⭐ XSS-экранирование для безопасности
   private escapeHtml(text: string): string {
     return text
       .replace(/&/g, '&amp;')
@@ -50,7 +43,7 @@ export class EmailService {
     email: string,
     resetLink: string,
   ): Promise<boolean> {
-    if (!this.transporter) {
+    if (!this.apiKey) {
       this.logger.warn(`[DEV MODE] Письмо для ${email}: ${resetLink}`);
       return true;
     }
@@ -59,11 +52,18 @@ export class EmailService {
     const escapedLink = this.escapeHtml(resetLink);
 
     try {
-      await this.transporter.sendMail({
-        from: process.env.BREVO_FROM_EMAIL || 'noreply@frame.app',
-        to: email,
+      const payload = {
+        sender: {
+          name: this.fromName,
+          email: this.fromEmail,
+        },
+        to: [
+          {
+            email: email,
+          },
+        ],
         subject: 'Восстановление пароля — FRAME',
-        html: `
+        htmlContent: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #1976d2;">Восстановление пароля</h2>
           <p>Вы запросили сброс пароля для аккаунта FRAME.</p>
@@ -75,12 +75,26 @@ export class EmailService {
           <p style="color: #999; font-size: 12px;">Если вы не запрашивали сброс пароля, проигнорируйте это письмо.</p>
         </div>
       `,
+      };
+
+      const response = await axios.post(this.brevoApiUrl, payload, {
+        headers: {
+          'api-key': this.apiKey,
+          'Content-Type': 'application/json',
+        },
       });
-      this.logger.log(`✅ Письмо отправлено на ${email}`);
+
+      this.logger.log(
+        `✅ Письмо отправлено на ${email} (Message ID: ${response.data.messageId})`,
+      );
       return true;
     } catch (error) {
-      this.logger.error(`❌ Ошибка отправки письма на ${email}`, error);
+      this.logger.error(
+        `❌ Ошибка отправки письма на ${email}`,
+        error instanceof Error ? error.message : String(error),
+      );
       return false;
     }
   }
 }
+
