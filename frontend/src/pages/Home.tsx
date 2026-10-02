@@ -74,7 +74,11 @@ const Home: React.FC = () => {
     );
   }
 
-  const percent = Math.round(data.money.percent * 100);
+  const rawPercent = Math.round(data.money.percent * 100);
+  const percent = Math.min(rawPercent, 100); // кламп для прогрессбара
+  const isOverrun = rawPercent >= 100;
+  const percentColor = isOverrun ? 'error.main' : 'success.main'; // красный при перерасходе
+  const overrunLabel = isOverrun ? `+${rawPercent - 100}% перерасход` : `${rawPercent}%`;
   const maxWeek = Math.max(...data.weekChart.map(w => w.count), 1);
   const overdueCount = data.hotProjects.filter(p => daysLeft(p.endDate) < 0).length;
 
@@ -112,14 +116,15 @@ const Home: React.FC = () => {
           </Box>
           <Box>
             <Typography variant="caption" color="text.secondary">Освоено</Typography>
-            <Typography variant="h6" fontWeight={700} color={percent >= 100 ? 'success.main' : 'primary'} sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
-              {percent}%
+            <Typography variant="h6" fontWeight={700} color={percentColor} sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
+              {overrunLabel}
             </Typography>
           </Box>
         </Stack>
         <LinearProgress
           variant="determinate"
-          value={Math.min(percent, 100)}
+          value={percent}
+          color={isOverrun ? 'error' : 'success'}
           sx={{ height: 10, borderRadius: 5, bgcolor: '#e0e0e0', '& .MuiLinearProgress-bar': { borderRadius: 5 } }}
         />
       </Paper>
