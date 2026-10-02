@@ -1,5 +1,13 @@
 import { createTheme } from '@mui/material/styles';
 
+// ⭐ Единый стиль FAB (DRY): позиция/отступ/z-index для плавающих кнопок добавления.
+// bottom задаётся на месте (80px стандарт; в Materials — выше сводной плашки).
+export const FAB_STYLE = {
+  position: 'fixed' as const,
+  right: 16,
+  zIndex: 1000,
+};
+
 const theme = createTheme({
   palette: {
     primary: {
@@ -40,12 +48,37 @@ const theme = createTheme({
     borderRadius: 8, // скругление углов
   },
   components: {
+    MuiButtonBase: {
+      styleOverrides: {
+        root: {
+          // ⭐ Убираем жёлтый focus-ring, оставляя тонкий серый для tab-навигации
+          '&:focus-visible': {
+            outline: 'none',
+            boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.12)',
+          },
+        },
+      },
+    },
+    MuiIconButton: {
+      styleOverrides: {
+        root: {
+          '&:focus-visible': {
+            outline: 'none',
+            boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.12)',
+          },
+        },
+      },
+    },
     MuiButton: {
       styleOverrides: {
         root: {
           borderWidth: 2,
           '&:hover': {
             borderWidth: 2,
+          },
+          '&:focus-visible': {
+            outline: 'none',
+            boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.12)',
           },
         },
         contained: {

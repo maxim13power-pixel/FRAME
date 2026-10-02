@@ -52,6 +52,7 @@ import InputLabel from '@mui/material/InputLabel';
 import SortIcon from '@mui/icons-material/Sort';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { getApiErrorText, getApiErrorMessage } from '../utils/errors';
+import { FAB_STYLE } from '../theme';
 
 // Вспомогательная функция для форматирования даты
 const formatDate = (dateStr: string) => {
@@ -660,7 +661,7 @@ trailing: headerTrailing,
     e.stopPropagation();
     handleOpenNoteModal(obj);
   }}
-  sx={{ mr: 0.5, color: obj.note ? '#1976d2' : 'inherit' }}
+  sx={{ mr: 1, color: obj.note ? '#1976d2' : 'inherit', bgcolor: 'action.hover' }}
 >
   <NoteAltIcon fontSize="small" />
 </IconButton>
@@ -670,7 +671,7 @@ trailing: headerTrailing,
     e.stopPropagation();
     handleOpenAccess(obj);
   }}
-  sx={{ mr: 0.5, color: '#7b1fa2' }}
+  sx={{ mr: 1, color: '#7b1fa2', bgcolor: 'action.hover' }}
 >
   <PeopleIcon fontSize="small" />
 </IconButton>
@@ -680,7 +681,7 @@ trailing: headerTrailing,
     e.stopPropagation();
     handleOpenEdit(obj);
   }}
-  sx={{ mr: 1 }}
+  sx={{ mr: 1, bgcolor: 'action.hover' }}
 >
   <SettingsIcon fontSize="small" />
 </IconButton>
@@ -770,10 +771,8 @@ trailing: headerTrailing,
         <Fab
           color="primary"
           sx={{
-            position: 'fixed',
-            bottom: 114,
-            right: 21,
-            zIndex: 1000,
+            ...FAB_STYLE,
+            bottom: 80,
             bgcolor: '#4caf50',
             '&:hover': { bgcolor: '#388e3c' },
           }}
@@ -918,27 +917,25 @@ trailing: headerTrailing,
               onChange={(e) => setEditEndDate(e.target.value)}
               required
             />
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-              <Button 
-                variant="outlined" 
+            <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 1 }}>
+              <Button variant="outlined" onClick={handleCloseEdit}>
+                Отмена
+              </Button>
+              <Button variant="contained" onClick={handleUpdateObject}>
+                Сохранить
+              </Button>
+              <IconButton
                 color="error"
+                aria-label="Удалить объект"
                 onClick={() => {
-    setDeletingObject(editingObject); // запоминаем объект для удаления
-    handleCloseEdit(); // закрываем модалку редактирования
-    setDeleteConfirmOpen(true);
+                  setDeletingObject(editingObject); // запоминаем объект для удаления
+                  handleCloseEdit(); // закрываем модалку редактирования
+                  setDeleteConfirmOpen(true);
                 }}
               >
-                Удалить
-              </Button>
-              <Box>
-                <Button variant="outlined" onClick={handleCloseEdit} sx={{ mr: 1 }}>
-                  Отмена
-                </Button>
-                <Button variant="contained" onClick={handleUpdateObject}>
-                  Сохранить
-                </Button>
-              </Box>
-            </Box>
+                <DeleteIcon />
+              </IconButton>
+            </Stack>
           </Stack>
         </Paper>
       </Modal>

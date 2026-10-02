@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BottomNavigation, BottomNavigationAction, Paper } from '@mui/material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
@@ -47,7 +47,17 @@ interface BottomNavProps {
 const BottomNav: React.FC<BottomNavProps> = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const tabs = ALL_BOTTOM_TABS.filter(t => getBottomNavConfig().includes(t.value));
+  const [config, setConfig] = useState<string[]>(getBottomNavConfig);
+
+  // ⭐ Подписка на изменения нижнего меню (Settings пишет localStorage + кидает событие) — без reload
+  useEffect(() => {
+    const onChange = () => setConfig(getBottomNavConfig());
+    window.addEventListener('frame:bottom-nav-changed', onChange);
+    return () => window.removeEventListener('frame:bottom-nav-changed', onChange);
+  }, []);
+
+  const tabs = ALL_BOTTOM_TABS.filter(t => config.includes(t.value));
+  const crowded = tabs.length >= 5;
 
   const isActive = (path: string) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
@@ -64,7 +74,20 @@ const BottomNav: React.FC<BottomNavProps> = () => {
               label={tab.label}
               value={tab.value}
               icon={<Icon sx={{ color: active ? '#1976d2' : '#757575' }} />}
-              sx={{ color: active ? '#1976d2' : '#757575' }}
+              sx={{
+                color: active ? '#1976d2' : '#757575',
+                minWidth: 0,
+                maxWidth: 'none',
+                flex: 1,
+                '& .MuiBottomNavigationAction-label': {
+                  fontSize: crowded ? '0.62rem' : '0.75rem',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  width: '100%',
+                  textAlign: 'center',
+                },
+              }}
               onClick={() => navigate(tab.path)}
             />
           );
