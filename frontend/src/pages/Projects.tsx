@@ -40,6 +40,8 @@ import type { ObjectData } from '../services/objectService';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { updateObjectEndDate } from '../services/objectService';
 import { getApiErrorText } from '../utils/errors';
+import DeleteIcon from '@mui/icons-material/Delete';
+import { FAB_STYLE } from '../theme';
 
 const Projects: React.FC = () => {
   const { objectId } = useParams<{ objectId: string }>();
@@ -564,7 +566,7 @@ onBack: () => navigate('/objects'),
     e.stopPropagation();
     handleOpenNoteModal(proj);
   }}
-  sx={{ mr: 0.5, color: proj.note ? '#1976d2' : 'inherit' }}
+  sx={{ mr: 1, color: proj.note ? '#1976d2' : 'inherit', bgcolor: 'action.hover' }}
 >
   <NoteAltIcon fontSize="small" />
 </IconButton>
@@ -574,7 +576,7 @@ onBack: () => navigate('/objects'),
     e.stopPropagation();
     handleOpenEdit(proj);
   }}
-  sx={{ mr: 1 }}
+  sx={{ mr: 1, bgcolor: 'action.hover' }}
 >
   <SettingsIcon fontSize="small" />
 </IconButton>
@@ -806,27 +808,25 @@ onBack: () => navigate('/objects'),
                 min: editStartDate || (currentObject ? currentObject.startDate.slice(0, 10) : undefined),
               }}
             />
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-              <Button
-                variant="outlined"
+            <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 1 }}>
+              <Button variant="outlined" onClick={handleCloseEdit}>
+                Отмена
+              </Button>
+              <Button variant="contained" onClick={handleUpdateProject}>
+                Сохранить
+              </Button>
+              <IconButton
                 color="error"
+                aria-label="Удалить проект"
                 onClick={() => {
                   setDeletingProject(editingProject);
                   handleCloseEdit();
                   setDeleteConfirmOpen(true);
                 }}
               >
-                Удалить
-              </Button>
-              <Box>
-                <Button variant="outlined" onClick={handleCloseEdit} sx={{ mr: 1 }}>
-                  Отмена
-                </Button>
-                <Button variant="contained" onClick={handleUpdateProject}>
-                  Сохранить
-                </Button>
-              </Box>
-            </Box>
+                <DeleteIcon />
+              </IconButton>
+            </Stack>
           </Stack>
         </Paper>
       </Modal>
@@ -929,7 +929,7 @@ onBack: () => navigate('/objects'),
       {isMobile && (
         <Fab
           color="primary"
-          sx={{ position: 'fixed', bottom: 80, right: 16 }}
+          sx={{ ...FAB_STYLE, bottom: 80 }}
           onClick={handleOpenAddModal}
         >
           <NoteAddIcon />

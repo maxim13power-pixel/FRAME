@@ -1,17 +1,28 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, Stack, FormControlLabel, Checkbox,
-  Button, Divider, Snackbar,
+  Button, Divider,
 } from '@mui/material';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { ALL_BOTTOM_TABS, getBottomNavConfig, DEFAULT_BOTTOM_TABS } from '../components/BottomNav';
 
 const MAX_TABS = 5;
 const MIN_TABS = 3;
 
 const Settings: React.FC = () => {
+  const navigate = useNavigate();
+  useMobileHeader({ title: 'Настройки', onBack: () => navigate(-1) });
+
   const [selected, setSelected] = useState<string[]>(() => getBottomNavConfig());
-  const [saved, setSaved] = useState(false);
+
+  const persist = (value: string[]) => {
+    localStorage.setItem('frame_bottom_nav', JSON.stringify(value));
+    // ⭐ Обновляем BottomNav без reload — подписчик ловит кастомное событие
+    window.dispatchEvent(new CustomEvent('frame:bottom-nav-changed'));
+    navigate(-1); // автозакрытие страницы после сохранения
+  };
 
   const toggle = (value: string) => {
     setSelected(prev => {
@@ -25,23 +36,20 @@ const Settings: React.FC = () => {
   };
 
   const handleSave = () => {
-    localStorage.setItem('frame_bottom_nav', JSON.stringify(selected));
-    setSaved(true);
+    persist(selected);
   };
 
   const handleReset = () => {
-    setSelected([...DEFAULT_BOTTOM_TABS]);
-    localStorage.setItem('frame_bottom_nav', JSON.stringify(DEFAULT_BOTTOM_TABS));
-    setSaved(true);
+    persist([...DEFAULT_BOTTOM_TABS]);
   };
 
   return (
     <Box sx={{ maxWidth: 700, mx: 'auto', width: '100%' }}>
-      <Typography variant="h4" gutterBottom>Настройки</Typography>
+      <Typography variant="h4" gutterBottom sx={{ display: { xs: 'none', md: 'block' } }}>Настройки</Typography>
 
       <Paper sx={{ p: 2.5, borderRadius: 2, mb: 2 }}>
         <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 0.5 }}>
-          Нижнее меню (мобилка)
+          Нижнее меню
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           Выбери от {MIN_TABS} до {MAX_TABS} кнопок для нижней навигации. Порядок — как в списке.
@@ -77,7 +85,7 @@ const Settings: React.FC = () => {
           </Button>
         </Box>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-          Выбрано: {selected.length} из {MAX_TABS}. Меню обновится при переходе на другую страницу.
+          Выбрано: {selected.length} из {MAX_TABS}. Меню обновится сразу после сохранения.
         </Typography>
       </Paper>
 
@@ -87,12 +95,6 @@ const Settings: React.FC = () => {
         </Typography>
       </Paper>
 
-      <Snackbar
-        open={saved}
-        autoHideDuration={2500}
-        onClose={() => setSaved(false)}
-        message="Настройки сохранены ✅"
-      />
     </Box>
   );
 };
