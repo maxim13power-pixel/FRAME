@@ -47,6 +47,7 @@ model Object {
   projects        Project[]
   accesses        ObjectAccess[] // Кто имеет доступ к объекту
   inviteTokens    InviteToken[]  // Активные ссылки-приглашения
+  warehouseItems  WarehouseItem[] // ⭐ Складские позиции, привязанные к объекту
 }
 
 model Project {
@@ -58,6 +59,7 @@ model Project {
   object      Object   @relation(fields: [objectId], references: [id], onDelete: Cascade)
   materials   Material[]
   changeRequests ChangeRequest[] // Согласования на уровне проекта
+  warehouseTransactions WarehouseTransaction[] // ⭐ Складские списания на проект
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   note        String?
@@ -290,4 +292,43 @@ model Rental {
 
   @@index([userId])
   @@map("rentals")
+}
+
+// ============================================================
+// СКЛАД (учёт материалов/оборудования прораба)
+// ============================================================
+model WarehouseItem {
+  id          Int       @id @default(autoincrement())
+  name        String
+  unit        String    @default("шт")
+  category    String?   // "инструмент", "расходник", "оборудование"
+  quantity    Decimal   @default(0) @db.Decimal(12, 2)
+  price       Decimal?  @db.Decimal(12, 2)
+  comment     String?
+  objectId    Int?      // привязка к объекту (опционально)
+  object      Object?   @relation(fields: [objectId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  transactions WarehouseTransaction[]
+
+  @@index([objectId])
+  @@map("warehouse_items")
+}
+
+model WarehouseTransaction {
+  id              Int            @id @default(autoincrement())
+  warehouseItemId Int
+  warehouseItem   WarehouseItem  @relation(fields: [warehouseItemId], references: [id], onDelete: Cascade)
+  type            String         // "income" / "expense" / "write-off"
+  quantity        Decimal        @db.Decimal(12, 2)
+  price           Decimal?       @db.Decimal(12, 2)
+  projectId       Int?           // куда списано (для expense/write-off)
+  project         Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  comment         String?
+  createdBy       Int
+  createdAt       DateTime       @default(now())
+
+  @@index([warehouseItemId])
+  @@index([projectId])
+  @@map("warehouse_transactions")
 }
