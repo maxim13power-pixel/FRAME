@@ -13,6 +13,7 @@ import { InviteModule } from './invite/invite.module';
 import { ChangeModule } from './change/change.module'; // ⭐ P0-6
 import { RentalsModule } from './rentals/rentals.module'; // ⭐ Аренда
 import { UsersModule } from './users/users.module'; // ⭐ Участники (сводный список)
+import { WarehouseModule } from './warehouse/warehouse.module'; // ⭐ Склад
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module'; // ⭐ Участники (�
     ChangeModule, // ⭐ P0-6
     RentalsModule, // ⭐ Аренда
     UsersModule, // ⭐ Участники (сводный список)
+    WarehouseModule, // ⭐ Склад
   ],
   controllers: [AppController],
   providers: [AppService],
