@@ -127,6 +127,18 @@ const Home: React.FC = () => {
           color={isOverrun ? 'error' : 'success'}
           sx={{ height: 10, borderRadius: 5, bgcolor: '#e0e0e0', '& .MuiLinearProgress-bar': { borderRadius: 5 } }}
         />
+        {/* ⭐ Срез 3: ссылка в Аналитику (не перекрываем клик по карточке → Объекты) */}
+        <Button
+          size="small"
+          variant="text"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate('/analytics');
+          }}
+          sx={{ mt: 1, textTransform: 'none', color: '#1976d2', fontWeight: 600, alignSelf: 'flex-end' }}
+        >
+          Подробнее в Аналитике →
+        </Button>
       </Paper>
 
       {/* ─── 2. ГОРИТ НА НЕДЕЛЕ ─── */}
