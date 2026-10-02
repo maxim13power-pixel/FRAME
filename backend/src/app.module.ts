@@ -16,6 +16,7 @@ import { UsersModule } from './users/users.module'; // ⭐ Участники (�
 import { WarehouseModule } from './warehouse/warehouse.module'; // ⭐ Склад
 import { ReportsModule } from './reports/reports.module'; // ⭐ Отчёты (сметы/акты)
 import { AnalyticsModule } from './analytics/analytics.module'; // ⭐ Срез 3: Аналитика
+import { BrigadesModule } from './brigades/brigades.module'; // ⭐ Срез 4: Бригады
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -36,6 +37,7 @@ import { AnalyticsModule } from './analytics/analytics.module'; // ⭐ Срез 
     WarehouseModule, // ⭐ Склад
     ReportsModule, // ⭐ Отчёты (сметы/акты)
     AnalyticsModule, // ⭐ Срез 3: Аналитика
+    BrigadesModule, // ⭐ Срез 4: Бригады
   ],
   controllers: [AppController],
   providers: [AppService],
