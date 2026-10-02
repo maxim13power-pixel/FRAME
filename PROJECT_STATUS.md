@@ -1,64 +1,90 @@
-# PROJECT FRAME — Статус v17 (26.09.2026) — ПЕРЕДАЧА В ЧАТ №11
+PROJECT FRAME — Статус v18 (03.10.2026) — ПЕРЕДАЧА В ЧАТ №12
 
-## 0. ПРАВИЛА ДЛЯ ЧАТОВ QWEN (копируются из чата в чат, ОБЯЗАТЕЛЬНО)
-1. Тон «братан», пользователь — новичок. Пошагово с якорями.
-2. 🔋 СЧЁТЧИК: старт 30, −1 за ответ, ≤10 предупреждение, 0 — довести шаг и новый чат.
-3. КОММИТ-ритуал одной строкой: git add . ; git commit -m "№<N>:<scope>: суть (DD/MM)" ; git push.
-4. МЕРЖ-ритуал одной строкой: git checkout main ; git merge --no-ff <ветка> -m "Merge №<N>: суть" ; git push.
-5. Перед промтом Cline указывать МОДЕЛЬ + МОЩНОСТЬ (таблица в .clinerules/project.md §5).
-6. Секреты только в backend/.env и frontend/.env (оба в .gitignore).
-7. Прод ТОЛЬКО `migrate deploy`, локально ТОЛЬКО `db push`. EPERM на generate = запущен dev-сервер.
-8. Не выдумывать файлы/API. Мёртвый код не оставлять.
+0. ПРАВИЛА ДЛЯ ЧАТОВ QWEN (копируются из чата в чат, ОБЯЗАТЕЛЬНО)
+Тон «братан», пользователь — новичок. Пошагово с якорями.
+🔋 СЧЁТЧИК: старт 30, −1 за ответ, ≤10 предупреждение, 0 — довести шаг и новый чат.
+КОММИТ-ритуал одной строкой: git add . ; git commit -m "№<N>:<scope>: суть (DD/MM)" ; git push.
+МЕРЖ-ритуал одной строкой: git checkout main ; git merge --no-ff <ветка> -m "Merge №<N>: суть" ; git push.
+Перед промтом Cline указывать МОДЕЛЬ + МОЩНОСТЬ (таблица в .clinerules/project.md §5).
+Секреты только в backend/.env и frontend/.env (оба в .gitignore). В чатах — плейсхолдеры.
+Прод ТОЛЬКО `migrate deploy`, локально ТОЛЬКО `db push`. EPERM на generate = запущен dev-сервер.
+Не выдумывать файлы/API. Мёртвый код не оставлять. Git-команды владельцу — с «;» (PowerShell < 7), НЕ «&&».
 
-## 1. СОСТОЯНИЕ (свёрнуто)
-**Стек:** backend NestJS 11+Prisma 5.22+PG 15 (:3000), frontend React 19+TS 5.9+MUI 6.5+Vite 7 (:5000, прод — serve -s dist).
-**Деплой:** Railway (3 сервиса: postgres, be, fe). Миграции: единый baseline, `prisma migrate deploy` в startCommand be.
-**Цель:** $5000+/мес (421 000 ₽). **Тест-логины (frame123):** foreman@frame.app (Прораб), customer@frame.app (Заказчик), sub@frame.app (VIEWER+hidePrices).
-**Готово (шаги 28–114):** авторизация (email|phone, forgot/reset, капча, Brevo), объекты/проекты/материалы (FOR UPDATE, isSpecLocked 409, lastEntryDate), расценки, согласования (stripPrices), аренда, доступы/инвайты (детерминированный резолв), Dashboard, Home, 24 калькулятора, Help (полноценный).
-**Шаги 99–114 (чат №10):** фронт-архитектура (api.ts, React.lazy×23, safeParse, soft logout, lint 68→0, manualChunks B), Decimal миграция, deploy-блокеры (railway.json, /health, shutdownHooks, SPA-fallback), baseline-миграция (squash 5→1), incremental+deleteOutDir фикс, env-контракты Brevo/Vite, migrate deploy в пайплайне, скрытие 5 заглушек, tooling (npm run verify, .clinerules, CI, компактный статус).
-**Аудит 21.09:** безопасность/P1 🟢; 2 🔴 блокера деплоя — закрыты в №112.
+1. СОСТОЯНИЕ
+Стек: backend NestJS 11+Prisma 5.22+PG 15 (:3000), frontend React 19+TS 5.9+MUI 6.5+Vite 7 (:5000, прод — serve -s dist).
+GitHub: maxim13power-pixel/FRAME. Код в main: №115 Users, №116 экспорт XLSX/PDF (клиентский, xlsx+pdfmake, hidePrices учтён).
+⚠️ №118 (дашборд, зона перерасхода >100%) — промт выдавался Cline в чате №11, ВЫПОЛНЕНИЕ НЕ ПОДТВЕРЖДЕНО:
+   в начале чата №12 ПЕРВЫМ ДЕЛОМ проверить git log / ветки cline-* / git status.
+⚠️ №119 (почта через Yandex Cloud Postbox, HTTP API) — промт готов (§2), НЕ выдавался.
 
-## 2. БЛИЖАЙШИЕ ШАГИ
-1. ФАЗА 1 заглушки (срез фичи, порядок по ценности): Users(участники) → Reports(XLSX/PDF) → Analytics → Brigades → Warehouse.
-2. ДЕПЛОЙ на Railway по чек-листу §3 + smoke-тест (параллельно, как решится Q1: домен).
-3. ФАЗА 2 биллинг: ЮKassa, НДС 22% включён, Plan/Subscription/Payment/PaymentEvent(idempotency), SubscriptionGuard, trial 14д→FREE, grace 3д.
-4. TRACK B (параллельно, бюрократия): Реестр ПО (45 дн, льгота +45% маржи), УКЭП, RuStore Console, ставка НДС 22% ДО первого платежа, уведомление РКН.
-5. ФАЗА 3 мобилка: Capacitor + офлайн-очередь + RuStore Pay SDK (BillingClient отключён 01.08.2026) + анти-WebView ценность.
-6. ПРЕД-РЕЛИЗ: плейсхолдеры в Terms/Privacy, e2e change-flow ×3, Sentry, Throttler, refresh-токены, пароль min 8.
+ДЕПЛОЙ ( Railway, РАБОТАЕТ ):
+- be: https://frame-production-aa1f.up.railway.app — /health=200, миграции применены (baseline 20260920000000).
+- fe: https://frame-production-37a1.up.railway.app — SPA-fallback ок, регистрация/логин/капча/дашборд/экспорт работают в проде.
+- PG: managed Postgres в том же проекте; бэкапы Railway — ПРОВЕРИТЬ включён ли daily (в чате №11 не подтверждено).
+- be env: DATABASE_URL (ПРЯМОЙ строкой postgresql://… — ссылочные ${{…}} НЕ зарезолвились, урок зафиксирован),
+  JWT_SECRET (РОТИРОВАН после засвета куска в чате), SMARTCAPTCHA_SERVER_KEY, CORS_ORIGINS, FRONTEND_URL,
+  BREVO_SMTP_* (указывают на Яндекс, НЕ работают — см. §5).
+- fe env (впечены в билд): VITE_API_BASE_URL, VITE_APP_URL, VITE_SMARTCAPTCHA_CLIENT_KEY.
 
-## 3. DEPLOY-ЧЕК-ЛИСТ (Railway)
-1. Домен (frame-app.ru/frame.app) → купить.
-2. Railway: проект FRAME → postgres (Railway DB), backend (root backend/), frontend (root frontend/).
-3. be env: DATABASE_URL, JWT_SECRET (crypto.randomBytes(64).hex), CORS_ORIGINS, FRONTEND_URL, SMARTCAPTCHA_SERVER_KEY, BREVO_SMTP_* (из .env.example).
-4. fe env ДО build (Vite впекает!): VITE_API_BASE_URL, VITE_APP_URL, VITE_SMARTCAPTCHA_CLIENT_KEY.
-5. Deploy be → в логах «migrate deploy applied» → GET /health = 200.
-6. Deploy fe → / = 200, deep-link /objects = 200 (serve -s SPA-fallback).
-7. Smoke: регистрация → письмо → сброс → логин → объект → материал (10.5) → фикс 0.5 → аренда → logout.
-8. Домен: DNS → Railway, SSL auto; обновить env → редеплой fe.
-9. Daily backups Railway postgres + тест восстановления.
+ДОМЕН frame-app.ru: куплен REG.RU; подключён к Яндекс 360 (MX/SPF/DKIM/DMARC пройдены, «Домен настроен»);
+DNS на Railway НЕ поднят (сознательно отложен до выбора платформы).
 
-## 4. ОТКРЫТЫЕ РЕШЕНИЯ (ответить в чате №11)
-Q1 Домен: frame-app.ru или frame.app?
-Q2 Биллинг: ЮKassa или CloudPayments? Схема фискализации (касса/агент/только RuStore)?
-Q3 Тарифы: лимиты FREE/Прораб/Бригада (черновик: FREE 1 объект+2 участника без экспорта; Прораб 5 объектов+экспорт; Бригада безлимит объектов+10 участников+отчёты).
-Q4 Пилот: 3–5 реальных прорабов до биллинга?
-Q5 УКЭП/RuStore Console: есть у ООО?
-Q6 Реестр ПО: подаём на W2?
+ПОЧТА: Яндекс 360 для бизнеса (тариф Минимальный), ящик noreply@frame-app.ru создан.
+SMTP с Railway НЕ работает: ETIMEDOUT — Railway блокирует исходящие 25/465/587 (анти-спам). Это НЕ баг кода.
+Решение: срез №119 = Yandex Cloud Postbox (HTTP API, AWS SES-совместимый) ИЛИ переезд на Timeweb (там SMTP жив).
 
-## 5. KNOWN ISSUES (НЕ баги)
-React #418/#423 в бандле Яндекса; console `startTime` (VM-скрипт) = инжектор расширений/Яндекса — проверять в инкогнито; Vite .env — только рестарт; две модели ролей (User.role vs AccessRole) — свести в Фазе 1; **console.warn в ObjectAccessGuard (строки ~70)** — оставить как наблюдение.
+ИНФРА-АНАЛИЗ (Алиса, 30.09):推荐-связка для РФ = Timeweb Cloud App Platform + Managed PG (~1500₽/мес)
++ Яндекс 360 (319₽/мес): автодеплой из GitHub, SSL авто, оплата рублями, УПД по ЭДО.
+Запасной: Amvera (~1070₽/мес, git push deploy, потолок 6GB RAM). Yandex Cloud — дорого/сложно (нет PaaS из GitHub).
+Решение владельца: миграцию на Timeweb отложить до ~середины октября; триал Railway до ~28.10.2026.
 
-## 6. НОВЫЙ РАБОЧИЙ ПРОЦЕСС (важно!)
-**Qwen = архитектор/роадмап/аудит (мало, но крупно). Cline = исполнитель + сам проверяет (много файлов). Ты = приёмка + merge.**
-- Каждая задача = «срез фичи» (вертикальный), не один якорь.
-- Plan/Act режимы Cline: plan → ты одобряешь → act → Cline сам прогоняет `npm run verify` → отчёт.
-- Правила больше не в промте — они в `.clinerules/project.md` (авто-подхват Cline).
-- Одна команда проверки: `npm run verify` (be build + fe tsc -b + fe vite build).
-- Cline коммитит на ветке `cline-*` — ты только merge --no-ff.
-- Длинный чат Cline = дорого (история пересылается). После merge → новый чат.
+2. БЛИЖАЙШИЕ ШАГИ (приоритеты чата №12)
+A. ФРОНТ-АУДИТ: пройтись по всем страницам (App.tsx роуты): заглушки/пустые разделы
+   (кандидаты: Analytics, Brigades, Warehouse, Reports — страницы есть, контент пуст/скрыт),
+   плюс известные косяки (перерасход 864% на Главной). Составить план срезов по ценности → выполнять.
+B. ПОЧТА: №119 Postbox (если остаёмся на Railway) — промт ниже; ИЛИ после миграции на Timeweb — Яндекс 360 SMTP нативно.
+C. ДЕПЛОЙ-ПЛАТФОРМА: финальное решение Railway→Timeweb (свежий взгляд Cline + план Алисы из §1) → миграция по чек-листу.
+D. ДОМЕН: DNS frame-app.ru на выбранную платформу (be=api.frame-app.ru, fe=frame-app.ru), SSL, правка env, редеплой обоих.
+E. БЭКАПЫ: daily на текущей платформе + тестовый restore.
+F. ФАЗА 2 биллинг (ЮKassa, НДС 22%, Plan/Subscription/Payment/PaymentEvent, SubscriptionGuard, trial 14д) — после A–E.
+TRACK B параллельно: Реестр ПО, УКЭП, RuStore Console, уведомление РКН — бюрократия владельца.
 
-## 7. МЕТРИКИ
-Шагов: 114. СЛЕДУЮЩИЙ КОММИТ: №115. Счётчик чата №11: 30.
-Оценка: 8.2 (P1 закрыт) → цель 8.5 после деплоя.
-Юнит-экономика: нетто с 490₽ = 328₽ (RuStore+НДС) / 388₽ (веб) / 477₽ (Реестр, без НДС).
-$5000 нетто = ~664 платящих при Реестре (~990 без). Горизонт 9–12 мес.
+ПРОМТ №119 (готов, выдавать Cline после решения B):
+МОДЕЛЬ: DeepSeek V4 Pro | МОЩНОСТЬ: HIGH
+«ЗАДАЧА №119 — backend: провайдер почты Yandex Cloud Postbox (HTTP API) вместо SMTP.
+Postbox совместим с AWS SES API. Установить @aws-sdk/client-ses; новый provider в email.service.ts;
+env: POSTBOX_ACCESS_KEY_ID, POSTBOX_SECRET_ACCESS_KEY, POSTBOX_REGION=ru-central1, POSTBOX_FROM_EMAIL=noreply@frame-app.ru;
+логика: есть POSTBOX_* → Postbox, иначе SMTP (локалка); BREVO_* убрать из .env.example; verify → 0;
+коммит: git checkout -b cline-postbox ; git add . ; git commit -m "№119:email: Postbox HTTP API вместо SMTP (DD/MM)" ; git push -u origin cline-postbox»
+
+3. DEPLOY-ЧЕК-ЛИСТ (статус)
+[✅] Railway: 3 сервиса, be/fe онлайн, миграции применены, капча/регистрация/логин/экспорт в проде.
+[✅] Яндекс 360: домен верифицирован, MX/SPF/DKIM/DMARC, ящик noreply.
+[❌] DNS frame-app.ru → платформа (отложен).
+[❓] Daily backups Railway — проверить/включить + тест restore.
+[❌] Миграция Timeweb (план: PG → be App Platform → fe → pg_dump/pg_restore → домен → smoke) — старт по решению C.
+[❌] Smoke после домена: регистрация→письмо→сброс→логин→объект→материал→фикс→экспорт→logout на frame-app.ru.
+
+4. ОТКРЫТЫЕ РЕШЕНИЯ
+Q1 ДОМЕН: РЕШЕНО — frame-app.ru.
+Q7 НОВОЕ: почта сейчас = Postbox на Railway ИЛИ ускоренный переезд на Timeweb (SMTP нативно)? Решить в чате №12 с Cline.
+Q8 НОВОЕ: порядок фронт-срезов (какие пустые разделы делать первыми) — владелец ставит приоритет после аудита.
+Q2 Биллинг: ЮKassa или CloudPayments? Фискализация? | Q3 Тарифы FREE/Прораб/Бригада. | Q4 Пилот 3–5 прорабов?
+Q5 УКЭП/RuStore Console у ООО? | Q6 Реестр ПО: подаём?
+
+5. KNOWN ISSUES (НЕ баги)
+Railway блокирует исходящий SMTP (ETIMEDOUT) — лечится Postbox или переездом, код не виноват.
+${{ Service.VAR }} ссылки Railway могут резолвиться в пустоту после Edit — использовать прямые значения.
+React #418/#423 — внутри iframe виджета Яндекса; console startTime — инжектор расширений (проверять в инкогнито).
+Vite читает .env только при старте → рестарт fe после правки. Две модели ролей (User.role vs AccessRole) — свести в Фазе 1.
+pdfmake даёт чанк >500kB (warning допустим). 864% на Главной — честная математика, правим отображение (№118).
+
+6. РАБОЧИЙ ПРОЦЕСС (без изменений)
+Qwen = архитектор/роадмап/аудит (мало, но крупно). Cline = исполнитель + сам гоняет npm run verify.
+Ты = приёмка + merge. Задачи = «срезы фичи» вертикально. Cline коммитит на cline-*, ты merge --no-ff.
+Правила Cline — в .clinerules/project.md (авто-подхват). Длинный чат Cline = дорого → новый чат на новую большую фичу.
+
+7. МЕТРИКИ
+Код-шагов: 116 в main (+№117 деплой без кода). СЛЕДУЮЩИЙ КОММИТ: №118 (если не закоммичен) иначе №119/120 по факту аудита.
+Счётчик чата №12: 30. Оценка: 8.3 (прод живой) → цель 8.6 после фронт-аудита и почты.
+Юнит-экономика: нетто с 490₽ = 328₽ (RuStore+НДС) / 388₽ (веб) / 477₽ (Реестр, без НДС). $5000 нетто ≈ 664 платящих при Реестре.
