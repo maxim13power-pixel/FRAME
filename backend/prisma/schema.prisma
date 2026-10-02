@@ -49,6 +49,7 @@ model Object {
   inviteTokens    InviteToken[]  // Активные ссылки-приглашения
   warehouseItems  WarehouseItem[] // ⭐ Складские позиции, привязанные к объекту
   reports         Report[]        // ⭐ Акты/сметы по объекту
+  brigades        Brigade[]       // ⭐ Бригады, привязанные к объекту
 }
 
 model Project {
@@ -62,6 +63,7 @@ model Project {
   changeRequests ChangeRequest[] // Согласования на уровне проекта
   warehouseTransactions WarehouseTransaction[] // ⭐ Складские списания на проект
   reports     Report[] // ⭐ Акты/сметы по проекту
+  brigadeShifts BrigadeShift[] // ⭐ Выходы бригад на проекте
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   note        String?
@@ -392,4 +394,58 @@ model VerificationToken {
   @@index([email])
   @@index([code])
   @@map("verification_tokens")
+}
+
+// ============================================================
+// БРИГАДЫ (учёт выходов и выработки)
+// ============================================================
+model Brigade {
+  id          Int       @id @default(autoincrement())
+  name        String    // "Бригада отделочников №1"
+  specialty   String?   // "отделочники", "электрики", "сантехники"
+  foremanName String?   // бригадир
+  phone       String?
+  objectId    Int?      // привязка к объекту (опционально — мобильная бригада)
+  object      Object?   @relation(fields: [objectId], references: [id], onDelete: SetNull)
+  comment     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  members     BrigadeMember[]
+  shifts      BrigadeShift[]
+
+  @@index([objectId])
+  @@map("brigades")
+}
+
+model BrigadeMember {
+  id         Int       @id @default(autoincrement())
+  brigadeId  Int
+  brigade    Brigade   @relation(fields: [brigadeId], references: [id], onDelete: Cascade)
+  fullName   String
+  role       String?   // "бригадир", "мастер", "рабочий"
+  phone      String?
+  createdAt  DateTime  @default(now())
+
+  @@index([brigadeId])
+  @@map("brigade_members")
+}
+
+model BrigadeShift {
+  id          Int       @id @default(autoincrement())
+  brigadeId   Int
+  brigade     Brigade   @relation(fields: [brigadeId], references: [id], onDelete: Cascade)
+  projectId   Int?      // на каком проекте работали
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  date        DateTime  @db.Date
+  hoursWorked Decimal   @db.Decimal(5, 2) // 0.00 - 999.99
+  outputValue Decimal?  @db.Decimal(12, 2) // выработка в ₽ (опционально)
+  outputArea  Decimal?  @db.Decimal(10, 2) // выработка в м² (опционально)
+  comment     String?
+  createdBy   Int
+  createdAt   DateTime  @default(now())
+
+  @@index([brigadeId])
+  @@index([projectId])
+  @@index([date])
+  @@map("brigade_shifts")
 }
