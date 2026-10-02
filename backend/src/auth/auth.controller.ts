@@ -12,6 +12,8 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto'; // ⭐ P0-4
 import { ResetPasswordDto } from './dto/reset-password.dto'; // ⭐ P0-4
+import { RequestCodeDto } from './dto/request-code.dto'; // ⭐ №122b
+import { VerifyEmailDto } from './dto/verify.dto'; // ⭐ №122b
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -52,6 +54,25 @@ export class AuthController {
 
     return this.authService.register(dto, ip);
   }
+
+  // ⭐ №122b: запрос кода верификации email (повторная отправка)
+  @Post('request-code')
+  async requestCode(
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: RequestCodeDto,
+  ) {
+    return this.authService.requestCode(dto);
+  }
+
+  // ⭐ №122b: подтверждение email кодом → создание пользователя + JWT
+  @Post('verify')
+  async verifyEmail(
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: VerifyEmailDto,
+  ) {
+    return this.authService.verifyEmail(dto);
+  }
+
   // ⭐ P0-4: Запрос ссылки на восстановление пароля
   @Post('forgot-password')
   async forgotPassword(

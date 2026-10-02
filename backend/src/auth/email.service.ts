@@ -83,4 +83,36 @@ export class EmailService {
       return false;
     }
   }
+
+  // ⭐ №122b: отправка 6-значного кода верификации email
+  async sendVerificationCode(email: string, code: string): Promise<boolean> {
+    if (!this.transporter) {
+      this.logger.warn(`[DEV MODE] Код верификации для ${email}: ${code}`);
+      return true;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: process.env.BREVO_FROM_EMAIL || 'noreply@frame.app',
+        to: email,
+        subject: 'Код подтверждения — FRAME',
+        html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1976d2;">Подтверждение email</h2>
+          <p>Ваш код подтверждения:</p>
+          <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1976d2; margin: 16px 0;">
+            ${this.escapeHtml(code)}
+          </p>
+          <p style="color: #666; font-size: 14px;">Код действителен 15 минут.</p>
+          <p style="color: #999; font-size: 12px;">Если вы не регистрировались в FRAME, проигнорируйте это письмо.</p>
+        </div>
+      `,
+      });
+      this.logger.log(`✅ Код верификации отправлен на ${email}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`❌ Ошибка отправки кода на ${email}`, error);
+      return false;
+    }
+  }
 }

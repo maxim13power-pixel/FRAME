@@ -19,6 +19,8 @@ const PUBLIC_AUTH_PATHS = [
   '/auth/refresh',
   '/auth/forgot-password',
   '/auth/reset-password',
+  '/auth/request-code',
+  '/auth/verify',
 ];
 
 const isPublicAuthRequest = (url?: string): boolean =>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   TextField,
   Button,
@@ -43,10 +43,33 @@ const Register: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+
+  // ⭐ №122b: верификация email — 2 шага
+  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [expireMinutes, setExpireMinutes] = useState(15);
+
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // ⭐ Таймер «Отправить код повторно» (60 секунд)
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
+
+  // ⭐ Таймер действия кода (15 минут)
+  useEffect(() => {
+    if (step !== 'code') return;
+    const t = setInterval(() => setExpireMinutes((m) => (m > 0 ? m - 1 : 0)), 60000);
+    return () => clearInterval(t);
+  }, [step]);
+
+  const handleRequestCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!fullName.trim()) {
@@ -67,18 +90,59 @@ const Register: React.FC = () => {
     }
     setLoading(true);
     try {
-      const response = await api.post('/auth/register', {
+      // ⭐ №122b: пользователь НЕ создаётся — бэкенд отправляет код на email
+      await api.post('/auth/register', {
         fullName: fullName.trim(),
         password,
         email: email.trim(),
-        captchaToken: captchaToken ?? undefined, // ⭐ токен капчи для бэка
+        captchaToken: captchaToken ?? undefined,
       });
-      // ⭐ Редирект делает App.tsx (useEffect + защита маршрута) — без дублей
-      login(response.data.access_token, response.data.user);
+      setStep('code');
+      setExpireMinutes(15);
+      setResendCooldown(60);
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, 'Ошибка регистрации'));
+      setError(getApiErrorMessage(err, 'Ошибка отправки кода'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    setError('');
+    setLoading(true);
+    try {
+      await api.post('/auth/request-code', { email: email.trim() });
+      setExpireMinutes(15);
+      setResendCooldown(60);
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Не удалось отправить код повторно'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCodeError('');
+    if (!/^\d{6}$/.test(code)) {
+      setCodeError('Введите 6 цифр из письма');
+      return;
+    }
+    setVerifying(true);
+    try {
+      const response = await api.post('/auth/verify', {
+        email: email.trim(),
+        code,
+        fullName: fullName.trim(),
+        password,
+      });
+      // ⭐ Успех → авторизация (редирект делает App.tsx через защиту маршрута)
+      login(response.data.access_token, response.data.user);
+    } catch (err: unknown) {
+      setCodeError(getApiErrorMessage(err, 'Неверный код'));
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -141,97 +205,161 @@ const Register: React.FC = () => {
           </Link>
         </Typography>
 
-        <Box component="form" noValidate width="100%" onSubmit={handleSubmit}>
-          <Stack spacing={2}>
-            <TextField
-              fullWidth
-              required
-              margin="none"
-              label="Ваше имя"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              sx={fieldSx}
+        {step === 'email' ? (
+          <Box component="form" noValidate width="100%" onSubmit={handleRequestCode}>
+            <Stack spacing={2}>
+              <TextField
+                fullWidth
+                required
+                margin="none"
+                label="Ваше имя"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                sx={fieldSx}
+              />
+              <TextField
+                fullWidth
+                required
+                margin="none"
+                label="E-mail"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                sx={fieldSx}
+              />
+              <TextField
+                fullWidth
+                required
+                margin="none"
+                label="Придумайте пароль"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                sx={fieldSx}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                          {showPassword ? <VisibilityOff /> : <Visibility />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+            </Stack>
+            {/* ⭐ Шаг 76: капча Yandex SmartCaptcha (защита от ботов) */}
+            <Box sx={{ mt: 2 }}>
+              <SmartCaptcha onTokenChange={(t) => setCaptchaToken(t)} />
+            </Box>
+            {/* ⭐ 152-ФЗ: согласие обязательно, ссылки ведут на реальные страницы */}
+            <FormControlLabel
+              control={<Checkbox checked={consent} onChange={(e) => setConsent(e.target.checked)} color="primary" />}
+              label={
+                <Typography variant="body2" sx={{ fontSize: '0.88rem' }}>
+                  Я согласен с{' '}
+                  <Link component="button" type="button" onClick={() => navigate('/terms')} sx={{ color: '#1976d2', fontSize: '0.88rem' }}>
+                    условиями обслуживания
+                  </Link>{' '}
+                  и{' '}
+                  <Link component="button" type="button" onClick={() => navigate('/privacy')} sx={{ color: '#1976d2', fontSize: '0.88rem' }}>
+                    политикой конфиденциальности
+                  </Link>
+                </Typography>
+              }
+              sx={{ mt: 2, alignItems: 'flex-start' }}
             />
-            <TextField
+
+            {error && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {error}
+              </Alert>
+            )}
+
+            <Button
+              type="submit"
               fullWidth
-              required
-              margin="none"
-              label="E-mail"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              sx={fieldSx}
-            />
-            <TextField
-              fullWidth
-              required
-              margin="none"
-              label="Придумайте пароль"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              sx={fieldSx}
-              slotProps={{
-                input: {
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
-                        {showPassword ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                },
+              variant="contained"
+              disabled={loading}
+              sx={{
+                mt: 2,
+                py: 1.5,
+                borderRadius: 2,
+                bgcolor: '#1976d2',
+                '&:hover': { bgcolor: '#1565c0' },
+                fontWeight: 'bold',
+                fontSize: '1rem',
               }}
-            />
-          </Stack>
-{/* ⭐ Шаг 76: капча Yandex SmartCaptcha (защита от ботов) */}
-<Box sx={{ mt: 2 }}>
-<SmartCaptcha onTokenChange={(t) => { setCaptchaToken(t); console.log('✅ token:', t ? 'OK' : 'null'); }} />
-</Box>
-          {/* ⭐ 152-ФЗ: согласие обязательно, ссылки ведут на реальные страницы */}
-          <FormControlLabel
-            control={<Checkbox checked={consent} onChange={(e) => setConsent(e.target.checked)} color="primary" />}
-            label={
-              <Typography variant="body2" sx={{ fontSize: '0.88rem' }}>
-                Я согласен с{' '}
-                <Link component="button" type="button" onClick={() => navigate('/terms')} sx={{ color: '#1976d2', fontSize: '0.88rem' }}>
-                  условиями обслуживания
-                </Link>{' '}
-                и{' '}
-                <Link component="button" type="button" onClick={() => navigate('/privacy')} sx={{ color: '#1976d2', fontSize: '0.88rem' }}>
-                  политикой конфиденциальности
-                </Link>
-              </Typography>
-            }
-            sx={{ mt: 2, alignItems: 'flex-start' }}
-          />
-
-          {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {error}
+            >
+              {loading ? 'Отправляем код...' : 'Отправить код'}
+            </Button>
+          </Box>
+        ) : (
+          <Box component="form" noValidate width="100%" onSubmit={handleVerify}>
+            <Alert severity="info" sx={{ mb: 2, width: '100%' }}>
+              Код отправлен на <b>{email.trim()}</b>
             </Alert>
-          )}
-
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
-            disabled={loading}
-            sx={{
-              mt: 2,
-              py: 1.5,
-              borderRadius: 2,
-              bgcolor: '#1976d2',
-              '&:hover': { bgcolor: '#1565c0' },
-              fontWeight: 'bold',
-              fontSize: '1rem',
-            }}
-          >
-            {loading ? 'Создаём аккаунт...' : 'Продолжить'}
-          </Button>
-        </Box>
+            <Stack spacing={2}>
+              <TextField
+                fullWidth
+                autoFocus
+                margin="none"
+                label="6-значный код"
+                type="tel"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                inputProps={{ maxLength: 6 }}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                error={!!codeError}
+                helperText={codeError || `Код действителен ${expireMinutes} мин`}
+                sx={fieldSx}
+              />
+              {error && <Alert severity="error">{error}</Alert>}
+              <Button
+                type="submit"
+                fullWidth
+                variant="contained"
+                disabled={verifying}
+                sx={{
+                  py: 1.5,
+                  borderRadius: 2,
+                  bgcolor: '#1976d2',
+                  '&:hover': { bgcolor: '#1565c0' },
+                  fontWeight: 'bold',
+                  fontSize: '1rem',
+                }}
+              >
+                {verifying ? 'Проверяем...' : 'Подтвердить'}
+              </Button>
+              <Button
+                type="button"
+                fullWidth
+                variant="text"
+                onClick={handleResend}
+                disabled={resendCooldown > 0 || loading}
+                sx={{ textTransform: 'none', fontSize: '0.9rem' }}
+              >
+                {resendCooldown > 0 ? `Отправить код повторно (${resendCooldown} с)` : 'Отправить код повторно'}
+              </Button>
+              <Link
+                component="button"
+                type="button"
+                onClick={() => {
+                  setStep('email');
+                  setCode('');
+                  setCodeError('');
+                }}
+                sx={{ fontSize: '0.9rem', color: '#1976d2', textAlign: 'center' }}
+              >
+                Изменить email
+              </Link>
+            </Stack>
+          </Box>
+        )}
       </Paper>
     </Box>
   );
