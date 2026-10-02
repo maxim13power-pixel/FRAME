@@ -31,6 +31,7 @@ import {
   LinearProgress,
   Divider,
   Snackbar,
+  Tooltip,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
@@ -70,8 +71,9 @@ import { fetchCategoriesWithItems } from '../services/priceListService';
 import { getApiErrorText } from '../utils/errors';
 import { exportMaterialsXlsx, exportMaterialsPdf } from '../utils/exportMaterials';
 import type { ExportMeta } from '../utils/exportMaterials';
+import { FAB_STYLE } from '../theme';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
-import TableChartIcon from '@mui/icons-material/TableChart';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 
 // ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено».
 const BOTTOM_NAV_HEIGHT = 56; // высота BottomNav (MUI BottomNavigation по умолчанию)
@@ -850,10 +852,10 @@ setSortAnchorEl(null);
       <IconButton
         onClick={() => handleExport('xlsx')}
         disabled={exporting !== null}
-        aria-label="Экспорт XLSX"
+        aria-label="Экспорт в Excel"
         sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
       >
-        {exporting === 'xlsx' ? <CircularProgress size={18} /> : <TableChartIcon />}
+        {exporting === 'xlsx' ? <CircularProgress size={18} /> : <FileDownloadIcon />}
       </IconButton>
       <IconButton
         onClick={() => handleExport('pdf')}
@@ -1001,28 +1003,32 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
   </Button>
 )}
 {!isMobile && (
-  <>
-    <Button
-      variant="outlined"
-      size="small"
-      onClick={() => handleExport('xlsx')}
-      disabled={exporting !== null}
-      startIcon={exporting === 'xlsx' ? <CircularProgress size={16} /> : <TableChartIcon />}
-      sx={{ color: '#1976d2', borderColor: '#1976d2', borderRadius: 2, whiteSpace: 'nowrap' }}
-    >
-      Экспорт XLSX
-    </Button>
-    <Button
-      variant="outlined"
-      size="small"
-      onClick={() => handleExport('pdf')}
-      disabled={exporting !== null}
-      startIcon={exporting === 'pdf' ? <CircularProgress size={16} /> : <PictureAsPdfIcon />}
-      sx={{ color: '#1976d2', borderColor: '#1976d2', borderRadius: 2, whiteSpace: 'nowrap' }}
-    >
-      Экспорт PDF
-    </Button>
-  </>
+  <Stack direction="row" spacing={2}>
+    <Tooltip title="Excel">
+      <Button
+        variant="outlined"
+        color="primary"
+        size="small"
+        onClick={() => handleExport('xlsx')}
+        disabled={exporting !== null}
+        sx={{ minWidth: 0, p: 1 }}
+      >
+        {exporting === 'xlsx' ? <CircularProgress size={16} /> : <FileDownloadIcon fontSize="small" />}
+      </Button>
+    </Tooltip>
+    <Tooltip title="PDF">
+      <Button
+        variant="outlined"
+        color="primary"
+        size="small"
+        onClick={() => handleExport('pdf')}
+        disabled={exporting !== null}
+        sx={{ minWidth: 0, p: 1 }}
+      >
+        {exporting === 'pdf' ? <CircularProgress size={16} /> : <PictureAsPdfIcon fontSize="small" />}
+      </Button>
+    </Tooltip>
+  </Stack>
 )}
       </Box>
       {/* Мобильное меню сортировки (открывается из иконки) */}
@@ -1137,7 +1143,7 @@ onClose={() => setFilterAnchorEl(null)}
               <TableCell sx={{ textAlign: 'center' }}>
                 {/* ⭐ Шестерёнка настроек скрыта для VIEWER (и на бэке update/remove/editLastFix кидают 403) */}
                 {!hidePrices && (
-                  <IconButton size="small" onClick={() => handleOpenSettings(m)}>
+                  <IconButton size="small" onClick={() => handleOpenSettings(m)} sx={{ bgcolor: 'action.hover' }}>
                     <SettingsIcon fontSize="small" />
                   </IconButton>
                 )}
@@ -1188,7 +1194,7 @@ onClose={() => setFilterAnchorEl(null)}
               </Typography>
               {/* ⭐ Шестерёнка настроек скрыта для VIEWER */}
               {!hidePrices && (
-                <IconButton size="small" onClick={() => handleOpenSettings(m)}>
+                <IconButton size="small" onClick={() => handleOpenSettings(m)} sx={{ bgcolor: 'action.hover' }}>
                   <SettingsIcon fontSize="small" />
                 </IconButton>
               )}
@@ -1338,7 +1344,7 @@ onClose={() => setFilterAnchorEl(null)}
 {isMobile && !hidePrices && (
   <Fab
     color="primary"
-    sx={{ position: 'fixed', bottom: 130, right: 16, zIndex: 1000 }}
+    sx={{ ...FAB_STYLE, bottom: 130 }}
     onClick={handleOpenAddModal}
   >
     <AddIcon />
