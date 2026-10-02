@@ -14,6 +14,7 @@ import { ChangeModule } from './change/change.module'; // ⭐ P0-6
 import { RentalsModule } from './rentals/rentals.module'; // ⭐ Аренда
 import { UsersModule } from './users/users.module'; // ⭐ Участники (сводный список)
 import { WarehouseModule } from './warehouse/warehouse.module'; // ⭐ Склад
+import { ReportsModule } from './reports/reports.module'; // ⭐ Отчёты (сметы/акты)
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -32,6 +33,7 @@ import { WarehouseModule } from './warehouse/warehouse.module'; // ⭐ Скла�
     RentalsModule, // ⭐ Аренда
     UsersModule, // ⭐ Участники (сводный список)
     WarehouseModule, // ⭐ Склад
+    ReportsModule, // ⭐ Отчёты (сметы/акты)
   ],
   controllers: [AppController],
   providers: [AppService],

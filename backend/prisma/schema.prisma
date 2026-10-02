@@ -48,6 +48,7 @@ model Object {
   accesses        ObjectAccess[] // Кто имеет доступ к объекту
   inviteTokens    InviteToken[]  // Активные ссылки-приглашения
   warehouseItems  WarehouseItem[] // ⭐ Складские позиции, привязанные к объекту
+  reports         Report[]        // ⭐ Акты/сметы по объекту
 }
 
 model Project {
@@ -60,6 +61,7 @@ model Project {
   materials   Material[]
   changeRequests ChangeRequest[] // Согласования на уровне проекта
   warehouseTransactions WarehouseTransaction[] // ⭐ Складские списания на проект
+  reports     Report[] // ⭐ Акты/сметы по проекту
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   note        String?
@@ -172,6 +174,7 @@ model PriceItem {
   // Связи: работа или материал
   workMaterials     Material[]  @relation("WorkPrice")
   materialMaterials Material[]  @relation("MaterialPrice")
+  reportItems       ReportItem[] // ⭐ Позиции в отчётах (смета/акт)
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
@@ -331,4 +334,46 @@ model WarehouseTransaction {
   @@index([warehouseItemId])
   @@index([projectId])
   @@map("warehouse_transactions")
+}
+
+// ============================================================
+// ОТЧЁТЫ (сметы и акты выполненных работ)
+// ============================================================
+model Report {
+  id          Int       @id @default(autoincrement())
+  type        String    // "estimate" (смета) / "act" (акт выполненных работ)
+  title       String
+  projectId   Int
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  objectId    Int
+  object      Object    @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  totalAmount Decimal   @db.Decimal(12, 2) @default(0)
+  status      String    @default("draft") // "draft" / "sent" / "approved" / "rejected"
+  comment     String?
+  createdBy   Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  items       ReportItem[]
+
+  @@index([projectId])
+  @@index([objectId])
+  @@index([status])
+  @@map("reports")
+}
+
+model ReportItem {
+  id         Int         @id @default(autoincrement())
+  reportId   Int
+  report     Report      @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  materialId Int?        // ссылка на позицию справочника цен (опционально)
+  material   PriceItem?  @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  name       String
+  unit       String      @default("шт")
+  quantity   Decimal     @db.Decimal(12, 2)
+  price      Decimal     @db.Decimal(12, 2)
+  total      Decimal     @db.Decimal(12, 2)
+  sortOrder  Int         @default(0)
+
+  @@index([reportId])
+  @@map("report_items")
 }
