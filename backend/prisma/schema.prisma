@@ -40,6 +40,7 @@ model Object {
   endDate         DateTime
   plannedEndDate  DateTime?     // первоначальная плановая дата
   isArchived      Boolean       @default(false) // Архив вместо удаления (P3)
+  isDemo          Boolean       @default(false) // ⭐ демо-объект для онбординга (№127)
   note            String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
