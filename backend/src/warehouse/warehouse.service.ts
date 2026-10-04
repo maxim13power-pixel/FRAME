@@ -176,26 +176,35 @@ export class WarehouseService {
       await this.checkProjectAccess(dto.projectId as number, userId);
     }
 
-    const delta = type === 'income' ? dto.quantity : -dto.quantity;
-
-    // ⭐ $transaction: перечитываем остаток и списываем атомарно
+    // ⭐ $transaction: атомарное изменение остатка (гонка исключена).
     return this.prisma.$transaction(async (tx) => {
       const current = await tx.warehouseItem.findUnique({
         where: { id: dto.warehouseItemId },
+        select: { id: true },
       });
       if (!current) {
         throw new NotFoundException('Позиция склада не найдена');
       }
-      if (isOutcome && Number(current.quantity) < dto.quantity) {
-        throw new BadRequestException(
-          'Нельзя списать больше, чем есть на складе',
-        );
-      }
 
-      await tx.warehouseItem.update({
-        where: { id: dto.warehouseItemId },
-        data: { quantity: { increment: delta } },
-      });
+      if (isOutcome) {
+        // ⭐ Условный декремент: списываем ТОЛЬКО если остатка хватает.
+        // updateMany с WHERE quantity >= dto.quantity атомарен — под ReadCommitted
+        // два параллельных списания не уйдут в минус (второй получит count = 0).
+        const res = await tx.warehouseItem.updateMany({
+          where: { id: dto.warehouseItemId, quantity: { gte: dto.quantity } },
+          data: { quantity: { decrement: dto.quantity } },
+        });
+        if (res.count !== 1) {
+          throw new BadRequestException(
+            'Нельзя списать больше, чем есть на складе',
+          );
+        }
+      } else {
+        await tx.warehouseItem.update({
+          where: { id: dto.warehouseItemId },
+          data: { quantity: { increment: dto.quantity } },
+        });
+      }
 
       return tx.warehouseTransaction.create({
         data: {

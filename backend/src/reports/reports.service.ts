@@ -40,6 +40,31 @@ const REPORT_INCLUDE = {
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
+  // ⭐ СКРЫТИЕ ЦЕН (флаг hidePrices + роль VIEWER) — как в materials.service.ts
+  private mustHidePrices(
+    access?: { role?: string; hidePrices?: boolean } | null,
+  ): boolean {
+    if (!access) return false;
+    // Наблюдатель не видит деньги по определению роли
+    if (access.role === 'VIEWER') return true;
+    return access.hidePrices ?? false;
+  }
+
+  /** Обнулить денежные поля отчёта и его позиций (для ответа клиенту) */
+  private stripPrices<T>(report: T): T {
+    const r = report as any;
+    if (!r) return report;
+    const items = Array.isArray(r.items)
+      ? r.items.map((it: any) => ({
+          ...it,
+          price: 0,
+          total: 0,
+          material: it.material ? { ...it.material, price: 0 } : null,
+        }))
+      : r.items;
+    return { ...r, totalAmount: 0, items } as T;
+  }
+
   private async checkProjectAccess(projectId: number, userId: number) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -66,8 +91,9 @@ export class ReportsService {
     if (!report) {
       throw new NotFoundException('Отчёт не найден');
     }
-    await this.checkProjectAccess(report.projectId, userId);
-    return report;
+    // ⭐ Возвращаем и отчёт, и запись доступа (role/hidePrices) — для скрытия цен.
+    const access = await this.checkProjectAccess(report.projectId, userId);
+    return { report, access };
   }
 
   private async resolvePriceItem(materialId: number) {
@@ -127,7 +153,7 @@ export class ReportsService {
   }
 
   async detail(userId: number, id: number) {
-    const report = await this.checkReportAccess(id, userId);
+    const { report, access } = await this.checkReportAccess(id, userId);
     const items = await this.prisma.reportItem.findMany({
       where: { reportId: id },
       orderBy: { sortOrder: 'asc' },
@@ -135,7 +161,10 @@ export class ReportsService {
         material: { select: { id: true, name: true, unit: true, price: true } },
       },
     });
-    return { ...report, items };
+    const result = { ...report, items };
+    // ⭐ VIEWER / hidePrices — скрываем цены и в JSON, и в PDF/XLSX (контроллер
+    // вызывает detail() перед генерацией экспорта, поэтому обнуление работает везде).
+    return this.mustHidePrices(access) ? this.stripPrices(result) : result;
   }
 
   async create(userId: number, dto: CreateReportDto) {
