@@ -13,6 +13,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import DescriptionIcon from '@mui/icons-material/Description';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
+import HistoryIcon from '@mui/icons-material/History';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { FAB_STYLE } from '../theme';
@@ -29,6 +30,8 @@ import { fetchCategoriesWithItems } from '../services/priceListService';
 import type { PriceItemData } from '../services/priceListService';
 import { getApiErrorMessage } from '../utils/errors';
 import { parseDecimal } from '../utils/decimal';
+import { fetchAuditLog } from '../services/auditService';
+import type { AuditLogEntry } from '../services/auditService';
 
 const TYPE_LABELS: Record<ReportType, string> = { estimate: 'Смета', act: 'Акт' };
 const STATUS_LABELS: Record<ReportStatus, string> = {
@@ -44,6 +47,13 @@ const STATUS_COLORS: Record<ReportStatus, 'default' | 'primary' | 'success' | 'e
   rejected: 'error',
 };
 const STATUS_OPTIONS: ReportStatus[] = ['draft', 'sent', 'approved', 'rejected'];
+const ACTION_LABELS: Record<string, string> = {
+  create: 'Создание',
+  update: 'Изменение',
+  delete: 'Удаление',
+  status_change: 'Смена статуса',
+  price_change: 'Изменение цены',
+};
 
 const fmtMoney = (v: number | string) =>
   parseDecimal(v).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
@@ -94,6 +104,10 @@ const Reports: React.FC = () => {
 
   // ─── Статус (dropdown в детали) ───
   const [statusAnchorEl, setStatusAnchorEl] = useState<null | HTMLElement>(null);
+  // ⭐ №131: история изменений (audit-log)
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [historyRecords, setHistoryRecords] = useState<AuditLogEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const loadObjects = useCallback(async () => {
     try {
@@ -229,6 +243,21 @@ const Reports: React.FC = () => {
       loadReports();
     } catch (err) {
       setError(getApiErrorMessage(err, 'Не удалось сменить статус'));
+    }
+  };
+
+  // ⭐ №131: открыть историю изменений отчёта
+  const openHistory = async () => {
+    if (!selectedReport) return;
+    setHistoryModalOpen(true);
+    setHistoryLoading(true);
+    setHistoryRecords([]);
+    try {
+      setHistoryRecords(await fetchAuditLog('report', selectedReport.id));
+    } catch {
+      setHistoryRecords([]);
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -374,6 +403,9 @@ const Reports: React.FC = () => {
                   onClick={(e) => setStatusAnchorEl(e.currentTarget)}
                   sx={{ cursor: 'pointer' }}
                 />
+                <Button size="small" startIcon={<HistoryIcon />} onClick={openHistory}>
+                  История изменений
+                </Button>
               </Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                 {selectedReport.object?.name || '—'} • {selectedReport.project?.name || '—'} •{' '}
@@ -395,6 +427,41 @@ const Reports: React.FC = () => {
                 </MenuItem>
               ))}
             </Menu>
+
+            {/* ⭐ №131: модалка истории изменений */}
+            <Modal open={historyModalOpen} onClose={() => setHistoryModalOpen(false)} disableRestoreFocus>
+              <Paper sx={{
+                position: 'absolute', top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: { xs: '90%', sm: 520 }, maxHeight: '80vh', overflow: 'auto',
+                p: 4, borderRadius: 2,
+              }}>
+                <Typography variant="h6" gutterBottom>История изменений</Typography>
+                {historyLoading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress /></Box>
+                ) : historyRecords.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">Изменений пока нет.</Typography>
+                ) : (
+                  <Stack spacing={1}>
+                    {historyRecords.map((r) => (
+                      <Paper key={r.id} variant="outlined" sx={{ p: 1.5 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                          <Typography variant="body2" fontWeight={600}>
+                            {ACTION_LABELS[r.action] || r.action}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {new Date(r.createdAt).toLocaleString('ru-RU')}
+                          </Typography>
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          {r.actor?.fullName || `#${r.actorId}`}
+                        </Typography>
+                      </Paper>
+                    ))}
+                  </Stack>
+                )}
+              </Paper>
+            </Modal>
 
             <Paper sx={{ p: 2, borderRadius: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1, flexWrap: 'wrap', gap: 1 }}>
