@@ -23,6 +23,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { fetchProjectsByObject, createProject, updateProject, deleteProject } from '../services/projectService';
 import type { ProjectData } from '../services/projectService';
+import { fetchEstimateTemplates, createEstimateTemplate, applyEstimateTemplate } from '../services/estimateTemplateService';
+import type { EstimateTemplate } from '../services/estimateTemplateService';
 import NoteAddIcon from '@mui/icons-material/NoteAdd';
 import SearchIcon from '@mui/icons-material/Search';
 import IconButton from '@mui/material/IconButton';
@@ -31,6 +33,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import DescriptionIcon from '@mui/icons-material/Description';
 import EventIcon from '@mui/icons-material/Event';
+import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import SortIcon from '@mui/icons-material/Sort';
 import Select from '@mui/material/Select';
 import FormControl from '@mui/material/FormControl';
@@ -90,6 +93,14 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [noteModalOpen, setNoteModalOpen] = useState(false);
   const [editingNoteProject, setEditingNoteProject] = useState<ProjectData | null>(null);
   const [editNote, setEditNote] = useState('');
+
+  // ⭐ №129: шаблоны смет
+  const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | ''>('');
+  const [saveTemplateModalOpen, setSaveTemplateModalOpen] = useState(false);
+  const [savingTemplateProject, setSavingTemplateProject] = useState<ProjectData | null>(null);
+  const [templateName, setTemplateName] = useState('');
+
   // Временная функция для процента (позже заменим на реальную)
   //const getProgress = () => Math.floor(Math.random() * 60) + 20;
   
@@ -165,13 +176,64 @@ useEffect(() => {
   loadObject();
 }, [token, objectId]);
 
-  const handleOpenAddModal = () => setAddModalOpen(true);
+  // ⭐ №129: загрузить свои шаблоны (для селекта «Из шаблона»)
+  const loadTemplates = async () => {
+    try {
+      setTemplates(await fetchEstimateTemplates());
+    } catch {
+      // шаблоны не критичны — оставляем пустой список
+    }
+  };
+
+  // ⭐ №129: применить выбранный шаблон после создания проекта
+  const applyTemplateIfNeeded = async (projectId: number) => {
+    if (selectedTemplateId) {
+      try {
+        await applyEstimateTemplate(selectedTemplateId, projectId);
+      } catch {
+        console.warn('Не удалось применить шаблон к проекту');
+      }
+    }
+  };
+
+  // ⭐ №129: сохранить проект как шаблон
+  const handleOpenSaveTemplate = (proj: ProjectData) => {
+    setSavingTemplateProject(proj);
+    setTemplateName('');
+    setSaveTemplateModalOpen(true);
+  };
+  const handleCloseSaveTemplate = () => {
+    setSaveTemplateModalOpen(false);
+    setSavingTemplateProject(null);
+    setTemplateName('');
+  };
+  const handleSaveTemplate = async () => {
+    if (!templateName.trim() || !savingTemplateProject) {
+      alert('Введите название шаблона');
+      return;
+    }
+    try {
+      await createEstimateTemplate({
+        name: templateName.trim(),
+        projectId: savingTemplateProject.id,
+      });
+      handleCloseSaveTemplate();
+    } catch {
+      alert('Ошибка при сохранении шаблона');
+    }
+  };
+
+  const handleOpenAddModal = () => {
+    setAddModalOpen(true);
+    loadTemplates();
+  };
   const handleCloseAddModal = () => {
     setAddModalOpen(false);
     setNewName('');
     setNewStartDate('');
     setNewEndDate('');
     setPendingProject(null);
+    setSelectedTemplateId('');
   };
 
 const handleCreateProject = async () => {
@@ -232,6 +294,7 @@ const createProjectAction = async (projectData?: {
       endDate: data.endDate,
       objectId: parseInt(objectId!),
     });
+    await applyTemplateIfNeeded(created.id);
     setProjects(prev => [created, ...prev]);
     handleCloseAddModal();
     setPendingProject(null); // очищаем
@@ -278,6 +341,7 @@ const handleConfirmDateUpdate = async () => {
         endDate: pendingProject.endDate,
         objectId: parseInt(objectId!),
       });
+      await applyTemplateIfNeeded(created.id);
       setProjects(prev => [created, ...prev]);
       handleCloseAddModal();
       setPendingProject(null);
@@ -572,6 +636,17 @@ onBack: () => navigate('/objects'),
 </IconButton>
 <IconButton
   size="small"
+  title="Сохранить шаблон"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleOpenSaveTemplate(proj);
+  }}
+  sx={{ mr: 1, color: '#7b1fa2', bgcolor: 'action.hover' }}
+>
+  <SaveAltIcon fontSize="small" />
+</IconButton>
+<IconButton
+  size="small"
   onClick={(e) => {
     e.stopPropagation();
     handleOpenEdit(proj);
@@ -726,6 +801,20 @@ onBack: () => navigate('/objects'),
           min: newStartDate || (currentObject ? currentObject.startDate.slice(0, 10) : undefined),
                   }}
       />
+      <FormControl fullWidth>
+        <InputLabel id="template-select-label">Из шаблона (опционально)</InputLabel>
+        <Select
+          labelId="template-select-label"
+          label="Из шаблона (опционально)"
+          value={selectedTemplateId}
+          onChange={(e) => setSelectedTemplateId(e.target.value as number | '')}
+        >
+          <MenuItem value="">Без шаблона</MenuItem>
+          {templates.map((t) => (
+            <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
         <Button variant="outlined" onClick={handleCloseAddModal}>Отмена</Button>
         <Button variant="contained" onClick={handleCreateProject}>Сохранить</Button>
@@ -733,6 +822,37 @@ onBack: () => navigate('/objects'),
     </Stack>
   </Paper>
 </Modal>
+      {/* Модалка сохранения шаблона (№129) */}
+<Modal open={saveTemplateModalOpen} onClose={handleCloseSaveTemplate} disableRestoreFocus={true}>
+  <Paper sx={{
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    width: { xs: '90%', sm: 450 },
+    p: 4,
+    borderRadius: 2,
+  }}>
+    <Typography variant="h6" gutterBottom>Сохранить шаблон</Typography>
+    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+      Проект «{savingTemplateProject?.name}» будет сохранён как шаблон сметы.
+    </Typography>
+    <Stack spacing={2}>
+      <TextField
+        fullWidth
+        label="Название шаблона"
+        value={templateName}
+        onChange={(e) => setTemplateName(e.target.value)}
+        autoFocus
+      />
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+        <Button variant="outlined" onClick={handleCloseSaveTemplate}>Отмена</Button>
+        <Button variant="contained" onClick={handleSaveTemplate}>Сохранить</Button>
+      </Box>
+    </Stack>
+  </Paper>
+</Modal>
+
       {/* Модалка редактирования проекта */}
       <Modal open={editModalOpen} onClose={handleCloseEdit} disableRestoreFocus={true}>
         <Paper sx={{

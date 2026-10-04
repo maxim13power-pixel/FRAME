@@ -17,6 +17,7 @@ import { WarehouseModule } from './warehouse/warehouse.module'; // ⭐ Скла�
 import { ReportsModule } from './reports/reports.module'; // ⭐ Отчёты (сметы/акты)
 import { AnalyticsModule } from './analytics/analytics.module'; // ⭐ Срез 3: Аналитика
 import { BrigadesModule } from './brigades/brigades.module'; // ⭐ Срез 4: Бригады
+import { EstimateTemplatesModule } from './estimate-templates/estimate-templates.module'; // ⭐ №129
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -38,6 +39,7 @@ import { BrigadesModule } from './brigades/brigades.module'; // ⭐ Срез 4: 
     ReportsModule, // ⭐ Отчёты (сметы/акты)
     AnalyticsModule, // ⭐ Срез 3: Аналитика
     BrigadesModule, // ⭐ Срез 4: Бригады
+    EstimateTemplatesModule, // ⭐ №129: шаблоны смет
   ],
   controllers: [AppController],
   providers: [AppService],
