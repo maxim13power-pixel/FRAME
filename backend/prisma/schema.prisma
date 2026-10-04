@@ -481,3 +481,21 @@ model EstimateTemplateItem {
   @@index([templateId])
   @@map("estimate_template_items")
 }
+
+// ============================================================
+// АУДИТ-ЛОГ (№131) — append-only журнал ключевых действий
+// ============================================================
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  actorId   Int      // кто совершил (userId)
+  entity    String   // "price_item" | "report" | "material_fix" | "object_access"
+  entityId  Int
+  action    String   // "create" | "update" | "delete" | "status_change" | "price_change"
+  before    Json?    // снимок до (опционально)
+  after     Json?    // снимок после
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}
