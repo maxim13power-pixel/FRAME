@@ -15,6 +15,7 @@ export interface ObjectData {
   totalCost?: number;
   role?: 'CUSTOMER' | 'FOREMAN' | 'VIEWER'; // ⭐ роль пользователя на объекте
   hidePrices?: boolean; // ⭐ скрывать ли цены для этого участника
+  isDemo?: boolean; // ⭐ №127: демо-объект онбординга
 }
 
 // Получить все объекты

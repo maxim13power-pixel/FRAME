@@ -17,6 +17,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto'; // ⭐ P0-4
 import { RequestCodeDto } from './dto/request-code.dto'; // ⭐ №122b
 import { VerifyEmailDto } from './dto/verify.dto'; // ⭐ №122b
 import * as crypto from 'crypto'; // ⭐ P0-4
+import { AccessRole } from '@prisma/client'; // ⭐ №127 онбординг
 @Injectable()
 export class AuthService {
   constructor(
@@ -234,6 +235,7 @@ export class AuthService {
 
     // ⭐ Создаём пользователя, если ещё нет
     let user = await this.prismaService.user.findUnique({ where: { email } });
+    let isNew = false;
     if (!user) {
       const hashedPassword = await bcrypt.hash(
         dto.password || crypto.randomBytes(8).toString('hex'),
@@ -248,6 +250,7 @@ export class AuthService {
             role: 'FOREMAN',
           },
         });
+        isNew = true;
       } catch (e: any) {
         if (e.code === 'P2002') {
           user = await this.prismaService.user.findUnique({ where: { email } });
@@ -260,6 +263,100 @@ export class AuthService {
     if (!user) {
       throw new ConflictException('Не удалось создать пользователя');
     }
+
+    // ⭐ №127: онбординг — новому пользователю создаём демо-объект со сметой.
+    // Ошибка создания демо не должна блокировать регистрацию.
+    if (isNew) {
+      await this.createDemoObject(user.id).catch((err) => {
+        console.warn('Онбординг: не удалось создать демо-объект', err);
+      });
+    }
+
     return this.login(user, false);
+  }
+
+  // ⭐ №127: создаёт демо-объект «Квартира-образец» с проектом и живой сметой,
+  // чтобы новый прораб сразу увидел, как устроен FRAME (aha-момент).
+  // Позиции сметы — снапшоты (materialId=null), чтобы работало и без db:seed.
+  private async createDemoObject(userId: number): Promise<void> {
+    const now = new Date();
+    const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const demoItems: {
+      name: string;
+      unit: string;
+      quantity: number;
+      price: number;
+    }[] = [
+      { name: 'Демонтаж старой отделки', unit: 'м²', quantity: 68, price: 250 },
+      { name: 'Грунтовка стен и потолка', unit: 'м²', quantity: 180, price: 45 },
+      { name: 'Штукатурка стен по маякам', unit: 'м²', quantity: 120, price: 550 },
+      { name: 'Шпаклёвка стен под покраску', unit: 'м²', quantity: 120, price: 180 },
+      { name: 'Устройство стяжки пола', unit: 'м²', quantity: 68, price: 450 },
+      { name: 'Укладка ламината', unit: 'м²', quantity: 68, price: 380 },
+      { name: 'Укладка керамогранита (санузел)', unit: 'м²', quantity: 18, price: 700 },
+      { name: 'Покраска стен', unit: 'м²', quantity: 120, price: 220 },
+      { name: 'Покраска потолка', unit: 'м²', quantity: 68, price: 260 },
+      { name: 'Оклейка стен обоями', unit: 'м²', quantity: 40, price: 300 },
+      { name: 'Электромонтаж: прокладка кабеля', unit: 'м', quantity: 120, price: 180 },
+      { name: 'Установка розеток и выключателей', unit: 'шт', quantity: 24, price: 350 },
+      { name: 'Сантехмонтаж: разводка труб', unit: 'м', quantity: 30, price: 480 },
+      { name: 'Установка смесителей', unit: 'шт', quantity: 4, price: 900 },
+      { name: 'Установка унитаза и раковины', unit: 'компл', quantity: 2, price: 2500 },
+    ];
+
+    const totalAmount =
+      Math.round(
+        demoItems.reduce((sum, it) => sum + it.price * it.quantity, 0) * 100,
+      ) / 100;
+
+    await this.prismaService.$transaction(async (tx) => {
+      const object = await tx.object.create({
+        data: {
+          name: 'Квартира-образец, 68 м²',
+          address: 'г. Москва, ул. Демонстрационная, д. 1, кв. 42',
+          startDate: now,
+          endDate: end,
+          plannedEndDate: end,
+          isDemo: true,
+          note: 'Демо-объект для знакомства с FRAME. Можно удалить.',
+          accesses: {
+            create: { userId, role: AccessRole.CUSTOMER },
+          },
+        },
+      });
+
+      const project = await tx.project.create({
+        data: {
+          name: 'Ремонт квартиры-образца',
+          startDate: now,
+          endDate: end,
+          objectId: object.id,
+        },
+      });
+
+      await tx.report.create({
+        data: {
+          type: 'estimate',
+          title: 'Смета демо-ремонта',
+          projectId: project.id,
+          objectId: object.id,
+          totalAmount,
+          status: 'draft',
+          comment: 'Демо-смета: как выглядит расчёт работ и материалов.',
+          createdBy: userId,
+          items: {
+            create: demoItems.map((it, idx) => ({
+              name: it.name,
+              unit: it.unit,
+              quantity: it.quantity,
+              price: it.price,
+              total: Math.round(it.price * it.quantity * 100) / 100,
+              sortOrder: idx,
+            })),
+          },
+        },
+      });
+    });
   }
 }
