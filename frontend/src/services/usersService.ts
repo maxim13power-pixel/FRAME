@@ -31,3 +31,14 @@ export const fetchTeam = async (): Promise<TeamObject[]> => {
   const response = await api.get('/users/team');
   return response.data;
 };
+
+// ⭐ №130 (152-ФЗ): выгрузка своих персональных данных (JSON)
+export const exportMyData = async (): Promise<unknown> => {
+  const response = await api.get('/users/me/export');
+  return response.data;
+};
+
+// ⭐ №130 (152-ФЗ): удаление аккаунта
+export const deleteMyAccount = async (): Promise<void> => {
+  await api.delete('/users/me');
+};
