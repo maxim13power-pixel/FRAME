@@ -649,6 +649,28 @@ trailing: headerTrailing,
     },
   }}
 >
+                {obj.isDemo && (
+                  <Alert
+                    severity="info"
+                    onClick={(e) => e.stopPropagation()}
+                    sx={{ mb: 1, borderRadius: 2 }}
+                    action={
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingObject(obj);
+                          setDeleteConfirmOpen(true);
+                        }}
+                      >
+                        Удалить
+                      </Button>
+                    }
+                  >
+                    Это демо-данные.
+                  </Alert>
+                )}
                 {/* Верхняя строка: иконка, название, процент */}
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: isMobile ? 0.5 : 1 }}>
                   <PlaceIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28 }} />
