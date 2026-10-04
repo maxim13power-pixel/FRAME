@@ -450,3 +450,34 @@ model BrigadeShift {
   @@index([date])
   @@map("brigade_shifts")
 }
+
+// ============================================================
+// ШАБЛОНЫ СМЕТ (№129) — сохранить проект как шаблон и применить
+// ============================================================
+model EstimateTemplate {
+  id        Int                    @id @default(autoincrement())
+  name      String
+  ownerId   Int                    // владелец шаблона (userId)
+  createdAt DateTime               @default(now())
+  items     EstimateTemplateItem[]
+
+  @@index([ownerId])
+  @@map("estimate_templates")
+}
+
+model EstimateTemplateItem {
+  id                Int               @id @default(autoincrement())
+  templateId        Int
+  template          EstimateTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name              String
+  unit              Unit              @default(PIECE)
+  quantity          Decimal           @db.Decimal(14, 3) // specQuantity
+  unitPrice         Decimal           @db.Decimal(14, 2) // снимок цены работы
+  materialUnitPrice Decimal           @db.Decimal(14, 2) // снимок цены материала
+  priceItemId       Int?              // ссылка на расценку работы (опционально)
+  materialItemId    Int?              // ссылка на расценку материала (опционально)
+  sortOrder         Int               @default(0)
+
+  @@index([templateId])
+  @@map("estimate_template_items")
+}
