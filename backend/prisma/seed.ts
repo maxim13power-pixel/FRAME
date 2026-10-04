@@ -1,20 +1,12 @@
 // backend/prisma/seed.ts
-// Идемпотентный seed демо-данных FRAME.
-// Запуск: cd backend && npx ts-node prisma/seed.ts
+// Идемпотентный seed ТОЛЬКО справочника расценок (ownerId=null, общий).
+// Запуск: npm run db:seed  (или npm run db:seed:catalog)
 //
 // Стратегия идемпотентности:
-//  • User — upsert по email (email @unique).
-//  • Все демо-данные помечаются префиксом [SEED] в name/note или SEED- в article.
-//    Перед повторной заливкой старые seed-записи удаляются в одной транзакции.
-//    Несидовые (боевые) данные не затрагиваются.
-import {
-  PrismaClient,
-  Role,
-  PriceKind,
-  Unit,
-  AccessRole,
-} from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+//  • Расценки помечаются префиксом [SEED] в категории и SEED- в article.
+//  • Перед повторной заливкой старые seed-расценки удаляются в одной транзакции.
+//  • Демо-юзеров/демо-объекты seed БОЛЬШЕ НЕ создаёт (№128) — только каталог.
+import { PrismaClient, PriceKind, Unit } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const SEED_TAG = '[SEED]';
@@ -436,90 +428,9 @@ const MATERIAL_CATEGORIES: { name: string; items: WorkItem[] }[] = [
 async function main() {
   console.log('→ Seed started');
 
-  // 1. Пользователь foreman@frame.app / frame123 (хэш как в auth.service: bcrypt@10)
-  const passwordHash = await bcrypt.hash('frame123', 10);
-  const foreman = await prisma.user.upsert({
-    where: { email: 'foreman@frame.app' },
-    update: { password: passwordHash },
-    create: {
-      email: 'foreman@frame.app',
-      phone: '+79990000000',
-      password: passwordHash,
-      fullName: 'Прораб Демо',
-      role: Role.FOREMAN,
-    },
-  });
-console.log(`✓ User foreman@frame.app (id=${foreman.id})`);
-
-  // 1.1. ⭐ Второй пользователь: Заказчик (для теста приглашений)
-  const customer = await prisma.user.upsert({
-    where: { email: 'customer@frame.app' },
-    update: { password: passwordHash },
-    create: {
-      email: 'customer@frame.app',
-      phone: '+79990000001',
-      password: passwordHash,
-      fullName: 'Заказчик Демо',
-      role: Role.CUSTOMER,
-    },
-  });
-  console.log(`✓ User customer@frame.app (id=${customer.id})`);
-
-  // 1.2. ⭐ Третий пользователь: Субподрядчик (для теста "скрыть цены")
-  const sub = await prisma.user.upsert({
-    where: { email: 'sub@frame.app' },
-    update: { password: passwordHash },
-    create: {
-      email: 'sub@frame.app',
-      phone: '+79990000002',
-      password: passwordHash,
-      fullName: 'Субподрядчик Демо',
-      role: Role.FOREMAN,
-    },
-  });
-  console.log(`✓ User sub@frame.app (id=${sub.id})`);
-
-  // 2. Очистка старых seed-данных (идемпотентность).
-  //    ПРАВИЛЬНЫЙ ПОРЯДОК ПО FK-СВЯЗЯМ:
-  //    materialFix → changeRequest → material → project → objectAccess → object
-  //    + priceItem → priceCategory
+  // 1. Очистка старых seed-расценок (идемпотентность). Только каталог —
+  //    пользователей, объекты и проекты seed НЕ трогает (№128).
   await prisma.$transaction([
-    prisma.materialFix.deleteMany({
-      where: {
-        material: {
-          project: {
-            object: { name: { startsWith: SEED_TAG } },
-          },
-        },
-      },
-    }),
-    prisma.changeRequest.deleteMany({
-      where: {
-        project: {
-          object: { name: { startsWith: SEED_TAG } },
-        },
-      },
-    }),
-    prisma.material.deleteMany({
-      where: {
-        project: {
-          object: { name: { startsWith: SEED_TAG } },
-        },
-      },
-    }),
-    prisma.project.deleteMany({
-      where: {
-        object: { name: { startsWith: SEED_TAG } },
-      },
-    }),
-    prisma.objectAccess.deleteMany({
-      where: {
-        object: { name: { startsWith: SEED_TAG } },
-      },
-    }),
-    prisma.object.deleteMany({
-      where: { name: { startsWith: SEED_TAG } },
-    }),
     prisma.priceItem.deleteMany({
       where: { article: { startsWith: SEED_ART } },
     }),
@@ -527,9 +438,9 @@ console.log(`✓ User foreman@frame.app (id=${foreman.id})`);
       where: { name: { startsWith: SEED_TAG } },
     }),
   ]);
-  console.log('  ✓ Old seed data cleared (FK order correct)');
+  console.log('  ✓ Old seed catalog cleared');
 
-  // 3. Категории работ + расценки (10 категорий × 18-20)
+  // 2. Категории работ + расценки (10 категорий × 18-20)
   //    ownerId: null = общий стартовый справочник (3.7)
   const workCategoryIds: number[] = [];
   for (let i = 0; i < WORK_CATEGORIES.length; i++) {
@@ -562,7 +473,7 @@ console.log(`✓ User foreman@frame.app (id=${foreman.id})`);
     `  ✓ WORK: ${WORK_CATEGORIES.length} categories, ${WORK_CATEGORIES.reduce((s, c) => s + c.items.length, 0)} items`,
   );
 
-  // 4. Категории материалов + расценки (8 × 15)
+  // 3. Категории материалов + расценки (8 × 15)
   const materialCategoryIds: number[] = [];
   for (let i = 0; i < MATERIAL_CATEGORIES.length; i++) {
     const cat = MATERIAL_CATEGORIES[i];
@@ -594,169 +505,6 @@ console.log(`✓ User foreman@frame.app (id=${foreman.id})`);
     `  ✓ MATERIAL: ${MATERIAL_CATEGORIES.length} categories, ${MATERIAL_CATEGORIES.reduce((s, c) => s + c.items.length, 0)} items`,
   );
 
-  // 5. Один объект. today-based даты — стабильны при повторных запусках.
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const plus = (n: number) => {
-    const d = new Date(today);
-    d.setDate(d.getDate() + n);
-    return d;
-  };
-  const obj = await prisma.object.create({
-    data: {
-      name: `${SEED_TAG} Жилой комплекс «Лесная поляна»`,
-      address: 'г. Самара, ул. Лесная, д. 12',
-      startDate: plus(-30),
-      endDate: plus(120),
-      plannedEndDate: plus(130),
-      note: 'Демо-объект для проверки дашборда',
-      isArchived: false, // Архив вместо удаления (P3, 3.8)
-    },
-  });
-  console.log(`  ✓ Object id=${obj.id}`);
-
-  // 6. Создаём ObjectAccess для foreman как CUSTOMER (он "хозяин" объекта в seed).
-  //    В реальном сценарии прораб создаёт объект и приглашает заказчика.
-  //    Но для простоты демо — foreman сразу CUSTOMER.
-  await prisma.objectAccess.create({
-    data: {
-      userId: foreman.id,
-      objectId: obj.id,
-      projectId: null, // null = доступ ко всему объекту (3.2)
-      role: AccessRole.CUSTOMER,
-      invitedBy: null,
-    },
-  });
-  console.log(`  ✓ ObjectAccess: foreman (id=${foreman.id}) → CUSTOMER на объект (id=${obj.id})`);
-
-  // 7. Два проекта. Project #1 — hot (endDate = сегодня+5, ≤ +7).
-  const project1 = await prisma.project.create({
-    data: {
-      name: `${SEED_TAG} Секция А — монолит`,
-      startDate: plus(-20),
-      endDate: plus(5), // hot: попадёт в hotProjects
-      objectId: obj.id,
-      note: 'Монолитные работы, закрытие через 5 дней',
-    },
-  });
-  const project2 = await prisma.project.create({
-    data: {
-      name: `${SEED_TAG} Секция Б — отделка`,
-      startDate: plus(-10),
-      endDate: plus(60), // не hot
-      objectId: obj.id,
-      note: 'Отделочные работы, не срочный',
-    },
-  });
-  console.log(`  ✓ Projects id=${project1.id} (hot), id=${project2.id}`);
-
-  // 8. Достаём по 6 расценок каждого вида — на них повесим 12 материалов.
-  const workItems = await prisma.priceItem.findMany({
-    where: { kind: PriceKind.WORK, article: { startsWith: `${SEED_ART}W-` } },
-    orderBy: { id: 'asc' },
-    take: 6,
-  });
-  const matItems = await prisma.priceItem.findMany({
-    where: { kind: PriceKind.MATERIAL, article: { startsWith: `${SEED_ART}M-` } },
-    orderBy: { id: 'asc' },
-    take: 6,
-  });
-  if (workItems.length < 6 || matItems.length < 6) {
-    throw new Error('Недостаточно расценок для создания материалов');
-  }
-
-  // 9. 12 материалов. Каждый с work-price И material-price.
-  //    specQuantity, unitPrice/materialUnitPrice — snapshot из расценок.
-  //    У первых 6 будут фиксации (см. ниже).
-  const materialsData: {
-    name: string;
-    projectId: number;
-    workItem: (typeof workItems)[number];
-    materialItem: (typeof matItems)[number];
-    specQuantity: number;
-  }[] = [
-    { name: `${SEED_TAG} Фундаментная плита`, projectId: project1.id, workItem: workItems[0], materialItem: matItems[0], specQuantity: 120 },
-    { name: `${SEED_TAG} Армирование ленты`, projectId: project1.id, workItem: workItems[1], materialItem: matItems[1], specQuantity: 45 },
-    { name: `${SEED_TAG} Бетонирование колонн`, projectId: project1.id, workItem: workItems[2], materialItem: matItems[2], specQuantity: 18 },
-    { name: `${SEED_TAG} Кладка несущих стен`, projectId: project1.id, workItem: workItems[3], materialItem: matItems[3], specQuantity: 320 },
-    { name: `${SEED_TAG} Перегородки газобетон`, projectId: project1.id, workItem: workItems[4], materialItem: matItems[4], specQuantity: 480 },
-    { name: `${SEED_TAG} Армопояс монолитный`, projectId: project1.id, workItem: workItems[5], materialItem: matItems[5], specQuantity: 65 },
-    { name: `${SEED_TAG} Стяжка пола`, projectId: project2.id, workItem: workItems[0], materialItem: matItems[0], specQuantity: 240 },
-    { name: `${SEED_TAG} Штукатурка стен`, projectId: project2.id, workItem: workItems[1], materialItem: matItems[1], specQuantity: 540 },
-    { name: `${SEED_TAG} Керамическая плитка`, projectId: project2.id, workItem: workItems[2], materialItem: matItems[2], specQuantity: 180 },
-    { name: `${SEED_TAG} Ламинат на пол`, projectId: project2.id, workItem: workItems[3], materialItem: matItems[3], specQuantity: 220 },
-    { name: `${SEED_TAG} Покраска стен`, projectId: project2.id, workItem: workItems[4], materialItem: matItems[4], specQuantity: 360 },
-    { name: `${SEED_TAG} Натяжной потолок`, projectId: project2.id, workItem: workItems[5], materialItem: matItems[5], specQuantity: 280 },
-  ];
-
-  // 10. Создаём материалы; для первых 6 — суммарно и фиксации за последние 7 дней.
-  for (let i = 0; i < materialsData.length; i++) {
-    const md = materialsData[i];
-    const unitPrice = Number(md.workItem.price);
-    const materialUnitPrice = Number(md.materialItem.price);
-    const willHaveFixes = i < 6; // первые 6 с фиксациями
-
-    let totalUsed = 0;
-    const fixes: { amount: number; fixedAt: Date; note: string }[] = [];
-
-    if (willHaveFixes) {
-      const plan = [
-        { amount: md.specQuantity * 0.15, offset: -6, note: 'Первая фиксация (бригада 1)' },
-        { amount: md.specQuantity * 0.20, offset: -4, note: 'Вторая фиксация (бригада 2)' },
-        { amount: md.specQuantity * 0.10, offset: -2, note: 'Третья фиксация (контроль)' },
-      ];
-      for (const p of plan) {
-        const fixedAt = plus(p.offset);
-        fixedAt.setHours(9 + (i % 8), (i * 13) % 60, 0, 0);
-        fixes.push({ amount: Math.round(p.amount * 100) / 100, fixedAt, note: p.note });
-        totalUsed += Math.round(p.amount * 100) / 100;
-      }
-      totalUsed = Math.round(totalUsed * 100) / 100;
-    }
-
-    const totalCost = Math.round(totalUsed * unitPrice * 100) / 100;
-    const materialTotalCost = Math.round(totalUsed * materialUnitPrice * 100) / 100;
-    const progressPercent =
-      md.specQuantity > 0
-        ? Math.round((totalUsed / md.specQuantity) * 10000) / 100
-        : 0;
-    const lastEntryDate = fixes.length ? fixes[fixes.length - 1].fixedAt : null;
-    const lastEntry = fixes.length ? fixes[fixes.length - 1].amount : null;
-
-    const material = await prisma.material.create({
-      data: {
-        name: md.name,
-        unit: md.workItem.unit,
-        specQuantity: md.specQuantity,
-        totalUsed,
-        lastEntry,
-        lastEntryDate,
-        note: `${SEED_TAG} demo material`,
-        progressPercent,
-        isSpecLocked: true,
-        priceItemId: md.workItem.id,
-        unitPrice,
-        totalCost,
-        materialItemId: md.materialItem.id,
-        materialUnitPrice,
-        materialTotalCost,
-        projectId: md.projectId,
-      },
-    });
-
-    if (fixes.length) {
-      await prisma.materialFix.createMany({
-        data: fixes.map((f) => ({
-          materialId: material.id,
-          amount: f.amount,
-          note: f.note,
-          fixedAt: f.fixedAt,
-          isEdited: false,
-        })),
-      });
-    }
-  }
-  console.log(`  ✓ 12 materials created (6 with fixes in last 7 days)`);
   console.log('→ Seed done');
 }
 
