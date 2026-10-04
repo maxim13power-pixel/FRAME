@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, PriceKind, Unit } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
@@ -21,7 +22,10 @@ const MATERIAL_INCLUDE = {
 
 @Injectable()
 export class MaterialsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService, // ⭐ №131
+  ) {}
 
   // ============================================================
   // ⭐ СКРЫТИЕ ЦЕН (флаг hidePrices + роль VIEWER)
@@ -246,6 +250,15 @@ export class MaterialsService {
         include: MATERIAL_INCLUDE,
       });
     });
+
+    // ⭐ №131: журнал фиксации объёма
+    if (userId) {
+      await this.audit.log(userId, 'material_fix', materialId, 'create', undefined, {
+        amount: dto.amount,
+        note: dto.note ?? null,
+      });
+    }
+
     // ⭐ Скрываем цены для VIEWER / юзеров с hidePrices
     return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
   }
@@ -418,6 +431,18 @@ export class MaterialsService {
         include: MATERIAL_INCLUDE,
       });
     });
+    // ⭐ №131: журнал правки фиксации
+    if (userId) {
+      await this.audit.log(
+        userId,
+        'material_fix',
+        id,
+        'update',
+        { amount: Number(expectedLastFix.amount), note: expectedLastFix.note },
+        { amount: dto.amount, note: dto.note ?? null },
+      );
+    }
+
     // ⭐ Скрываем цены для VIEWER / юзеров с hidePrices
     return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
   }
