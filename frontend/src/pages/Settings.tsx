@@ -2,20 +2,26 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, Stack, FormControlLabel, Checkbox,
-  Button, Divider,
+  Button, Divider, Modal, Alert,
 } from '@mui/material';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import DownloadIcon from '@mui/icons-material/Download';
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { ALL_BOTTOM_TABS, getBottomNavConfig, DEFAULT_BOTTOM_TABS } from '../components/BottomNav';
+import { useAuth } from '../contexts/AuthContext';
+import { exportMyData, deleteMyAccount } from '../services/usersService';
 
 const MAX_TABS = 5;
 const MIN_TABS = 3;
 
 const Settings: React.FC = () => {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   useMobileHeader({ title: 'Настройки', onBack: () => navigate(-1) });
 
   const [selected, setSelected] = useState<string[]>(() => getBottomNavConfig());
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   const persist = (value: string[]) => {
     localStorage.setItem('frame_bottom_nav', JSON.stringify(value));
@@ -41,6 +47,36 @@ const Settings: React.FC = () => {
 
   const handleReset = () => {
     persist([...DEFAULT_BOTTOM_TABS]);
+  };
+
+  // ⭐ №130 (152-ФЗ): выгрузить свои данные в JSON-файл
+  const handleExport = async () => {
+    try {
+      const data = await exportMyData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `frame-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Не удалось выгрузить данные');
+    }
+  };
+
+  // ⭐ №130 (152-ФЗ): удалить аккаунт
+  const handleDeleteAccount = async () => {
+    try {
+      await deleteMyAccount();
+      logout();
+      navigate('/login', { replace: true });
+    } catch {
+      alert('Не удалось удалить аккаунт');
+      setDeleteModalOpen(false);
+    }
   };
 
   return (
@@ -89,11 +125,51 @@ const Settings: React.FC = () => {
         </Typography>
       </Paper>
 
-      <Paper sx={{ p: 3, borderRadius: 2 }}>
-        <Typography variant="body1" color="text.secondary">
-          Здесь появятся остальные настройки приложения (профиль, уведомления, темы).
+      <Paper sx={{ p: 2.5, borderRadius: 2 }}>
+        <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 0.5 }}>
+          Данные
         </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          Выгрузка и удаление персональных данных (152-ФЗ).
+        </Typography>
+        <Stack spacing={1}>
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={handleExport}
+            fullWidth
+          >
+            Выгрузить мои данные
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteForeverIcon />}
+            onClick={() => setDeleteModalOpen(true)}
+            fullWidth
+          >
+            Удалить аккаунт
+          </Button>
+        </Stack>
       </Paper>
+
+      {/* Модалка подтверждения удаления аккаунта (№130) */}
+      <Modal open={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} disableRestoreFocus>
+        <Paper sx={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '90%', sm: 420 }, p: 4, borderRadius: 2,
+        }}>
+          <Typography variant="h6" gutterBottom>Удалить аккаунт?</Typography>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Это действие необратимо. Все ваши данные будут удалены безвозвратно.
+          </Alert>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+            <Button variant="outlined" onClick={() => setDeleteModalOpen(false)}>Отмена</Button>
+            <Button variant="contained" color="error" onClick={handleDeleteAccount}>Удалить</Button>
+          </Box>
+        </Paper>
+      </Modal>
 
     </Box>
   );
