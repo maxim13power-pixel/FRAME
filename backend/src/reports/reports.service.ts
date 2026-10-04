@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { CreateReportDto } from './dto/create-report.dto';
 import { UpdateReportDto } from './dto/update-report.dto';
 import { AddReportItemDto } from './dto/add-report-item.dto';
@@ -38,7 +39,10 @@ const REPORT_INCLUDE = {
 
 @Injectable()
 export class ReportsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService, // ⭐ №131
+  ) {}
 
   // ⭐ СКРЫТИЕ ЦЕН (флаг hidePrices + роль VIEWER) — как в materials.service.ts
   private mustHidePrices(
@@ -198,11 +202,11 @@ export class ReportsService {
   }
 
   async update(userId: number, id: number, dto: UpdateReportDto) {
-    await this.checkReportAccess(id, userId);
+    const { report } = await this.checkReportAccess(id, userId);
     if (dto.status && !REPORT_STATUSES.includes(dto.status)) {
       throw new BadRequestException('status: draft / sent / approved / rejected');
     }
-    return this.prisma.report.update({
+    const updated = await this.prisma.report.update({
       where: { id },
       data: {
         title: dto.title !== undefined ? dto.title.trim() : undefined,
@@ -211,6 +215,20 @@ export class ReportsService {
       },
       include: REPORT_INCLUDE,
     });
+
+    // ⭐ №131: журнал смены статуса отчёта
+    if (dto.status !== undefined && dto.status !== report.status) {
+      await this.audit.log(
+        userId,
+        'report',
+        id,
+        'status_change',
+        { status: report.status },
+        { status: updated.status },
+      );
+    }
+
+    return updated;
   }
 
   async remove(userId: number, id: number) {

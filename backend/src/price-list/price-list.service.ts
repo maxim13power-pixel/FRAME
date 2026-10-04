@@ -6,13 +6,17 @@ import {
 } from '@nestjs/common';
 import { PriceKind, Unit } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreatePriceItemDto } from './dto/create-price-item.dto';
 
 @Injectable()
 export class PriceListService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService, // ⭐ №131
+  ) {}
 
   // ⭐ Хелпер: фильтр расценок — ОБЩИЕ (ownerId=null) + ЛИЧНЫЕ текущего юзера.
   // Общий стартовый справочник виден всем; личный — только владельцу (ТЗ 3.7).
@@ -169,7 +173,7 @@ export class PriceListService {
     });
     if (!item)
       throw new NotFoundException('Расценка не найдена или нет доступа');
-    return this.prisma.priceItem.update({
+    const updated = await this.prisma.priceItem.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name?.trim() }),
@@ -180,6 +184,31 @@ export class PriceListService {
         ...(dto.price !== undefined && { price: dto.price }),
       },
     });
+
+    // ⭐ №131: журнал изменения расценки
+    if (userId) {
+      if (dto.price !== undefined && Number(dto.price) !== Number(item.price)) {
+        await this.audit.log(
+          userId,
+          'price_item',
+          id,
+          'price_change',
+          { price: Number(item.price) },
+          { price: Number(updated.price) },
+        );
+      } else if (dto.name !== undefined || dto.unit != null) {
+        await this.audit.log(
+          userId,
+          'price_item',
+          id,
+          'update',
+          { name: item.name, unit: item.unit },
+          { name: updated.name, unit: updated.unit },
+        );
+      }
+    }
+
+    return updated;
   }
 
   // Не удаляем, а деактивируем — старые сметы остаются нетронутыми.
@@ -190,9 +219,17 @@ export class PriceListService {
     });
     if (!item)
       throw new NotFoundException('Расценка не найдена или нет доступа');
-    return this.prisma.priceItem.update({
+    const updated = await this.prisma.priceItem.update({
       where: { id },
       data: { isActive: false },
     });
+    // ⭐ №131: журнал удаления расценки
+    if (userId) {
+      await this.audit.log(userId, 'price_item', id, 'delete', {
+        name: item.name,
+        price: Number(item.price),
+      });
+    }
+    return updated;
   }
 }

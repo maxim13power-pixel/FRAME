@@ -18,6 +18,7 @@ import { ReportsModule } from './reports/reports.module'; // ⭐ Отчёты (�
 import { AnalyticsModule } from './analytics/analytics.module'; // ⭐ Срез 3: Аналитика
 import { BrigadesModule } from './brigades/brigades.module'; // ⭐ Срез 4: Бригады
 import { EstimateTemplatesModule } from './estimate-templates/estimate-templates.module'; // ⭐ №129
+import { AuditModule } from './audit/audit.module'; // ⭐ №131
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -40,6 +41,7 @@ import { EstimateTemplatesModule } from './estimate-templates/estimate-templates
     AnalyticsModule, // ⭐ Срез 3: Аналитика
     BrigadesModule, // ⭐ Срез 4: Бригады
     EstimateTemplatesModule, // ⭐ №129: шаблоны смет
+    AuditModule, // ⭐ №131: аудит-лог (global)
   ],
   controllers: [AppController],
   providers: [AppService],

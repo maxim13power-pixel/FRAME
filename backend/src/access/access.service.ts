@@ -8,12 +8,16 @@ import {
 } from '@nestjs/common';
 import { AccessRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { AddAccessDto } from './dto/add-access.dto';
 import { UpdateAccessDto } from './dto/update-access.dto';
 
 @Injectable()
 export class AccessService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService, // ⭐ №131
+  ) {}
 
   // ⭐ Хелпер: получить запись доступа юзера к объекту (или кинуть 403)
   // Детерминированный резолв: объектный контекст → только общая запись (projectId: null).
@@ -104,7 +108,7 @@ export class AccessService {
       );
     }
 
-    return this.prisma.objectAccess.create({
+    const created = await this.prisma.objectAccess.create({
       data: {
         userId: invitedUser.id,
         objectId,
@@ -118,6 +122,16 @@ export class AccessService {
         },
       },
     });
+    // ⭐ №131: журнал выдачи доступа
+    await this.audit.log(
+      actorUserId,
+      'object_access',
+      objectId,
+      'create',
+      undefined,
+      { userId: invitedUser.id, role: dto.role },
+    );
+    return created;
   }
 
   // 3. Сменить роль участника
@@ -149,7 +163,7 @@ export class AccessService {
       throw new BadRequestException('Нельзя менять собственную роль');
     }
 
-    return this.prisma.objectAccess.update({
+    const updated = await this.prisma.objectAccess.update({
       where: { id: accessId },
       data: { role: dto.role },
       include: {
@@ -158,6 +172,16 @@ export class AccessService {
         },
       },
     });
+    // ⭐ №131: журнал смены роли
+    await this.audit.log(
+      actorUserId,
+      'object_access',
+      objectId,
+      'update',
+      { userId: target.userId, role: target.role },
+      { userId: target.userId, role: dto.role },
+    );
+    return updated;
   }
 
   // 4. Отозвать доступ (кейс «уволить воригу» 🚪)
@@ -188,6 +212,15 @@ export class AccessService {
       throw new ForbiddenException('Прораб не может отозвать доступ заказчика');
     }
 
-    return this.prisma.objectAccess.delete({ where: { id: accessId } });
+    await this.prisma.objectAccess.delete({ where: { id: accessId } });
+    // ⭐ №131: журнал отзыва доступа
+    await this.audit.log(
+      actorUserId,
+      'object_access',
+      objectId,
+      'delete',
+      { userId: target.userId, role: target.role },
+    );
+    return { success: true };
   }
 }
