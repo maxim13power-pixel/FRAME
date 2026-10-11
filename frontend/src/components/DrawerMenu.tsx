@@ -54,7 +54,7 @@ const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) =>
     <Drawer anchor="left" open={open} onClose={onClose}>
       <Box sx={{ width: 250, pt: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
         {/* ⭐ Шапка: логотип + кнопка скрытия (как на десктопе) */}
-        <Box sx={{ px: 2, pb: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box sx={{ px: 2, pb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Logo size="small" />
           <IconButton
             onClick={onClose}
@@ -64,7 +64,7 @@ const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) =>
             <ChevronLeftIcon />
           </IconButton>
         </Box>
-        <Divider sx={{ mb: 0.5 }} />
+        <Divider sx={{ mb: 0 }} />
         <List
           sx={{
             flexGrow: 1,
@@ -80,7 +80,7 @@ const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) =>
         >
           {menuItems.map((item) => (
             <ListItem key={item.path} disablePadding>
-              <ListItemButton onClick={() => { onNavigate(item.path); onClose(); }}>
+              <ListItemButton onClick={() => { onNavigate(item.path); onClose(); }} sx={{ py: 0.5 }}>
                 <ListItemIcon sx={{ color: '#1976d2' }}>
                   {item.icon}
                 </ListItemIcon>
