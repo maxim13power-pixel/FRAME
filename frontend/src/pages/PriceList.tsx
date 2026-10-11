@@ -483,7 +483,7 @@ const PriceList: React.FC = () => {
 
       {/* Десктоп: заголовок + кнопка "назад в главное меню" */}
       {!isMobile && (
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
           <IconButton
             onClick={() => navigate('/')}
             sx={{
@@ -509,7 +509,7 @@ const PriceList: React.FC = () => {
             setSearchQuery('');
           }}
           sx={{
-            mb: 2,
+            mb: 1,
             borderBottom: 1,
             borderColor: 'divider',
             '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 15, minHeight: 48 },

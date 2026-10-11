@@ -276,9 +276,16 @@ const handleUpdateObject = async () => {
 
 const handleDeleteObject = async () => {
   if (!token || !deletingObject) return;
+  const permanent = deletingObject.isDemo === true;
   try {
-    await deleteObject(Number(deletingObject.id), deletingObject.isDemo === true);
-    setObjects(prev => prev.filter(obj => obj.id !== deletingObject.id));
+    await deleteObject(Number(deletingObject.id), permanent);
+    if (permanent) {
+      // жёсткое удаление (демо) — убираем из списка
+      setObjects(prev => prev.filter(obj => obj.id !== deletingObject.id));
+    } else {
+      // архивация — объект сразу уходит в «Архив» без перезагрузки
+      setObjects(prev => prev.map(obj => obj.id === deletingObject.id ? { ...obj, isArchived: true } : obj));
+    }
     setDeleteConfirmOpen(false);
     setDeletingObject(null); // очищаем
   } catch {
@@ -586,7 +593,7 @@ trailing: headerTrailing,
 
 {/* Заголовок для десктопа + кнопка "в главное меню" */}
 {!isMobile && (
-  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
     <IconButton
       onClick={() => navigate('/')}
       sx={{
@@ -603,6 +610,30 @@ trailing: headerTrailing,
     </Typography>
   </Box>
 )}
+
+  {/* ⭐ Переключатель Активные / Архив (в точности как в Справочнике цен) */}
+  <Tabs
+    value={showArchived ? 'archived' : 'active'}
+    onChange={(_e, v) => setShowArchived(v === 'archived')}
+    variant={isMobile ? 'fullWidth' : 'standard'}
+    sx={{
+      mt: { xs: -3, md: 0 },
+      mb: { xs: 1, md: 1 },
+      borderBottom: { md: 1 },
+      borderColor: { md: 'divider' },
+      '& .MuiTab-root': {
+        textTransform: 'none',
+        fontWeight: 600,
+        fontSize: { xs: 13, md: 15 },
+        minHeight: { xs: 44, md: 48 },
+        '&:focus': { outline: 'none' },
+        '&:focus-visible': { outline: 'none' },
+      },
+    }}
+  >
+    <Tab icon={<CheckCircleIcon />} iconPosition="start" label="Активные" value="active" />
+    <Tab icon={<ArchiveIcon />} iconPosition="start" label="Архив" value="archived" />
+  </Tabs>
 
   {/* Панель поиска и добавления (десктоп) */}
   {!isMobile && (
@@ -636,44 +667,25 @@ trailing: headerTrailing,
           <MenuItem value="progress">По проценту %</MenuItem>
         </Select>
       </FormControl>
-      <Button
-        variant="contained"
-        startIcon={<AddHomeIcon />}
-        onClick={handleOpenAddModal}
-        sx={{
-          bgcolor: '#4caf50',
-          '&:hover': { bgcolor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
-          transition: 'all 0.3s ease',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        Добавить объект
-      </Button>
+      {!showArchived && (
+        <Button
+          variant="contained"
+          startIcon={<AddHomeIcon />}
+          onClick={handleOpenAddModal}
+          sx={{
+            bgcolor: '#4caf50',
+            '&:hover': { bgcolor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
+            transition: 'all 0.3s ease',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Добавить объект
+        </Button>
+      )}
     </Box>
   )}
 
   {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-  {/* ⭐ Переключатель Активные / Архив (в точности как в Справочнике цен) */}
-  <Tabs
-    value={showArchived ? 'archived' : 'active'}
-    onChange={(_e, v) => setShowArchived(v === 'archived')}
-    variant="fullWidth"
-    sx={{
-      mt: -3,
-      mb: 1,
-      '& .MuiTab-root': {
-        textTransform: 'none',
-        fontWeight: 600,
-        fontSize: 13,
-        minHeight: 44,
-        '&:focus': { outline: 'none' },
-        '&:focus-visible': { outline: 'none' },
-      },
-    }}
-  >
-    <Tab icon={<CheckCircleIcon />} iconPosition="start" label="Активные" value="active" />
-    <Tab icon={<ArchiveIcon />} iconPosition="start" label="Архив" value="archived" />
-  </Tabs>
 
          {/* Список объектов – красивые карточки */}
       <Stack spacing={isMobile ? 1 : 2}>
@@ -862,7 +874,7 @@ trailing: headerTrailing,
       </Stack>
 
       {/* Мобильная плавающая кнопка */}
-      {isMobile && (
+      {isMobile && !showArchived && (
         <Fab
           color="primary"
           sx={{
