@@ -3,14 +3,14 @@
 // Запуск: npm run db:seed  (или npm run db:seed:catalog)
 //
 // Стратегия идемпотентности:
-//  • Расценки помечаются префиксом [SEED] в категории и SEED- в article.
+//  • Расценки помечаются префиксом [DEMO] в категории и DEMO- в article.
 //  • Перед повторной заливкой старые seed-расценки удаляются в одной транзакции.
 //  • Демо-юзеров/демо-объекты seed БОЛЬШЕ НЕ создаёт (№128) — только каталог.
 import { PrismaClient, PriceKind, Unit } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const SEED_TAG = '[SEED]';
-const SEED_ART = 'SEED-';
+const SEED_TAG = '[DEMO]';
+const SEED_ART = 'DEMO-';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // СПРАВОЧНИК: КАТЕГОРИИ РАБОТ (10 шт × 18-20 расценок)
@@ -431,12 +431,10 @@ async function main() {
   // 1. Очистка старых seed-расценок (идемпотентность). Только каталог —
   //    пользователей, объекты и проекты seed НЕ трогает (№128).
   await prisma.$transaction([
-    prisma.priceItem.deleteMany({
-      where: { article: { startsWith: SEED_ART } },
-    }),
-    prisma.priceCategory.deleteMany({
-      where: { name: { startsWith: SEED_TAG } },
-    }),
+    prisma.priceItem.deleteMany({ where: { article: { startsWith: SEED_ART } } }),
+    prisma.priceItem.deleteMany({ where: { article: { startsWith: 'SEED-' } } }), // ⭐ переход со старого префикса
+    prisma.priceCategory.deleteMany({ where: { name: { startsWith: SEED_TAG } } }),
+    prisma.priceCategory.deleteMany({ where: { name: { startsWith: '[SEED]' } } }), // ⭐ переход со старого префикса
   ]);
   console.log('  ✓ Old seed catalog cleared');
 
