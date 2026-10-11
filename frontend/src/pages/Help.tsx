@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
   Box,
-  Container,
+  IconButton,
   InputAdornment,
   List,
   ListItem,
@@ -16,6 +17,8 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import PriceChangeIcon from '@mui/icons-material/PriceChange';
@@ -251,6 +254,19 @@ const Help: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [search, setSearch] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const navigate = useNavigate();
+
+  useMobileHeader({
+    title: 'Помощь',
+    onBack: () => navigate('/'),
+    searchOpen: showSearch,
+    searchValue: search,
+    searchPlaceholder: 'Поиск по инструкциям',
+    onSearchOpen: () => setShowSearch(true),
+    onSearchClose: () => { setSearch(''); setShowSearch(false); },
+    onSearchChange: (v) => setSearch(v),
+  });
 
   const filteredSections = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ru-RU');
@@ -273,26 +289,26 @@ const Help: React.FC = () => {
   }, [search]);
 
   return (
-    <Container maxWidth="lg" sx={{ pt: { xs: 0.5, md: 1 }, pb: { xs: 2, md: 3 }, px: { xs: 2, md: 3 } }}>
-      <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ mb: 2 }}>
-        Помощь
-      </Typography>
-
-      <TextField
-        fullWidth
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        placeholder="Поиск по инструкциям"
-        size="small"
-        sx={{ mb: 2 }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <SearchIcon color="action" />
-            </InputAdornment>
-          ),
-        }}
-      />
+    <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
+      {!isMobile && (
+        <Box sx={{ mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <IconButton onClick={() => navigate('/')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }} aria-label="В главное меню">
+              <ArrowBackIcon />
+            </IconButton>
+            <Typography variant="h4" sx={{ flexGrow: 1 }}>Помощь</Typography>
+          </Box>
+          <TextField
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Поиск по инструкциям"
+            variant="outlined"
+            size="small"
+            sx={{ maxWidth: 520 }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon color="action" /></InputAdornment> }}
+          />
+        </Box>
+      )}
 
       {filteredSections.length > 0 ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -358,7 +374,7 @@ const Help: React.FC = () => {
           </Typography>
         </Paper>
       )}
-    </Container>
+    </Box>
   );
 };
 

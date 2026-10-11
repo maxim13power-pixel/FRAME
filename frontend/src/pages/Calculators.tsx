@@ -218,7 +218,7 @@ const Calculators: React.FC = () => {
             <Box key={section.title}>
               <Typography
                 component="h2"
-                variant="h5"
+                variant="h6"
                 sx={{ color: '#04164b', fontWeight: 700, mb: 1.5, pb: 1, borderBottom: '2px solid #e3f2fd' }}
               >
                 {section.title}

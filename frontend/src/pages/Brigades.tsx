@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, TextField, InputAdornment, Button, Modal, Stack,
   Fab, useMediaQuery, useTheme, CircularProgress, Alert, Chip, IconButton,
-  MenuItem, Select, FormControl, InputLabel, Table, TableBody, TableCell,
+  Menu, MenuItem, Select, FormControl, InputLabel, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Tabs, Tab,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
@@ -13,6 +13,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import GroupsIcon from '@mui/icons-material/Groups';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import PhoneIcon from '@mui/icons-material/Phone';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
@@ -98,7 +99,22 @@ const Brigades: React.FC = () => {
   const [stats, setStats] = useState<BrigadeStats | null>(null);
   const [chartData, setChartData] = useState<{ name: string; Часы: number }[]>([]);
 
-  useMobileHeader({ title: 'Бригады', onBack: () => { if (viewRef.current === 'detail') { setView('list'); setSelectedBrigade(null); } else { navigate(-1); } }, searchOpen: mobileSearchOpen, searchValue: searchQuery, searchPlaceholder: 'Поиск бригад...', onSearchOpen: () => setMobileSearchOpen(true), onSearchClose: () => { setSearchQuery(''); setMobileSearchOpen(false); }, onSearchChange: (v) => setSearchQuery(v) });
+  const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
+
+  const headerTrailing = useMemo(() => isMobile ? (
+    <IconButton
+      onClick={(e) => setFilterAnchorEl(e.currentTarget)}
+      sx={{
+        bgcolor: objectFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
+        color: objectFilter ? '#1976d2' : '#424242',
+        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+      }}
+    >
+      <FilterAltIcon />
+    </IconButton>
+  ) : undefined, [isMobile, objectFilter]);
+
+  useMobileHeader({ title: 'Бригады', onBack: () => { if (viewRef.current === 'detail') { setView('list'); setSelectedBrigade(null); } else { navigate(-1); } }, searchOpen: mobileSearchOpen, searchValue: searchQuery, searchPlaceholder: 'Поиск бригад...', onSearchOpen: () => setMobileSearchOpen(true), onSearchClose: () => { setSearchQuery(''); setMobileSearchOpen(false); }, onSearchChange: (v) => setSearchQuery(v), trailing: headerTrailing });
 
   const loadObjects = useCallback(async () => {
     try {
@@ -384,8 +400,17 @@ const Brigades: React.FC = () => {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h4" sx={{ flexGrow: 1 }}>Бригады</Typography>
+          <IconButton onClick={(e) => setFilterAnchorEl(e.currentTarget)} sx={{ bgcolor: objectFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)', color: objectFilter ? '#1976d2' : '#424242', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}>
+            <FilterAltIcon />
+          </IconButton>
         </Box>
       )}
+      <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={() => setFilterAnchorEl(null)}>
+        <MenuItem onClick={() => { setObjectFilter(''); setFilterAnchorEl(null); }}>Все объекты</MenuItem>
+        {objects.map((o) => (
+          <MenuItem key={o.id} onClick={() => { setObjectFilter(o.id); setFilterAnchorEl(null); }}>{o.name}</MenuItem>
+        ))}
+      </Menu>
       {view === 'detail' && selectedBrigade ? (
         <>
           <Stack spacing={2}>
@@ -580,26 +605,10 @@ const Brigades: React.FC = () => {
                   sx={{ flexGrow: 1 }}
                   InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
                 />
-                <FormControl size="small" sx={{ minWidth: 180 }}>
-                  <InputLabel>Объект</InputLabel>
-                  <Select value={objectFilter} label="Объект" onChange={(e) => setObjectFilter(e.target.value === '' ? '' : Number(e.target.value))}>
-                    <MenuItem value="">Все объекты</MenuItem>
-                    {objects.map((o) => <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>)}
-                  </Select>
-                </FormControl>
                 <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, whiteSpace: 'nowrap' }}>
                   Добавить
                 </Button>
               </Box>
-            )}
-            {isMobile && (
-              <FormControl size="small" fullWidth>
-                <InputLabel>Объект</InputLabel>
-                <Select value={objectFilter} label="Объект" onChange={(e) => setObjectFilter(e.target.value === '' ? '' : Number(e.target.value))}>
-                  <MenuItem value="">Все объекты</MenuItem>
-                  {objects.map((o) => <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>)}
-                </Select>
-              </FormControl>
             )}
             {error && <Alert severity="error">{error}</Alert>}
             {brigades.length === 0 ? (

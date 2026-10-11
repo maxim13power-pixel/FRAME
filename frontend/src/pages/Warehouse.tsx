@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, TextField, InputAdornment, Button, Modal, Stack,
   Fab, useMediaQuery, useTheme, CircularProgress, Alert, Chip, IconButton,
-  MenuItem, Select, FormControl, InputLabel, Table, TableBody, TableCell,
+  Menu, MenuItem, Select, FormControl, InputLabel, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Tooltip, Divider,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
@@ -12,6 +12,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import DeleteIcon from '@mui/icons-material/Delete';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
@@ -286,6 +287,21 @@ const Warehouse: React.FC = () => {
     }
   }, [navigate]);
 
+  const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
+
+  const headerTrailing = useMemo(() => isMobile ? (
+    <IconButton
+      onClick={(e) => setFilterAnchorEl(e.currentTarget)}
+      sx={{
+        bgcolor: objectFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
+        color: objectFilter ? '#1976d2' : '#424242',
+        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+      }}
+    >
+      <FilterAltIcon />
+    </IconButton>
+  ) : undefined, [isMobile, objectFilter]);
+
   useMobileHeader({
     title: 'Склад',
     onBack: handleBack,
@@ -298,6 +314,7 @@ const Warehouse: React.FC = () => {
       setMobileSearchOpen(false);
     },
     onSearchChange: (v) => setSearchQuery(v),
+    trailing: headerTrailing,
   });
 
   const handleExport = () => {
@@ -344,8 +361,17 @@ const Warehouse: React.FC = () => {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h4" sx={{ flexGrow: 1 }}>Склад</Typography>
+          <IconButton onClick={(e) => setFilterAnchorEl(e.currentTarget)} sx={{ bgcolor: objectFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)', color: objectFilter ? '#1976d2' : '#424242', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}>
+            <FilterAltIcon />
+          </IconButton>
         </Box>
       )}
+      <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={() => setFilterAnchorEl(null)}>
+        <MenuItem onClick={() => { setObjectFilter(''); setFilterAnchorEl(null); }}>Все объекты</MenuItem>
+        {objects.map((o) => (
+          <MenuItem key={o.id} onClick={() => { setObjectFilter(o.id); setFilterAnchorEl(null); }}>{o.name}</MenuItem>
+        ))}
+      </Menu>
       {view === 'detail' && selectedItem ? (
         <>
           <Stack spacing={2}>
@@ -427,19 +453,6 @@ const Warehouse: React.FC = () => {
                     ),
                   }}
                 />
-                <FormControl size="small" sx={{ minWidth: 180 }}>
-                  <InputLabel>Объект</InputLabel>
-                  <Select
-                    value={objectFilter}
-                    label="Объект"
-                    onChange={(e) => setObjectFilter(e.target.value === '' ? '' : Number(e.target.value))}
-                  >
-                    <MenuItem value="">Все объекты</MenuItem>
-                    {objects.map((o) => (
-                      <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
                 <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, whiteSpace: 'nowrap' }}>
                   Добавить
                 </Button>
