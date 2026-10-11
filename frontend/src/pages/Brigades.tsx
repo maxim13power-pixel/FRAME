@@ -579,6 +579,9 @@ const Brigades: React.FC = () => {
                   sx={{ flexGrow: 1 }}
                   InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
                 />
+                <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreate}>
+                  Добавить
+                </Button>
                 <FormControl size="small" sx={{ minWidth: 180 }}>
                   <InputLabel>Объект</InputLabel>
                   <Select value={objectFilter} label="Объект" onChange={(e) => setObjectFilter(e.target.value === '' ? '' : Number(e.target.value))}>

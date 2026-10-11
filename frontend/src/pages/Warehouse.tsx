@@ -427,6 +427,9 @@ const Warehouse: React.FC = () => {
                     ),
                   }}
                 />
+                <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreate}>
+                  Добавить
+                </Button>
                 <FormControl size="small" sx={{ minWidth: 180 }}>
                   <InputLabel>Объект</InputLabel>
                   <Select
