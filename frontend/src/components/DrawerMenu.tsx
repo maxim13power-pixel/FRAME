@@ -65,7 +65,19 @@ const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) =>
           </IconButton>
         </Box>
         <Divider sx={{ mb: 1 }} />
-        <List sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto' }}>
+        <List
+          sx={{
+            flexGrow: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            // ⭐ Видимый скроллбар (как на десктопе), чтобы было видно, что список прокручивается
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'rgba(0, 0, 0, 0.25) rgba(0, 0, 0, 0.05)',
+            '&::-webkit-scrollbar': { width: 6 },
+            '&::-webkit-scrollbar-track': { backgroundColor: 'rgba(0, 0, 0, 0.05)', borderRadius: 3 },
+            '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(0, 0, 0, 0.25)', borderRadius: 3 },
+          }}
+        >
           {menuItems.map((item) => (
             <ListItem key={item.path} disablePadding>
               <ListItemButton onClick={() => { onNavigate(item.path); onClose(); }}>
