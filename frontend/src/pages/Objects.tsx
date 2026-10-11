@@ -44,7 +44,7 @@ import { APP_URL } from '../config';
 import type { AccessMember, AccessRole } from '../services/accessService';
 import { createInviteLink, fetchInviteLinks, revokeInviteLink } from '../services/inviteService';
 import type { InviteLink } from '../services/inviteService';
-import { updateObject, deleteObject } from '../services/objectService';
+import { updateObject, deleteObject, restoreObject } from '../services/objectService';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
@@ -94,6 +94,8 @@ const Objects: React.FC = () => {
   const [editingObject, setEditingObject] = useState<ObjectData | null>(null);
   const [deletingObject, setDeletingObject] = useState<ObjectData | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  // ⭐ Переключатель «Активные / Архив»
+  const [showArchived, setShowArchived] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
   const [editName, setEditName] = useState('');
@@ -151,13 +153,17 @@ useEffect(() => {
   loadObjects();
 }, [token]);
 
-  // Фильтрация по поиску
+  // Фильтрация по поиску + архив
 const filteredAndSortedObjects = useMemo(() => {
   // Сначала фильтруем
-  const filtered = objects.filter(obj =>
-    obj.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    obj.address.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filtered = objects.filter(obj => {
+    const archived = obj.isArchived === true;
+    if (archived !== showArchived) return false;
+    return (
+      obj.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      obj.address.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  });
 
   // Потом сортируем
   switch (sortBy) {
@@ -176,7 +182,7 @@ const filteredAndSortedObjects = useMemo(() => {
       break;
   }
   return filtered;
-}, [objects, searchQuery, sortBy]);
+}, [objects, searchQuery, sortBy, showArchived]);
 
   const handleOpenAddModal = () => setAddModalOpen(true);
   const handleCloseAddModal = () => {
@@ -269,12 +275,34 @@ const handleUpdateObject = async () => {
 const handleDeleteObject = async () => {
   if (!token || !deletingObject) return;
   try {
-    await deleteObject(Number(deletingObject.id));
+    await deleteObject(Number(deletingObject.id), deletingObject.isDemo === true);
     setObjects(prev => prev.filter(obj => obj.id !== deletingObject.id));
     setDeleteConfirmOpen(false);
     setDeletingObject(null); // очищаем
   } catch {
     alert('Ошибка удаления');
+  }
+};
+
+// ⭐ Демо-объект удаляется сразу (жёстко), без тяжёлого подтверждения
+const handleDeleteDemo = async (obj: ObjectData) => {
+  if (!token) return;
+  try {
+    await deleteObject(obj.id, true);
+    setObjects(prev => prev.filter(o => o.id !== obj.id));
+  } catch {
+    alert('Не удалось удалить демо-объект');
+  }
+};
+
+// ⭐ Вернуть объект из архива
+const handleRestoreObject = async (obj: ObjectData) => {
+  if (!token) return;
+  try {
+    await restoreObject(obj.id);
+    setObjects(prev => prev.map(o => o.id === obj.id ? { ...o, isArchived: false } : o));
+  } catch {
+    alert('Не удалось восстановить объект');
   }
 };
 
@@ -623,6 +651,16 @@ trailing: headerTrailing,
   )}
 
   {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+  {/* ⭐ Переключатель Активные / Архив */}
+  <Tabs
+    value={showArchived ? 1 : 0}
+    onChange={(_e, v) => setShowArchived(v === 1)}
+    sx={{ mb: 2, '& .MuiTab-root': { minWidth: 0, flex: 1 } }}
+  >
+    <Tab label="Активные" />
+    <Tab label="Архив" />
+  </Tabs>
+
          {/* Список объектов – красивые карточки */}
       <Stack spacing={isMobile ? 1 : 2}>
         {filteredAndSortedObjects.length > 0 ? (
@@ -661,8 +699,7 @@ trailing: headerTrailing,
                         color="error"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setDeletingObject(obj);
-                          setDeleteConfirmOpen(true);
+                          handleDeleteDemo(obj);
                         }}
                       >
                         Удалить
@@ -670,6 +707,27 @@ trailing: headerTrailing,
                     }
                   >
                     Это демо-данные.
+                  </Alert>
+                )}
+                {obj.isArchived && (
+                  <Alert
+                    severity="warning"
+                    onClick={(e) => e.stopPropagation()}
+                    sx={{ mb: 1, borderRadius: 2 }}
+                    action={
+                      <Button
+                        size="small"
+                        color="primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRestoreObject(obj);
+                        }}
+                      >
+                        Вернуть
+                      </Button>
+                    }
+                  >
+                    Объект в архиве.
                   </Alert>
                 )}
                 {/* Верхняя строка: иконка, название, процент */}
@@ -1032,10 +1090,10 @@ trailing: headerTrailing,
           }}
         >
           <Typography variant="h6" gutterBottom>
-            Подтверждение удаления
+            Переместить в архив
           </Typography>
           <Typography sx={{ mb: 3 }}>
-            Вы уверены, что хотите удалить объект <b>"{deletingObject?.name}"</b>? Это действие необратимо.
+            Объект <b>"{deletingObject?.name}"</b> будет перемещён в архив. Вернуть его можно из раздела «Архив».
           </Typography>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
             <Button 
@@ -1048,7 +1106,7 @@ trailing: headerTrailing,
               Отмена
             </Button>
         <Button variant="contained" color="error" onClick={handleDeleteObject}>
-          Удалить
+          В архив
         </Button>
       </Box>
     </Paper>

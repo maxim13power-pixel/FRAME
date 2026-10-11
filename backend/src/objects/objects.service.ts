@@ -124,12 +124,25 @@ export class ObjectsService {
     });
   }
 
-  // Удаление → АРХИВАЦИЯ (ТЗ 3.8: архив вместо жёсткого удаления)
-  async remove(id: number, userId: number) {
+  // Удаление → АРХИВАЦИЯ (ТЗ 3.8: архив вместо жёсткого удаления).
+  // ⭐ permanent=true — жёсткое удаление (для демо-объекта, который не жалко).
+  async remove(id: number, userId: number, permanent = false) {
     await this.checkAccess(id, userId);
+    if (permanent) {
+      return this.prisma.object.delete({ where: { id } });
+    }
     return this.prisma.object.update({
       where: { id },
       data: { isArchived: true },
+    });
+  }
+
+  // ⭐ Восстановить объект из архива
+  async restore(id: number, userId: number) {
+    await this.checkAccess(id, userId);
+    return this.prisma.object.update({
+      where: { id },
+      data: { isArchived: false },
     });
   }
 

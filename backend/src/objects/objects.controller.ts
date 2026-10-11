@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   Patch,
+  Query,
   UseGuards,
   ParseIntPipe,
   Req,
@@ -41,8 +42,18 @@ export class ObjectsController {
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req) {
-    return this.objectsService.remove(id, req.user.userId);
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req,
+    @Query('permanent') permanent?: string,
+  ) {
+    return this.objectsService.remove(id, req.user.userId, permanent === 'true');
+  }
+
+  // ⭐ Восстановить объект из архива (ТЗ 3.8)
+  @Patch(':id/restore')
+  restore(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.objectsService.restore(id, req.user.userId);
   }
 
   @Get(':id')
