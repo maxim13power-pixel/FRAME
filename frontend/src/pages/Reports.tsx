@@ -14,6 +14,8 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import HistoryIcon from '@mui/icons-material/History';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { FAB_STYLE } from '../theme';
@@ -108,6 +110,7 @@ const Reports: React.FC = () => {
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [historyRecords, setHistoryRecords] = useState<AuditLogEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const loadObjects = useCallback(async () => {
     try {
@@ -376,7 +379,19 @@ const Reports: React.FC = () => {
   }
 
   return (
-    <Box sx={{ maxWidth: 1000, mx: 'auto', width: '100%' }}>
+    <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
+      {!isMobile && (
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <IconButton
+            onClick={() => navigate('/')}
+            sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+            aria-label="В главное меню"
+          >
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h4" sx={{ flexGrow: 1 }}>Отчёты</Typography>
+        </Box>
+      )}
       {view === 'detail' && selectedReport ? (
         <>
           <Stack spacing={2}>
@@ -386,14 +401,9 @@ const Reports: React.FC = () => {
                 <Typography variant="h5" sx={{ flexGrow: 1 }}>
                   {TYPE_LABELS[selectedReport.type]}: {selectedReport.title}
                 </Typography>
-                <Tooltip title="PDF">
-                  <IconButton onClick={() => handleExport('pdf')} sx={{ bgcolor: 'action.hover' }}>
-                    <PictureAsPdfIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="XLSX">
-                  <IconButton onClick={() => handleExport('xlsx')} sx={{ bgcolor: 'action.hover' }}>
-                    <TableChartIcon />
+                <Tooltip title="Скачать">
+                  <IconButton onClick={() => setExportModalOpen(true)} sx={{ bgcolor: 'action.hover' }}>
+                    <FileDownloadIcon />
                   </IconButton>
                 </Tooltip>
                 <Chip
@@ -427,6 +437,17 @@ const Reports: React.FC = () => {
                 </MenuItem>
               ))}
             </Menu>
+
+            {/* ⭐ №6: модалка выбора формата экспорта */}
+            <Modal open={exportModalOpen} onClose={() => setExportModalOpen(false)} disableRestoreFocus>
+              <Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 320 }, p: 3, borderRadius: 2 }}>
+                <Typography variant="h6" gutterBottom>Скачать</Typography>
+                <Stack spacing={1}>
+                  <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={() => { setExportModalOpen(false); handleExport('pdf'); }} fullWidth>PDF</Button>
+                  <Button variant="outlined" startIcon={<TableChartIcon />} onClick={() => { setExportModalOpen(false); handleExport('xlsx'); }} fullWidth>Excel</Button>
+                </Stack>
+              </Paper>
+            </Modal>
 
             {/* ⭐ №131: модалка истории изменений */}
             <Modal open={historyModalOpen} onClose={() => setHistoryModalOpen(false)} disableRestoreFocus>
@@ -549,6 +570,11 @@ const Reports: React.FC = () => {
                 <ToggleButton value="estimate">Сметы</ToggleButton>
                 <ToggleButton value="act">Акты</ToggleButton>
               </ToggleButtonGroup>
+              {!isMobile && (
+                <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreate}>
+                  Создать
+                </Button>
+              )}
               <FormControl size="small" sx={{ minWidth: 180, flexGrow: isMobile ? 1 : 0 }}>
                 <InputLabel>Объект</InputLabel>
                 <Select

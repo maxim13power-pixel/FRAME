@@ -31,7 +31,6 @@ import {
   LinearProgress,
   Divider,
   Snackbar,
-  Tooltip,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
@@ -60,7 +59,7 @@ import {
   updateMaterial,
   createPriceItemForMaterial,
 } from '../services/materialService';
-import type { MaterialData } from '../services/materialService';
+import type { MaterialData, MaterialFixData } from '../services/materialService';
 import { fetchProjectById } from '../services/materialService';
 import type { ProjectData } from '../services/projectService';
 import { fetchObjectById } from '../services/objectService';
@@ -204,6 +203,7 @@ const hidePrices = currentObject?.hidePrices === true || currentObject?.role ===
 
 // ⭐ Экспорт XLSX/PDF (клиентская генерация)
 const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
+const [exportModalOpen, setExportModalOpen] = useState(false);
 const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
   open: false,
   message: '',
@@ -228,7 +228,17 @@ const handleExport = useCallback(
       };
       const includePrices = !hidePrices;
       if (kind === 'xlsx') {
-        exportMaterialsXlsx(materials, meta, includePrices);
+        const fixes: Record<number, MaterialFixData[]> = {};
+        await Promise.all(
+          materials.map(async (m) => {
+            try {
+              fixes[m.id] = await fetchFixesByMaterial(m.id);
+            } catch {
+              fixes[m.id] = [];
+            }
+          }),
+        );
+        exportMaterialsXlsx(materials, meta, includePrices, fixes);
       } else {
         exportMaterialsPdf(materials, meta, includePrices);
       }
@@ -850,20 +860,12 @@ setSortAnchorEl(null);
         </IconButton>
       )}
       <IconButton
-        onClick={() => handleExport('xlsx')}
+        onClick={() => setExportModalOpen(true)}
         disabled={exporting !== null}
-        aria-label="Экспорт в Excel"
+        aria-label="Экспорт"
         sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
       >
-        {exporting === 'xlsx' ? <CircularProgress size={18} /> : <FileDownloadIcon />}
-      </IconButton>
-      <IconButton
-        onClick={() => handleExport('pdf')}
-        disabled={exporting !== null}
-        aria-label="Экспорт PDF"
-        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
-      >
-        {exporting === 'pdf' ? <CircularProgress size={18} /> : <PictureAsPdfIcon />}
+        {exporting ? <CircularProgress size={18} /> : <FileDownloadIcon />}
       </IconButton>
     </>
     ) : undefined, [isMobile, sortBy, categoryFilter, projectCategories.length, exporting, handleExport]);
@@ -1003,33 +1005,27 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
   </Button>
 )}
 {!isMobile && (
-  <Stack direction="row" spacing={2}>
-    <Tooltip title="Excel">
-      <Button
-        variant="outlined"
-        color="primary"
-        size="small"
-        onClick={() => handleExport('xlsx')}
-        disabled={exporting !== null}
-        sx={{ minWidth: 0, p: 1 }}
-      >
-        {exporting === 'xlsx' ? <CircularProgress size={16} /> : <FileDownloadIcon fontSize="small" />}
-      </Button>
-    </Tooltip>
-    <Tooltip title="PDF">
-      <Button
-        variant="outlined"
-        color="primary"
-        size="small"
-        onClick={() => handleExport('pdf')}
-        disabled={exporting !== null}
-        sx={{ minWidth: 0, p: 1 }}
-      >
-        {exporting === 'pdf' ? <CircularProgress size={16} /> : <PictureAsPdfIcon fontSize="small" />}
-      </Button>
-    </Tooltip>
-  </Stack>
+  <Button
+    variant="outlined"
+    color="primary"
+    size="small"
+    onClick={() => setExportModalOpen(true)}
+    disabled={exporting !== null}
+    sx={{ minWidth: 0, p: 1 }}
+  >
+    {exporting ? <CircularProgress size={16} /> : <FileDownloadIcon fontSize="small" />}
+  </Button>
 )}
+      {/* ⭐ Модалка выбора формата экспорта */}
+      <Modal open={exportModalOpen} onClose={() => setExportModalOpen(false)} disableRestoreFocus>
+        <Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 320 }, p: 3, borderRadius: 2 }}>
+          <Typography variant="h6" gutterBottom>Скачать</Typography>
+          <Stack spacing={1}>
+            <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={() => { setExportModalOpen(false); handleExport('pdf'); }} fullWidth>PDF</Button>
+            <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={() => { setExportModalOpen(false); handleExport('xlsx'); }} fullWidth>Excel</Button>
+          </Stack>
+        </Paper>
+      </Modal>
       </Box>
       {/* Мобильное меню сортировки (открывается из иконки) */}
       <Menu
