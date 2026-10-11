@@ -50,6 +50,8 @@ import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import SortIcon from '@mui/icons-material/Sort';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ArchiveIcon from '@mui/icons-material/Archive';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { getApiErrorText, getApiErrorMessage } from '../utils/errors';
 import { FAB_STYLE } from '../theme';
@@ -651,14 +653,26 @@ trailing: headerTrailing,
   )}
 
   {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-  {/* ⭐ Переключатель Активные / Архив */}
+  {/* ⭐ Переключатель Активные / Архив (в точности как в Справочнике цен) */}
   <Tabs
-    value={showArchived ? 1 : 0}
-    onChange={(_e, v) => setShowArchived(v === 1)}
-    sx={{ mb: 2, '& .MuiTab-root': { minWidth: 0, flex: 1 } }}
+    value={showArchived ? 'archived' : 'active'}
+    onChange={(_e, v) => setShowArchived(v === 'archived')}
+    variant="fullWidth"
+    sx={{
+      mt: -3,
+      mb: 1,
+      '& .MuiTab-root': {
+        textTransform: 'none',
+        fontWeight: 600,
+        fontSize: 13,
+        minHeight: 44,
+        '&:focus': { outline: 'none' },
+        '&:focus-visible': { outline: 'none' },
+      },
+    }}
   >
-    <Tab label="Активные" />
-    <Tab label="Архив" />
+    <Tab icon={<CheckCircleIcon />} iconPosition="start" label="Активные" value="active" />
+    <Tab icon={<ArchiveIcon />} iconPosition="start" label="Архив" value="archived" />
   </Tabs>
 
          {/* Список объектов – красивые карточки */}
