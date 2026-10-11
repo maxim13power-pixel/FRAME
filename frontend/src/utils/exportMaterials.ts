@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 import pdfMake from 'pdfmake/build/pdfmake';
 // @ts-ignore
 import pdfFonts from 'pdfmake/build/vfs_fonts';
-import type { MaterialData } from '../services/materialService';
+import type { MaterialData, MaterialFixData } from '../services/materialService';
 
 // ⭐ vfs (Roboto с кириллицей). pdfmake отдаёт vfs в двух формах — берём ту, что есть.
 pdfMake.vfs = pdfFonts.pdfMake?.vfs ?? pdfFonts.vfs;
@@ -39,6 +39,11 @@ const formatDateTime = (d: Date) =>
   `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 const fileDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+const formatDateRu = (iso: string) => {
+  const [y, m, d] = iso.split('-');
+  return `${d}.${m}.${y.slice(2)}`;
+};
 
 const money = (n: number) =>
   n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -76,6 +81,7 @@ export function exportMaterialsXlsx(
   materials: MaterialData[],
   meta: ExportMeta,
   includePrices: boolean,
+  fixes?: Record<number, MaterialFixData[]>,
 ): void {
   const headers = buildHeaders(includePrices);
   const aoa: (string | number)[][] = [
@@ -97,6 +103,63 @@ export function exportMaterialsXlsx(
   ws['!cols'] = headers.map((h) => ({ wch: Math.max(14, h.length + 4) }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Материалы');
+
+  // ⭐ Второй лист «Посменная сводка» — расшифровка по датам и примечаниям
+  if (fixes) {
+    const dateSet = new Set<string>();
+    for (const m of materials) {
+      for (const f of fixes[m.id] ?? []) {
+        dateSet.add(String(f.fixedAt).slice(0, 10));
+      }
+    }
+    const dates = Array.from(dateSet).sort();
+
+    const baseHeaders = ['Название', 'Артикул', 'Ед.изм.', 'По спецификации', 'Факт'];
+    if (includePrices) {
+      baseHeaders.push('Работ на тек. момент', 'Материал на тек. момент', 'Итого на тек. момент');
+    }
+    const allHeaders: string[] = [...baseHeaders];
+    for (const d of dates) {
+      allHeaders.push(formatDateRu(d));
+      allHeaders.push('Примечание');
+    }
+
+    const shiftAoa: (string | number)[][] = [
+      [`Объект: ${meta.objectName}`],
+      [`Проект: ${meta.projectName}`],
+      [`Дата выгрузки: ${formatDateTime(meta.exportedAt)}`],
+      [],
+      allHeaders,
+    ];
+
+    for (const m of materials) {
+      const row: (string | number)[] = [m.name, m.article ?? '', unitLabel(m.unit), m.specQuantity, m.totalUsed];
+      if (includePrices) {
+        row.push(m.totalCost, m.materialTotalCost, m.totalCost + m.materialTotalCost);
+      }
+
+      const byDate = new Map<string, { amount: number; notes: string[] }>();
+      for (const f of fixes[m.id] ?? []) {
+        const d = String(f.fixedAt).slice(0, 10);
+        if (!byDate.has(d)) byDate.set(d, { amount: 0, notes: [] });
+        const e = byDate.get(d)!;
+        e.amount += Number(f.amount);
+        if (f.note) e.notes.push(f.note);
+      }
+
+      for (const d of dates) {
+        const e = byDate.get(d);
+        row.push(e ? Number(e.amount.toFixed(3)) : '');
+        row.push(e ? e.notes.join('; ') : '');
+      }
+      shiftAoa.push(row);
+    }
+
+    const ws2 = XLSX.utils.aoa_to_sheet(shiftAoa);
+    ws2['!cols'] = allHeaders.map((h) => ({ wch: Math.max(12, h.length + 4) }));
+    XLSX.utils.book_append_sheet(wb, ws2, 'Посменная сводка');
+  }
+
   XLSX.writeFile(wb, `materials-${meta.projectId}-${fileDate(meta.exportedAt)}.xlsx`);
 }
 

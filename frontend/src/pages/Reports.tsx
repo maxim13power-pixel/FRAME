@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, TextField, Button, Modal, Stack, Fab,
@@ -14,6 +14,9 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import HistoryIcon from '@mui/icons-material/History';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { FAB_STYLE } from '../theme';
@@ -108,6 +111,7 @@ const Reports: React.FC = () => {
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [historyRecords, setHistoryRecords] = useState<AuditLogEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const loadObjects = useCallback(async () => {
     try {
@@ -229,9 +233,25 @@ const Reports: React.FC = () => {
     }
   }, [navigate]);
 
+  const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
+
+  const headerTrailing = useMemo(() => isMobile ? (
+    <IconButton
+      onClick={(e) => setFilterAnchorEl(e.currentTarget)}
+      sx={{
+        bgcolor: objectFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
+        color: objectFilter ? '#1976d2' : '#424242',
+        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+      }}
+    >
+      <FilterAltIcon />
+    </IconButton>
+  ) : undefined, [isMobile, objectFilter]);
+
   useMobileHeader({
     title: 'Отчёты',
     onBack: handleBack,
+    trailing: headerTrailing,
   });
 
   const handleChangeStatus = async (status: ReportStatus) => {
@@ -376,7 +396,28 @@ const Reports: React.FC = () => {
   }
 
   return (
-    <Box sx={{ maxWidth: 1000, mx: 'auto', width: '100%' }}>
+    <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
+      {!isMobile && (
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <IconButton
+            onClick={() => navigate('/')}
+            sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+            aria-label="В главное меню"
+          >
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h4" sx={{ flexGrow: 1 }}>Отчёты</Typography>
+          <IconButton onClick={(e) => setFilterAnchorEl(e.currentTarget)} sx={{ bgcolor: objectFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)', color: objectFilter ? '#1976d2' : '#424242', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}>
+            <FilterAltIcon />
+          </IconButton>
+        </Box>
+      )}
+      <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={() => setFilterAnchorEl(null)}>
+        <MenuItem onClick={() => { setObjectFilter(''); setFilterAnchorEl(null); }}>Все объекты</MenuItem>
+        {objects.map((o) => (
+          <MenuItem key={o.id} onClick={() => { setObjectFilter(o.id); setFilterAnchorEl(null); }}>{o.name}</MenuItem>
+        ))}
+      </Menu>
       {view === 'detail' && selectedReport ? (
         <>
           <Stack spacing={2}>
@@ -386,14 +427,9 @@ const Reports: React.FC = () => {
                 <Typography variant="h5" sx={{ flexGrow: 1 }}>
                   {TYPE_LABELS[selectedReport.type]}: {selectedReport.title}
                 </Typography>
-                <Tooltip title="PDF">
-                  <IconButton onClick={() => handleExport('pdf')} sx={{ bgcolor: 'action.hover' }}>
-                    <PictureAsPdfIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="XLSX">
-                  <IconButton onClick={() => handleExport('xlsx')} sx={{ bgcolor: 'action.hover' }}>
-                    <TableChartIcon />
+                <Tooltip title="Скачать">
+                  <IconButton onClick={() => setExportModalOpen(true)} sx={{ bgcolor: 'action.hover' }}>
+                    <FileDownloadIcon />
                   </IconButton>
                 </Tooltip>
                 <Chip
@@ -427,6 +463,17 @@ const Reports: React.FC = () => {
                 </MenuItem>
               ))}
             </Menu>
+
+            {/* ⭐ №6: модалка выбора формата экспорта */}
+            <Modal open={exportModalOpen} onClose={() => setExportModalOpen(false)} disableRestoreFocus>
+              <Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 320 }, p: 3, borderRadius: 2 }}>
+                <Typography variant="h6" gutterBottom>Скачать</Typography>
+                <Stack spacing={1}>
+                  <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={() => { setExportModalOpen(false); handleExport('pdf'); }} fullWidth>PDF</Button>
+                  <Button variant="outlined" startIcon={<TableChartIcon />} onClick={() => { setExportModalOpen(false); handleExport('xlsx'); }} fullWidth>Excel</Button>
+                </Stack>
+              </Paper>
+            </Modal>
 
             {/* ⭐ №131: модалка истории изменений */}
             <Modal open={historyModalOpen} onClose={() => setHistoryModalOpen(false)} disableRestoreFocus>
@@ -549,19 +596,11 @@ const Reports: React.FC = () => {
                 <ToggleButton value="estimate">Сметы</ToggleButton>
                 <ToggleButton value="act">Акты</ToggleButton>
               </ToggleButtonGroup>
-              <FormControl size="small" sx={{ minWidth: 180, flexGrow: isMobile ? 1 : 0 }}>
-                <InputLabel>Объект</InputLabel>
-                <Select
-                  value={objectFilter}
-                  label="Объект"
-                  onChange={(e) => setObjectFilter(e.target.value === '' ? '' : Number(e.target.value))}
-                >
-                  <MenuItem value="">Все объекты</MenuItem>
-                  {objects.map((o) => (
-                    <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              {!isMobile && (
+                <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, whiteSpace: 'nowrap' }}>
+                  Создать
+                </Button>
+              )}
             </Box>
 
             {error && <Alert severity="error">{error}</Alert>}

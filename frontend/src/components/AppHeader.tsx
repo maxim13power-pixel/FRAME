@@ -20,7 +20,8 @@ const DEFAULT_TITLES: { prefix: string; title: string }[] = [
   { prefix: '/brigades', title: 'Бригады' },
   { prefix: '/warehouse', title: 'Склад' },
   { prefix: '/analytics', title: 'Аналитика' },
-  { prefix: '/reports', title: 'Отчёты' },
+  // ⭐ Отчёты временно скрыты
+  // { prefix: '/reports', title: 'Отчёты' },
   { prefix: '/rentals', title: 'Аренда' },
 ];
 

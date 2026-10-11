@@ -943,6 +943,11 @@ onBack: () => navigate('/objects'),
                   handleCloseEdit();
                   setDeleteConfirmOpen(true);
                 }}
+                sx={{
+                  border: '1px solid rgba(211, 47, 47, 0.35)',
+                  bgcolor: 'rgba(211, 47, 47, 0.06)',
+                  '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.12)' },
+                }}
               >
                 <DeleteIcon />
               </IconButton>

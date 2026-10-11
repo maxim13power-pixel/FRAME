@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Paper, Stack, CircularProgress, Alert, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, FormControl, InputLabel,
-  Select, MenuItem, useMediaQuery, useTheme,
+  Box, Typography, Paper, Stack, CircularProgress, Alert, IconButton, Table, TableBody,
+  TableCell, TableContainer, TableHead, TableRow,
+  Menu, MenuItem, useMediaQuery, useTheme,
 } from '@mui/material';
 import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid,
@@ -11,6 +11,8 @@ import {
 } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import {
   fetchAnalyticsSummary, fetchBudgetVsActual, fetchMonthlyTrend, fetchTopOverrun,
 } from '../services/analyticsService';
@@ -37,10 +39,24 @@ const Analytics: React.FC = () => {
   const [topOverrun, setTopOverrun] = useState<TopOverrunItem[]>([]);
   const [objects, setObjects] = useState<ObjectData[]>([]);
   const [objectFilter, setObjectFilter] = useState<number | ''>('');
+  const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useMobileHeader({ title: 'Аналитика', onBack: () => navigate(-1) });
+  const headerTrailing = useMemo(() => isMobile ? (
+    <IconButton
+      onClick={(e) => setFilterAnchorEl(e.currentTarget)}
+      sx={{
+        bgcolor: objectFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
+        color: objectFilter ? '#1976d2' : '#424242',
+        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+      }}
+    >
+      <FilterAltIcon />
+    </IconButton>
+  ) : undefined, [isMobile, objectFilter]);
+
+  useMobileHeader({ title: 'Аналитика', onBack: () => navigate(-1), trailing: headerTrailing });
 
   const loadObjects = useCallback(async () => {
     try {
@@ -111,22 +127,29 @@ const Analytics: React.FC = () => {
   }
 
   return (
-    <Box sx={{ maxWidth: 1000, mx: 'auto', width: '100%' }}>
-      <Stack spacing={2}>
-        <FormControl size="small" sx={{ minWidth: 200, alignSelf: 'flex-start' }}>
-          <InputLabel>Объект</InputLabel>
-          <Select
-            value={objectFilter}
-            label="Объект"
-            onChange={(e) => setObjectFilter(e.target.value === '' ? '' : Number(e.target.value))}
+    <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
+      {!isMobile && (
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <IconButton
+            onClick={() => navigate('/')}
+            sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+            aria-label="В главное меню"
           >
-            <MenuItem value="">Все объекты</MenuItem>
-            {objects.map((o) => (
-              <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h4" sx={{ flexGrow: 1 }}>Аналитика</Typography>
+          <IconButton onClick={(e) => setFilterAnchorEl(e.currentTarget)} sx={{ bgcolor: objectFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)', color: objectFilter ? '#1976d2' : '#424242', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}>
+            <FilterAltIcon />
+          </IconButton>
+        </Box>
+      )}
+      <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={() => setFilterAnchorEl(null)}>
+        <MenuItem onClick={() => { setObjectFilter(''); setFilterAnchorEl(null); }}>Все объекты</MenuItem>
+        {objects.map((o) => (
+          <MenuItem key={o.id} onClick={() => { setObjectFilter(o.id); setFilterAnchorEl(null); }}>{o.name}</MenuItem>
+        ))}
+      </Menu>
+      <Stack spacing={2}>
         {error && <Alert severity="error">{error}</Alert>}
 
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>

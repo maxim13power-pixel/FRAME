@@ -80,7 +80,7 @@ const Settings: React.FC = () => {
   };
 
   return (
-    <Box sx={{ maxWidth: 700, mx: 'auto', width: '100%' }}>
+    <Box sx={{ mt: -1.5, maxWidth: 700, mx: 'auto', width: '100%' }}>
       <Typography variant="h4" gutterBottom sx={{ display: { xs: 'none', md: 'block' } }}>Настройки</Typography>
 
       <Paper sx={{ p: 2.5, borderRadius: 2, mb: 2 }}>

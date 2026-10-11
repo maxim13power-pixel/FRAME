@@ -16,6 +16,11 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import PersonIcon from '@mui/icons-material/Person';
 import LogoutIcon from '@mui/icons-material/Logout';
+// ⭐ Отчёты временно скрыты
+// import DescriptionIcon from '@mui/icons-material/Description';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import GroupsIcon from '@mui/icons-material/Groups';
 import { Outlet,useNavigate, useLocation } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import BottomNav from '../components/BottomNav';
@@ -33,9 +38,14 @@ const menuColors = [
 const menuItems = [
   { label: 'Главная', path: '/', icon: <SpaceDashboardIcon /> },
   { label: 'Объекты', path: '/objects', icon: <HomeWorkIcon /> },
+  { label: 'Бригады', path: '/brigades', icon: <GroupsIcon /> },
   { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
-  { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
+  { label: 'Склад', path: '/warehouse', icon: <InventoryIcon /> },
+  { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
+  { label: 'Аналитика', path: '/analytics', icon: <BarChartIcon /> },
+  // ⭐ Отчёты временно скрыты
+  // { label: 'Отчёты', path: '/reports', icon: <DescriptionIcon /> },
   { label: 'Настройки', path: '/settings', icon: <SettingsIcon /> },
   { label: 'Помощь', path: '/help', icon: <HelpIcon /> },
 ];

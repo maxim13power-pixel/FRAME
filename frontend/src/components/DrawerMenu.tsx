@@ -14,6 +14,11 @@ import HelpIcon from '@mui/icons-material/Help';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import LogoutIcon from '@mui/icons-material/Logout';
+// ⭐ Отчёты временно скрыты
+// import DescriptionIcon from '@mui/icons-material/Description';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import GroupsIcon from '@mui/icons-material/Groups';
 import Logo from './Logo';
 
 interface DrawerMenuProps {
@@ -25,9 +30,14 @@ interface DrawerMenuProps {
 const menuItems = [
   { label: 'Главная', path: '/', icon: <SpaceDashboardIcon /> },
   { label: 'Объекты', path: '/objects', icon: <HomeIcon /> },
+  { label: 'Бригады', path: '/brigades', icon: <GroupsIcon /> },
   { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
-  { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
+  { label: 'Склад', path: '/warehouse', icon: <InventoryIcon /> },
+  { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
+  { label: 'Аналитика', path: '/analytics', icon: <BarChartIcon /> },
+  // ⭐ Отчёты временно скрыты
+  // { label: 'Отчёты', path: '/reports', icon: <DescriptionIcon /> },
   { label: 'Настройки', path: '/settings', icon: <SettingsIcon /> },
   { label: 'Помощь', path: '/help', icon: <HelpIcon /> },
 ];

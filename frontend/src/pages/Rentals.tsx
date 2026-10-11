@@ -37,6 +37,7 @@ import type { RentalData } from '../services/rentalsService';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import { FAB_STYLE } from '../theme';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { getApiErrorMessage } from '../utils/errors';
 import { parseDecimal } from '../utils/decimal'; // 🔒 P1-3: Decimal с бэкенда — строка
@@ -474,7 +475,7 @@ const Rentals: React.FC = () => {
               whiteSpace: 'nowrap',
             }}
           >
-            Добавить оборудование
+            Добавить
           </Button>
         </Box>
       )}
@@ -534,7 +535,7 @@ const Rentals: React.FC = () => {
                     size="small"
                     onClick={() => handleOpenExtend(rental)}
                     title="Продлить"
-                    sx={{ mr: 0.5, color: '#1976d2' }}
+                    sx={{ mr: 0.5, color: '#1976d2', bgcolor: 'rgba(0, 0, 0, 0.06)', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
                   >
                     <UpdateIcon fontSize="small" />
                   </IconButton>
@@ -543,51 +544,36 @@ const Rentals: React.FC = () => {
                     size="small"
                     onClick={() => handleOpenEdit(rental)}
                     title="Настройки"
-                    sx={{ mr: 0.5, color: '#424242' }}
+                    sx={{ mr: 0.5, color: '#424242', bgcolor: 'rgba(0, 0, 0, 0.06)', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
                   >
                     <SettingsIcon fontSize="small" />
                   </IconButton>
-                  {/* ⭐ Чип суммы — всего потрачено (price + все продления) */}
-                  <Chip
-                    label={`Σ ${formatMoney(rental.totalSpent)} ₽`}
-                    size="small"
-                    variant="outlined"
-                    sx={{
-                      fontWeight: 'bold',
-                      mr: 1,
-                      backgroundColor: 'rgba(25, 118, 210, 0.1)',
-                    }}
-                  />
-                  <Chip
-                    label={chip.label}
-                    color={chip.color}
-                    size="small"
-                    variant="outlined"
-                    sx={{
-                      backgroundColor:
-                        daysLeft < 0 || daysLeft <= 3 ? 'rgba(211, 47, 47, 0.1)' :
-                        daysLeft <= 10 ? 'rgba(237, 108, 2, 0.1)' :
-                        'rgba(76, 175, 80, 0.1)',
-                    }}
-                  />
                 </Box>
-
-                {/* Где лежит (рендерим только если заполнено) */}
+                {/* Где лежит + сумма справа */}
                 {rental.location && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <PlaceIcon fontSize="small" color="action" />
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
                       {rental.location}
                     </Typography>
+                    <Chip
+                      label={`Σ ${formatMoney(rental.totalSpent)} ₽`}
+                      size="small"
+                      variant="outlined"
+                      sx={{ fontWeight: 'bold', backgroundColor: 'rgba(25, 118, 210, 0.1)' }}
+                    />
                   </Box>
                 )}
 
-                {/* Кто ответственный (рендерим только если заполнено) */}
+                {/* Кто ответственный + цена аренды справа */}
                 {rental.responsible && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <PersonIcon fontSize="small" color="action" />
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
                       {rental.responsible}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Цена аренды: {formatMoney(rental.price)} ₽
                     </Typography>
                   </Box>
                 )}
@@ -609,7 +595,7 @@ const Rentals: React.FC = () => {
                   }}
                 />
 
-                {/* Строка с датами и ценой аренды */}
+                {/* Строка с датами и остатком дней */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <EventIcon fontSize="small" color="action" />
@@ -617,9 +603,18 @@ const Rentals: React.FC = () => {
                       {formatDate(rental.startDate)} – {formatDate(rental.endDate)}
                     </Typography>
                   </Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Цена аренды: {formatMoney(rental.price)} ₽
-                  </Typography>
+                  <Chip
+                    label={chip.label}
+                    color={chip.color}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      backgroundColor:
+                        daysLeft < 0 || daysLeft <= 3 ? 'rgba(211, 47, 47, 0.1)' :
+                        daysLeft <= 10 ? 'rgba(237, 108, 2, 0.1)' :
+                        'rgba(76, 175, 80, 0.1)',
+                    }}
+                  />
                 </Box>
               </Paper>
             );
@@ -633,18 +628,7 @@ const Rentals: React.FC = () => {
 
       {/* Мобильная плавающая кнопка */}
       {isMobile && (
-        <Fab
-          color="primary"
-          sx={{
-            position: 'fixed',
-            bottom: 114,
-            right: 21,
-            zIndex: 1000,
-            bgcolor: '#4caf50',
-            '&:hover': { bgcolor: '#388e3c' },
-          }}
-          onClick={handleOpenAddModal}
-        >
+        <Fab color="primary" sx={{ ...FAB_STYLE, bottom: 80 }} onClick={handleOpenAddModal}>
           <NoteAddIcon />
         </Fab>
       )}

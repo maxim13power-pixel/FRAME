@@ -30,7 +30,8 @@ const Brigades = lazy(() => import('./pages/Brigades'));
 const Warehouse = lazy(() => import('./pages/Warehouse'));
 const Rentals = lazy(() => import('./pages/Rentals'));
 const Analytics = lazy(() => import('./pages/Analytics'));
-const Reports = lazy(() => import('./pages/Reports'));
+// ⭐ Отчёты временно скрыты
+// const Reports = lazy(() => import('./pages/Reports'));
 const Users = lazy(() => import('./pages/Users'));
 const Settings = lazy(() => import('./pages/Settings'));
 
@@ -103,7 +104,7 @@ const AppRoutes = () => {
         <Route path="warehouse" element={<Warehouse />} />
         <Route path="rentals" element={<Rentals />} />
         <Route path="analytics" element={<Analytics />} />
-        <Route path="reports" element={<Reports />} />
+        {/* ⭐ Отчёты временно скрыты: <Route path="reports" element={<Reports />} /> */}
         <Route path="users" element={<Users />} />
         <Route path="settings" element={<Settings />} />
       </Route>
