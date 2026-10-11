@@ -565,25 +565,16 @@ const Rentals: React.FC = () => {
                   </Box>
                 )}
 
-                {/* Кто ответственный + дни справа */}
+                {/* Кто ответственный + цена аренды справа */}
                 {rental.responsible && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <PersonIcon fontSize="small" color="action" />
                     <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
                       {rental.responsible}
                     </Typography>
-                    <Chip
-                      label={chip.label}
-                      color={chip.color}
-                      size="small"
-                      variant="outlined"
-                      sx={{
-                        backgroundColor:
-                          daysLeft < 0 || daysLeft <= 3 ? 'rgba(211, 47, 47, 0.1)' :
-                          daysLeft <= 10 ? 'rgba(237, 108, 2, 0.1)' :
-                          'rgba(76, 175, 80, 0.1)',
-                      }}
-                    />
+                    <Typography variant="caption" color="text.secondary">
+                      Цена аренды: {formatMoney(rental.price)} ₽
+                    </Typography>
                   </Box>
                 )}
 
@@ -604,7 +595,7 @@ const Rentals: React.FC = () => {
                   }}
                 />
 
-                {/* Строка с датами и ценой аренды */}
+                {/* Строка с датами и остатком дней */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <EventIcon fontSize="small" color="action" />
@@ -612,9 +603,18 @@ const Rentals: React.FC = () => {
                       {formatDate(rental.startDate)} – {formatDate(rental.endDate)}
                     </Typography>
                   </Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Цена аренды: {formatMoney(rental.price)} ₽
-                  </Typography>
+                  <Chip
+                    label={chip.label}
+                    color={chip.color}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      backgroundColor:
+                        daysLeft < 0 || daysLeft <= 3 ? 'rgba(211, 47, 47, 0.1)' :
+                        daysLeft <= 10 ? 'rgba(237, 108, 2, 0.1)' :
+                        'rgba(76, 175, 80, 0.1)',
+                    }}
+                  />
                 </Box>
               </Paper>
             );
