@@ -428,6 +428,15 @@ const MATERIAL_CATEGORIES: { name: string; items: WorkItem[] }[] = [
 async function main() {
   console.log('→ Seed started');
 
+  // ⭐ Если демо-каталог уже засеян — пропускаем (безопасно запускать на каждом деплое)
+  const existing = await prisma.priceItem.count({
+    where: { article: { startsWith: SEED_ART } },
+  });
+  if (existing > 0) {
+    console.log('  ✓ Demo catalog already seeded, skip');
+    return;
+  }
+
   // 1. Очистка старых seed-расценок (идемпотентность). Только каталог —
   //    пользователей, объекты и проекты seed НЕ трогает (№128).
   await prisma.$transaction([

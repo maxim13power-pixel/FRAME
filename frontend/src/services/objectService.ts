@@ -16,6 +16,7 @@ export interface ObjectData {
   role?: 'CUSTOMER' | 'FOREMAN' | 'VIEWER'; // ⭐ роль пользователя на объекте
   hidePrices?: boolean; // ⭐ скрывать ли цены для этого участника
   isDemo?: boolean; // ⭐ №127: демо-объект онбординга
+  isArchived?: boolean; // ⭐ архив вместо удаления (ТЗ 3.8)
 }
 
 // Получить все объекты
@@ -35,8 +36,16 @@ export const updateObject = async (id: number, data: Partial<Omit<ObjectData, 'i
   return response.data;
 };
 
-export const deleteObject = async (id: number) => {
-  const response = await api.delete(`/objects/${id}`);
+export const deleteObject = async (id: number, permanent = false) => {
+  const response = await api.delete(`/objects/${id}`, {
+    params: permanent ? { permanent: 'true' } : undefined,
+  });
+  return response.data;
+};
+
+// ⭐ Восстановить объект из архива
+export const restoreObject = async (id: number) => {
+  const response = await api.patch(`/objects/${id}/restore`);
   return response.data;
 };
 
