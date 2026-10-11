@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Paper, Stack, CircularProgress, Alert, Table, TableBody,
+  Box, Typography, Paper, Stack, CircularProgress, Alert, IconButton, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, FormControl, InputLabel,
   Select, MenuItem, useMediaQuery, useTheme,
 } from '@mui/material';
@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import {
   fetchAnalyticsSummary, fetchBudgetVsActual, fetchMonthlyTrend, fetchTopOverrun,
 } from '../services/analyticsService';
@@ -111,7 +112,19 @@ const Analytics: React.FC = () => {
   }
 
   return (
-    <Box sx={{ maxWidth: 1000, mx: 'auto', width: '100%' }}>
+    <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
+      {!isMobile && (
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <IconButton
+            onClick={() => navigate('/')}
+            sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+            aria-label="В главное меню"
+          >
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h4" sx={{ flexGrow: 1 }}>Аналитика</Typography>
+        </Box>
+      )}
       <Stack spacing={2}>
         <FormControl size="small" sx={{ minWidth: 200, alignSelf: 'flex-start' }}>
           <InputLabel>Объект</InputLabel>

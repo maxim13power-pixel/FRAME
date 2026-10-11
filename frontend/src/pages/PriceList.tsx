@@ -436,7 +436,7 @@ const PriceList: React.FC = () => {
   }
 
   return (
-    <Box>
+    <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
             {/* Вкладки WORK/MATERIAL — оставляем как есть на мобилке */}
       {isMobile && (
         <Tabs

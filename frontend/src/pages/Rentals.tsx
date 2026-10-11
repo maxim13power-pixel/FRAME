@@ -474,7 +474,7 @@ const Rentals: React.FC = () => {
               whiteSpace: 'nowrap',
             }}
           >
-            Добавить оборудование
+            Добавить
           </Button>
         </Box>
       )}
@@ -543,18 +543,19 @@ const Rentals: React.FC = () => {
                     size="small"
                     onClick={() => handleOpenEdit(rental)}
                     title="Настройки"
-                    sx={{ mr: 0.5, color: '#424242' }}
+                    sx={{ mr: 0.5, color: '#424242', bgcolor: 'action.hover', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.12)' } }}
                   >
                     <SettingsIcon fontSize="small" />
                   </IconButton>
-                  {/* ⭐ Чип суммы — всего потрачено (price + все продления) */}
+                </Box>
+                {/* ⭐ Сумма и сроки отдельной строкой (чтобы название оборудования не сжималось) */}
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1, flexWrap: 'wrap' }}>
                   <Chip
                     label={`Σ ${formatMoney(rental.totalSpent)} ₽`}
                     size="small"
                     variant="outlined"
                     sx={{
                       fontWeight: 'bold',
-                      mr: 1,
                       backgroundColor: 'rgba(25, 118, 210, 0.1)',
                     }}
                   />

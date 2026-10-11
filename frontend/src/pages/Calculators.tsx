@@ -1,10 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Container,
+  FormControl,
   IconButton,
   InputAdornment,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   TextField,
   Typography,
   useMediaQuery,
@@ -12,6 +17,7 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import FoundationIcon from '@mui/icons-material/Foundation';
 import LayersIcon from '@mui/icons-material/Layers';
 import WallpaperIcon from '@mui/icons-material/Wallpaper';
@@ -113,6 +119,8 @@ const Calculators: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const navigate = useNavigate();
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -124,11 +132,16 @@ const Calculators: React.FC = () => {
   const filteredSections = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase('ru-RU');
 
-    if (!query) {
-      return calculatorSections;
+    let sections = calculatorSections;
+    if (categoryFilter) {
+      sections = sections.filter((s) => s.title === categoryFilter);
     }
 
-    return calculatorSections
+    if (!query) {
+      return sections;
+    }
+
+    return sections
       .map((section) => ({
         ...section,
         calculators: section.calculators.filter((calculator) =>
@@ -139,7 +152,7 @@ const Calculators: React.FC = () => {
         ),
       }))
       .filter((section) => section.calculators.length > 0);
-  }, [searchQuery]);
+  }, [searchQuery, categoryFilter]);
 
   const closeMobileSearch = () => {
     setShowSearch(false);
@@ -179,6 +192,9 @@ const Calculators: React.FC = () => {
           </Box>
         ) : (
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, minHeight: 48 }}>
+            <IconButton onClick={() => navigate('/')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }} aria-label="В главное меню">
+              <ArrowBackIcon />
+            </IconButton>
             <Typography variant="h5" sx={{ flexGrow: 1 }}>
               Калькуляторы
             </Typography>
@@ -193,9 +209,21 @@ const Calculators: React.FC = () => {
       ) : (
         /* Десктоп: заголовок + поиск, как во всех разделах */
         <Box sx={{ mb: 2 }}>
-          <Typography variant="h4" sx={{ mb: 2 }}>
-            Калькуляторы
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+            <IconButton onClick={() => navigate('/')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }} aria-label="В главное меню">
+              <ArrowBackIcon />
+            </IconButton>
+            <Typography variant="h4" sx={{ flexGrow: 1 }}>
+              Калькуляторы
+            </Typography>
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Категория</InputLabel>
+              <Select value={categoryFilter} label="Категория" onChange={(e) => setCategoryFilter(e.target.value)}>
+                <MenuItem value="">Все категории</MenuItem>
+                {calculatorSections.map((s) => <MenuItem key={s.title} value={s.title}>{s.title}</MenuItem>)}
+              </Select>
+            </FormControl>
+          </Box>
           <TextField
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}

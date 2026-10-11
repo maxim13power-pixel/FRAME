@@ -491,7 +491,8 @@ const handleSaveNote = async () => {
     const updated = await updateObject(Number(editingNoteObject.id), {
       note: editNote.trim() !== '' ? editNote.trim() : null,
     });
-    setObjects(prev => prev.map(obj => obj.id === updated.id ? updated : obj));
+    // ⭐ №фикс: мержим только note, чтобы не сбросить progressPercent/totalCost
+    setObjects(prev => prev.map(obj => obj.id === editingNoteObject.id ? { ...obj, note: updated.note } : obj));
     handleCloseNoteModal();
   } catch {
     alert('Ошибка обновления заметки');
@@ -953,6 +954,11 @@ trailing: headerTrailing,
                   setDeletingObject(editingObject); // запоминаем объект для удаления
                   handleCloseEdit(); // закрываем модалку редактирования
                   setDeleteConfirmOpen(true);
+                }}
+                sx={{
+                  border: '1px solid rgba(211, 47, 47, 0.35)',
+                  bgcolor: 'rgba(211, 47, 47, 0.06)',
+                  '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.12)' },
                 }}
               >
                 <DeleteIcon />
