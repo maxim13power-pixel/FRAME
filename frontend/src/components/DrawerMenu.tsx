@@ -14,6 +14,10 @@ import HelpIcon from '@mui/icons-material/Help';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import LogoutIcon from '@mui/icons-material/Logout';
+import DescriptionIcon from '@mui/icons-material/Description';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import GroupsIcon from '@mui/icons-material/Groups';
 import Logo from './Logo';
 
 interface DrawerMenuProps {
@@ -26,6 +30,10 @@ const menuItems = [
   { label: 'Главная', path: '/', icon: <SpaceDashboardIcon /> },
   { label: 'Объекты', path: '/objects', icon: <HomeIcon /> },
   { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
+  { label: 'Отчёты', path: '/reports', icon: <DescriptionIcon /> },
+  { label: 'Аналитика', path: '/analytics', icon: <BarChartIcon /> },
+  { label: 'Склад', path: '/warehouse', icon: <InventoryIcon /> },
+  { label: 'Бригады', path: '/brigades', icon: <GroupsIcon /> },
   { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
   { label: 'Настройки', path: '/settings', icon: <SettingsIcon /> },

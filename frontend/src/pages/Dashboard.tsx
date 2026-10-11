@@ -16,6 +16,10 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import PersonIcon from '@mui/icons-material/Person';
 import LogoutIcon from '@mui/icons-material/Logout';
+import DescriptionIcon from '@mui/icons-material/Description';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import GroupsIcon from '@mui/icons-material/Groups';
 import { Outlet,useNavigate, useLocation } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import BottomNav from '../components/BottomNav';
@@ -34,6 +38,10 @@ const menuItems = [
   { label: 'Главная', path: '/', icon: <SpaceDashboardIcon /> },
   { label: 'Объекты', path: '/objects', icon: <HomeWorkIcon /> },
   { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
+  { label: 'Отчёты', path: '/reports', icon: <DescriptionIcon /> },
+  { label: 'Аналитика', path: '/analytics', icon: <BarChartIcon /> },
+  { label: 'Склад', path: '/warehouse', icon: <InventoryIcon /> },
+  { label: 'Бригады', path: '/brigades', icon: <GroupsIcon /> },
   { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
   { label: 'Настройки', path: '/settings', icon: <SettingsIcon /> },
