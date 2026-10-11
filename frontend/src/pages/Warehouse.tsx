@@ -449,7 +449,7 @@ const Warehouse: React.FC = () => {
                     color="primary"
                     size="small"
                     onClick={handleExport}
-                    sx={{ minWidth: 0, p: 1 }}
+                    sx={{ minWidth: 0, px: 1.5, py: 1 }}
                   >
                     <FileDownloadIcon fontSize="small" />
                   </Button>

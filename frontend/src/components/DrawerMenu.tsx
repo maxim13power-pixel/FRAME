@@ -29,13 +29,13 @@ interface DrawerMenuProps {
 const menuItems = [
   { label: 'Главная', path: '/', icon: <SpaceDashboardIcon /> },
   { label: 'Объекты', path: '/objects', icon: <HomeIcon /> },
-  { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
-  { label: 'Отчёты', path: '/reports', icon: <DescriptionIcon /> },
-  { label: 'Аналитика', path: '/analytics', icon: <BarChartIcon /> },
-  { label: 'Склад', path: '/warehouse', icon: <InventoryIcon /> },
   { label: 'Бригады', path: '/brigades', icon: <GroupsIcon /> },
-  { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
+  { label: 'Справочник цен', path: '/price-list', icon: <SellIcon /> },
   { label: 'Аренда', path: '/rentals', icon: <HandshakeIcon /> },
+  { label: 'Склад', path: '/warehouse', icon: <InventoryIcon /> },
+  { label: 'Калькуляторы', path: '/calculators', icon: <CalculateIcon /> },
+  { label: 'Аналитика', path: '/analytics', icon: <BarChartIcon /> },
+  { label: 'Отчёты', path: '/reports', icon: <DescriptionIcon /> },
   { label: 'Настройки', path: '/settings', icon: <SettingsIcon /> },
   { label: 'Помощь', path: '/help', icon: <HelpIcon /> },
 ];

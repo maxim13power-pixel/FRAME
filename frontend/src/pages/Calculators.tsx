@@ -6,6 +6,7 @@ import {
   IconButton,
   InputAdornment,
   InputLabel,
+  Menu,
   MenuItem,
   Paper,
   Select,
@@ -17,6 +18,7 @@ import {
 import SearchIcon from '@mui/icons-material/Search';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import FoundationIcon from '@mui/icons-material/Foundation';
 import LayersIcon from '@mui/icons-material/Layers';
 import WallpaperIcon from '@mui/icons-material/Wallpaper';
@@ -119,7 +121,21 @@ const Calculators: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
   const navigate = useNavigate();
+
+  const headerTrailing = useMemo(() => isMobile ? (
+    <IconButton
+      onClick={(e) => setFilterAnchorEl(e.currentTarget)}
+      sx={{
+        bgcolor: categoryFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
+        color: categoryFilter ? '#1976d2' : '#424242',
+        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+      }}
+    >
+      <FilterAltIcon />
+    </IconButton>
+  ) : undefined, [isMobile, categoryFilter]);
 
   useMobileHeader({
     title: 'Калькуляторы',
@@ -130,6 +146,7 @@ const Calculators: React.FC = () => {
     onSearchOpen: () => setShowSearch(true),
     onSearchClose: () => { setSearchQuery(''); setShowSearch(false); },
     onSearchChange: (v) => setSearchQuery(v),
+    trailing: headerTrailing,
   });
 
   const filteredSections = useMemo(() => {
@@ -161,11 +178,22 @@ const Calculators: React.FC = () => {
     <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
       {!isMobile && (
         <Box sx={{ mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <IconButton onClick={() => navigate('/')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }} aria-label="В главное меню">
               <ArrowBackIcon />
             </IconButton>
             <Typography variant="h4" sx={{ flexGrow: 1 }}>Калькуляторы</Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+            <TextField
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Поиск калькулятора..."
+              variant="outlined"
+              size="small"
+              sx={{ maxWidth: 520 }}
+              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
+            />
             <FormControl size="small" sx={{ minWidth: 180 }}>
               <InputLabel>Категория</InputLabel>
               <Select value={categoryFilter} label="Категория" onChange={(e) => setCategoryFilter(e.target.value)}>
@@ -174,26 +202,15 @@ const Calculators: React.FC = () => {
               </Select>
             </FormControl>
           </Box>
-          <TextField
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Поиск калькулятора..."
-            variant="outlined"
-            size="small"
-            sx={{ maxWidth: 520 }}
-            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
-          />
         </Box>
       )}
-      {isMobile && (
-        <FormControl size="small" fullWidth sx={{ mb: 1.5 }}>
-          <InputLabel>Категория</InputLabel>
-          <Select value={categoryFilter} label="Категория" onChange={(e) => setCategoryFilter(e.target.value)}>
-            <MenuItem value="">Все категории</MenuItem>
-            {calculatorSections.map((s) => <MenuItem key={s.title} value={s.title}>{s.title}</MenuItem>)}
-          </Select>
-        </FormControl>
-      )}
+      {/* ⭐ Мобильный фильтр категорий — меню-вороночка */}
+      <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={() => setFilterAnchorEl(null)}>
+        <MenuItem onClick={() => { setCategoryFilter(''); setFilterAnchorEl(null); }}>Все категории</MenuItem>
+        {calculatorSections.map((s) => (
+          <MenuItem key={s.title} onClick={() => { setCategoryFilter(s.title); setFilterAnchorEl(null); }}>{s.title}</MenuItem>
+        ))}
+      </Menu>
 
       {filteredSections.length > 0 ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 3, md: 4 } }}>
