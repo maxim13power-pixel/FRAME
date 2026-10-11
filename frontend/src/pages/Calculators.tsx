@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
-  Container,
   FormControl,
   IconButton,
   InputAdornment,
@@ -16,7 +15,7 @@ import {
   useTheme,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import CloseIcon from '@mui/icons-material/Close';
+import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import FoundationIcon from '@mui/icons-material/Foundation';
 import LayersIcon from '@mui/icons-material/Layers';
@@ -121,13 +120,17 @@ const Calculators: React.FC = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('');
   const navigate = useNavigate();
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (showSearch && isMobile) {
-      setTimeout(() => searchInputRef.current?.focus(), 0);
-    }
-  }, [isMobile, showSearch]);
+  useMobileHeader({
+    title: 'Калькуляторы',
+    onBack: () => navigate('/'),
+    searchOpen: showSearch,
+    searchValue: searchQuery,
+    searchPlaceholder: 'Поиск калькулятора...',
+    onSearchOpen: () => setShowSearch(true),
+    onSearchClose: () => { setSearchQuery(''); setShowSearch(false); },
+    onSearchChange: (v) => setSearchQuery(v),
+  });
 
   const filteredSections = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase('ru-RU');
@@ -154,68 +157,15 @@ const Calculators: React.FC = () => {
       .filter((section) => section.calculators.length > 0);
   }, [searchQuery, categoryFilter]);
 
-  const closeMobileSearch = () => {
-    setShowSearch(false);
-    setSearchQuery('');
-  };
-
   return (
-    <Container maxWidth="xl" sx={{ pt: { xs: 0.5, md: 1 }, pb: { xs: 2, md: 3 } }}>
-      {/* Мобилка: компактная строка — заголовок + поиск (как во всех разделах) */}
-      {isMobile ? (
-        showSearch ? (
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, gap: 1 }}>
-            <TextField
-              fullWidth
-              inputRef={searchInputRef}
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Поиск калькулятора..."
-              variant="outlined"
-              size="small"
-              autoFocus
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton size="small" onClick={closeMobileSearch}>
-                      <CloseIcon fontSize="small" />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Box>
-        ) : (
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, minHeight: 48 }}>
-            <IconButton onClick={() => navigate('/')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }} aria-label="В главное меню">
-              <ArrowBackIcon />
-            </IconButton>
-            <Typography variant="h5" sx={{ flexGrow: 1 }}>
-              Калькуляторы
-            </Typography>
-            <IconButton
-              onClick={() => setShowSearch(true)}
-              sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
-            >
-              <SearchIcon />
-            </IconButton>
-          </Box>
-        )
-      ) : (
-        /* Десктоп: заголовок + поиск, как во всех разделах */
+    <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
+      {!isMobile && (
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
             <IconButton onClick={() => navigate('/')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }} aria-label="В главное меню">
               <ArrowBackIcon />
             </IconButton>
-            <Typography variant="h4" sx={{ flexGrow: 1 }}>
-              Калькуляторы
-            </Typography>
+            <Typography variant="h4" sx={{ flexGrow: 1 }}>Калькуляторы</Typography>
             <FormControl size="small" sx={{ minWidth: 180 }}>
               <InputLabel>Категория</InputLabel>
               <Select value={categoryFilter} label="Категория" onChange={(e) => setCategoryFilter(e.target.value)}>
@@ -231,15 +181,18 @@ const Calculators: React.FC = () => {
             variant="outlined"
             size="small"
             sx={{ maxWidth: 520 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon />
-                </InputAdornment>
-              ),
-            }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
           />
         </Box>
+      )}
+      {isMobile && (
+        <FormControl size="small" fullWidth sx={{ mb: 1.5 }}>
+          <InputLabel>Категория</InputLabel>
+          <Select value={categoryFilter} label="Категория" onChange={(e) => setCategoryFilter(e.target.value)}>
+            <MenuItem value="">Все категории</MenuItem>
+            {calculatorSections.map((s) => <MenuItem key={s.title} value={s.title}>{s.title}</MenuItem>)}
+          </Select>
+        </FormControl>
       )}
 
       {filteredSections.length > 0 ? (
@@ -306,7 +259,7 @@ const Calculators: React.FC = () => {
           </Typography>
         </Paper>
       )}
-    </Container>
+    </Box>
   );
 };
 

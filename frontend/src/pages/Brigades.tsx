@@ -11,6 +11,7 @@ import AddIcon from '@mui/icons-material/Add';
 import SettingsIcon from '@mui/icons-material/Settings';
 import DeleteIcon from '@mui/icons-material/Delete';
 import GroupsIcon from '@mui/icons-material/Groups';
+import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PhoneIcon from '@mui/icons-material/Phone';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer } from 'recharts';
@@ -579,9 +580,6 @@ const Brigades: React.FC = () => {
                   sx={{ flexGrow: 1 }}
                   InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
                 />
-                <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreate}>
-                  Добавить
-                </Button>
                 <FormControl size="small" sx={{ minWidth: 180 }}>
                   <InputLabel>Объект</InputLabel>
                   <Select value={objectFilter} label="Объект" onChange={(e) => setObjectFilter(e.target.value === '' ? '' : Number(e.target.value))}>
@@ -589,6 +587,9 @@ const Brigades: React.FC = () => {
                     {objects.map((o) => <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>)}
                   </Select>
                 </FormControl>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, whiteSpace: 'nowrap' }}>
+                  Добавить
+                </Button>
               </Box>
             )}
             {isMobile && (
@@ -776,7 +777,7 @@ const Brigades: React.FC = () => {
 
       {isMobile && view === 'list' && (
         <Fab color="primary" sx={{ ...FAB_STYLE, bottom: 80 }} onClick={openCreate}>
-          <AddIcon />
+          <GroupAddIcon />
         </Fab>
       )}
     </Box>

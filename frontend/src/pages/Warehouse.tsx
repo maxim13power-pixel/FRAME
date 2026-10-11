@@ -427,9 +427,6 @@ const Warehouse: React.FC = () => {
                     ),
                   }}
                 />
-                <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreate}>
-                  Добавить
-                </Button>
                 <FormControl size="small" sx={{ minWidth: 180 }}>
                   <InputLabel>Объект</InputLabel>
                   <Select
@@ -443,6 +440,9 @@ const Warehouse: React.FC = () => {
                     ))}
                   </Select>
                 </FormControl>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, whiteSpace: 'nowrap' }}>
+                  Добавить
+                </Button>
                 <Tooltip title="Excel">
                   <Button
                     variant="outlined"

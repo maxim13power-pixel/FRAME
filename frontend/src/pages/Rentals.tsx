@@ -37,6 +37,7 @@ import type { RentalData } from '../services/rentalsService';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import { FAB_STYLE } from '../theme';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { getApiErrorMessage } from '../utils/errors';
 import { parseDecimal } from '../utils/decimal'; // 🔒 P1-3: Decimal с бэкенда — строка
@@ -634,18 +635,7 @@ const Rentals: React.FC = () => {
 
       {/* Мобильная плавающая кнопка */}
       {isMobile && (
-        <Fab
-          color="primary"
-          sx={{
-            position: 'fixed',
-            bottom: 114,
-            right: 21,
-            zIndex: 1000,
-            bgcolor: '#4caf50',
-            '&:hover': { bgcolor: '#388e3c' },
-          }}
-          onClick={handleOpenAddModal}
-        >
+        <Fab color="primary" sx={{ ...FAB_STYLE, bottom: 80 }} onClick={handleOpenAddModal}>
           <NoteAddIcon />
         </Fab>
       )}

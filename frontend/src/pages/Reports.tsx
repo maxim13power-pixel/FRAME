@@ -570,11 +570,6 @@ const Reports: React.FC = () => {
                 <ToggleButton value="estimate">Сметы</ToggleButton>
                 <ToggleButton value="act">Акты</ToggleButton>
               </ToggleButtonGroup>
-              {!isMobile && (
-                <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreate}>
-                  Создать
-                </Button>
-              )}
               <FormControl size="small" sx={{ minWidth: 180, flexGrow: isMobile ? 1 : 0 }}>
                 <InputLabel>Объект</InputLabel>
                 <Select
@@ -588,6 +583,11 @@ const Reports: React.FC = () => {
                   ))}
                 </Select>
               </FormControl>
+              {!isMobile && (
+                <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, whiteSpace: 'nowrap' }}>
+                  Создать
+                </Button>
+              )}
             </Box>
 
             {error && <Alert severity="error">{error}</Alert>}

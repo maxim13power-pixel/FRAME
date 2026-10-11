@@ -1011,7 +1011,7 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     size="small"
     onClick={() => setExportModalOpen(true)}
     disabled={exporting !== null}
-    sx={{ minWidth: 0, p: 1 }}
+    sx={{ minWidth: 0, p: 1.5 }}
   >
     {exporting ? <CircularProgress size={16} /> : <FileDownloadIcon fontSize="small" />}
   </Button>
