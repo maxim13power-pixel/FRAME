@@ -15,7 +15,6 @@ import HandshakeIcon from '@mui/icons-material/Handshake';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import PersonIcon from '@mui/icons-material/Person';
-import LogoutIcon from '@mui/icons-material/Logout';
 // ⭐ Отчёты временно скрыты
 // import DescriptionIcon from '@mui/icons-material/Description';
 import BarChartIcon from '@mui/icons-material/BarChart';
@@ -59,16 +58,10 @@ const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [bottomNavValue, setBottomNavValue] = useState('objects');
-  const { user, logout } = useAuth(); // ⭐ для иконки профиля в свёрнутом rail
+  const { user } = useAuth(); // ⭐ для иконки профиля в свёрнутом rail
 
   const handleNavigate = (path: string) => {
     navigate(path);
-  };
-
-  // ⭐ Выход прямо из меню профиля (не только через страницу /users)
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
   };
 
   const handleBottomNavChange = (newValue: string) => {
@@ -170,19 +163,6 @@ const location = useLocation();
           secondaryTypographyProps={{ noWrap: true }}
         />
       </ListItemButton>
-      {/* ⭐ Выход доступен прямо из меню профиля (не только через /users) */}
-      <ListItemButton
-        onClick={handleLogout}
-        sx={{ py: 1.5, px: 2, gap: 1.5, '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.08)' } }}
-      >
-        <ListItemIcon sx={{ minWidth: 40, color: '#d32f2f' }}>
-          <LogoutIcon />
-        </ListItemIcon>
-        <ListItemText
-          primary="Выйти"
-          primaryTypographyProps={{ sx: { fontWeight: 600, color: '#d32f2f' } }}
-        />
-      </ListItemButton>
     </Box>
   </Drawer>
    )}
@@ -254,11 +234,6 @@ const location = useLocation();
                 <Avatar sx={{ width: 32, height: 32, bgcolor: '#1976d2', fontSize: '0.9rem', fontWeight: 700 }}>
                   {user?.name?.[0]?.toUpperCase() || <PersonIcon />}
                 </Avatar>
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Выйти" placement="right" arrow>
-              <IconButton onClick={handleLogout} aria-label="Выйти" sx={{ color: '#d32f2f' }}>
-                <LogoutIcon />
               </IconButton>
             </Tooltip>
           </Box>
