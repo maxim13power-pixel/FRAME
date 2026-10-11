@@ -13,7 +13,6 @@ import CalculateIcon from '@mui/icons-material/Calculate';
 import HelpIcon from '@mui/icons-material/Help';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
-import LogoutIcon from '@mui/icons-material/Logout';
 // ⭐ Отчёты временно скрыты
 // import DescriptionIcon from '@mui/icons-material/Description';
 import BarChartIcon from '@mui/icons-material/BarChart';
@@ -43,19 +42,12 @@ const menuItems = [
 ];
 
 const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   // ⭐ Шаг 67: клик по профилю → страница «Пользователи» (там аккаунт и выход)
   const handleGoProfile = () => {
     onClose();
     onNavigate('/users');
-  };
-
-  // ⭐ Выход прямо из меню профиля (не только через страницу /users)
-  const handleLogout = () => {
-    onClose();
-    logout();
-    onNavigate('/login');
   };
 
   return (
@@ -103,16 +95,6 @@ const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) =>
                 {user?.email || user?.phone || ''}
               </Typography>
             </Box>
-          </ListItemButton>
-          {/* ⭐ Выход доступен прямо из меню профиля (не только через /users) */}
-          <ListItemButton
-            onClick={handleLogout}
-            sx={{ py: 1.5, px: 2, gap: 1.5, '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.08)' } }}
-          >
-            <ListItemIcon sx={{ minWidth: 36, color: '#d32f2f' }}>
-              <LogoutIcon />
-            </ListItemIcon>
-            <ListItemText primary="Выйти" primaryTypographyProps={{ sx: { fontWeight: 600, color: '#d32f2f' } }} />
           </ListItemButton>
         </Box>
       </Box>
