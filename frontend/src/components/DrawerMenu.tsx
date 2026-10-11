@@ -80,7 +80,7 @@ const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) =>
         >
           {menuItems.map((item) => (
             <ListItem key={item.path} disablePadding>
-              <ListItemButton onClick={() => { onNavigate(item.path); onClose(); }} sx={{ py: 0.5 }}>
+              <ListItemButton onClick={() => { onNavigate(item.path); onClose(); }}>
                 <ListItemIcon sx={{ color: '#1976d2' }}>
                   {item.icon}
                 </ListItemIcon>
