@@ -470,22 +470,6 @@ const Warehouse: React.FC = () => {
               </Box>
             )}
 
-            {isMobile && (
-              <FormControl size="small" fullWidth>
-                <InputLabel>Объект</InputLabel>
-                <Select
-                  value={objectFilter}
-                  label="Объект"
-                  onChange={(e) => setObjectFilter(e.target.value === '' ? '' : Number(e.target.value))}
-                >
-                  <MenuItem value="">Все объекты</MenuItem>
-                  {objects.map((o) => (
-                    <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            )}
-
             {error && <Alert severity="error">{error}</Alert>}
 
             {items.length === 0 ? (

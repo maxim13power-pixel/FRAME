@@ -535,7 +535,7 @@ const Rentals: React.FC = () => {
                     size="small"
                     onClick={() => handleOpenExtend(rental)}
                     title="Продлить"
-                    sx={{ mr: 0.5, color: '#1976d2' }}
+                    sx={{ mr: 0.5, color: '#1976d2', bgcolor: 'rgba(0, 0, 0, 0.06)', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
                   >
                     <UpdateIcon fontSize="small" />
                   </IconButton>
@@ -544,53 +544,46 @@ const Rentals: React.FC = () => {
                     size="small"
                     onClick={() => handleOpenEdit(rental)}
                     title="Настройки"
-                    sx={{ mr: 0.5, color: '#424242', bgcolor: 'action.hover', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.12)' } }}
+                    sx={{ mr: 0.5, color: '#424242', bgcolor: 'rgba(0, 0, 0, 0.06)', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
                   >
                     <SettingsIcon fontSize="small" />
                   </IconButton>
                 </Box>
-                {/* ⭐ Сумма и сроки отдельной строкой (чтобы название оборудования не сжималось) */}
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1, flexWrap: 'wrap' }}>
-                  <Chip
-                    label={`Σ ${formatMoney(rental.totalSpent)} ₽`}
-                    size="small"
-                    variant="outlined"
-                    sx={{
-                      fontWeight: 'bold',
-                      backgroundColor: 'rgba(25, 118, 210, 0.1)',
-                    }}
-                  />
-                  <Chip
-                    label={chip.label}
-                    color={chip.color}
-                    size="small"
-                    variant="outlined"
-                    sx={{
-                      backgroundColor:
-                        daysLeft < 0 || daysLeft <= 3 ? 'rgba(211, 47, 47, 0.1)' :
-                        daysLeft <= 10 ? 'rgba(237, 108, 2, 0.1)' :
-                        'rgba(76, 175, 80, 0.1)',
-                    }}
-                  />
-                </Box>
-
-                {/* Где лежит (рендерим только если заполнено) */}
+                {/* Где лежит + сумма справа */}
                 {rental.location && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <PlaceIcon fontSize="small" color="action" />
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
                       {rental.location}
                     </Typography>
+                    <Chip
+                      label={`Σ ${formatMoney(rental.totalSpent)} ₽`}
+                      size="small"
+                      variant="outlined"
+                      sx={{ fontWeight: 'bold', backgroundColor: 'rgba(25, 118, 210, 0.1)' }}
+                    />
                   </Box>
                 )}
 
-                {/* Кто ответственный (рендерим только если заполнено) */}
+                {/* Кто ответственный + дни справа */}
                 {rental.responsible && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <PersonIcon fontSize="small" color="action" />
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
                       {rental.responsible}
                     </Typography>
+                    <Chip
+                      label={chip.label}
+                      color={chip.color}
+                      size="small"
+                      variant="outlined"
+                      sx={{
+                        backgroundColor:
+                          daysLeft < 0 || daysLeft <= 3 ? 'rgba(211, 47, 47, 0.1)' :
+                          daysLeft <= 10 ? 'rgba(237, 108, 2, 0.1)' :
+                          'rgba(76, 175, 80, 0.1)',
+                      }}
+                    />
                   </Box>
                 )}
 

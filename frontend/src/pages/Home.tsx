@@ -83,7 +83,7 @@ const Home: React.FC = () => {
   const overdueCount = data.hotProjects.filter(p => daysLeft(p.endDate) < 0).length;
 
   return (
-    <Box sx={{ maxWidth: 1000, mx: 'auto', width: '100%' }}>
+    <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
      {/* ─── 1. HERO: ДЕНЬГИ (кликабельный → в Объекты) ─── */}
     <Paper
       onClick={() => navigate('/objects')}
