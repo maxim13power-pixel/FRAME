@@ -601,7 +601,7 @@ const Help: React.FC = () => {
             placeholder="Поиск по инструкциям"
             variant="outlined"
             size="small"
-            sx={{ maxWidth: 520 }}
+            fullWidth
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon color="action" /></InputAdornment> }}
           />
         </Box>

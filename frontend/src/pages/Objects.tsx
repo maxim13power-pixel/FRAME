@@ -545,20 +545,34 @@ const handleSaveNote = async () => {
   };
   // ⭐ trailing в useMemo — стабильная ссылка, нет бесконечного цикла (как в Materials)
   const headerTrailing = useMemo(() => isMobile ? (
-    <IconButton
-      onClick={(e) => setSortAnchorEl(e.currentTarget)}
-      sx={{
-        bgcolor: sortBy !== 'newest' ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
-        color: sortBy !== 'newest' ? '#1976d2' : '#424242',
-        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
-      }}
-    >
-      <SortIcon />
-    </IconButton>
-  ) : undefined, [isMobile, sortBy]);
+    <>
+      {/* ⭐ Архив в шапке (без подписи, как на десктопе): переключение Активные / Архив */}
+      <IconButton
+        onClick={() => setShowArchived(v => !v)}
+        aria-label={showArchived ? 'Активные' : 'Архив'}
+        sx={{
+          bgcolor: showArchived ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+          color: showArchived ? '#1976d2' : '#424242',
+          '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+        }}
+      >
+        {showArchived ? <CheckCircleIcon /> : <ArchiveIcon />}
+      </IconButton>
+      <IconButton
+        onClick={(e) => setSortAnchorEl(e.currentTarget)}
+        sx={{
+          bgcolor: sortBy !== 'newest' ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+          color: sortBy !== 'newest' ? '#1976d2' : '#424242',
+          '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+        }}
+      >
+        <SortIcon />
+      </IconButton>
+    </>
+  ) : undefined, [isMobile, sortBy, showArchived]);
 
 useMobileHeader({
-title: 'Объекты',
+title: showArchived ? 'Архив' : 'Объекты',
 onBack: () => navigate('/'),
 searchOpen: mobileSearchOpen,
 searchValue: searchQuery,
@@ -593,7 +607,7 @@ trailing: headerTrailing,
 
 {/* Заголовок для десктопа + кнопка "в главное меню" */}
 {!isMobile && (
-  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
     <IconButton
       onClick={() => navigate('/')}
       sx={{
@@ -608,32 +622,19 @@ trailing: headerTrailing,
     <Typography variant="h4" sx={{ flexGrow: 1 }}>
       Объекты
     </Typography>
+    {/* ⭐ Кнопка «Архив» перенесена наверх (правая сторона заголовка раздела) */}
+    <Button
+      variant={showArchived ? 'contained' : 'outlined'}
+      startIcon={showArchived ? <CheckCircleIcon /> : <ArchiveIcon />}
+      onClick={() => setShowArchived(v => !v)}
+      sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+    >
+      {showArchived ? 'Активные' : 'Архив'}
+    </Button>
   </Box>
 )}
 
-  {/* ⭐ Переключатель Активные / Архив (в точности как в Справочнике цен) */}
-  <Tabs
-    value={showArchived ? 'archived' : 'active'}
-    onChange={(_e, v) => setShowArchived(v === 'archived')}
-    variant={isMobile ? 'fullWidth' : 'standard'}
-    sx={{
-      mt: { xs: -3, md: 0 },
-      mb: { xs: 1, md: 1 },
-      borderBottom: { md: 1 },
-      borderColor: { md: 'divider' },
-      '& .MuiTab-root': {
-        textTransform: 'none',
-        fontWeight: 600,
-        fontSize: { xs: 13, md: 15 },
-        minHeight: { xs: 44, md: 48 },
-        '&:focus': { outline: 'none' },
-        '&:focus-visible': { outline: 'none' },
-      },
-    }}
-  >
-    <Tab icon={<CheckCircleIcon />} iconPosition="start" label="Активные" value="active" />
-    <Tab icon={<ArchiveIcon />} iconPosition="start" label="Архив" value="archived" />
-  </Tabs>
+  {/* ⭐ Переключатель Активные / Архив убран: архив теперь в шапке (иконка), Активные — вид по умолчанию */}
 
   {/* Панель поиска и добавления (десктоп) */}
   {!isMobile && (
@@ -674,7 +675,8 @@ trailing: headerTrailing,
           onClick={handleOpenAddModal}
           sx={{
             bgcolor: '#4caf50',
-            '&:hover': { bgcolor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
+            border: '2px solid #388e3c',
+            '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
             transition: 'all 0.3s ease',
             whiteSpace: 'nowrap',
           }}

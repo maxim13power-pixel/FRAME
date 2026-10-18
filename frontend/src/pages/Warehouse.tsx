@@ -361,9 +361,6 @@ const Warehouse: React.FC = () => {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h4" sx={{ flexGrow: 1 }}>Склад</Typography>
-          <IconButton onClick={(e) => setFilterAnchorEl(e.currentTarget)} sx={{ bgcolor: objectFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)', color: objectFilter ? '#1976d2' : '#424242', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}>
-            <FilterAltIcon />
-          </IconButton>
         </Box>
       )}
       <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={() => setFilterAnchorEl(null)}>
@@ -437,7 +434,7 @@ const Warehouse: React.FC = () => {
         <>
           <Stack spacing={2}>
             {!isMobile && (
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                 <TextField
                   placeholder="Поиск по складу..."
                   variant="outlined"
@@ -453,7 +450,22 @@ const Warehouse: React.FC = () => {
                     ),
                   }}
                 />
-                <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, whiteSpace: 'nowrap' }}>
+                {objects.length > 0 && (
+                  <FormControl size="small" sx={{ minWidth: 180 }}>
+                    <InputLabel>Объект</InputLabel>
+                    <Select
+                      value={objectFilter}
+                      label="Объект"
+                      onChange={(e) => setObjectFilter(e.target.value === '' ? '' : Number(e.target.value))}
+                    >
+                      <MenuItem value=""><em>Все объекты</em></MenuItem>
+                      {objects.map((o) => (
+                        <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+                <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} sx={{ bgcolor: '#4caf50', border: '2px solid #388e3c', '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' }, transition: 'all 0.3s ease', whiteSpace: 'nowrap' }}>
                   Добавить
                 </Button>
                 <Tooltip title="Excel">
@@ -462,7 +474,7 @@ const Warehouse: React.FC = () => {
                     color="primary"
                     size="small"
                     onClick={handleExport}
-                    sx={{ minWidth: 0, px: 1.5, py: 1 }}
+                    sx={{ minWidth: 0, px: 1.5, py: 1, transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' } }}
                   >
                     <FileDownloadIcon fontSize="small" />
                   </Button>

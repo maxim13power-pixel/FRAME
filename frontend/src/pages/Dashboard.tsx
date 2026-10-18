@@ -55,6 +55,12 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
 const location = useLocation();
 
+// ⭐ Сквозная полоса под шапкой показывается во всех разделах, кроме «Главной»
+const isHome = location.pathname === '/' || location.pathname === '/home';
+// Высота шапки бокового меню: padding 12 + логотип 40 + padding 12.
+// По ней выравниваем полосу, чтобы она продолжала Divider сайдбара.
+const SIDEBAR_HEADER_H = 64;
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [bottomNavValue, setBottomNavValue] = useState('objects');
@@ -78,7 +84,7 @@ const location = useLocation();
 
   return (
     <MobileHeaderProvider>
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f0f4fa' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f0f4fa', position: 'relative' }}>
       {/* Мобильная шапка */}
       {isMobile && (
         <AppHeader onMenuClick={() => setDrawerOpen(true)} />
@@ -238,6 +244,27 @@ const location = useLocation();
             </Tooltip>
           </Box>
         )}
+
+      {/* ⭐ Сквозная полоса под шапкой на всю ширину экрана.
+          Слева её продолжает Divider сайдбара, справа она уходит через контент.
+          Показываем во всех разделах, кроме «Главной» (там чистая страница).
+          zIndex 0 + position absolute: контент (Container relative) рисуется поверх,
+          а сам сайдбар (z-index 1200) перекрывает полосу слева своей собственной линией. */}
+      {!isMobile && !isHome && (
+        <Box
+          aria-hidden
+          sx={{
+            position: 'absolute',
+            top: `${SIDEBAR_HEADER_H}px`,
+            left: 0,
+            right: 0,
+            height: '1px',
+            bgcolor: 'rgba(0, 0, 0, 0.12)',
+            zIndex: 0,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
 
       {/* Основная область контента */}
    <Box

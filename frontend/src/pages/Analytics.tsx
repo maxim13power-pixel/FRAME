@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, Stack, CircularProgress, Alert, IconButton, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow,
-  Menu, MenuItem, useMediaQuery, useTheme,
+  Menu, MenuItem, useMediaQuery, useTheme, FormControl, InputLabel, Select,
 } from '@mui/material';
 import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid,
@@ -138,9 +138,19 @@ const Analytics: React.FC = () => {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h4" sx={{ flexGrow: 1 }}>Аналитика</Typography>
-          <IconButton onClick={(e) => setFilterAnchorEl(e.currentTarget)} sx={{ bgcolor: objectFilter ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)', color: objectFilter ? '#1976d2' : '#424242', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}>
-            <FilterAltIcon />
-          </IconButton>
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel>Объект</InputLabel>
+            <Select
+              value={objectFilter}
+              label="Объект"
+              onChange={(e) => setObjectFilter(e.target.value === '' ? '' : Number(e.target.value))}
+            >
+              <MenuItem value=""><em>Все объекты</em></MenuItem>
+              {objects.map((o) => (
+                <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </Box>
       )}
       <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={() => setFilterAnchorEl(null)}>

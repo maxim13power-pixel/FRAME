@@ -893,7 +893,7 @@ setSortAnchorEl(null);
   return (
     <Box>
       {/* Заголовок (десктоп; мобилка — в хэдере), крошки ниже */}
-            <Box sx={{ mb: { xs: 1, md: 2 }, mt: { xs: -2, md: -1.5 } }}> {/* ⭐ на десктопе тоже поднимаем выше */}
+            <Box sx={{ mb: { xs: 1, md: 0.5 }, mt: { xs: -2, md: -1.5 } }}> {/* ⭐ на десктопе тоже поднимаем выше */}
         {!isMobile && (
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <IconButton
@@ -911,7 +911,7 @@ setSortAnchorEl(null);
             </Typography>
           </Box>
         )}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, ml: isMobile ? 0 : 6, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: { xs: 0.5, md: 2 }, ml: 0, flexWrap: 'wrap' }}>
           <Typography
             component="button"
             onClick={() => navigate('/objects')}
@@ -991,9 +991,11 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     onClick={handleOpenAddModal}
     sx={{
       bgcolor: '#4caf50',
+      border: '2px solid #388e3c',
       minWidth: '200px',
       '&:hover': {
         bgcolor: '#388e3c',
+        borderColor: '#388e3c',
         transform: 'translateY(-3px)',
         boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
       },
@@ -1011,7 +1013,7 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     size="small"
     onClick={() => setExportModalOpen(true)}
     disabled={exporting !== null}
-    sx={{ minWidth: 0, px: 1.5, py: 1 }}
+    sx={{ minWidth: 0, px: 1.5, py: 1, transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' } }}
   >
     {exporting ? <CircularProgress size={16} /> : <FileDownloadIcon fontSize="small" />}
   </Button>
@@ -1071,8 +1073,8 @@ onClose={() => setFilterAnchorEl(null)}
 <TableCell rowSpan={2} sx={{ fontWeight: 600, cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }} onClick={() => handleSortClick('name')}>
 Наименование{renderSortIcon('name')}
 </TableCell>
-<TableCell rowSpan={2} sx={{ fontWeight: 600 }}>Арт.</TableCell>
-<TableCell rowSpan={2} sx={{ fontWeight: 600 }}>Ед. изм.</TableCell>
+<TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center' }}>Арт.</TableCell>
+<TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center' }}>Ед. изм.</TableCell>
 <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center', cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }} onClick={() => handleSortClick('specQuantity')}>
 Кол-во спец.{renderSortIcon('specQuantity')}
 </TableCell>
@@ -1084,12 +1086,12 @@ onClose={() => setFilterAnchorEl(null)}
 % выполн.{renderSortIcon('percentage')}
 </TableCell>
           {/* ⭐ Денежные колонки скрываем полностью при hidePrices */}
-          {!hidePrices && <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'right' }}>Работ на тек. момент, руб.</TableCell>}
-          {!hidePrices && <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'right' }}>Материал на тек. момент, руб.</TableCell>}
-          {!hidePrices && <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'right' }}>Итого на тек. момент, руб.</TableCell>}
+          {!hidePrices && <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center' }}>Работ на тек. момент, руб.</TableCell>}
+          {!hidePrices && <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center' }}>Материал на тек. момент, руб.</TableCell>}
+          {!hidePrices && <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center' }}>Итого на тек. момент, руб.</TableCell>}
           {!hidePrices && <TableCell colSpan={2} sx={{ fontWeight: 700, textAlign: 'center', borderLeft: '2px solid #90caf9' }}>Стоимость работ по смете (руб.)</TableCell>}
           {!hidePrices && <TableCell colSpan={2} sx={{ fontWeight: 700, textAlign: 'center', borderLeft: '2px solid #90caf9' }}>Стоимость материалов по смете (руб.)</TableCell>}
-          {!hidePrices && <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'right', borderLeft: '2px solid #90caf9' }}>Итого по смете, руб.</TableCell>}
+          {!hidePrices && <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center', borderLeft: '2px solid #90caf9' }}>Итого по смете, руб.</TableCell>}
           <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center' }}>Действия</TableCell>
         </TableRow>
         {!hidePrices && (

@@ -70,8 +70,20 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
 
   const searchOpen = !!config?.searchOpen;
 
+  // ⭐ Сквозная полоса под шапкой: во всех разделах, кроме «Главной».
+  // На «Главной» полосы нет — там страница начинается сразу с контента.
+  const isHome = location.pathname === '/' || location.pathname === '/home';
+
   return (
-    <AppBar position="fixed" sx={{ bgcolor: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+    <AppBar
+      position="fixed"
+      sx={{
+        bgcolor: '#fff',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+        // Линия на всю ширину экрана — визуально продолжает Divider выдвижного меню
+        borderBottom: isHome ? 'none' : '1px solid rgba(0, 0, 0, 0.12)',
+      }}
+    >
       <Toolbar sx={{ gap: 1, minHeight: 56 }}>
         <IconButton edge="start" color="primary" aria-label="menu" onClick={onMenuClick} sx={{ flexShrink: 0 }}>
           <MenuIcon />

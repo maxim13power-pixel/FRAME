@@ -108,7 +108,7 @@ const Settings: React.FC = () => {
   };
 
   return (
-    <Box sx={{ mt: -1.5, maxWidth: 700, mx: 'auto', width: '100%' }}>
+    <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
       {/* Заголовок на десктопе (на мобилке — в шапке) */}
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
