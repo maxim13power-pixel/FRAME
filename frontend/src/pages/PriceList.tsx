@@ -570,10 +570,12 @@ const PriceList: React.FC = () => {
               onClick={() => handleOpenAddItem()}
               sx={{
                 bgcolor: '#4caf50',
+                border: '2px solid #388e3c',
                 whiteSpace: 'nowrap',
                 flexShrink: 0,
                 '&:hover': {
                   bgcolor: '#388e3c',
+                  borderColor: '#388e3c',
                   transform: 'translateY(-3px)',
                   boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
                 },

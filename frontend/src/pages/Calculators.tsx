@@ -191,7 +191,7 @@ const Calculators: React.FC = () => {
               placeholder="Поиск калькулятора..."
               variant="outlined"
               size="small"
-              sx={{ maxWidth: 520 }}
+              sx={{ flexGrow: 1 }}
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
             />
             <FormControl size="small" sx={{ minWidth: 180 }}>

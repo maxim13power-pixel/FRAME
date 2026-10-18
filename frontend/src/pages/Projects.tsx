@@ -506,7 +506,7 @@ onBack: () => navigate('/objects'),
   return (
     <Box sx={{ maxWidth: 1000, mx: 'auto', width: '100%' }}>
       {/* Заголовок (десктоп) + хлебные крошки — единый блок, как в Сметах */}
-            <Box sx={{ mb: 1, mt: { xs: -2, md: -1.5 } }}> {/* ⭐ на десктопе тоже поднимаем выше */}
+            <Box sx={{ mb: { xs: 1, md: 0.5 }, mt: { xs: -2, md: -1.5 } }}> {/* ⭐ на десктопе тоже поднимаем выше */}
         {/* Десктоп: заголовок с кнопкой "назад" */}
         {!isMobile && (
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -521,7 +521,7 @@ onBack: () => navigate('/objects'),
           </Box>
         )}
         {/* Хлебные крошки (видны и на мобилке, и на десктопе) */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, ml: isMobile ? 0 : 6, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: { xs: 0.5, md: 2 }, ml: 0, flexWrap: 'wrap' }}>
           <Typography
             component="button"
             onClick={() => navigate('/objects')}
@@ -585,8 +585,9 @@ onBack: () => navigate('/objects'),
             onClick={handleOpenAddModal}
             sx={{
               bgcolor: '#4caf50',
+              border: '2px solid #388e3c',
               minWidth: '200px',
-              '&:hover': { bgcolor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
+              '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
               transition: 'all 0.3s ease',
               whiteSpace: 'nowrap',
             }}
