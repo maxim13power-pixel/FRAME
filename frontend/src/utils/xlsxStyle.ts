@@ -36,7 +36,9 @@ const moneyStyle = (fmt: string): Style => ({
 });
 const S_QTY_INT = qtyStyle(QTY_FMT_INT);
 const S_QTY_DEC = qtyStyle(QTY_FMT_DEC);
-const S_MONEY = moneyStyle(MONEY_FMT);
+// ⭐ Деньги: целые суммы показываем без «,00», с копейками — до сотых
+const S_MONEY_INT = moneyStyle(QTY_FMT_INT);
+const S_MONEY_DEC = moneyStyle(MONEY_FMT);
 const S_TOTAL_TEXT: Style = {
   font: { ...FONT, bold: true },
   fill: { patternType: 'solid', fgColor: { rgb: 'FFFFF9C4' } },
@@ -48,7 +50,8 @@ const totalNum = (fmt: string): Style => ({
 });
 const S_TOTAL_QTY_INT = totalNum(QTY_FMT_INT);
 const S_TOTAL_QTY_DEC = totalNum(QTY_FMT_DEC);
-const S_TOTAL_MONEY = totalNum(MONEY_FMT);
+const S_TOTAL_MONEY_INT = totalNum(QTY_FMT_INT);
+const S_TOTAL_MONEY_DEC = totalNum(MONEY_FMT);
 
 export type ColKind = 'text' | 'center' | 'qty' | 'money';
 
@@ -63,7 +66,8 @@ export interface SheetSpec {
   headerHeight?: number;
 }
 
-const isInt = (v: unknown) => typeof v === 'number' && Number.isInteger(v);
+// Целое ли значение (с допуском на ошибки округления float: 100.00000000000001 → целое)
+const isInt = (v: unknown) => typeof v === 'number' && Math.abs(v - Math.round(v)) < 1e-9;
 
 // ⭐ Раскладывает значения по сетке и навешивает оформление (границы/шапка/форматы)
 export const makeSheet = ({
@@ -103,11 +107,13 @@ export const makeSheet = ({
         continue;
       }
       const isTotal = totalRow === r;
+      const int = isInt(cell.v);
       if (kind === 'money') {
-        cell.s = isTotal ? S_TOTAL_MONEY : S_MONEY;
-        if (typeof cell.v === 'number') cell.z = MONEY_FMT;
+        cell.s = isTotal
+          ? (int ? S_TOTAL_MONEY_INT : S_TOTAL_MONEY_DEC)
+          : (int ? S_MONEY_INT : S_MONEY_DEC);
+        if (typeof cell.v === 'number') cell.z = int ? QTY_FMT_INT : MONEY_FMT;
       } else if (kind === 'qty') {
-        const int = isInt(cell.v);
         cell.s = isTotal ? (int ? S_TOTAL_QTY_INT : S_TOTAL_QTY_DEC) : (int ? S_QTY_INT : S_QTY_DEC);
         if (typeof cell.v === 'number') cell.z = int ? QTY_FMT_INT : QTY_FMT_DEC;
       } else if (kind === 'center') {

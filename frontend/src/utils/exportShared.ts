@@ -35,7 +35,9 @@ export const formatDateRu = (iso: string) => {
 };
 
 export const money = (n: number) =>
-  n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  Math.abs(n - Math.round(n)) < 1e-9
+    ? n.toLocaleString('ru-RU')
+    : n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const qty = (n: number) => Number(n.toFixed(3)).toLocaleString('ru-RU');
 
