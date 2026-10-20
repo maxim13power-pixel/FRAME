@@ -5,7 +5,6 @@ import {
   Box,
   Typography,
   Paper,
-  Avatar,
   Checkbox,
   FormControlLabel,
   Link,
@@ -119,12 +118,15 @@ const Login: React.FC = () => {
             },
           }}
         >
-          <Avatar
+          {/* ⭐ Логотип: обычный img без круглой маски Avatar — иначе срезаются нижние «кирпичи» */}
+          <Box
+            component="img"
             src="/images/frame-logo2.svg?v=2"
             alt="FRAME"
             sx={{
               width: 100,
               height: 100,
+              display: 'block',
               mb: 0.1,
               animation: 'pulse 5s infinite ease-in-out',
               '@keyframes pulse': {
