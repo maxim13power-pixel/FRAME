@@ -316,25 +316,10 @@ const Warehouse: React.FC = () => {
     trailing: headerTrailing,
   });
 
-  // ⭐ xlsx подгружаем только при клике — не тянем 900 КБ в бандл склада
+  // ⭐ Генератор XLSX грузим только при клике (ленивый чанк), оформление — общее со «Сметами»
   const handleExport = async () => {
-    const XLSX = await import('xlsx-js-style');
-    const aoa: (string | number)[][] = [
-      ['Название', 'Категория', 'Остаток', 'Ед.', 'Цена', 'Сумма', 'Объект'],
-      ...items.map((i) => [
-        i.name,
-        i.category || '',
-        i.quantity,
-        i.unit,
-        i.price ?? '',
-        i.price != null ? i.price * i.quantity : '',
-        i.object?.name || '',
-      ]),
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Склад');
-    XLSX.writeFile(wb, 'sklad.xlsx');
+    const { exportWarehouseXlsx } = await import('../utils/exportWarehouse');
+    exportWarehouseXlsx(items);
   };
 
   const totalValue = useMemo(

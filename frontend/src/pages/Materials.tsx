@@ -871,7 +871,7 @@ setSortAnchorEl(null);
         {exporting ? <CircularProgress size={18} /> : <FileDownloadIcon />}
       </IconButton>
     </>
-    ) : undefined, [isMobile, sortBy, categoryFilter, projectCategories.length, exporting, handleExport]);
+    ) : undefined, [isMobile, sortBy, categoryFilter, projectCategories.length, exporting]);
 
   useMobileHeader({
     title: 'Сметы',

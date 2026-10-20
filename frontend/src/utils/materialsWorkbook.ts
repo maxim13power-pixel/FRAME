@@ -1,53 +1,10 @@
 // frontend/src/utils/materialsWorkbook.ts
 // ⭐ Сборка книги XLSX «Сметы»: лист «Материалы» + лист «Посменная сводка».
-// Оформление (границы, шапка, форматы чисел) требует xlsx-js-style — форк SheetJS с записью стилей.
+// Оформление — общий движок ./xlsxStyle (xlsx-js-style, форк SheetJS с записью стилей).
 import * as XLSX from 'xlsx-js-style';
 import type { MaterialData, MaterialFixData } from '../services/materialService';
 import { formatDateRu, formatDateTime, num, unitLabel, type ExportMeta } from './exportShared';
-
-const MONEY_FMT = '#,##0.00';
-const QTY_FMT = '#,##0.###';
-const LINE = 'FFB0BEC5';
-const FONT = { name: 'Calibri', sz: 11 };
-
-const thin = { style: 'thin', color: { rgb: LINE } };
-const BORDER = { top: thin, bottom: thin, left: thin, right: thin };
-
-type Style = Record<string, unknown>;
-
-const S_TITLE: Style = { font: { ...FONT, bold: true, sz: 12, color: { rgb: 'FF04164B' } } };
-const S_META: Style = { font: { ...FONT, color: { rgb: 'FF37474F' } } };
-const S_HEAD: Style = {
-  font: { ...FONT, bold: true, color: { rgb: 'FF04164B' } },
-  fill: { patternType: 'solid', fgColor: { rgb: 'FFE3F2FD' } },
-  border: BORDER,
-  alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-};
-const S_GROUP: Style = { ...S_HEAD, fill: { patternType: 'solid', fgColor: { rgb: 'FFBBDEFB' } } };
-const S_TEXT: Style = { font: FONT, border: BORDER, alignment: { vertical: 'center', wrapText: true } };
-const S_CENTER: Style = { ...S_TEXT, alignment: { horizontal: 'center', vertical: 'center' } };
-const S_QTY: Style = {
-  font: FONT, border: BORDER, numFmt: QTY_FMT,
-  alignment: { horizontal: 'right', vertical: 'center' },
-};
-const S_MONEY: Style = {
-  font: FONT, border: BORDER, numFmt: MONEY_FMT,
-  alignment: { horizontal: 'right', vertical: 'center' },
-};
-const S_TOTAL_TEXT: Style = {
-  font: { ...FONT, bold: true },
-  fill: { patternType: 'solid', fgColor: { rgb: 'FFFFF9C4' } },
-  border: BORDER,
-  alignment: { vertical: 'center' },
-};
-const S_TOTAL_QTY: Style = {
-  ...S_TOTAL_TEXT, numFmt: QTY_FMT, alignment: { horizontal: 'right', vertical: 'center' },
-};
-const S_TOTAL_MONEY: Style = {
-  ...S_TOTAL_TEXT, numFmt: MONEY_FMT, alignment: { horizontal: 'right', vertical: 'center' },
-};
-
-type ColKind = 'text' | 'center' | 'qty' | 'money';
+import { makeSheet, type ColKind } from './xlsxStyle';
 
 interface Col {
   top: string;
@@ -163,91 +120,6 @@ const totalRowValues = (materials: MaterialData[], includePrices: boolean): (str
   return row;
 };
 
-
-interface SheetSpec {
-  aoa: (string | number)[][];
-  kinds: ColKind[];
-  headerRows: number[];
-  groupCells?: { r: number; c: number }[];
-  totalRow?: number;
-  metaRows?: number[];
-  merges?: XLSX.Range[];
-  headerHeight?: number;
-}
-
-// ⭐ Раскладывает значения по сетке и навешивает оформление (границы/шапка/форматы)
-const makeSheet = ({
-  aoa, kinds, headerRows, groupCells = [], totalRow, metaRows = [], merges = [], headerHeight = 32,
-}: SheetSpec): XLSX.WorkSheet => {
-  const nCols = kinds.length;
-  const lastRow = aoa.length - 1;
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-  // Пустые ячейки тоже должны существовать — иначе Excel не нарисует у них рамку
-  for (let r = 0; r <= lastRow; r++) {
-    for (let c = 0; c < nCols; c++) {
-      const addr = XLSX.utils.encode_cell({ r, c });
-      if (!ws[addr]) ws[addr] = { t: 's', v: '' };
-    }
-  }
-  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: lastRow, c: nCols - 1 } });
-  ws['!merges'] = merges;
-
-  const metaSet = new Set(metaRows);
-  const headerSet = new Set(headerRows);
-  const groupSet = new Set(groupCells.map((g) => `${g.r}:${g.c}`));
-  const blankRow = (r: number) => aoa[r].every((v) => v === '' || v === null || v === undefined);
-
-  for (let r = 0; r <= lastRow; r++) {
-    if (metaSet.has(r)) {
-      // Текст шапки-описания живёт в A{row}, остальное объединено и остаётся без рамок
-      const cell = ws[XLSX.utils.encode_cell({ r, c: 0 })] as XLSX.CellObject;
-      cell.s = r === metaRows[0] ? S_TITLE : S_META;
-      continue;
-    }
-    if (blankRow(r)) continue; // строка-разделитель: без рамок и заливки
-    for (let c = 0; c < nCols; c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r, c })] as XLSX.CellObject;
-      const kind = kinds[c];
-      if (headerSet.has(r)) {
-        cell.s = groupSet.has(`${r}:${c}`) ? S_GROUP : S_HEAD;
-        continue;
-      }
-      const isTotal = totalRow === r;
-      if (kind === 'money') {
-        cell.s = isTotal ? S_TOTAL_MONEY : S_MONEY;
-        if (typeof cell.v === 'number') cell.z = MONEY_FMT;
-      } else if (kind === 'qty') {
-        cell.s = isTotal ? S_TOTAL_QTY : S_QTY;
-        if (typeof cell.v === 'number') cell.z = QTY_FMT;
-      } else if (kind === 'center') {
-        cell.s = isTotal ? S_TOTAL_TEXT : S_CENTER;
-      } else {
-        cell.s = isTotal ? S_TOTAL_TEXT : S_TEXT;
-      }
-    }
-  }
-
-  // Ширина колонок по фактическому содержимому (кириллица ~2 знака)
-  ws['!cols'] = kinds.map((kind, c) => {
-    let len = 0;
-    for (let r = 0; r <= lastRow; r++) {
-      const v = aoa[r]?.[c];
-      if (typeof v === 'string') len = Math.max(len, v.replace(/[^\x20-\x7E]/g, '  ').length);
-    }
-    const min = kind === 'money' ? 14 : kind === 'qty' ? 10 : kind === 'center' ? 10 : 14;
-    return { wch: Math.min(46, Math.max(min, len + 2)) };
-  });
-
-  ws['!rows'] = Array.from({ length: lastRow + 1 }, (_v, r) => {
-    if (metaSet.has(r)) return { hpt: 18 };
-    if (blankRow(r)) return { hpt: 8 };
-    if (headerSet.has(r)) return { hpt: headerHeight };
-    return {};
-  });
-
-  return ws;
-};
 
 
 // ---------- Лист «Материалы» ----------
@@ -385,10 +257,24 @@ const buildShiftSheet = (
     return r;
   });
 
+  // ⭐ Итоговая строка: суммы по количественным и денежным колонкам (заметки — пустые)
+  const totalsRow: (string | number)[] = kinds.map((kind, c) => {
+    if (c === 0) return 'ИТОГО:';
+    if (kind === 'text' || kind === 'center') return '';
+    let sum = 0;
+    for (let r = 5; r < rows.length; r++) {
+      const v = rows[r][c];
+      if (typeof v === 'number') sum += v;
+    }
+    return kind === 'money' ? Number(sum.toFixed(2)) : round3(sum);
+  });
+  rows.push(totalsRow);
+
   return makeSheet({
     aoa: rows,
     kinds,
     headerRows: [4],
+    totalRow: rows.length - 1,
     metaRows: [0, 1, 2],
     merges: [
       { s: { r: 0, c: 0 }, e: { r: 0, c: nCols - 1 } },
