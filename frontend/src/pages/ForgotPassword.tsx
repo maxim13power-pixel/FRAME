@@ -48,7 +48,7 @@ setLoading(false);
           ← Вернуться ко входу
         </Link>
 
-        <Avatar src="/images/frame-logo2.svg" alt="FRAME" sx={{ width: 90, height: 90, mb: 1 }} />
+        <Avatar src="/images/frame-logo2.svg?v=2" alt="FRAME" sx={{ width: 90, height: 90, mb: 1 }} />
         <Typography variant="h5" sx={{ fontWeight: 700, color: '#04164b', mb: 2, textAlign: 'center' }}>
           Восстановление пароля
         </Typography>
