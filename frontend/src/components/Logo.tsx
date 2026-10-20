@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Avatar, Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 
 interface LogoProps {
   onClick?: () => void;
@@ -7,7 +7,7 @@ interface LogoProps {
 }
 
 const Logo: React.FC<LogoProps> = ({ onClick, size = 'medium' }) => {
-  const avatarSize = size === 'small' ? 40 : size === 'medium' ? 60 : 80;
+  const logoSize = size === 'small' ? 40 : size === 'medium' ? 60 : 80;
   const fontSize = size === 'small' ? '1.2rem' : size === 'medium' ? '1.5rem' : '2rem';
 
   return (
@@ -29,10 +29,12 @@ const Logo: React.FC<LogoProps> = ({ onClick, size = 'medium' }) => {
         '&:hover': onClick ? { bgcolor: 'rgba(0, 0, 0, 0.06)' } : {},
       }}
     >
-      <Avatar
+      {/* ⭐ Логотип: обычный img без круглой маски Avatar — иначе срезаются нижние «кирпичи» */}
+      <Box
+        component="img"
         src="/images/frame-logo2.svg?v=2"
         alt="FRAME"
-        sx={{ width: avatarSize, height: avatarSize }}
+        sx={{ width: logoSize, height: logoSize, display: 'block', flexShrink: 0 }}
       />
       <Typography
         variant="h6"

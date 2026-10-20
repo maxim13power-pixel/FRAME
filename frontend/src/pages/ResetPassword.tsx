@@ -1,7 +1,7 @@
 // frontend/src/pages/ResetPassword.tsx
 // ⭐ P0-4: страница сброса пароля (переход из письма)
 import React, { useState } from 'react';
-import { TextField, Button, Box, Typography, Paper, Avatar, Link, Alert, Stack, CircularProgress, IconButton, InputAdornment } from '@mui/material';
+import { TextField, Button, Box, Typography, Paper, Link, Alert, Stack, CircularProgress, IconButton, InputAdornment } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { resetPassword } from '../services/authService';
@@ -60,7 +60,13 @@ const ResetPassword: React.FC = () => {
         >
           ← Вернуться ко входу
         </Link>
-        <Avatar src="/images/frame-logo2.svg?v=2" alt="FRAME" sx={{ width: 90, height: 90, mb: 1 }} />
+        {/* ⭐ Логотип: обычный img без круглой маски Avatar — иначе срезаются нижние «кирпичи» */}
+        <Box
+          component="img"
+          src="/images/frame-logo2.svg?v=2"
+          alt="FRAME"
+          sx={{ width: 90, height: 90, display: 'block', mb: 1 }}
+        />
         <Typography variant="h5" sx={{ fontWeight: 700, color: '#04164b', mb: 2, textAlign: 'center' }}>
           Новый пароль
         </Typography>

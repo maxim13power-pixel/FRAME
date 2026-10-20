@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TextField, Button, Box, Typography, Paper, Avatar, Link, Alert, Stack, CircularProgress } from '@mui/material';
+import { TextField, Button, Box, Typography, Paper, Link, Alert, Stack, CircularProgress } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { forgotPassword } from '../services/authService'; // ⭐ P0-4
 // ⭐ Шаг 63: страница восстановления пароля (поле email).
@@ -48,7 +48,13 @@ setLoading(false);
           ← Вернуться ко входу
         </Link>
 
-        <Avatar src="/images/frame-logo2.svg?v=2" alt="FRAME" sx={{ width: 90, height: 90, mb: 1 }} />
+        {/* ⭐ Логотип: обычный img без круглой маски Avatar — иначе срезаются нижние «кирпичи» */}
+        <Box
+          component="img"
+          src="/images/frame-logo2.svg?v=2"
+          alt="FRAME"
+          sx={{ width: 90, height: 90, display: 'block', mb: 1 }}
+        />
         <Typography variant="h5" sx={{ fontWeight: 700, color: '#04164b', mb: 2, textAlign: 'center' }}>
           Восстановление пароля
         </Typography>

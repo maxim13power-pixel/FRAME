@@ -5,7 +5,6 @@ import {
   Box,
   Typography,
   Paper,
-  Avatar,
   Link,
   InputAdornment,
   IconButton,
@@ -180,7 +179,13 @@ const Register: React.FC = () => {
           ← Вернуться на сайт
         </Link>
 
-        <Avatar src="/images/frame-logo2.svg?v=2" alt="FRAME" sx={{ width: 90, height: 90, mb: 1 }} />
+        {/* ⭐ Логотип: обычный img без круглой маски Avatar — иначе срезаются нижние «кирпичи» */}
+        <Box
+          component="img"
+          src="/images/frame-logo2.svg?v=2"
+          alt="FRAME"
+          sx={{ width: 90, height: 90, display: 'block', mb: 1 }}
+        />
 
         {/* ⭐ Заголовок по центру, шрифт меньше (h5), отступ 16px */}
         <Typography variant="h5" sx={{ fontWeight: 700, color: '#04164b', mb: 2, textAlign: 'center' }}>
