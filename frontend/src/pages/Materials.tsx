@@ -68,7 +68,8 @@ import { searchPriceItems } from '../services/priceListService';
 import type { PriceItemData } from '../services/priceListService';
 import { fetchCategoriesWithItems } from '../services/priceListService';
 import { getApiErrorText } from '../utils/errors';
-import { exportMaterialsXlsx, exportMaterialsPdf } from '../utils/exportMaterials';
+// ⭐ XLSX/PDF-генераторы грузим по требованию (внутри handleExport) — иначе xlsx+pdfmake
+// тянутся в бандл страницы «Сметы» и замедляют её открытие.
 import type { ExportMeta } from '../utils/exportMaterials';
 import { FAB_STYLE } from '../theme';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -227,6 +228,8 @@ const handleExport = useCallback(
         projectId: projectId ?? '',
       };
       const includePrices = !hidePrices;
+      // ⭐ Библиотеки выгрузки подгружаем только при клике (ленивый чанк)
+      const { exportMaterialsXlsx, exportMaterialsPdf } = await import('../utils/exportMaterials');
       if (kind === 'xlsx') {
         const fixes: Record<number, MaterialFixData[]> = {};
         await Promise.all(

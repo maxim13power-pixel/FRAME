@@ -1,56 +1,23 @@
 // frontend/src/utils/exportMaterials.ts
 // ⭐ Экспорт материалов проекта в XLSX и PDF (клиентская генерация, бэкенд не трогаем).
-import * as XLSX from 'xlsx';
+// XLSX собирается через xlsx-js-style (форк SheetJS, умеет писать границы/заливки/форматы).
+import * as XLSX from 'xlsx-js-style';
 // pdfmake 0.3.x не поставляет .d.ts для build/pdfmake и build/vfs_fonts — глушим TS7016.
 // @ts-ignore
 import pdfMake from 'pdfmake/build/pdfmake';
 // @ts-ignore
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import type { MaterialData, MaterialFixData } from '../services/materialService';
+import { fileDate, formatDateTime, money, qty, unitLabel, type ExportMeta } from './exportShared';
+import { buildMaterialsWorkbook } from './materialsWorkbook';
+
+// ⭐ ExportMeta живёт в exportShared — реэкспорт, чтобы не менять импорты в страницах.
+export type { ExportMeta };
 
 // ⭐ vfs (Roboto с кириллицей). pdfmake отдаёт vfs в двух формах — берём ту, что есть.
 pdfMake.vfs = pdfFonts.pdfMake?.vfs ?? pdfFonts.vfs;
 
-export interface ExportMeta {
-  objectName: string;
-  projectName: string;
-  exportedAt: Date;
-  projectId: number | string;
-}
-
-const UNIT_LABELS: Record<string, string> = {
-  PIECE: 'шт',
-  METER: 'м',
-  SQUARE_METER: 'м²',
-  CUBIC_METER: 'м³',
-  KILOGRAM: 'кг',
-  LITER: 'л',
-  TON: 'т',
-  BAG: 'мешок',
-  PACKAGE: 'упак',
-  SET: 'компл',
-};
-
-const unitLabel = (u: string) => UNIT_LABELS[u] ?? u;
-
-const pad = (n: number) => String(n).padStart(2, '0');
-
-const formatDateTime = (d: Date) =>
-  `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-
-const fileDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-const formatDateRu = (iso: string) => {
-  const [y, m, d] = iso.split('-');
-  return `${d}.${m}.${y.slice(2)}`;
-};
-
-const money = (n: number) =>
-  n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const qty = (n: number) => Number(n.toFixed(3)).toLocaleString('ru-RU');
-
-// Заголовки (без трёх ценовых колонок при includePrices=false)
+// Заголовки PDF-выгрузки (без трёх ценовых колонок при includePrices=false)
 const buildHeaders = (includePrices: boolean): string[] => {
   const headers = ['Название', 'Артикул', 'Ед.изм.', 'По спецификации', 'Факт', 'Прогресс %'];
   if (includePrices) {
@@ -60,107 +27,17 @@ const buildHeaders = (includePrices: boolean): string[] => {
   return headers;
 };
 
-// Ячейки строки для XLSX (числа остаются числами)
-const rowCore = (m: MaterialData, includePrices: boolean): (string | number)[] => {
-  const row: (string | number)[] = [
-    m.name,
-    m.article ?? '',
-    unitLabel(m.unit),
-    m.specQuantity,
-    m.totalUsed,
-    `${m.progressPercent}%`,
-  ];
-  if (includePrices) {
-    row.push(m.totalCost, m.materialTotalCost, m.totalCost + m.materialTotalCost);
-  }
-  row.push(m.note ?? '');
-  return row;
-};
-
 export function exportMaterialsXlsx(
   materials: MaterialData[],
   meta: ExportMeta,
   includePrices: boolean,
   fixes?: Record<number, MaterialFixData[]>,
 ): void {
-  const headers = buildHeaders(includePrices);
-  const aoa: (string | number)[][] = [
-    [`Объект: ${meta.objectName}`],
-    [`Проект: ${meta.projectName}`],
-    [`Дата выгрузки: ${formatDateTime(meta.exportedAt)}`],
-    [],
-    headers,
-    ...materials.map((m) => rowCore(m, includePrices)),
-  ];
-
-  if (includePrices) {
-    const sumWork = materials.reduce((s, m) => s + m.totalCost, 0);
-    const sumMat = materials.reduce((s, m) => s + m.materialTotalCost, 0);
-    aoa.push(['Итого', '', '', '', '', '', sumWork, sumMat, sumWork + sumMat, '']);
-  }
-
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = headers.map((h) => ({ wch: Math.max(14, h.length + 4) }));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Материалы');
-
-  // ⭐ Второй лист «Посменная сводка» — расшифровка по датам и примечаниям
-  if (fixes) {
-    const dateSet = new Set<string>();
-    for (const m of materials) {
-      for (const f of fixes[m.id] ?? []) {
-        dateSet.add(String(f.fixedAt).slice(0, 10));
-      }
-    }
-    const dates = Array.from(dateSet).sort();
-
-    const baseHeaders = ['Название', 'Артикул', 'Ед.изм.', 'По спецификации', 'Факт'];
-    if (includePrices) {
-      baseHeaders.push('Работ на тек. момент', 'Материал на тек. момент', 'Итого на тек. момент');
-    }
-    const allHeaders: string[] = [...baseHeaders];
-    for (const d of dates) {
-      allHeaders.push(formatDateRu(d));
-      allHeaders.push('Примечание');
-    }
-
-    const shiftAoa: (string | number)[][] = [
-      [`Объект: ${meta.objectName}`],
-      [`Проект: ${meta.projectName}`],
-      [`Дата выгрузки: ${formatDateTime(meta.exportedAt)}`],
-      [],
-      allHeaders,
-    ];
-
-    for (const m of materials) {
-      const row: (string | number)[] = [m.name, m.article ?? '', unitLabel(m.unit), m.specQuantity, m.totalUsed];
-      if (includePrices) {
-        row.push(m.totalCost, m.materialTotalCost, m.totalCost + m.materialTotalCost);
-      }
-
-      const byDate = new Map<string, { amount: number; notes: string[] }>();
-      for (const f of fixes[m.id] ?? []) {
-        const d = String(f.fixedAt).slice(0, 10);
-        if (!byDate.has(d)) byDate.set(d, { amount: 0, notes: [] });
-        const e = byDate.get(d)!;
-        e.amount += Number(f.amount);
-        if (f.note) e.notes.push(f.note);
-      }
-
-      for (const d of dates) {
-        const e = byDate.get(d);
-        row.push(e ? Number(e.amount.toFixed(3)) : '');
-        row.push(e ? e.notes.join('; ') : '');
-      }
-      shiftAoa.push(row);
-    }
-
-    const ws2 = XLSX.utils.aoa_to_sheet(shiftAoa);
-    ws2['!cols'] = allHeaders.map((h) => ({ wch: Math.max(12, h.length + 4) }));
-    XLSX.utils.book_append_sheet(wb, ws2, 'Посменная сводка');
-  }
-
-  XLSX.writeFile(wb, `materials-${meta.projectId}-${fileDate(meta.exportedAt)}.xlsx`);
+  // ⭐ Сборка книги (оба листа + оформление) — в materialsWorkbook.ts
+  const wb = buildMaterialsWorkbook(materials, meta, includePrices, fixes);
+  XLSX.writeFile(wb, `materials-${meta.projectId}-${fileDate(meta.exportedAt)}.xlsx`, {
+    cellStyles: true,
+  });
 }
 
 export function exportMaterialsPdf(

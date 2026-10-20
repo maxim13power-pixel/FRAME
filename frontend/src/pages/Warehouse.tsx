@@ -14,7 +14,6 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import * as XLSX from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { FAB_STYLE } from '../theme';
@@ -317,7 +316,9 @@ const Warehouse: React.FC = () => {
     trailing: headerTrailing,
   });
 
-  const handleExport = () => {
+  // ⭐ xlsx подгружаем только при клике — не тянем 900 КБ в бандл склада
+  const handleExport = async () => {
+    const XLSX = await import('xlsx-js-style');
     const aoa: (string | number)[][] = [
       ['Название', 'Категория', 'Остаток', 'Ед.', 'Цена', 'Сумма', 'Объект'],
       ...items.map((i) => [
