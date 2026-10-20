@@ -120,7 +120,7 @@ const Login: React.FC = () => {
           }}
         >
           <Avatar
-            src="/images/frame-logo2.svg"
+            src="/images/frame-logo2.svg?v=2"
             alt="FRAME"
             sx={{
               width: 100,

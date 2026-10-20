@@ -18,12 +18,19 @@ const Logo: React.FC<LogoProps> = ({ onClick, size = 'medium' }) => {
         alignItems: 'center',
         gap: 1,
         cursor: onClick ? 'pointer' : 'default',
-        transition: 'transform 0.2s',
-        '&:hover': onClick ? { transform: 'scale(1.02)' } : {},
+        // ⭐ Hover как у пунктов меню: только затемнение фона, без масштаба.
+        // Отрицательные margin компенсируют padding — шапка не «прыгает».
+        mx: onClick ? -0.5 : 0,
+        my: onClick ? -0.5 : 0,
+        px: onClick ? 0.5 : 0,
+        py: onClick ? 0.5 : 0,
+        borderRadius: '8px',
+        transition: onClick ? 'background-color 250ms cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+        '&:hover': onClick ? { bgcolor: 'rgba(0, 0, 0, 0.06)' } : {},
       }}
     >
       <Avatar
-        src="/images/frame-logo2.svg"
+        src="/images/frame-logo2.svg?v=2"
         alt="FRAME"
         sx={{ width: avatarSize, height: avatarSize }}
       />
