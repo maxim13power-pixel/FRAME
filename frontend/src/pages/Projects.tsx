@@ -185,14 +185,27 @@ useEffect(() => {
     }
   };
 
+  // ⭐ Шаблоны грузим сразу при открытии страницы, чтобы список был актуален
+  useEffect(() => {
+    fetchEstimateTemplates()
+      .then(setTemplates)
+      .catch(() => setTemplates([]));
+  }, []);
+
   // ⭐ №129: применить выбранный шаблон после создания проекта
   const applyTemplateIfNeeded = async (projectId: number) => {
-    if (selectedTemplateId) {
-      try {
-        await applyEstimateTemplate(selectedTemplateId, projectId);
-      } catch {
-        console.warn('Не удалось применить шаблон к проекту');
+    if (!selectedTemplateId) return;
+    try {
+      const res = await applyEstimateTemplate(selectedTemplateId, projectId);
+      if (!res?.created) {
+        alert('Шаблон применён, но в нём нет позиций — смета нового проекта пустая.');
       }
+    } catch (err) {
+      // ⭐ Раньше ошибка проглатывалась в console.warn — пользователь видел «не работает» без причины
+      alert(
+        'Проект создан, но шаблон применить не удалось:\n' +
+          getApiErrorText(err, 'неизвестная ошибка'),
+      );
     }
   };
 
@@ -217,9 +230,17 @@ useEffect(() => {
         name: templateName.trim(),
         projectId: savingTemplateProject.id,
       });
+      const savedName = templateName.trim();
+      // ⭐ Обновляем список сразу — иначе шаблон «пропадает» из вида и кажется, что не сохранился
+      await loadTemplates();
       handleCloseSaveTemplate();
-    } catch {
-      alert('Ошибка при сохранении шаблона');
+      alert(
+        `Шаблон «${savedName}» сохранён.\n\n` +
+          'Выбрать его можно при создании проекта — в поле «Из шаблона».\n' +
+          'Шаблоны видны только вам (они личные).',
+      );
+    } catch (err) {
+      alert('Ошибка при сохранении шаблона: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -816,6 +837,12 @@ onBack: () => navigate('/objects'),
           ))}
         </Select>
       </FormControl>
+      {templates.length === 0 && (
+        <Typography variant="caption" color="text.secondary">
+          Шаблонов пока нет. Сохраните смету любого проекта как шаблон (меню проекта → «Сохранить
+          шаблон») — он появится в этом списке.
+        </Typography>
+      )}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
         <Button variant="outlined" onClick={handleCloseAddModal}>Отмена</Button>
         <Button variant="contained" onClick={handleCreateProject}>Сохранить</Button>

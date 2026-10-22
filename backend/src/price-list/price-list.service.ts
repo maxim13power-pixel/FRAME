@@ -1,6 +1,7 @@
 // backend/src/price-list/price-list.service.ts
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -162,7 +163,23 @@ export class PriceListService {
     });
   }
 
-  // Обновление расценки: можно менять ОБЩИЕ и СВОИ расценки
+  // ⭐ Общие (демо) расценки правит только владелец системы (ADMIN).
+  // Личные расценки доступны владельцу через ownerFilter, поэтому здесь проверяем только общие.
+  private async assertCanEditShared(itemOwnerId: number | null, userId?: number) {
+    if (itemOwnerId !== null) return;
+    if (!userId) return;
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    if (user?.role !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Общие расценки может изменять только владелец системы. Создайте личную расценку — она доступна только вам.',
+      );
+    }
+  }
+
+  // Обновление расценки: свои — свободно, общие — только ADMIN
   async updateItem(
     id: number,
     dto: Partial<CreatePriceItemDto>,
@@ -173,6 +190,7 @@ export class PriceListService {
     });
     if (!item)
       throw new NotFoundException('Расценка не найдена или нет доступа');
+    await this.assertCanEditShared(item.ownerId, userId);
     const updated = await this.prisma.priceItem.update({
       where: { id },
       data: {
@@ -219,6 +237,7 @@ export class PriceListService {
     });
     if (!item)
       throw new NotFoundException('Расценка не найдена или нет доступа');
+    await this.assertCanEditShared(item.ownerId, userId);
     const updated = await this.prisma.priceItem.update({
       where: { id },
       data: { isActive: false },
