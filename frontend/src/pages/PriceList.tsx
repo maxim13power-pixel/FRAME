@@ -44,6 +44,7 @@ import CategoryIcon from '@mui/icons-material/Category';
 import PriceCheckIcon from '@mui/icons-material/PriceCheck';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import { useAuth } from '../contexts/AuthContext';
+import { useFeedback } from '../contexts/FeedbackContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import {
   fetchCategoriesWithItems,
@@ -79,6 +80,7 @@ const PriceList: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
+  const { notify, error: notifyError } = useFeedback();
 
   // Основные данные
     // Основные данные
@@ -223,7 +225,7 @@ const PriceList: React.FC = () => {
 
     const handleCreateCategory = async () => {
     if (!token || !newCatName.trim()) {
-      alert('Введите название категории');
+      notify('Введите название категории', 'warning');
       return;
     }
     try {
@@ -231,7 +233,7 @@ const PriceList: React.FC = () => {
       setCategories(prev => [...prev, { ...created, items: [] }]);
       handleCloseCatModal();
     } catch (err: unknown) {
-      alert('Ошибка при создании категории: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      notifyError('Ошибка при создании категории: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -273,20 +275,20 @@ const PriceList: React.FC = () => {
     if (!token) return;
     const price = parseFloat(itemPrice);
     if (!itemName.trim()) {
-      alert('Введите наименование');
+      notify('Введите наименование', 'warning');
       return;
     }
     if (isNaN(price) || price < 0) {
-      alert('Введите корректную цену');
+      notify('Введите корректную цену', 'warning');
       return;
     }
     if (itemCategoryId === '') {
-      alert('Выберите категорию');
+      notify('Выберите категорию', 'warning');
       return;
     }
     // ⭐ Если выбрана новая категория — требуем её название
     if (itemCategoryId === NEW_CATEGORY_VALUE && !newCategoryName.trim()) {
-      alert('Введите название новой категории');
+      notify('Введите название новой категории', 'warning');
       return;
     }
     try {
@@ -337,7 +339,7 @@ const PriceList: React.FC = () => {
       }
       handleCloseItemModal();
     } catch (err: unknown) {
-      alert('Ошибка при сохранении: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      notifyError('Ошибка при сохранении: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -362,7 +364,7 @@ const PriceList: React.FC = () => {
       setDeleteConfirmOpen(false);
       setDeletingItem(null);
     } catch (err: unknown) {
-      alert('Ошибка удаления: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      notifyError('Ошибка удаления: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
   // ============================================================
@@ -384,7 +386,7 @@ const PriceList: React.FC = () => {
   const handleRenameCategory = async () => {
     if (!token || !settingsCategory) return;
     if (!settingsCatName.trim()) {
-      alert('Введите название категории');
+      notify('Введите название категории', 'warning');
       return;
     }
     try {
@@ -396,7 +398,7 @@ const PriceList: React.FC = () => {
       );
       handleCloseCategorySettings();
     } catch (err: unknown) {
-      alert('Ошибка переименования: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      notifyError('Ошибка переименования: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -421,7 +423,7 @@ const PriceList: React.FC = () => {
       setDeleteCatConfirmOpen(false);
       handleCloseCategorySettings();
     } catch (err: unknown) {
-      alert('Ошибка удаления: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      notifyError('Ошибка удаления: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
   // ============================================================

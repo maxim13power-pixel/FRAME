@@ -31,6 +31,7 @@ import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import { fetchObjects, createObject } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
 import { useAuth } from '../contexts/AuthContext';
+import { useFeedback } from '../contexts/FeedbackContext';
 import { useNavigate } from 'react-router-dom';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -79,6 +80,7 @@ const Objects: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth(); // получаем токен из контекста (если используете)
+  const { notify, error: notifyError } = useFeedback();
   const navigate = useNavigate();
   const [objects, setObjects] = useState<ObjectData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -213,19 +215,19 @@ const filteredAndSortedObjects = useMemo(() => {
       setForemanConfirmOpen(false);
       handleCloseAddModal();
     } catch (err: unknown) {
-      alert('Ошибка при создании объекта: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      notifyError('Ошибка при создании объекта: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
   // ⭐ Точка входа: Прораб → сначала предупреждение, Заказчик → сразу создаём
   const handleCreateObject = async () => {
     if (!token || !newName || !newAddress || !newStartDate || !newEndDate) {
-      alert('Заполните все поля');
+      notify('Заполните все поля', 'warning');
       return;
     }
     // ↓↓↓ ВАЛИДАЦИЯ ДАТ ↓↓↓
     if (new Date(newEndDate) < new Date(newStartDate)) {
-      alert('❌ Дата окончания не может быть раньше даты начала!');
+      notify('Дата окончания не может быть раньше даты начала', 'warning');
       return;
     }
     // ↑↑↑ КОНЕЦ ВАЛИДАЦИИ ↑↑↑
@@ -255,7 +257,7 @@ const handleUpdateObject = async () => {
   
   // ↓↓↓ ВАЛИДАЦИЯ ДАТ ↓↓↓
   if (new Date(editEndDate) < new Date(editStartDate)) {
-    alert('❌ Дата окончания не может быть раньше даты начала!');
+    notify('Дата окончания не может быть раньше даты начала', 'warning');
     return;
   }
   // ↑↑↑ КОНЕЦ ВАЛИДАЦИИ ↑↑↑
@@ -270,7 +272,7 @@ const handleUpdateObject = async () => {
     setObjects(prev => prev.map(obj => obj.id === updated.id ? updated : obj));
     handleCloseEdit();
   } catch {
-    alert('Ошибка обновления');
+    notifyError('Ошибка обновления');
   }
 };
 
@@ -289,7 +291,7 @@ const handleDeleteObject = async () => {
     setDeleteConfirmOpen(false);
     setDeletingObject(null); // очищаем
   } catch {
-    alert('Ошибка удаления');
+    notifyError('Ошибка удаления');
   }
 };
 
@@ -300,7 +302,7 @@ const handleDeleteDemo = async (obj: ObjectData) => {
     await deleteObject(obj.id, true);
     setObjects(prev => prev.filter(o => o.id !== obj.id));
   } catch {
-    alert('Не удалось удалить демо-объект');
+    notifyError('Не удалось удалить демо-объект');
   }
 };
 
@@ -311,7 +313,7 @@ const handleRestoreObject = async (obj: ObjectData) => {
     await restoreObject(obj.id);
     setObjects(prev => prev.map(o => o.id === obj.id ? { ...o, isArchived: false } : o));
   } catch {
-    alert('Не удалось восстановить объект');
+    notifyError('Не удалось восстановить объект');
   }
 };
 
@@ -532,7 +534,7 @@ const handleSaveNote = async () => {
     setObjects(prev => prev.map(obj => obj.id === editingNoteObject.id ? { ...obj, note: updated.note } : obj));
     handleCloseNoteModal();
   } catch {
-    alert('Ошибка обновления заметки');
+    notifyError('Ошибка обновления заметки');
   }
 };
 
