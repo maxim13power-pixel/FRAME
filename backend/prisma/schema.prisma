@@ -27,6 +27,7 @@ model User {
   proposedChanges   ChangeRequest[]  @relation("ProposedChanges")
   reviewedChanges   ChangeRequest[]  @relation("ReviewedChanges")
   ownedPriceItems   PriceItem[]
+  priceCatalogs     PriceCatalog[] @relation("CatalogOwner") // ⭐ №151: личные справочники цен
   createdInvites    InviteToken[]  @relation("CreatedInvites")
   passwordResetTokens PasswordResetToken[]  // ⭐ P0-4
   rentals           Rental[]  // ⭐ личные аренды оборудования пользователя
@@ -60,6 +61,8 @@ model Project {
   endDate     DateTime
   objectId    Int
   object      Object   @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  catalogId   Int?     // ⭐ №151: справочник цен проекта (по умолчанию — для подстановки в смете)
+  catalog     PriceCatalog? @relation(fields: [catalogId], references: [id], onDelete: SetNull)
   materials   Material[]
   changeRequests ChangeRequest[] // Согласования на уровне проекта
   warehouseTransactions WarehouseTransaction[] // ⭐ Складские списания на проект
@@ -71,6 +74,7 @@ model Project {
 
   @@index([endDate])
   @@index([objectId])
+  @@index([catalogId])
 }
 
 enum Role {
@@ -165,6 +169,8 @@ model PriceItem {
   id         Int           @id @default(autoincrement())
   ownerId    Int?          // null = общий стартовый справочник, userId = личный приватный (3.7)
   owner      User?         @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  catalogId  Int           // ⭐ №151: справочник цен, в котором живёт расценка
+  catalog    PriceCatalog  @relation(fields: [catalogId], references: [id], onDelete: Cascade)
   name       String
   article    String?
   unit       Unit          @default(PIECE)
@@ -182,7 +188,25 @@ model PriceItem {
   updatedAt  DateTime      @updatedAt
 
   @@index([categoryId, ownerId])
+  @@index([catalogId])
   @@map("price_items")
+}
+
+// ⭐ №151: справочники цен — независимые наборы расценок под разные объекты
+// (например «Квартиры/Коттеджи» с постоянной ценой и «Склад X5» со своими расценками).
+model PriceCatalog {
+  id         Int         @id @default(autoincrement())
+  name       String
+  ownerId    Int?        // null = системный (демо) справочник, доступен всем
+  owner      User?       @relation("CatalogOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  isArchived Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  items      PriceItem[]
+  projects   Project[]
+
+  @@index([ownerId])
+  @@map("price_catalogs")
 }
 
 // ============================================================

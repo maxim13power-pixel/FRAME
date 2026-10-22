@@ -27,6 +27,117 @@ export class PriceListService {
       : { ownerId: null };
   }
 
+  // ⭐ №151: системный (демо) справочник — есть всегда, доступен всем
+  private async ensureSystemCatalog() {
+    const existing = await this.prisma.priceCatalog.findFirst({
+      where: { ownerId: null },
+      orderBy: { id: 'asc' },
+    });
+    if (existing) return existing;
+    return this.prisma.priceCatalog.create({
+      data: { name: 'Демо-справочник', ownerId: null },
+    });
+  }
+
+  // ⭐ №151: личный справочник пользователя (создаётся при первом обращении)
+  private async ensurePersonalCatalog(userId: number) {
+    const existing = await this.prisma.priceCatalog.findFirst({
+      where: { ownerId: userId },
+      orderBy: { id: 'asc' },
+    });
+    if (existing) return existing;
+    return this.prisma.priceCatalog.create({
+      data: { name: 'Личный справочник', ownerId: userId },
+    });
+  }
+
+  private async isAdmin(userId?: number) {
+    if (!userId) return false;
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    return user?.role === 'ADMIN';
+  }
+
+  // ⭐ №151: справочник, доступный пользователю (системный или свой)
+  private async resolveCatalog(catalogId: number | undefined, userId?: number) {
+    if (catalogId) {
+      const catalog = await this.prisma.priceCatalog.findFirst({
+        where: {
+          id: catalogId,
+          ...(userId ? { OR: [{ ownerId: null }, { ownerId: userId }] } : {}),
+        },
+      });
+      if (!catalog) throw new NotFoundException('Справочник не найден или нет доступа');
+      return catalog;
+    }
+    // без явного выбора: личный справочник юзера, иначе системный
+    return userId ? this.ensurePersonalCatalog(userId) : this.ensureSystemCatalog();
+  }
+
+  // ⭐ №151: список справочников, доступных пользователю (системные + свои)
+  async listCatalogs(userId?: number) {
+    const catalogs = await this.prisma.priceCatalog.findMany({
+      where: {
+        isArchived: false,
+        ...(userId ? { OR: [{ ownerId: null }, { ownerId: userId }] } : { ownerId: null }),
+      },
+      orderBy: [{ ownerId: 'asc' }, { name: 'asc' }],
+      include: { _count: { select: { items: true, projects: true } } },
+    });
+    return catalogs.map((c) => ({
+      id: c.id,
+      name: c.name,
+      ownerId: c.ownerId,
+      isSystem: c.ownerId === null,
+      itemsCount: c._count.items,
+      projectsCount: c._count.projects,
+      createdAt: c.createdAt,
+    }));
+  }
+
+  // ⭐ №151: создать справочник (личный для пользователя)
+  async createCatalog(name: string, userId: number) {
+    const trimmed = name.trim();
+    if (!trimmed) throw new BadRequestException('Название справочника обязательно');
+    const duplicate = await this.prisma.priceCatalog.findFirst({
+      where: { ownerId: userId, name: trimmed, isArchived: false },
+    });
+    if (duplicate) throw new BadRequestException('Справочник с таким названием уже есть');
+    return this.prisma.priceCatalog.create({ data: { name: trimmed, ownerId: userId } });
+  }
+
+  // ⭐ №151: переименовать справочник (свой — свободно, системный — только ADMIN)
+  async updateCatalog(id: number, name: string, userId?: number) {
+    const catalog = await this.prisma.priceCatalog.findUnique({ where: { id } });
+    if (!catalog) throw new NotFoundException('Справочник не найден');
+    if (catalog.ownerId === null) {
+      if (!(await this.isAdmin(userId))) {
+        throw new ForbiddenException('Системный справочник может изменять только владелец системы');
+      }
+    } else if (catalog.ownerId !== userId) {
+      throw new ForbiddenException('Это чужой справочник');
+    }
+    const trimmed = name.trim();
+    if (!trimmed) throw new BadRequestException('Название справочника обязательно');
+    return this.prisma.priceCatalog.update({ where: { id }, data: { name: trimmed } });
+  }
+
+  // ⭐ №151: архивировать справочник (данные не удаляем — история смет сохраняется)
+  async archiveCatalog(id: number, userId?: number) {
+    const catalog = await this.prisma.priceCatalog.findUnique({ where: { id } });
+    if (!catalog) throw new NotFoundException('Справочник не найден');
+    if (catalog.ownerId === null) {
+      if (!(await this.isAdmin(userId))) {
+        throw new ForbiddenException('Системный справочник может изменять только владелец системы');
+      }
+    } else if (catalog.ownerId !== userId) {
+      throw new ForbiddenException('Это чужой справочник');
+    }
+    return this.prisma.priceCatalog.update({ where: { id }, data: { isArchived: true } });
+  }
+
   // Все категории (для селектов). Категории ОБЩИЕ — без владельца.
   async getCategories(kind?: string, userId?: number) {
     return this.prisma.priceCategory.findMany({
@@ -38,7 +149,7 @@ export class PriceListService {
   }
 
   // Категории с активными расценками (общие + личные юзера)
-  async getCategoriesWithItems(kind?: string, userId?: number) {
+  async getCategoriesWithItems(kind?: string, userId?: number, catalogId?: number) {
     return this.prisma.priceCategory.findMany({
       where: {
         ...(kind ? { kind: kind as PriceKind } : {}),
@@ -49,6 +160,7 @@ export class PriceListService {
           where: {
             isActive: true,
             ...(kind ? { kind: kind as PriceKind } : {}),
+            ...(catalogId ? { catalogId } : {}),
             ...this.ownerFilter(userId),
           },
           orderBy: { name: 'asc' },
@@ -64,6 +176,7 @@ export class PriceListService {
     categoryId?: number,
     kind?: string,
     userId?: number,
+    catalogId?: number,
   ) {
     return this.prisma.priceItem.findMany({
       where: {
@@ -71,6 +184,7 @@ export class PriceListService {
           { isActive: true },
           ...(kind ? [{ kind: kind as PriceKind }] : []),
           ...(categoryId ? [{ categoryId }] : []),
+          ...(catalogId ? [{ catalogId }] : []),
           this.ownerFilter(userId),
           ...(search
             ? [
@@ -142,13 +256,21 @@ export class PriceListService {
     return this.prisma.priceCategory.delete({ where: { id } });
   }
 
-  // Создание расценки → в ЛИЧНЫЙ справочник юзера (ТЗ 3.7)
+  // Создание расценки → в выбранный справочник (по умолчанию — личный справочник юзера)
   async createItem(dto: CreatePriceItemDto, userId?: number) {
     // Проверяем что категория существует (категории общие)
     const category = await this.prisma.priceCategory.findFirst({
       where: { id: dto.categoryId },
     });
     if (!category) throw new NotFoundException('Категория не найдена');
+
+    const catalog = await this.resolveCatalog(dto.catalogId, userId);
+    // ⭐ В системный справочник пишет только ADMIN, остальные — в свой
+    if (catalog.ownerId === null && !(await this.isAdmin(userId))) {
+      throw new ForbiddenException(
+        'В системный справочник может добавлять только владелец системы. Выберите свой справочник.',
+      );
+    }
 
     return this.prisma.priceItem.create({
       data: {
@@ -158,7 +280,8 @@ export class PriceListService {
         price: dto.price,
         categoryId: dto.categoryId,
         kind: (dto.kind as PriceKind) ?? 'WORK',
-        ownerId: userId ?? null, // ⭐ личная расценка (ТЗ 3.7)
+        catalogId: catalog.id, // ⭐ №151
+        ownerId: catalog.ownerId, // ⭐ владелец расценки = владелец справочника
       },
     });
   }

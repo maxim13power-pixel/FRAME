@@ -634,6 +634,24 @@ export class MaterialsService {
     });
     if (!category) throw new NotFoundException('Категория не найдена');
 
+    // ⭐ №151: расценка живёт в справочнике — берём личный справочник юзера
+    // (или системный, если пользователь не передан: внутренние вызовы/сиды)
+    const catalog = userId
+      ? ((await this.prisma.priceCatalog.findFirst({
+          where: { ownerId: userId },
+          orderBy: { id: 'asc' },
+        })) ??
+        (await this.prisma.priceCatalog.create({
+          data: { name: 'Личный справочник', ownerId: userId },
+        })))
+      : ((await this.prisma.priceCatalog.findFirst({
+          where: { ownerId: null },
+          orderBy: { id: 'asc' },
+        })) ??
+        (await this.prisma.priceCatalog.create({
+          data: { name: 'Демо-справочник', ownerId: null },
+        })));
+
     return this.prisma.priceItem.create({
       data: {
         name: itemDto.name.trim(),
@@ -642,7 +660,8 @@ export class MaterialsService {
         price: itemDto.price,
         categoryId,
         kind: kindValue,
-        ownerId: userId ?? null, // ⭐ личный справочник (ТЗ 3.7)
+        catalogId: catalog.id, // ⭐ №151
+        ownerId: catalog.ownerId, // ⭐ владелец = владелец справочника
       },
       include: { category: true },
     });
