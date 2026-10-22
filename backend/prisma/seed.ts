@@ -447,6 +447,12 @@ async function main() {
   ]);
   console.log('  ✓ Old seed catalog cleared');
 
+  // ⭐ №151: системный справочник цен — в него попадают демо-расценки
+  const systemCatalog =
+    (await prisma.priceCatalog.findFirst({ where: { ownerId: null, name: 'Демо-справочник' } })) ??
+    (await prisma.priceCatalog.create({ data: { name: 'Демо-справочник', ownerId: null } }));
+  console.log(`  ✓ System catalog #${systemCatalog.id}`);
+
   // 2. Категории работ + расценки (10 категорий × 18-20)
   //    ownerId: null = общий стартовый справочник (3.7)
   const workCategoryIds: number[] = [];
@@ -469,6 +475,7 @@ async function main() {
           unit,
           price,
           categoryId: created.id,
+          catalogId: systemCatalog.id, // ⭐ №151
           article: `${SEED_ART}W-${String(i + 1).padStart(2, '0')}-${String(j + 1).padStart(3, '0')}`,
           isActive: true,
           ownerId: null, // общий справочник
@@ -501,6 +508,7 @@ async function main() {
           unit,
           price,
           categoryId: created.id,
+          catalogId: systemCatalog.id, // ⭐ №151
           article: `${SEED_ART}M-${String(i + 1).padStart(2, '0')}-${String(j + 1).padStart(3, '0')}`,
           isActive: true,
           ownerId: null, // общий справочник

@@ -18,6 +18,7 @@ import { PriceListService } from './price-list.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreatePriceItemDto } from './dto/create-price-item.dto';
+import { CreateCatalogDto } from './dto/create-catalog.dto';
 
 @Controller('price-list')
 @UseGuards(JwtAuthGuard)
@@ -30,8 +31,46 @@ export class PriceListController {
   }
 
   @Get('categories/full')
-  getCategoriesWithItems(@Query('kind') kind: string | undefined, @Req() req) {
-    return this.priceListService.getCategoriesWithItems(kind, req.user.userId);
+  getCategoriesWithItems(
+    @Query('kind') kind: string | undefined,
+    @Query('catalogId') catalogId: string | undefined,
+    @Req() req,
+  ) {
+    return this.priceListService.getCategoriesWithItems(
+      kind,
+      req.user.userId,
+      catalogId ? parseInt(catalogId) : undefined,
+    );
+  }
+
+  // ⭐ №151: справочники цен
+  @Get('catalogs')
+  listCatalogs(@Req() req) {
+    return this.priceListService.listCatalogs(req.user.userId);
+  }
+
+  @Post('catalogs')
+  createCatalog(
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: CreateCatalogDto,
+    @Req() req,
+  ) {
+    return this.priceListService.createCatalog(dto.name, req.user.userId);
+  }
+
+  @Patch('catalogs/:id')
+  updateCatalog(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: CreateCatalogDto,
+    @Req() req,
+  ) {
+    return this.priceListService.updateCatalog(id, dto.name, req.user.userId);
+  }
+
+  @Delete('catalogs/:id')
+  archiveCatalog(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.priceListService.archiveCatalog(id, req.user.userId);
   }
 
   @Get('items/search')
@@ -39,6 +78,7 @@ export class PriceListController {
     @Query('search') search: string | undefined,
     @Query('categoryId') categoryId: string | undefined,
     @Query('kind') kind: string | undefined,
+    @Query('catalogId') catalogId: string | undefined,
     @Req() req,
   ) {
     return this.priceListService.searchItems(
@@ -46,6 +86,7 @@ export class PriceListController {
       categoryId ? parseInt(categoryId) : undefined,
       kind,
       req.user.userId,
+      catalogId ? parseInt(catalogId) : undefined,
     );
   }
 

@@ -32,4 +32,9 @@ export class CreatePriceItemDto {
   @IsOptional()
   @IsIn(['WORK', 'MATERIAL'], { message: 'Некорректный тип расценки' })
   kind?: string;
+
+  // ⭐ №151: справочник, в который кладём расценку (по умолчанию — личный справочник юзера)
+  @IsOptional()
+  @IsInt({ message: 'catalogId должен быть целым числом' })
+  catalogId?: number;
 }
