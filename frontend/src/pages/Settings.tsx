@@ -23,6 +23,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { ALL_BOTTOM_TABS, getBottomNavConfig, DEFAULT_BOTTOM_TABS } from '../components/BottomNav';
 import { useAuth } from '../contexts/AuthContext';
+import { useFeedback } from '../contexts/FeedbackContext';
 import { exportMyData, deleteMyAccount } from '../services/usersService';
 
 const MAX_TABS = 5;
@@ -41,6 +42,7 @@ const Settings: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { user, logout } = useAuth();
+  const { error: notifyError } = useFeedback();
   useMobileHeader({ title: 'Настройки', onBack: () => navigate(-1) });
 
   const [selected, setSelected] = useState<string[]>(() => getBottomNavConfig());
@@ -86,7 +88,7 @@ const Settings: React.FC = () => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch {
-      alert('Не удалось выгрузить данные');
+      notifyError('Не удалось выгрузить данные');
     }
   };
 
@@ -97,7 +99,7 @@ const Settings: React.FC = () => {
       logout();
       navigate('/login', { replace: true });
     } catch {
-      alert('Не удалось удалить аккаунт');
+      notifyError('Не удалось удалить аккаунт');
       setDeleteModalOpen(false);
     }
   };

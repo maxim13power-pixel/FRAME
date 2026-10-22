@@ -47,6 +47,7 @@ import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import { useAuth } from '../contexts/AuthContext';
+import { useFeedback } from '../contexts/FeedbackContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { useScrollDirection } from '../hooks/useScrollDirection';
 import {
@@ -68,12 +69,15 @@ import { searchPriceItems } from '../services/priceListService';
 import type { PriceItemData } from '../services/priceListService';
 import { fetchCategoriesWithItems } from '../services/priceListService';
 import { getApiErrorText } from '../utils/errors';
+import { applyEstimateTemplate, fetchEstimateTemplates } from '../services/estimateTemplateService';
+import type { EstimateTemplate } from '../services/estimateTemplateService';
 // ⭐ XLSX/PDF-генераторы грузим по требованию (внутри handleExport) — иначе xlsx+pdfmake
 // тянутся в бандл страницы «Сметы» и замедляют её открытие.
 import type { ExportMeta } from '../utils/exportMaterials';
 import { FAB_STYLE } from '../theme';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 
 // ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено».
 const BOTTOM_NAV_HEIGHT = 56; // высота BottomNav (MUI BottomNavigation по умолчанию)
@@ -99,6 +103,7 @@ const Materials: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
+  const { notify, error: notifyError } = useFeedback();
   const direction = useScrollDirection();
 
   const [materials, setMaterials] = useState<MaterialData[]>([]);
@@ -205,6 +210,10 @@ const hidePrices = currentObject?.hidePrices === true || currentObject?.role ===
 // ⭐ Экспорт XLSX/PDF (клиентская генерация)
 const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
 const [exportModalOpen, setExportModalOpen] = useState(false);
+// ⭐ Добавление позиций из шаблона сметы в текущий проект
+const [templateModalOpen, setTemplateModalOpen] = useState(false);
+const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
+const [applyingTemplate, setApplyingTemplate] = useState(false);
 const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
   open: false,
   message: '',
@@ -422,7 +431,7 @@ setPriceLoading(false);
 };
   const handleCreateMaterial = async () => {
     if (!token || !projectId || !newName.trim()) {
-      alert('Введите наименование');
+      notify('Введите наименование', 'warning');
       return;
     }
     const specQty = parseFloat(newSpecQuantity) || 0;
@@ -508,7 +517,7 @@ setPriceLoading(false);
       loadCategories();
       handleCloseAddModal();
     } catch (err: unknown) {
-      alert('Ошибка при создании материала: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      notifyError('Ошибка при создании материала: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -537,7 +546,7 @@ setPriceLoading(false);
   const handleAddFix = async () => {
     const amount = parseFloat(fixAmount);
     if (!token || !fixingMaterial || isNaN(amount) || amount <= 0) {
-      alert('Введите объём больше нуля');
+      notify('Введите объём больше нуля', 'warning');
       return;
     }
     try {
@@ -548,7 +557,7 @@ setPriceLoading(false);
       setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
       handleCloseFixModal();
     } catch (err: unknown) {
-      alert('Ошибка фиксации: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      notifyError('Ошибка фиксации: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -578,7 +587,7 @@ setPriceLoading(false);
       setDeleteConfirmOpen(false);
       setDeletingMaterial(null);
     } catch (err: unknown) {
-      alert('Ошибка удаления: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      notifyError('Ошибка удаления: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -837,6 +846,40 @@ setSortAnchorEl(null);
     );
   };
 
+  // ⭐ Добавить позиции из шаблона сметы в текущую смету (кнопка в шапке и в мобильном меню)
+  const handleOpenTemplateModal = useCallback(async () => {
+    setTemplateModalOpen(true);
+    try {
+      setTemplates(await fetchEstimateTemplates());
+    } catch (err) {
+      setTemplates([]);
+      notifyError('Не удалось загрузить шаблоны: ' + getApiErrorText(err, 'неизвестная ошибка'));
+    }
+  }, [notifyError]);
+
+  const handleApplyTemplate = useCallback(
+    async (templateId: number) => {
+      if (!projectId) return;
+      setApplyingTemplate(true);
+      try {
+        const res = await applyEstimateTemplate(templateId, parseInt(projectId));
+        // ⭐ Перечитываем смету, чтобы новые строки сразу появились в таблице
+        setMaterials(await fetchMaterialsByProject(parseInt(projectId)));
+        setTemplateModalOpen(false);
+        if (res?.created) {
+          notify(`Добавлено позиций из шаблона: ${res.created}`, 'success');
+        } else {
+          notify('В шаблоне нет позиций — смета не изменилась', 'warning');
+        }
+      } catch (err) {
+        notifyError('Не удалось применить шаблон: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      } finally {
+        setApplyingTemplate(false);
+      }
+    },
+    [projectId, notify, notifyError],
+  );
+
   // ⭐ Мобильный хэдер v2: trailing в useMemo — стабильная ссылка, нет бесконечного цикла
   const headerTrailing = useMemo(() => isMobile ? (
     <>
@@ -870,8 +913,17 @@ setSortAnchorEl(null);
       >
         {exporting ? <CircularProgress size={18} /> : <FileDownloadIcon />}
       </IconButton>
+      {/* ⭐ Добавить позиции из шаблона сметы */}
+      <IconButton
+        onClick={() => { void handleOpenTemplateModal(); }}
+        disabled={applyingTemplate}
+        aria-label="Добавить из шаблона"
+        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
+      >
+        {applyingTemplate ? <CircularProgress size={18} /> : <PlaylistAddIcon />}
+      </IconButton>
     </>
-    ) : undefined, [isMobile, sortBy, categoryFilter, projectCategories.length, exporting]);
+    ) : undefined, [isMobile, sortBy, categoryFilter, projectCategories.length, exporting, applyingTemplate, handleOpenTemplateModal]);
 
   useMobileHeader({
     title: 'Сметы',
@@ -1021,6 +1073,19 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     {exporting ? <CircularProgress size={16} /> : <FileDownloadIcon fontSize="small" />}
   </Button>
 )}
+{!isMobile && (
+  <Button
+    variant="outlined"
+    color="primary"
+    size="small"
+    onClick={() => { void handleOpenTemplateModal(); }}
+    disabled={applyingTemplate}
+    title="Добавить позиции из шаблона сметы"
+    sx={{ minWidth: 0, px: 1.5, py: 1, transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' } }}
+  >
+    {applyingTemplate ? <CircularProgress size={16} /> : <PlaylistAddIcon fontSize="small" />}
+  </Button>
+)}
       {/* ⭐ Модалка выбора формата экспорта */}
       <Modal open={exportModalOpen} onClose={() => setExportModalOpen(false)} disableRestoreFocus>
         <Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 320 }, p: 3, borderRadius: 2 }}>
@@ -1029,6 +1094,41 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
             <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={() => { setExportModalOpen(false); handleExport('pdf'); }} fullWidth>PDF</Button>
             <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={() => { setExportModalOpen(false); handleExport('xlsx'); }} fullWidth>Excel</Button>
           </Stack>
+        </Paper>
+      </Modal>
+
+      {/* ⭐ Модалка «Добавить позиции из шаблона сметы» */}
+      <Modal open={templateModalOpen} onClose={() => setTemplateModalOpen(false)} disableRestoreFocus>
+        <Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '92%', sm: 440 }, p: 3, borderRadius: 2 }}>
+          <Typography variant="h6" gutterBottom>Добавить из шаблона</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Позиции шаблона добавятся к текущей смете (сейчас в ней {materials.length}). Существующие
+            строки не изменяются.
+          </Typography>
+          {templates.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Шаблонов нет. Сохраните смету любого проекта как шаблон: «Проекты» → меню проекта →
+              «Сохранить шаблон».
+            </Typography>
+          ) : (
+            <Stack spacing={1} sx={{ maxHeight: 320, overflowY: 'auto' }}>
+              {templates.map((t) => (
+                <Button
+                  key={t.id}
+                  variant="outlined"
+                  disabled={applyingTemplate}
+                  onClick={() => { void handleApplyTemplate(t.id); }}
+                  sx={{ justifyContent: 'space-between', textTransform: 'none', py: 1 }}
+                >
+                  <span>{t.name}</span>
+                  <span style={{ opacity: 0.7 }}>{t.items?.length ?? 0} поз.</span>
+                </Button>
+              ))}
+            </Stack>
+          )}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+            <Button onClick={() => setTemplateModalOpen(false)}>Закрыть</Button>
+          </Box>
         </Paper>
       </Modal>
       </Box>

@@ -20,6 +20,7 @@ import {
   MenuItem, 
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
+import { useFeedback } from '../contexts/FeedbackContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { fetchProjectsByObject, createProject, updateProject, deleteProject } from '../services/projectService';
 import type { ProjectData } from '../services/projectService';
@@ -52,6 +53,7 @@ const Projects: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
+  const { notify, success, error: notifyError } = useFeedback();
 
 
 // ... внутри компонента:
@@ -198,11 +200,11 @@ useEffect(() => {
     try {
       const res = await applyEstimateTemplate(selectedTemplateId, projectId);
       if (!res?.created) {
-        alert('Шаблон применён, но в нём нет позиций — смета нового проекта пустая.');
+        notify('Шаблон применён, но в нём нет позиций — смета нового проекта пустая.', 'warning');
       }
     } catch (err) {
       // ⭐ Раньше ошибка проглатывалась в console.warn — пользователь видел «не работает» без причины
-      alert(
+      notifyError(
         'Проект создан, но шаблон применить не удалось:\n' +
           getApiErrorText(err, 'неизвестная ошибка'),
       );
@@ -222,7 +224,7 @@ useEffect(() => {
   };
   const handleSaveTemplate = async () => {
     if (!templateName.trim() || !savingTemplateProject) {
-      alert('Введите название шаблона');
+      notify('Введите название шаблона', 'warning');
       return;
     }
     try {
@@ -234,13 +236,13 @@ useEffect(() => {
       // ⭐ Обновляем список сразу — иначе шаблон «пропадает» из вида и кажется, что не сохранился
       await loadTemplates();
       handleCloseSaveTemplate();
-      alert(
+      success(
         `Шаблон «${savedName}» сохранён.\n\n` +
           'Выбрать его можно при создании проекта — в поле «Из шаблона».\n' +
           'Шаблоны видны только вам (они личные).',
       );
     } catch (err) {
-      alert('Ошибка при сохранении шаблона: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      notifyError('Ошибка при сохранении шаблона: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -259,13 +261,13 @@ useEffect(() => {
 
 const handleCreateProject = async () => {
   if (!token || !objectId || !newName || !newStartDate || !newEndDate) {
-    alert('Заполните все поля');
+    notify('Заполните все поля', 'warning');
     return;
   }
   
   // Валидация 1: окончание >= начала
   if (new Date(newEndDate) < new Date(newStartDate)) {
-    alert('❌ Дата окончания проекта не может быть раньше даты начала!');
+    notify('Дата окончания проекта не может быть раньше даты начала', 'warning');
     return;
   }
   
@@ -304,7 +306,7 @@ const createProjectAction = async (projectData?: {
   const data = projectData || pendingProject;
   
   if (!data) {
-    alert('Нет данных для создания проекта');
+    notifyError('Нет данных для создания проекта');
     return;
   }
   
@@ -320,7 +322,7 @@ const createProjectAction = async (projectData?: {
     handleCloseAddModal();
     setPendingProject(null); // очищаем
   } catch {
-    alert('Ошибка при создании проекта');
+    notifyError('Ошибка при создании проекта');
   }
 };
 
@@ -329,7 +331,7 @@ const handleConfirmDateUpdate = async () => {
   //console.log('🔵 handleConfirmDateUpdate started');
   
   if (!token || !currentObject) {
-    alert('Ошибка: нет данных объекта');
+    notifyError('Ошибка: нет данных объекта');
     return;
   }
   
@@ -389,12 +391,12 @@ const handleConfirmDateUpdate = async () => {
       
     } else {
       console.error('❌ Нет данных для создания/обновления проекта');
-      alert('Ошибка: нет данных проекта');
+      notifyError('Ошибка: нет данных проекта');
     }
     
   } catch (err: unknown) {
     console.error('❌ Ошибка в handleConfirmDateUpdate:', err);
-    alert('Ошибка: ' + getApiErrorText(err, 'неизвестная ошибка'));
+    notifyError('Ошибка: ' + getApiErrorText(err, 'неизвестная ошибка'));
   }
 };
 
@@ -413,12 +415,12 @@ const handleConfirmDateUpdate = async () => {
 
 const handleUpdateProject = async () => {
   if (!token || !editingProject || !editName || !editStartDate || !editEndDate) {
-    alert('Заполните все поля');
+    notify('Заполните все поля', 'warning');
     return;
   }
   
   if (new Date(editEndDate) < new Date(editStartDate)) {
-    alert('❌ Дата окончания проекта не может быть раньше даты начала!');
+    notify('Дата окончания проекта не может быть раньше даты начала', 'warning');
     return;
   }
 
@@ -448,7 +450,7 @@ const updateProjectAction = async () => {
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
     handleCloseEdit();
   } catch {
-    alert('Ошибка обновления проекта');
+    notifyError('Ошибка обновления проекта');
   }
 };
 // Обработчик открытия модалки заметки
@@ -473,7 +475,7 @@ const handleSaveNote = async () => {
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
     handleCloseNoteModal();
   } catch (err: unknown) {
-    alert('Ошибка обновления заметки: ' + getApiErrorText(err, 'неизвестная ошибка'));
+    notifyError('Ошибка обновления заметки: ' + getApiErrorText(err, 'неизвестная ошибка'));
   }
 };
 
@@ -486,7 +488,7 @@ const handleSaveNote = async () => {
       setDeleteConfirmOpen(false);
       setDeletingProject(null);
     } catch {
-      alert('Ошибка удаления проекта');
+      notifyError('Ошибка удаления проекта');
     }
   };
   // ⭐ trailing в useMemo — стабильная ссылка, нет бесконечного цикла (как в Materials)
