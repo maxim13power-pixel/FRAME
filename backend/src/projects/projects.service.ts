@@ -57,6 +57,29 @@ export class ProjectsService {
     return access.hidePrices ?? false;
   }
 
+  // ⭐ №158: справочник, доступный пользователю (системный или свой) и не в архиве
+  private async resolveCatalogId(
+    catalogId: number,
+    userId?: number,
+  ): Promise<number> {
+    const catalog = await this.prisma.priceCatalog.findFirst({
+      where: {
+        id: catalogId,
+        ...(userId ? { OR: [{ ownerId: null }, { ownerId: userId }] } : {}),
+      },
+      select: { id: true, isArchived: true },
+    });
+    if (!catalog) {
+      throw new NotFoundException('Справочник цен не найден или нет доступа');
+    }
+    if (catalog.isArchived) {
+      throw new BadRequestException(
+        'Справочник цен в архиве — выберите активный',
+      );
+    }
+    return catalog.id;
+  }
+
   async create(dto: CreateProjectDto, userId: number) {
     // Валидация дат на уровне сервиса
     const startDate = new Date(dto.startDate);
@@ -80,14 +103,20 @@ export class ProjectsService {
       throw new ForbiddenException('Наблюдатель не может создавать проекты');
     }
 
+    // ⭐ №158: справочник проекта (если передан)
+    const catalogId =
+      dto.catalogId != null ? await this.resolveCatalogId(dto.catalogId, userId) : null;
+
     return this.prisma.project.create({
       data: {
         name: dto.name.trim(),
         startDate,
         endDate,
         objectId: dto.objectId,
+        catalogId,
         note: dto.note || null,
       },
+      include: { catalog: { select: { id: true, name: true } } },
     });
   }
 
@@ -103,6 +132,7 @@ export class ProjectsService {
         materials: {
           select: { specQuantity: true, totalUsed: true, totalCost: true },
         },
+        catalog: { select: { id: true, name: true } },
       },
     });
 
@@ -124,6 +154,7 @@ export class ProjectsService {
       const { materials, ...rest } = p;
       return {
         ...rest,
+        materialsCount: p.materials.length,
         progressPercent:
           sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
         // ⭐ Скрываем стоимость, если у юзера скрыты цены
@@ -145,6 +176,7 @@ export class ProjectsService {
         materials: {
           select: { specQuantity: true, totalUsed: true, totalCost: true },
         },
+        catalog: { select: { id: true, name: true } },
       },
     });
     if (!project) return null;
@@ -164,6 +196,8 @@ export class ProjectsService {
     const { materials, ...rest } = project;
     return {
       ...rest,
+      materialsCount: project.materials.length,
+
       progressPercent: sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
       // ⭐ Скрываем стоимость, если у юзера скрыты цены
       totalCost: hidePrices ? 0 : sumCost,
@@ -179,6 +213,13 @@ export class ProjectsService {
         );
       }
     }
+    // ⭐ №158: смена справочника проекта (undefined = не трогаем, null = отвязать)
+    const nextCatalogId =
+      dto.catalogId === undefined
+        ? undefined
+        : dto.catalogId === null
+          ? null
+          : await this.resolveCatalogId(dto.catalogId, userId);
     await this.prisma.project.update({
       where: { id },
       data: {
@@ -186,6 +227,7 @@ export class ProjectsService {
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
         endDate: dto.endDate ? new Date(dto.endDate) : undefined,
         note: dto.note !== undefined ? dto.note : undefined,
+        catalogId: nextCatalogId,
       },
     });
     // ⭐ Возвращаем проект с честным процентом (та же форма, что в списке)
