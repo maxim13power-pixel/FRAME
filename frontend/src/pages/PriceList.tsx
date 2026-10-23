@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -48,6 +48,7 @@ import { useFeedback } from '../contexts/FeedbackContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import {
   fetchCategoriesWithItems,
+  fetchPriceCatalogs,
   createCategory,
   updateCategory,
   deleteCategory,
@@ -55,7 +56,8 @@ import {
   updatePriceItem,
   deletePriceItem,
 } from '../services/priceListService';
-import type { PriceCategoryData, PriceItemData } from '../services/priceListService';
+import type { PriceCategoryData, PriceCatalogData, PriceItemData } from '../services/priceListService';
+import PriceCatalogList from '../components/PriceCatalogList';
 import { getApiErrorText } from '../utils/errors';
 
 // Единицы измерения — точно как в Materials.tsx (единообразие)
@@ -81,6 +83,11 @@ const PriceList: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
   const { notify, error: notifyError } = useFeedback();
+  // ⭐ №151: справочник выбирается по URL (/price-list/:catalogId)
+  const { catalogId: catalogIdParam } = useParams<{ catalogId?: string }>();
+  const catalogId = catalogIdParam ? parseInt(catalogIdParam) : undefined;
+  const [catalogs, setCatalogs] = useState<PriceCatalogData[]>([]);
+  const catalogName = catalogs.find((c) => c.id === catalogId)?.name;
 
   // Основные данные
     // Основные данные
@@ -127,7 +134,7 @@ const PriceList: React.FC = () => {
     // ============================================================
   // ⭐ ХЭДЕР v2 (по эталону Materials/Projects)
   // ============================================================
-  const headerTitle = activeTab === 'WORK' ? 'Цены на работы' : 'Цены на материалы';
+  const headerTitle = catalogName ?? 'Справочник цен';
 
   const headerTrailing = useMemo(() => isMobile ? (
     <IconButton
@@ -144,7 +151,7 @@ const PriceList: React.FC = () => {
 
   useMobileHeader({
     title: headerTitle,
-    onBack: () => navigate('/'),
+    onBack: () => navigate(catalogId ? '/price-list' : '/'),
     searchOpen: mobileSearchOpen,
     searchValue: searchQuery,
     searchPlaceholder: activeTab === 'WORK' ? 'Поиск работ...' : 'Поиск материалов...',
@@ -159,10 +166,18 @@ const PriceList: React.FC = () => {
   // ============================================================
   useEffect(() => {
     if (!token) return;
+    // ⭐ Название справочника нужно для заголовка (в т.ч. после F5)
+    fetchPriceCatalogs()
+      .then(setCatalogs)
+      .catch(() => setCatalogs([]));
+  }, [token]);
+
+  useEffect(() => {
+    if (!token || !catalogId) return;
     const loadData = async () => {
       try {
         setLoading(true);
-        const data = await fetchCategoriesWithItems(activeTab);
+        const data = await fetchCategoriesWithItems(activeTab, catalogId);
         setCategories(data);
         // ⭐ По умолчанию ВСЕ категории свёрнуты — справочник большой, тапнул и открыл
         setCollapsed(data.reduce<Record<number, boolean>>((acc, c) => {
@@ -178,7 +193,7 @@ const PriceList: React.FC = () => {
       }
     };
     loadData();
-  }, [token, activeTab]);
+  }, [token, activeTab, catalogId]);
 
   // ============================================================
   // ФИЛЬТРАЦИЯ ПО ПОИСКУ (локально, как в Materials)
@@ -328,6 +343,7 @@ const PriceList: React.FC = () => {
           price,
           categoryId,
           kind: activeTab,
+          catalogId, // ⭐ №151: расценка попадает в текущий справочник
         });
         setCategories(prev =>
           prev.map(cat =>
@@ -436,6 +452,16 @@ const PriceList: React.FC = () => {
       </Box>
     );
   }
+
+  // ⭐ №151: справочник не выбран → показываем список справочников (как «Объекты → Проекты»)
+  if (!catalogId) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: '#f0f4fa' }}>
+        <PriceCatalogList />
+      </Box>
+    );
+  }
+
 
   return (
     <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>

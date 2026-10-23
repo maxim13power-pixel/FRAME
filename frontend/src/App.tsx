@@ -99,6 +99,7 @@ const AppRoutes = () => {
         <Route path="objects/:objectId/projects" element={<Projects />} />
         <Route path="objects/:objectId/projects/:projectId/materials" element={<Materials />} />
         <Route path="price-list" element={<PriceList />} />
+        <Route path="price-list/:catalogId" element={<PriceList />} />
         <Route path="calculators" element={<Calculators />} />
         <Route path="help" element={<Help />} />
         <Route path="brigades" element={<Brigades />} />
