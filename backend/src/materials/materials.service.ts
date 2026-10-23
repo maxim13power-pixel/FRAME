@@ -567,6 +567,24 @@ export class MaterialsService {
     return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
   }
 
+  // ⭐ №159: справочник для новой расценки (системный или свой) и не архивный.
+  // Та же проверка, что в projects.service.resolveCatalogId — привязка проекта и запись расценки согласованы.
+  private async resolvePriceCatalog(catalogId: number, userId?: number) {
+    const catalog = await this.prisma.priceCatalog.findFirst({
+      where: {
+        id: catalogId,
+        ...(userId ? { OR: [{ ownerId: null }, { ownerId: userId }] } : {}),
+      },
+    });
+    if (!catalog) {
+      throw new NotFoundException('Справочник не найден или нет доступа');
+    }
+    if (catalog.isArchived) {
+      throw new BadRequestException('Справочник в архиве — выберите активный');
+    }
+    return catalog;
+  }
+
   // ✨ Создать расценку (+ опционально новую категорию) в одном запросе
   // ⭐ Новая модель: категории общие (без orgId), расценка → личный справочник (ownerId)
   async createPriceItemWithCategory(
@@ -574,6 +592,7 @@ export class MaterialsService {
     newCategoryName?: string,
     kind?: string,
     userId?: number,
+    catalogId?: number,
   ) {
     // 🔒 Защита от VIEWER: один запрос вместо двух (фикс аудита №60, п.2).
     // Читаем ВСЕ записи доступа юзера: если они есть и ВСЕ роль VIEWER →
@@ -634,9 +653,12 @@ export class MaterialsService {
     });
     if (!category) throw new NotFoundException('Категория не найдена');
 
-    // ⭐ №151: расценка живёт в справочнике — берём личный справочник юзера
-    // (или системный, если пользователь не передан: внутренние вызовы/сиды)
-    const catalog = userId
+    // ⭐ №151: расценка живёт в справочнике.
+    // ⭐ №159: явный catalogId (смета проекта) — пишем в справочник проекта, с проверкой доступа/архива.
+    // Без catalogId — прежнее поведение: личный справочник юзера (или системный для внутренних вызовов/сидов).
+    const catalog = catalogId
+      ? await this.resolvePriceCatalog(catalogId, userId)
+      : userId
       ? ((await this.prisma.priceCatalog.findFirst({
           where: { ownerId: userId },
           orderBy: { id: 'asc' },

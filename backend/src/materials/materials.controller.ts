@@ -102,6 +102,7 @@ body.item,
 body.newCategoryName,
 body.kind,
 req.user.userId,
+body.catalogId, // ⭐ №159: справочник проекта (из сметы)
 );
 }
 
