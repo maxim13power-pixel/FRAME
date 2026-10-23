@@ -23,6 +23,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { fetchProjectsByObject, createProject, updateProject, deleteProject } from '../services/projectService';
+import { fetchPriceCatalogs, createPriceCatalog } from '../services/priceListService';
+import type { PriceCatalogData } from '../services/priceListService';
+
 import type { ProjectData } from '../services/projectService';
 import { fetchEstimateTemplates, createEstimateTemplate, applyEstimateTemplate } from '../services/estimateTemplateService';
 import type { EstimateTemplate } from '../services/estimateTemplateService';
@@ -47,13 +50,16 @@ import { getApiErrorText } from '../utils/errors';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { FAB_STYLE } from '../theme';
 
+// ⭐ №158: значение селекта справочника — id, «не выбран» или «создать новый»
+type CatalogSelectValue = number | '' | 'new';
+
 const Projects: React.FC = () => {
   const { objectId } = useParams<{ objectId: string }>();
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
-  const { notify, success, error: notifyError } = useFeedback();
+  const { notify, success, error: notifyError, confirm } = useFeedback();
 
 
 // ... внутри компонента:
@@ -89,6 +95,7 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   name: string;
   startDate: string;
   endDate: string;
+  catalogId?: number | null;
 } | null>(null);
 
   // Заметки к проекту
@@ -102,6 +109,22 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [saveTemplateModalOpen, setSaveTemplateModalOpen] = useState(false);
   const [savingTemplateProject, setSavingTemplateProject] = useState<ProjectData | null>(null);
   const [templateName, setTemplateName] = useState('');
+  // ⭐ №158: справочник цен проекта
+  const [catalogs, setCatalogs] = useState<PriceCatalogData[]>([]);
+  const [newCatalogId, setNewCatalogId] = useState<CatalogSelectValue>('');
+  const [editCatalogId, setEditCatalogId] = useState<CatalogSelectValue>('');
+  const [catalogModalOpen, setCatalogModalOpen] = useState(false);
+  const [catalogModalTarget, setCatalogModalTarget] = useState<'create' | 'edit'>('create');
+  const [newCatalogName, setNewCatalogName] = useState('');
+  const [savingCatalog, setSavingCatalog] = useState(false);
+
+  // ⭐ №158: кому скрыты цены (VIEWER/hidePrices) — блок справочника не показываем
+  const hideFinance = currentObject?.hidePrices === true;
+  // ⭐ №158: привязанный справочник в архиве — показываем с пометкой (бэкенд архивные не отдаёт)
+  const archivedCatalog =
+    editingProject?.catalog && !catalogs.some((c) => c.id === editingProject.catalog!.id)
+      ? editingProject.catalog
+      : null;
 
   // Временная функция для процента (позже заменим на реальную)
   //const getProgress = () => Math.floor(Math.random() * 60) + 20;
@@ -194,6 +217,14 @@ useEffect(() => {
       .catch(() => setTemplates([]));
   }, []);
 
+  // ⭐ №158: справочники цен для привязки к проекту (системные + свои, архивные бэкенд не отдаёт)
+  useEffect(() => {
+    if (!token) return;
+    fetchPriceCatalogs()
+      .then(setCatalogs)
+      .catch(() => setCatalogs([]));
+  }, [token]);
+
   // ⭐ №129: применить выбранный шаблон после создания проекта
   const applyTemplateIfNeeded = async (projectId: number) => {
     if (!selectedTemplateId) return;
@@ -255,8 +286,64 @@ useEffect(() => {
     setNewName('');
     setNewStartDate('');
     setNewEndDate('');
+    setNewCatalogId('');
     setPendingProject(null);
     setSelectedTemplateId('');
+  };
+
+  // ⭐ №158: значение селекта «Справочник цен» -> catalogId для API ('' и «создать новый» = не выбран)
+  const catalogIdFromSelect = (value: CatalogSelectValue): number | null =>
+    typeof value === 'number' ? value : null;
+
+  // ⭐ №158: выбор справочника в модалке проекта
+  const handleCatalogSelectChange = async (value: CatalogSelectValue, target: 'create' | 'edit') => {
+    if (value === 'new') {
+      // ⭐ Название подставляем из имени объекта — прораб обычно так и называет справочник
+      setCatalogModalTarget(target);
+      setNewCatalogName(currentObject?.name ?? '');
+      setCatalogModalOpen(true);
+      return;
+    }
+    // ⭐ Смена справочника у проекта со строками: предупреждаем один раз (цены строк НЕ меняются)
+    if (target === 'edit' && editingProject && (editingProject.materialsCount ?? 0) > 0) {
+      if (value !== (editingProject.catalogId ?? '')) {
+        const ok = await confirm({
+          title: 'Сменить справочник цен?',
+          text:
+            `В смете проекта уже ${editingProject.materialsCount} поз. Их цены НЕ изменятся — ` +
+            'цена фиксируется в момент добавления строки. Новый справочник станет основным ' +
+            'для новых строк сметы.',
+          confirmText: 'Сменить',
+        });
+        if (!ok) return;
+      }
+    }
+    if (target === 'create') setNewCatalogId(value);
+    else setEditCatalogId(value);
+  };
+
+  // ⭐ №158: создать справочник прямо из модалки проекта (личный, название — имя объекта)
+  const handleCreateCatalogFromProject = async () => {
+    const trimmed = newCatalogName.trim();
+    if (!trimmed) {
+      notify('Введите название справочника', 'warning');
+      return;
+    }
+    setSavingCatalog(true);
+    try {
+      const created = await createPriceCatalog(trimmed);
+      // ⭐ Перезапрашиваем список: в ответе на создание нет счётчиков и признака «системный»
+      setCatalogs(await fetchPriceCatalogs());
+      if (catalogModalTarget === 'create') setNewCatalogId(created.id);
+      else setEditCatalogId(created.id);
+      setCatalogModalOpen(false);
+      setNewCatalogName('');
+      success(`Справочник «${created.name}» создан`);
+    } catch (err) {
+      notifyError('Не удалось создать справочник: ' + getApiErrorText(err, 'неизвестная ошибка'));
+    } finally {
+      setSavingCatalog(false);
+    }
   };
 
 const handleCreateProject = async () => {
@@ -278,6 +365,7 @@ const handleCreateProject = async () => {
       name: newName,
       startDate: newStartDate,
       endDate: newEndDate,
+      catalogId: catalogIdFromSelect(newCatalogId),
     });
     
     // Открываем красивое модальное окно
@@ -294,6 +382,7 @@ const handleCreateProject = async () => {
     name: newName,
     startDate: newStartDate,
     endDate: newEndDate,
+    catalogId: catalogIdFromSelect(newCatalogId),
   });
 };
 
@@ -301,6 +390,7 @@ const createProjectAction = async (projectData?: {
   name: string;
   startDate: string;
   endDate: string;
+  catalogId?: number | null;
 }) => {
   // Используем переданные данные или pendingProject
   const data = projectData || pendingProject;
@@ -315,6 +405,7 @@ const createProjectAction = async (projectData?: {
       name: data.name,
       startDate: data.startDate,
       endDate: data.endDate,
+      catalogId: data.catalogId ?? null,
       objectId: parseInt(objectId!),
     });
     await applyTemplateIfNeeded(created.id);
@@ -362,6 +453,7 @@ const handleConfirmDateUpdate = async () => {
         name: pendingProject.name,
         startDate: pendingProject.startDate,
         endDate: pendingProject.endDate,
+        catalogId: catalogIdFromSelect(pendingProject.catalogId ?? ''),
         objectId: parseInt(objectId!),
       });
       await applyTemplateIfNeeded(created.id);
@@ -382,6 +474,7 @@ const handleConfirmDateUpdate = async () => {
         name: editName,
         startDate: editStartDate,
         endDate: editEndDate,
+        catalogId: catalogIdFromSelect(editCatalogId),
       });
       console.log('✅ Проект обновлён:', updated);
       
@@ -405,12 +498,14 @@ const handleConfirmDateUpdate = async () => {
     setEditName(proj.name);
     setEditStartDate(proj.startDate.slice(0, 10));
     setEditEndDate(proj.endDate.slice(0, 10));
+    setEditCatalogId(proj.catalogId ?? '');
     setEditModalOpen(true);
   };
 
   const handleCloseEdit = () => {
     setEditModalOpen(false);
     setEditingProject(null);
+    setEditCatalogId('');
   };
 
 const handleUpdateProject = async () => {
@@ -446,6 +541,7 @@ const updateProjectAction = async () => {
       name: editName,
       startDate: editStartDate,
       endDate: editEndDate,
+      catalogId: catalogIdFromSelect(editCatalogId),
     });
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
     handleCloseEdit();
@@ -845,6 +941,31 @@ onBack: () => navigate('/objects'),
           шаблон») — он появится в этом списке.
         </Typography>
       )}
+      {!hideFinance && (
+        <FormControl fullWidth>
+          <InputLabel id="project-catalog-label">Справочник цен</InputLabel>
+          <Select
+            labelId="project-catalog-label"
+            label="Справочник цен"
+            value={newCatalogId}
+            onChange={(e) => handleCatalogSelectChange(e.target.value as CatalogSelectValue, 'create')}
+          >
+            <MenuItem value=""><em>Не выбран</em></MenuItem>
+            {catalogs.map((c) => (
+              <MenuItem key={c.id} value={c.id}>
+                {c.name}{c.isSystem ? ' (демо)' : ''}
+              </MenuItem>
+            ))}
+            <MenuItem value="new">➕ Создать новый…</MenuItem>
+          </Select>
+        </FormControl>
+      )}
+      {!hideFinance && catalogs.length === 0 && (
+        <Typography variant="caption" color="text.secondary">
+          Справочников пока нет — выберите «Создать новый…», название подставится из имени объекта.
+        </Typography>
+      )}
+
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
         <Button variant="outlined" onClick={handleCloseAddModal}>Отмена</Button>
         <Button variant="contained" onClick={handleCreateProject}>Сохранить</Button>
@@ -958,6 +1079,31 @@ onBack: () => navigate('/objects'),
                 min: editStartDate || (currentObject ? currentObject.startDate.slice(0, 10) : undefined),
               }}
             />
+            {!hideFinance && (
+              <FormControl fullWidth>
+                <InputLabel id="project-edit-catalog-label">Справочник цен</InputLabel>
+                <Select
+                  labelId="project-edit-catalog-label"
+                  label="Справочник цен"
+                  value={editCatalogId}
+                  onChange={(e) => handleCatalogSelectChange(e.target.value as CatalogSelectValue, 'edit')}
+                >
+                  <MenuItem value=""><em>Не выбран</em></MenuItem>
+                  {catalogs.map((c) => (
+                    <MenuItem key={c.id} value={c.id}>
+                      {c.name}{c.isSystem ? ' (демо)' : ''}
+                    </MenuItem>
+                  ))}
+                  {archivedCatalog && (
+                    <MenuItem value={archivedCatalog.id}>
+                      {archivedCatalog.name} (в архиве)
+                    </MenuItem>
+                  )}
+                  <MenuItem value="new">➕ Создать новый…</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+
             <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 1 }}>
               <Button variant="outlined" onClick={handleCloseEdit}>
                 Отмена
@@ -982,6 +1128,40 @@ onBack: () => navigate('/objects'),
                 <DeleteIcon />
               </IconButton>
             </Stack>
+          </Stack>
+        </Paper>
+      </Modal>
+      {/* Модалка создания справочника цен из проекта (№158) */}
+      <Modal open={catalogModalOpen} onClose={() => setCatalogModalOpen(false)} disableRestoreFocus={true}>
+        <Paper sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '90%', sm: 420 },
+          p: 4,
+          borderRadius: 2,
+        }}>
+          <Typography variant="h6" gutterBottom>Новый справочник цен</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Название подставлено из имени объекта — можно изменить. Справочник личный: его видите только вы.
+          </Typography>
+          <Stack spacing={2}>
+            <TextField
+              fullWidth
+              label="Название справочника"
+              value={newCatalogName}
+              onChange={e => setNewCatalogName(e.target.value)}
+              autoFocus
+            />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+              <Button variant="outlined" onClick={() => setCatalogModalOpen(false)} disabled={savingCatalog}>
+                Отмена
+              </Button>
+              <Button variant="contained" onClick={handleCreateCatalogFromProject} disabled={savingCatalog}>
+                Создать
+              </Button>
+            </Box>
           </Stack>
         </Paper>
       </Modal>

@@ -13,6 +13,11 @@ export interface ProjectData {
   totalCost?: number;
   createdAt?: string;
   updatedAt?: string;
+  // ⭐ №158: привязка справочника цен — новые строки сметы берут цены из него
+  catalogId?: number | null;
+  catalog?: { id: number; name: string } | null;
+  // ⭐ №158: сколько строк уже в смете (нужно для предупреждения при смене справочника)
+  materialsCount?: number;
 }
 
 export const fetchProjectsByObject = async (objectId: number): Promise<ProjectData[]> => {

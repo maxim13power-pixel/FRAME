@@ -34,4 +34,9 @@ export class CreateProjectDto {
   @IsString()
   @MaxLength(1000, { message: 'Заметка не более 1000 символов' })
   note?: string;
+
+  // ⭐ №158: справочник цен проекта (основной для новых строк сметы)
+  @IsOptional()
+  @IsInt({ message: 'catalogId должен быть числом' })
+  catalogId?: number | null;
 }
