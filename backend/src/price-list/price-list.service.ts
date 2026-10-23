@@ -169,6 +169,25 @@ export class PriceListService {
     });
   }
 
+  // ⭐ №159: может ли пользователь читать расценки справочника: системный — всем,
+  // свой — владельцу, чужой личный — участникам проекта, к которому он привязан.
+  private async canReadCatalog(catalogId: number, userId?: number) {
+    const catalog = await this.prisma.priceCatalog.findUnique({
+      where: { id: catalogId },
+      select: { ownerId: true },
+    });
+    if (!catalog) return false;
+    if (catalog.ownerId === null || catalog.ownerId === userId) return true;
+    if (!userId) return false;
+    const linked = await this.prisma.project.findFirst({
+      where: {
+        catalogId,
+        object: { accesses: { some: { userId } } },
+      },
+      select: { id: true },
+    });
+    return !!linked;
+  }
   // Поиск расценок (для Autocomplete в материалах): общие + личные юзера.
   // ⭐ Через явный AND, чтобы OR владельца и OR поиска не затёрли друг друга.
   async searchItems(
@@ -178,14 +197,17 @@ export class PriceListService {
     userId?: number,
     catalogId?: number,
   ) {
+    // ⭐ №159: смета ищет в справочнике проекта — проверяем, что он доступен пользователю
+    if (catalogId && !(await this.canReadCatalog(catalogId, userId))) {
+      throw new NotFoundException('Справочник не найден или нет доступа');
+    }
     return this.prisma.priceItem.findMany({
       where: {
         AND: [
           { isActive: true },
           ...(kind ? [{ kind: kind as PriceKind }] : []),
           ...(categoryId ? [{ categoryId }] : []),
-          ...(catalogId ? [{ catalogId }] : []),
-          this.ownerFilter(userId),
+          ...(catalogId ? [{ catalogId }] : [this.ownerFilter(userId)]),
           ...(search
             ? [
                 {
