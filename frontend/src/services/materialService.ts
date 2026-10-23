@@ -169,11 +169,13 @@ export const createPriceItemForMaterial = async (
     categoryId: number;
   },
   newCategoryName?: string,
-  kind?: 'WORK' | 'MATERIAL'
+  kind?: 'WORK' | 'MATERIAL',
+  // ⭐ №159: справочник проекта — новая расценка попадёт в него, а не в первый личный
+  catalogId?: number
 ) => {
   const response = await api.post(
     '/materials/price-item',
-    { item, newCategoryName, kind }
+    { item, newCategoryName, kind, catalogId }
   );
   // 🔒 P1-3: цена созданной расценки приходит Decimal-строкой
   return { ...response.data, price: parseDecimal(response.data?.price) };

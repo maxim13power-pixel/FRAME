@@ -5,6 +5,7 @@ import {
   Typography,
   Paper,
   Button,
+  Chip,
   Stack,
   CircularProgress,
   Alert,
@@ -206,6 +207,9 @@ const [newPricePrice, setNewPricePrice] = useState('');
 const [allCategories, setAllCategories] = useState<{ id: number; name: string }[]>([]);
 // ⭐ Определяем нужно ли скрывать цены (VIEWER или hidePrices=true)
 const hidePrices = currentObject?.hidePrices === true || currentObject?.role === 'VIEWER';
+  // №159: смета работает в справочнике проекта — поиск и новые расценки идут в него.
+  // Если справочник не привязан — поиск по всем доступным (прежнее поведение).
+  const priceCatalogId = currentProject?.catalogId ?? undefined;
 
 // ⭐ Экспорт XLSX/PDF (клиентская генерация)
 const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
@@ -421,7 +425,7 @@ const handlePriceSearch = async (value: string) => {
 if (!token) return;
 try {
 setPriceLoading(true);
-const data = await searchPriceItems(value || undefined, undefined, 'WORK');
+const data = await searchPriceItems(value || undefined, undefined, 'WORK', priceCatalogId);
 setPriceOptions(data);
 } catch (err) {
 console.error('Ошибка поиска расценок:', err);
@@ -464,7 +468,9 @@ setPriceLoading(false);
             price,
             categoryId: isNewCat ? 0 : Number(addPriceCategoryId),
           },
-          isNewCat ? addPriceCategoryName.trim() : undefined
+          isNewCat ? addPriceCategoryName.trim() : undefined,
+          undefined,
+          priceCatalogId
         );
         priceItemId = createdPrice.id;
       }
@@ -498,7 +504,8 @@ setPriceLoading(false);
             categoryId: isNewMatCat ? 0 : Number(addMatPriceCategoryId),
           },
           isNewMatCat ? addMatPriceCategoryName.trim() : undefined,
-          'MATERIAL'
+          'MATERIAL',
+          priceCatalogId
         );
         materialItemId = createdMatPrice.id;
       }
@@ -673,7 +680,7 @@ const handleEditPriceSearch = async (value: string) => {
   if (!token) return;
   try {
     setEditPriceLoading(true);
-    const data = await searchPriceItems(value || undefined, undefined, 'WORK');
+    const data = await searchPriceItems(value || undefined, undefined, 'WORK', priceCatalogId);
     setEditPriceOptions(data);
   } catch (err) {
     console.error('Ошибка поиска расценок:', err);
@@ -687,7 +694,7 @@ const handleMaterialPriceSearch = async (value: string) => {
   if (!token) return;
   try {
     setMaterialLoading(true);
-    const data = await searchPriceItems(value || undefined, undefined, 'MATERIAL');
+    const data = await searchPriceItems(value || undefined, undefined, 'MATERIAL', priceCatalogId);
     setMaterialOptions(data);
   } catch (err) {
     console.error('Ошибка поиска расценок материалов:', err);
@@ -701,7 +708,7 @@ const handleEditMaterialPriceSearch = async (value: string) => {
   if (!token) return;
   try {
     setEditMaterialLoading(true);
-    const data = await searchPriceItems(value || undefined, undefined, 'MATERIAL');
+    const data = await searchPriceItems(value || undefined, undefined, 'MATERIAL', priceCatalogId);
     setEditMaterialOptions(data);
   } catch (err) {
     console.error('Ошибка поиска расценок материалов:', err);
@@ -753,7 +760,8 @@ const handleSaveEdit = async () => {
           categoryId: isNewCat ? 0 : Number(newPriceCategoryId),
         },
         isNewCat ? newPriceCategoryName.trim() : undefined,
-        'WORK'
+        'WORK',
+        priceCatalogId
       );
       priceItemIdToSend = createdPrice.id;
     }
@@ -787,7 +795,8 @@ const handleSaveEdit = async () => {
           categoryId: isNewMatCat ? 0 : Number(editMatPriceCategoryId),
         },
         isNewMatCat ? editMatPriceCategoryName.trim() : undefined,
-        'MATERIAL'
+        'MATERIAL',
+        priceCatalogId
       );
       materialItemIdToSend = createdMat.id;
     }
@@ -996,6 +1005,23 @@ setSortAnchorEl(null);
           <Typography sx={{ fontSize: 14, fontWeight: 600 }}>
             {currentProject ? currentProject.name : 'Проект'}
           </Typography>
+          {!hidePrices && (
+            <Chip
+              size="small"
+              title={currentProject?.catalog ? 'Открыть справочник цен' : 'Справочник не выбран — поиск идёт по всем доступным'}
+              label={currentProject?.catalog ? `Справочник: ${currentProject.catalog.name}` : 'Справочник не выбран'}
+              onClick={currentProject?.catalog ? () => navigate(`/price-list/${currentProject.catalog!.id}`) : undefined}
+              sx={{
+                ml: { xs: 0, md: 1 },
+                height: 24,
+                fontSize: 12,
+                fontWeight: 600,
+                bgcolor: currentProject?.catalog ? 'rgba(25, 118, 210, 0.10)' : 'rgba(0, 0, 0, 0.05)',
+                color: currentProject?.catalog ? '#1565c0' : 'text.secondary',
+                cursor: currentProject?.catalog ? 'pointer' : 'default',
+              }}
+            />
+          )}
         </Box>
       </Box>
 
