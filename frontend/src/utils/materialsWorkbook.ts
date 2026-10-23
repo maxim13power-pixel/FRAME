@@ -285,6 +285,11 @@ const buildShiftSheet = (
   });
 };
 
+// ⭐ Версия формата выгрузки: по ней импорт понимает, что это наш файл,
+// и не просит пользователя вручную сопоставлять колонки.
+const FRAME_EXPORT_VERSION = 1;
+const FRAME_COLUMNS_VERSION = 1;
+
 // ⭐ Публичная точка входа: готовая книга с двумя листами
 export const buildMaterialsWorkbook = (
   materials: MaterialData[],
@@ -301,5 +306,21 @@ export const buildMaterialsWorkbook = (
       'Посменная сводка',
     );
   }
+
+  // ⭐ Скрытый лист-маркер: по нему импорт узнаёт нашу выгрузку и подхватывает её без маппинга колонок
+  const metaSheet = XLSX.utils.aoa_to_sheet([
+    ['frameExport', FRAME_EXPORT_VERSION],
+    ['columnsVersion', FRAME_COLUMNS_VERSION],
+    ['projectId', meta.projectId],
+    ['projectName', meta.projectName],
+    ['objectName', meta.objectName],
+    ['exportedAt', formatDateTime(meta.exportedAt)],
+    ['includePrices', includePrices ? 1 : 0],
+  ]);
+  XLSX.utils.book_append_sheet(wb, metaSheet, '_meta');
+  wb.Workbook = {
+    Sheets: wb.SheetNames.map((name) => ({ name, Hidden: name === '_meta' ? 1 : 0 })),
+  };
+
   return wb;
 };
