@@ -23,11 +23,23 @@ export interface PriceItemData {
   unit: string;
   price: number;
   categoryId: number;
+  catalogId?: number;
   category?: PriceCategoryData;
   isActive: boolean;
   kind: 'WORK' | 'MATERIAL';
   createdAt?: string;
   updatedAt?: string;
+}
+
+// ⭐ №151: справочник цен (несколько независимых наборов расценок)
+export interface PriceCatalogData {
+  id: number;
+  name: string;
+  ownerId: number | null;
+  isSystem: boolean;
+  itemsCount: number;
+  projectsCount: number;
+  createdAt?: string;
 }
 
 // 🔒 P1-3: Decimal (строка с бэкенда) -> number на границе API
@@ -58,10 +70,14 @@ export const fetchCategories = async (
 // Категории вместе с активными расценками (для страницы справочника)
 // GET /price-list/categories/full
 export const fetchCategoriesWithItems = async (
-  kind?: 'WORK' | 'MATERIAL'
+  kind?: 'WORK' | 'MATERIAL',
+  catalogId?: number
 ): Promise<PriceCategoryData[]> => {
   const response = await api.get('/price-list/categories/full', {
-    params: kind ? { kind } : {},
+    params: {
+      ...(kind ? { kind } : {}),
+      ...(catalogId ? { catalogId } : {}),
+    },
   });
   return response.data.map(normalizeCategory);
 };
@@ -102,13 +118,15 @@ export const deleteCategory = async (
 export const searchPriceItems = async (
   search?: string,
   categoryId?: number,
-  kind?: 'WORK' | 'MATERIAL'
+  kind?: 'WORK' | 'MATERIAL',
+  catalogId?: number
 ): Promise<PriceItemData[]> => {
   const response = await api.get('/price-list/items/search', {
     params: {
       ...(search ? { search } : {}),
       ...(categoryId ? { categoryId } : {}),
       ...(kind ? { kind } : {}),
+      ...(catalogId ? { catalogId } : {}),
     },
   });
   return response.data.map(normalizePriceItem);
@@ -124,6 +142,7 @@ export const createPriceItem = async (
     price: number;
     categoryId: number;
     kind?: 'WORK' | 'MATERIAL';
+    catalogId?: number;
   }
 ): Promise<PriceItemData> => {
   const response = await api.post('/price-list/items', data);
@@ -153,4 +172,33 @@ export const deletePriceItem = async (
 ): Promise<PriceItemData> => {
   const response = await api.delete(`/price-list/items/${id}`);
   return normalizePriceItem(response.data);
+};
+
+// ============================================================
+// ⭐ №151: СПРАВОЧНИКИ ЦЕН
+// ============================================================
+
+// Доступные справочники (системные + свои) со счётчиками
+export const fetchPriceCatalogs = async (): Promise<PriceCatalogData[]> => {
+  const response = await api.get('/price-list/catalogs');
+  return response.data;
+};
+
+export const createPriceCatalog = async (name: string): Promise<PriceCatalogData> => {
+  const response = await api.post('/price-list/catalogs', { name });
+  return response.data;
+};
+
+export const renamePriceCatalog = async (
+  id: number,
+  name: string
+): Promise<PriceCatalogData> => {
+  const response = await api.patch(`/price-list/catalogs/${id}`, { name });
+  return response.data;
+};
+
+// Архивирование (данные не удаляем — история смет сохраняется)
+export const archivePriceCatalog = async (id: number): Promise<PriceCatalogData> => {
+  const response = await api.delete(`/price-list/catalogs/${id}`);
+  return response.data;
 };
