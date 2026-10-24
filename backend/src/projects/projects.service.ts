@@ -8,6 +8,7 @@ import {
 import { AccessRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
+import { loadAccessGrants, resolveObjectRole } from '../auth/access-scope'; // ⭐ №163
 
 @Injectable()
 export class ProjectsService {
@@ -121,12 +122,25 @@ export class ProjectsService {
   }
 
   async findAllByObject(objectId: number, userId: number) {
-    // ⭐ Проверяем доступ к объекту (заодно получаем запись доступа)
-    const access = await this.checkObjectAccess(objectId, userId);
-    const hidePrices = this.mustHidePrices(access);
+    // ⭐ №163: участник, приглашённый в один проект, получает только его
+    // (раньше checkObjectAccess требовал projectId=null и отдавал 403).
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const my = resolveObjectRole(grants, objectId);
+    if (!my.role) {
+      throw new ForbiddenException('Нет доступа к этому объекту');
+    }
+    const hidePrices = my.hidePrices;
+
+    // Проекты, доступные юзеру внутри объекта
+    const allowedProjectIds = grants
+      .filter((g) => g.objectId === objectId && g.projectId != null)
+      .map((g) => g.projectId as number);
+    const projectFilter = my.hasObjectAccess
+      ? {}
+      : { id: { in: allowedProjectIds } };
 
     const projects = await this.prisma.project.findMany({
-      where: { objectId },
+      where: { objectId, ...projectFilter },
       orderBy: { createdAt: 'desc' },
       include: {
         materials: {

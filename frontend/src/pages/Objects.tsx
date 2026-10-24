@@ -30,6 +30,8 @@ import EventIcon from '@mui/icons-material/Event';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import { fetchObjects, createObject } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
+import { fetchProjectsByObject } from '../services/projectService'; // ⭐ №163
+import type { ProjectData } from '../services/projectService'; // ⭐ №163
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { useNavigate } from 'react-router-dom';
@@ -122,6 +124,9 @@ const [accessError, setAccessError] = useState('');
 // ⭐ Форма приглашения
 const [inviteIdentifier, setInviteIdentifier] = useState(''); // email или телефон
 const [inviteRole, setInviteRole] = useState<AccessRole>('FOREMAN');
+// ⭐ №163: область доступа — '' = весь объект, иначе конкретный проект
+const [inviteProjectId, setInviteProjectId] = useState<number | ''>('');
+const [accessProjects, setAccessProjects] = useState<ProjectData[]>([]);
 // ⭐ Приглашение по ссылке (как в Google Docs)
 const [inviteTab, setInviteTab] = useState<'link' | 'direct'>('link');
 const [linkRole, setLinkRole] = useState<AccessRole>('FOREMAN');
@@ -343,6 +348,17 @@ const handleOpenAccess = (obj: ObjectData) => {
   setAccessModalOpen(true);
   loadAccessMembers(obj.id);
   loadInviteLinks(obj.id);
+  // ⭐ №163: проекты объекта — для выбора «доступ только к проекту»
+  fetchProjectsByObject(obj.id)
+    .then(setAccessProjects)
+    .catch(() => setAccessProjects([]));
+};
+
+// ⭐ Название проекта по id — для бейджа области доступа
+const projectScopeLabel = (projectId: number | null) => {
+  if (!projectId) return 'весь объект';
+  const project = accessProjects.find((p) => p.id === projectId);
+  return project ? project.name : `проект #${projectId}`;
 };
 
 // ⭐ Закрыть модалку и сбросить форму
@@ -353,6 +369,8 @@ const handleCloseAccess = () => {
   setAccessError('');
   setInviteIdentifier('');
   setInviteRole('FOREMAN');
+  setInviteProjectId(''); // ⭐ №163
+  setAccessProjects([]);
   setInviteTab('link');
   setLinkRole('FOREMAN');
   setLinkHidePrices(false);
@@ -376,6 +394,8 @@ const handleInvite = async () => {
     await addAccess(accessObject.id, {
       ...(isEmail ? { email: ident } : { phone: ident }),
       role: inviteRole,
+      // ⭐ №163: '' = на весь объект, иначе — только на выбранный проект
+      projectId: inviteProjectId === '' ? null : inviteProjectId,
     });
     setInviteIdentifier('');
     await loadAccessMembers(accessObject.id);
@@ -772,10 +792,19 @@ trailing: headerTrailing,
     e.stopPropagation();
     handleOpenNoteModal(obj);
   }}
-  sx={{ mr: 1, color: obj.note ? '#1976d2' : 'inherit', bgcolor: 'action.hover' }}
+  sx={{
+    mr: 1,
+    color: obj.note ? '#1976d2' : 'inherit',
+    bgcolor: 'action.hover',
+    // ⭐ №163: заметка объекта редактируется только при доступе на весь объект
+    display: obj.hasObjectAccess === false ? 'none' : 'inline-flex',
+  }}
 >
   <NoteAltIcon fontSize="small" />
 </IconButton>
+                {/* ⭐ №163: участник отдельного проекта не управляет объектом и командой */}
+                {obj.hasObjectAccess !== false && (
+                  <>
 <IconButton
   size="small"
   onClick={(e) => {
@@ -796,6 +825,8 @@ trailing: headerTrailing,
 >
   <SettingsIcon fontSize="small" />
 </IconButton>
+                  </>
+                )}
                   
                   <Chip
                     label={`${progress}%`}
@@ -1226,6 +1257,18 @@ trailing: headerTrailing,
                       <Typography variant="caption" color="text.secondary" noWrap>
                         {member.user.email || member.user.phone || ''}
                       </Typography>
+                      {/* ⭐ №163: область доступа — весь объект или конкретный проект */}
+                      <Chip
+                        size="small"
+                        variant={member.projectId ? 'filled' : 'outlined'}
+                        color={member.projectId ? 'primary' : 'default'}
+                        label={
+                          member.projectId
+                            ? `📁 ${projectScopeLabel(member.projectId)}`
+                            : '🏗 весь объект'
+                        }
+                        sx={{ mt: 0.5, height: 20, fontSize: '0.7rem' }}
+                      />
                     </Box>
 
                     {canManage ? (
@@ -1387,6 +1430,32 @@ trailing: headerTrailing,
                       {inviteRole === 'CUSTOMER' && '👑 Заказчик: видит все цены, утверждает сметы и согласовывает изменения.'}
                       {inviteRole === 'FOREMAN' && '👷 Прораб: ведёт работы и фиксирует объёмы. Его изменения ждут согласования заказчика.'}
                       {inviteRole === 'VIEWER' && '👁 Наблюдатель: видит прогресс и объёмы, но без денег. Не может приглашать.'}
+                    </Typography>
+                    {/* ⭐ №163: область доступа — весь объект или только один проект */}
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="invite-scope-label">Доступ</InputLabel>
+                      <Select
+                        labelId="invite-scope-label"
+                        value={inviteProjectId}
+                        label="Доступ"
+                        onChange={(e) =>
+                          setInviteProjectId(
+                            e.target.value === '' ? '' : Number(e.target.value),
+                          )
+                        }
+                      >
+                        <MenuItem value="">🏗 Весь объект (все проекты)</MenuItem>
+                        {accessProjects.map((project) => (
+                          <MenuItem key={project.id} value={project.id}>
+                            📁 Только «{project.name}»
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+                      {inviteProjectId === ''
+                        ? 'Участник увидит все проекты объекта, включая созданные позже.'
+                        : 'Участник увидит только выбранный проект. Остальные проекты объекта ему недоступны.'}
                     </Typography>
                     <Button
                       variant="contained"

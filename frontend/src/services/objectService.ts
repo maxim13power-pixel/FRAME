@@ -15,6 +15,8 @@ export interface ObjectData {
   totalCost?: number;
   role?: 'CUSTOMER' | 'FOREMAN' | 'VIEWER'; // ⭐ роль пользователя на объекте
   hidePrices?: boolean; // ⭐ скрывать ли цены для этого участника
+  hasObjectAccess?: boolean; // ⭐ №163: доступ на весь объект (иначе — только конкретный проект)
+  projectsCount?: number; // ⭐ №163: сколько проектов объекта доступно пользователю
   isDemo?: boolean; // ⭐ №127: демо-объект онбординга
   isArchived?: boolean; // ⭐ архив вместо удаления (ТЗ 3.8)
 }

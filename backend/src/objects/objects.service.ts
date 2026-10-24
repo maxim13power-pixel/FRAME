@@ -3,6 +3,13 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { AccessRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateObjectDto } from './dto/create-object.dto';
+import {
+  accessibleObjectWhere,
+  accessibleProjectWhere,
+  buildAccessScope,
+  loadAccessGrants,
+  resolveObjectRole,
+} from '../auth/access-scope'; // ⭐ №163
 
 @Injectable()
 export class ObjectsService {
@@ -51,15 +58,18 @@ export class ObjectsService {
     });
   }
 
-  // Все объекты, к которым у юзера есть доступ (включая архивные — фронт сам фильтрует)
+  // Все объекты, к которым у юзера есть доступ (включая архивные — фронт сам фильтрует).
+  // ⭐ №163: участник, приглашённый только в проект, видит объект, но лишь свой проект.
   async findAll(userId: number) {
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const scope = buildAccessScope(grants);
+
     const objects = await this.prisma.object.findMany({
-      where: {
-        accesses: { some: { userId } }, // ⭐ фильтр по таблице доступа
-      },
+      where: accessibleObjectWhere(scope, { includeArchived: true }),
       orderBy: { createdAt: 'desc' },
       include: {
         projects: {
+          where: accessibleProjectWhere(scope, { includeArchived: true }),
           include: {
             materials: {
               select: {
@@ -71,15 +81,10 @@ export class ObjectsService {
             },
           },
         },
-        // ⭐ Записи доступа юзера (роль + hidePrices) по каждому объекту
-        accesses: {
-          where: { userId },
-          select: { role: true, hidePrices: true },
-        },
       },
     });
 
-    // Честный % из материалов всех проектов
+    // Честный % из материалов доступных проектов
     return objects.map((o) => {
       let sumSpec = 0;
       let sumUsed = 0;
@@ -92,19 +97,19 @@ export class ObjectsService {
           sumCost += Number(m.totalCost || 0) + Number(m.materialTotalCost || 0);
         }),
       );
-      const { projects, accesses, ...rest } = o;
-      const myAccess = accesses[0];
-      const hidePrices =
-        myAccess?.role === 'VIEWER' || (myAccess?.hidePrices ?? false);
+      const { projects, ...rest } = o;
+      const my = resolveObjectRole(grants, o.id);
       return {
         ...rest,
+        projectsCount: projects.length, // ⭐ №163: проектов, доступных юзеру
         progressPercent:
           sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
         // ⭐ Деньги прячем, объёмы/прогресс оставляем
-        totalCost: hidePrices ? 0 : sumCost,
-        // ⭐ Роль и флаг юзера на объекте — фронту для UI-правил
-        role: myAccess?.role,
-        hidePrices,
+        totalCost: my.hidePrices ? 0 : sumCost,
+        // ⭐ Роль и флаги юзера на объекте — фронту для UI-правил
+        role: my.role ?? undefined,
+        hidePrices: my.hidePrices,
+        hasObjectAccess: my.hasObjectAccess, // ⭐ №163: можно ли править сам объект
       };
     });
   }
@@ -147,14 +152,20 @@ export class ObjectsService {
   }
 
   async findOne(id: number, userId: number) {
-    const access = await this.checkAccess(id, userId);
+    // ⭐ №163: объект доступен и участнику отдельного проекта (нужен для шапки сметы)
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const my = resolveObjectRole(grants, id);
+    if (!my.role) {
+      throw new ForbiddenException('Нет доступа к этому объекту');
+    }
     const object = await this.prisma.object.findUnique({ where: { id } });
     if (!object) return null;
     // ⭐ Возвращаем роль и флаг юзера (фронт использует для UI-правил)
     return {
       ...object,
-      role: access.role,
-      hidePrices: access.role === 'VIEWER' || access.hidePrices,
+      role: my.role,
+      hidePrices: my.hidePrices,
+      hasObjectAccess: my.hasObjectAccess, // ⭐ №163: права на сам объект
     };
   }
 

@@ -51,6 +51,7 @@ export class AnalyticsService {
             AND oa."userId" = ${userId}
             AND oa."hidePrices" = false
             AND oa."role" <> 'VIEWER'
+            AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
         )
         ${objectFilter}
       GROUP BY p.id, p.name
@@ -75,6 +76,7 @@ export class AnalyticsService {
               AND oa."userId" = ${userId}
               AND oa."hidePrices" = false
               AND oa."role" <> 'VIEWER'
+              AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
           )
       `,
       // ⭐ Стоимость склада: общий склад (objectId IS NULL) + свои объекты
@@ -154,6 +156,7 @@ export class AnalyticsService {
             AND oa."userId" = ${userId}
             AND oa."hidePrices" = false
             AND oa."role" <> 'VIEWER'
+            AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
           WHERE p.id = m."projectId"
         )
       GROUP BY d.month

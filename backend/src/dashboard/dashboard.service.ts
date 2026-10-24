@@ -2,6 +2,13 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { DashboardSummaryDto } from './dashboard.types';
+import {
+  accessibleObjectWhere,
+  accessibleProjectWhere,
+  buildAccessScope,
+  buildMoneyScope,
+  loadAccessGrants,
+} from '../auth/access-scope'; // ⭐ №163
 
 // Сырые строки из $queryRaw приходят в snake_case — мапим во внутренний тип.
 interface MoneyRow {
@@ -29,19 +36,13 @@ export class DashboardService {
     const sevenDaysAgo = new Date(today);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // 7 дней включительно
 
-    // ⭐ Единый фильтр «объект доступен юзеру и не в архиве» (для вложенных where)
-    const accessibleObject = {
-      accesses: { some: { userId } },
-      isArchived: false,
-    };
-    // ⭐ Фильтр для ДЕНЕЖНЫХ данных: исключаем объекты, где у юзера скрыты цены
-    //    (флаг hidePrices или роль VIEWER — они видят объёмы, но не деньги)
-    const moneyVisibleObject = {
-      accesses: {
-        some: { userId, hidePrices: false, role: { not: 'VIEWER' as const } },
-      },
-      isArchived: false,
-    };
+    // ⭐ №163: скоупы доступа — объектный (все проекты) и проектный (точечно).
+    // moneyScope = только записи, где юзер видит цены (не VIEWER, hidePrices=false).
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const scope = buildAccessScope(grants);
+    const moneyScope = buildMoneyScope(grants);
+    const accessibleProject = accessibleProjectWhere(scope);
+    const moneyVisibleProject = accessibleProjectWhere(moneyScope);
 
     // ── 1. KPI + Money — одним батчем Promise.all (5 SQL, без N+1) ─────────────
     const [
@@ -52,17 +53,15 @@ export class DashboardService {
       volumeRows,
       moneyRows,
     ] = await Promise.all([
-      this.prisma.object.count({ where: accessibleObject }),
-      this.prisma.project.count({
-        where: { object: accessibleObject },
-      }),
+      this.prisma.object.count({ where: accessibleObjectWhere(scope) }),
+      this.prisma.project.count({ where: accessibleProject }),
       this.prisma.material.count({
-        where: { project: { object: accessibleObject } },
+        where: { project: accessibleProject },
       }),
       this.prisma.materialFix.count({
         where: {
           fixedAt: { gte: sevenDaysAgo },
-          material: { project: { object: accessibleObject } },
+          material: { project: accessibleProject },
         },
       }),
       // ⭐ EXISTS по object_access вместо o."orgId" = ...: не двоирует суммы,
@@ -79,7 +78,9 @@ export class DashboardService {
         WHERE o."isArchived" = false
           AND EXISTS (
             SELECT 1 FROM object_access oa
-            WHERE oa."objectId" = o.id AND oa."userId" = ${userId}
+            WHERE oa."objectId" = o.id
+              AND oa."userId" = ${userId}
+              AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
           )
       `,
       // ⭐ Деньги (смета/факт) — только по объектам, где юзер ВИДИТ цены
@@ -100,6 +101,7 @@ export class DashboardService {
               AND oa."userId" = ${userId}
               AND oa."hidePrices" = false
               AND oa."role" <> 'VIEWER'
+              AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
           )
       `,
     ]);
@@ -129,6 +131,7 @@ export class DashboardService {
           INNER JOIN "Project" p ON p.id = m."projectId"
           INNER JOIN "Object" o ON o.id = p."objectId" AND o."isArchived" = false
           INNER JOIN object_access oa ON oa."objectId" = o.id AND oa."userId" = ${userId}
+            AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
           WHERE m.id = mf."materialId"
         )
       GROUP BY d
@@ -142,16 +145,16 @@ export class DashboardService {
         this.prisma.project.findMany({
           where: {
             endDate: { lte: todayPlus7 },
-            object: accessibleObject,
+            ...accessibleProject,
           },
           orderBy: { endDate: 'asc' },
           include: { object: { select: { id: true, name: true } } },
         }),
-        // 3b. NoPrice — топ-5 без расценок (только «денежно-видимые» объекты)
+        // 3b. NoPrice — топ-5 без расценок (только «денежно-видимые» проекты)
         this.prisma.material.findMany({
           where: {
             OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
-            project: { object: moneyVisibleObject },
+            project: moneyVisibleProject,
           },
           orderBy: { updatedAt: 'desc' },
           take: 5,
@@ -168,12 +171,12 @@ export class DashboardService {
         this.prisma.material.count({
           where: {
             OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
-            project: { object: moneyVisibleObject },
+            project: moneyVisibleProject,
           },
         }),
         // 3d. RecentFixes — 10 последних с names material → project → object
         this.prisma.materialFix.findMany({
-          where: { material: { project: { object: accessibleObject } } },
+          where: { material: { project: accessibleProject } },
           orderBy: { fixedAt: 'desc' },
           take: 10,
           select: {

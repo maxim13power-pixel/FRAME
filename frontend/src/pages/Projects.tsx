@@ -18,6 +18,8 @@ import {
   LinearProgress,
   Menu,
   MenuItem, 
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
@@ -44,6 +46,9 @@ import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
+// ⭐ №163: напоминание о доступе к новому проекту
+import { fetchAccessList, addAccess } from '../services/accessService';
+import type { AccessMember } from '../services/accessService';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { updateObjectEndDate } from '../services/objectService';
 import { getApiErrorText } from '../utils/errors';
@@ -75,6 +80,13 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [editingProject, setEditingProject] = useState<ProjectData | null>(null);
   const [deletingProject, setDeletingProject] = useState<ProjectData | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  // ⭐ №163: после создания проекта предлагаем выдать доступ команде (по умолчанию — только заказчик)
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [reminderProject, setReminderProject] = useState<ProjectData | null>(null);
+  const [reminderMembers, setReminderMembers] = useState<AccessMember[]>([]);
+  const [reminderSelected, setReminderSelected] = useState<number[]>([]);
+  const [reminderLoading, setReminderLoading] = useState(false);
+  const [reminderSaving, setReminderSaving] = useState(false);
   const [editName, setEditName] = useState('');
   const [editStartDate, setEditStartDate] = useState('');
   const [editEndDate, setEditEndDate] = useState('');  
@@ -412,8 +424,75 @@ const createProjectAction = async (projectData?: {
     setProjects(prev => [created, ...prev]);
     handleCloseAddModal();
     setPendingProject(null); // очищаем
+    // ⭐ №163: сразу предлагаем выдать доступ к новому проекту
+    void openAccessReminder(created);
   } catch {
     notifyError('Ошибка при создании проекта');
+  }
+};
+
+// ⭐ №163: напоминание о доступе. Показываем участников объекта, у которых ещё
+// нет доступа к новому проекту (объектные записи и участники этого проекта исключены).
+// По умолчанию отмечен только заказчик — решение владельца 10.1(1).
+const openAccessReminder = async (project: ProjectData) => {
+  if (!objectId) return;
+  setReminderProject(project);
+  setReminderOpen(true);
+  setReminderLoading(true);
+  setReminderMembers([]);
+  setReminderSelected([]);
+  try {
+    const members = await fetchAccessList(parseInt(objectId));
+    const candidates = members.filter(
+      (m) => m.projectId !== null && m.projectId !== project.id,
+    );
+    setReminderMembers(candidates);
+    setReminderSelected(
+      candidates.filter((m) => m.role === 'CUSTOMER').map((m) => m.id),
+    );
+  } catch {
+    // Список не критичен: проект уже создан, просто не показываем чекбоксы
+    setReminderMembers([]);
+  } finally {
+    setReminderLoading(false);
+  }
+};
+
+const closeAccessReminder = () => {
+  setReminderOpen(false);
+  setReminderProject(null);
+  setReminderMembers([]);
+  setReminderSelected([]);
+};
+
+const handleReminderSave = async () => {
+  if (!objectId || !reminderProject) return;
+  const chosen = reminderMembers.filter((m) => reminderSelected.includes(m.id));
+  if (chosen.length === 0) {
+    closeAccessReminder();
+    return;
+  }
+  setReminderSaving(true);
+  try {
+    for (const member of chosen) {
+      await addAccess(parseInt(objectId), {
+        userId: member.userId,
+        role: member.role,
+        projectId: reminderProject.id,
+      });
+    }
+    success(
+      `Доступ к проекту «${reminderProject.name}» выдан: ${chosen.length} ` +
+        `${chosen.length === 1 ? 'участнику' : 'участникам'}.`,
+    );
+    closeAccessReminder();
+  } catch (err) {
+    notifyError(
+      'Проект создан, но доступ выдать не удалось: ' +
+        getApiErrorText(err, 'неизвестная ошибка'),
+    );
+  } finally {
+    setReminderSaving(false);
   }
 };
 
@@ -1258,6 +1337,92 @@ onBack: () => navigate('/objects'),
               </Button>
             </Box>
           </Stack>
+        </Paper>
+      </Modal>
+
+      {/* ⭐ №163: напоминание выдать доступ к новому проекту */}
+      <Modal open={reminderOpen} onClose={() => !reminderSaving && closeAccessReminder()} disableRestoreFocus>
+        <Paper
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '92%', sm: 480 },
+            maxHeight: '85vh',
+            overflowY: 'auto',
+            p: 3,
+            borderRadius: 3,
+            outline: 'none',
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            👥 Кому открыть проект?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Проект «{reminderProject?.name}» создан. Отметьте, кто из команды объекта
+            должен его видеть. По умолчанию отмечен только заказчик — остальных
+            можно добавить позже в карточке объекта.
+          </Typography>
+
+          {reminderLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : reminderMembers.length === 0 ? (
+            <Alert severity="info">
+              В команде объекта нет участников с доступом к отдельным проектам.
+              Объектные участники видят новые проекты автоматически.
+            </Alert>
+          ) : (
+            <Stack spacing={0.5}>
+              {reminderMembers.map((member) => (
+                <FormControlLabel
+                  key={member.id}
+                  control={
+                    <Checkbox
+                      checked={reminderSelected.includes(member.id)}
+                      onChange={(e) =>
+                        setReminderSelected((prev) =>
+                          e.target.checked
+                            ? [...prev, member.id]
+                            : prev.filter((id) => id !== member.id),
+                        )
+                      }
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography variant="body2">
+                        {member.user.fullName || member.user.email || member.user.phone || 'Без имени'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {member.role === 'CUSTOMER'
+                          ? '👑 Заказчик'
+                          : member.role === 'FOREMAN'
+                            ? '👷 Прораб'
+                            : '👁 Наблюдатель'}
+                        {member.projectId ? ' • доступ к другому проекту' : ''}
+                      </Typography>
+                    </Box>
+                  }
+                />
+              ))}
+            </Stack>
+          )}
+
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 3 }}>
+            <Button variant="outlined" onClick={closeAccessReminder} disabled={reminderSaving}>
+              Позже
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleReminderSave}
+              disabled={reminderSaving || reminderLoading || reminderMembers.length === 0}
+            >
+              Выдать доступ
+            </Button>
+          </Box>
         </Paper>
       </Modal>
 

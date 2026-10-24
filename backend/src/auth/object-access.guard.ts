@@ -69,10 +69,13 @@ export class ObjectAccessGuard implements CanActivate {
         if (!Number.isNaN(materialId) && materialId > 0) {
           const material = await this.prisma.material.findUnique({
             where: { id: materialId },
-            select: { project: { select: { objectId: true } } },
+            // ⭐ №163: запоминаем и projectId — иначе участник одного проекта
+            // мог бы открыть материал чужого проекта по прямому id
+            select: { project: { select: { id: true, objectId: true } } },
           });
           if (material?.project) {
             raw = material.project.objectId;
+            projectId = material.project.id;
           }
         }
       }
@@ -91,15 +94,20 @@ export class ObjectAccessGuard implements CanActivate {
       return true;
     }
 
-    // ⭐ Детерминированный резолв: сначала проектная запись доступа (с projectId),
-    // потом общая на объект (projectId: null). Никакого «первого попавшегося».
+    // ⭐ №163: для объектных маршрутов (/projects/object/:objectId, /objects/:id)
+    // пускаем любого участника объекта, включая приглашённого только в проект —
+    // фильтрацию проектов делает сервис. Для проектных маршрутов доступ строгий.
     const access =
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId, projectId: projectId ?? null },
-      })) ??
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId, projectId: null },
-      }));
+      projectId == null
+        ? await this.prisma.objectAccess.findFirst({
+            where: { userId, objectId },
+          })
+        : ((await this.prisma.objectAccess.findFirst({
+            where: { userId, objectId, projectId },
+          })) ??
+          (await this.prisma.objectAccess.findFirst({
+            where: { userId, objectId, projectId: null },
+          })));
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
