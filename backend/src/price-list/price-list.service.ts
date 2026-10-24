@@ -139,12 +139,14 @@ export class PriceListService {
       const canWrite =
         isAdmin ||
         (!!userId && c.ownerId === userId) ||
-        c.objects.some((o) =>
-          canWriteWithRole(resolveObjectRole(grants, o.id).role),
-        ) ||
-        c.projects.some((p) =>
-          canWriteWithRole(resolveProjectRole(grants, p.objectId, p.id)),
-        );
+        // системный справочник правит только ADMIN (привязка к объекту не даёт прав)
+        (!isSystem &&
+          (c.objects.some((o) =>
+            canWriteWithRole(resolveObjectRole(grants, o.id).role),
+          ) ||
+            c.projects.some((p) =>
+              canWriteWithRole(resolveProjectRole(grants, p.objectId, p.id)),
+            )));
       return {
         id: c.id,
         name: c.name,

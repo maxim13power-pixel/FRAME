@@ -215,6 +215,28 @@ describe('PriceListService — справочники объекта и прое
     );
     expect(prisma.priceItem.update).not.toHaveBeenCalled();
   });
+  it('updateItem: системный справочник правит только ADMIN, даже если привязан к проекту', async () => {
+    prisma.priceItem.findUnique.mockResolvedValue({ id: 1, catalogId: 1 });
+    prisma.priceCatalog.findUnique.mockResolvedValue({
+      id: 1,
+      name: 'Демо-справочник',
+      ownerId: null,
+      isArchived: false,
+    });
+    prisma.object.findMany.mockResolvedValue([]);
+    prisma.project.findMany.mockResolvedValue([
+      { id: 29, name: 'Монолит', objectId: 15 },
+    ]);
+    prisma.objectAccess.findMany.mockResolvedValue([
+      { objectId: 15, projectId: 29, role: 'FOREMAN', hidePrices: false },
+    ]);
+
+    await expect(service.updateItem(1, { price: 120 }, 7)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(prisma.priceItem.update).not.toHaveBeenCalled();
+  });
+
   it('createCatalog с objectId: наблюдатель не может завести справочник объекта', async () => {
     prisma.object.findUnique.mockResolvedValue({ id: 10 });
     prisma.objectAccess.findMany.mockResolvedValue([

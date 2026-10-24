@@ -418,8 +418,9 @@ prorab — 6 проектов (74 демо + 14 монолит); prorab2 — 4 �
 Действующий справочник проекта: Project.catalogId → Object.catalogId → личный/системный (поиск «по всем»).
 Бэкенд:
   - backend/src/price-list/catalog-access.ts — единая проверка loadCatalogAccess(prisma, catalogId, userId)
-    → { canRead, canWrite, objects, projects }: системный читают все, правит ADMIN; личный — владелец;
-    объектный/проектный — читают участники, пишут CUSTOMER/FOREMAN (решение 10.1(2), hidePrices — только UI);
+    → { canRead, canWrite, objects, projects }: системный читают все, правит ТОЛЬКО ADMIN (привязка к проекту
+    прав на запись не даёт); личный — владелец; объектный/проектный — читают участники, пишут CUSTOMER/FOREMAN
+    (решение 10.1(2), hidePrices — только отображение);
   - listCatalogs: + scope (system/object/project/personal), objectId/objectName, projectId/projectName, canWrite,
     objectsCount; в список попадают справочники объектов/проектов, где у юзера есть доступ;
   - createCatalog(name, userId, { objectId | projectId }) сразу привязывает справочник; POST /price-list/catalogs
@@ -441,10 +442,11 @@ prorab — 6 проектов (74 демо + 14 монолит); prorab2 — 4 �
   - Projects.tsx: вариант «Как у объекта (наследуется)» и подпись, каким справочником объекта пользуется проект;
   - Materials.tsx: бейдж показывает действующий справочник (объектный помечен «(объект)»), поиск и новые
     расценки идут в него.
-ТЕСТЫ: price-list.service.spec.ts +7 кейсов (видимость объектного справочника, canWrite у наблюдателя, 403 на
-смену расценки и создание справочника объекта, копирование расценок), materials.service.spec.ts переписан под
-loadCatalogAccess (+ кейс «чужой справочник ⇒ 404»). Backend: 9 suites, 45 тестов (43 passed, 2 todo);
-npm run build backend и frontend — зелёные. Локально схема применена через prisma db push + migrate resolve.
+ТЕСТЫ: price-list.service.spec.ts +8 кейсов (видимость объектного справочника, canWrite у наблюдателя, 403 на
+смену расценки и создание справочника объекта, системный справочник правит только ADMIN, копирование расценок),
+materials.service.spec.ts переписан под loadCatalogAccess (+ кейс «чужой справочник ⇒ 404»). Backend: 9 suites,
+46 тестов (44 passed, 2 todo); npm run build backend и frontend — зелёные. Локально схема применена через
+prisma db push + migrate resolve.
 ПРОВЕРЕНО ВЖИВУЮ (25.10.2026, dev-БД, объекты 14/15): справочник объекта создаётся (scope=object); проект без
 своего справочника получает effectiveCatalogId объекта (catalogSource=object); свой справочник проекта перекрывает
 объектный; прораб создаёт и переименовывает расценки в объектном справочнике; наблюдатель видит справочник

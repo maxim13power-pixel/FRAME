@@ -89,7 +89,8 @@ export async function loadCatalogAccess(
       canRead = true;
       canWrite = true;
     }
-    if (!canRead || !canWrite) {
+    // Системный справочник правит только ADMIN — привязка к проекту этого не меняет
+    if ((!canRead || !canWrite) && catalog.ownerId !== null) {
       const grants = await loadAccessGrants(prisma, userId);
       for (const o of bindings.objects) {
         const role = resolveObjectRole(grants, o.id).role;
