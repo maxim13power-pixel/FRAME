@@ -19,6 +19,9 @@ model User {
   password    String
   fullName    String
   role        Role            @default(FOREMAN)
+  // ⭐ №160: версия сессий. Инкремент = «выйти на всех устройствах»:
+  // все ранее выданные JWT становятся невалидными (проверка в jwt.strategy.ts).
+  tokenVersion Int            @default(0)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
