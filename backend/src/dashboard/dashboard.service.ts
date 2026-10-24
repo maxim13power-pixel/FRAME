@@ -160,7 +160,8 @@ export class DashboardService {
             name: true,
             unitPrice: true,
             materialUnitPrice: true,
-            project: { select: { id: true, name: true } },
+            // ⭐ №161: objectId нужен фронту для deep-link «Без расценки» → строка сметы
+            project: { select: { id: true, name: true, objectId: true } },
           },
         }),
         // 3c. NoPrice — total count (для бейджа)

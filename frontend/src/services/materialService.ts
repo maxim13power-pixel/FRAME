@@ -197,6 +197,14 @@ export const updateMaterial = async (
   const response = await api.patch(`/materials/${materialId}`, data);
   return normalizeMaterial(response.data);
 };
+// ⭐ №162: копировать строку материала (план без факта и фиксаций)
+export const duplicateMaterial = async (
+  materialId: number
+): Promise<MaterialData> => {
+  const response = await api.post(`/materials/${materialId}/duplicate`);
+  return normalizeMaterial(response.data);
+};
+
 // Удаление материала
 export const deleteMaterial = async (
   materialId: number

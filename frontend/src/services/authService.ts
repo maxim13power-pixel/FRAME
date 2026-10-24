@@ -12,3 +12,10 @@ export const resetPassword = async (token: string, newPassword: string) => {
   const response = await api.post('/auth/reset-password', { token, newPassword });
   return response.data;
 };
+
+// ⭐ №160: «Выйти на всех устройствах» — бэкенд инкрементит tokenVersion,
+// после чего все выданные ранее JWT (включая текущий) становятся невалидными.
+export const logoutAll = async () => {
+  const response = await api.post('/auth/logout-all');
+  return response.data;
+};

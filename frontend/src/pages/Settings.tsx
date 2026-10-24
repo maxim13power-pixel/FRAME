@@ -5,6 +5,7 @@ import {
   Button, Divider, Modal, Alert, Chip,
   List, ListItemButton, ListItemIcon, ListItemText,
   IconButton, useMediaQuery, useTheme,
+  Accordion, AccordionSummary, AccordionDetails,
 } from '@mui/material';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -12,10 +13,12 @@ import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import EmailIcon from '@mui/icons-material/Email';
 import PhoneIcon from '@mui/icons-material/Phone';
 import LogoutIcon from '@mui/icons-material/Logout';
+import DevicesIcon from '@mui/icons-material/Devices';
 import TuneIcon from '@mui/icons-material/Tune';
 import SecurityIcon from '@mui/icons-material/Security';
 import InfoIcon from '@mui/icons-material/Info';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DescriptionIcon from '@mui/icons-material/Description';
 import PrivacyTipIcon from '@mui/icons-material/PrivacyTip';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
@@ -25,6 +28,8 @@ import { ALL_BOTTOM_TABS, getBottomNavConfig, DEFAULT_BOTTOM_TABS } from '../com
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { exportMyData, deleteMyAccount } from '../services/usersService';
+import { logoutAll } from '../services/authService';
+import { getTokenExpiry } from '../utils/jwt';
 
 const MAX_TABS = 5;
 const MIN_TABS = 3;
@@ -41,12 +46,16 @@ const Settings: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { user, logout } = useAuth();
+  const { user, logout, token } = useAuth();
   const { error: notifyError } = useFeedback();
   useMobileHeader({ title: 'Настройки', onBack: () => navigate(-1) });
 
   const [selected, setSelected] = useState<string[]>(() => getBottomNavConfig());
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [loggingOutAll, setLoggingOutAll] = useState(false);
+
+  // ⭐ №160: «Сессия активна до …» — читаем exp из текущего JWT
+  const sessionExpiry = getTokenExpiry(token);
 
   const persist = (value: string[]) => {
     localStorage.setItem('frame_bottom_nav', JSON.stringify(value));
@@ -109,6 +118,21 @@ const Settings: React.FC = () => {
     navigate('/login', { replace: true });
   };
 
+  // ⭐ №160: отзыв всех сессий. Даже если запрос не прошёл (нет сети),
+  // локальную сессию закрываем — иначе пользователь останется «в никуда».
+  const handleLogoutAll = async () => {
+    try {
+      setLoggingOutAll(true);
+      await logoutAll();
+    } catch {
+      // молча: локальный выход всё равно выполнится ниже
+    } finally {
+      setLoggingOutAll(false);
+      logout();
+      navigate('/login', { replace: true });
+    }
+  };
+
   return (
     <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
       {/* Заголовок на десктопе (на мобилке — в шапке) */}
@@ -157,17 +181,50 @@ const Settings: React.FC = () => {
           </Stack>
         )}
         <Divider sx={{ my: 2 }} />
+        {/* ⭐ №160: срок действия текущей сессии (из exp в JWT) */}
+        {sessionExpiry && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+            Сессия активна до{' '}
+            {sessionExpiry.toLocaleString('ru-RU', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </Typography>
+        )}
         <Button variant="outlined" color="error" startIcon={<LogoutIcon />} onClick={handleLogout} fullWidth>
           Выйти из аккаунта
         </Button>
+        <Button
+          variant="text"
+          color="error"
+          startIcon={<DevicesIcon />}
+          onClick={handleLogoutAll}
+          disabled={loggingOutAll}
+          fullWidth
+          sx={{ mt: 1 }}
+        >
+          {loggingOutAll ? 'Завершаем сессии…' : 'Выйти на всех устройствах'}
+        </Button>
       </Paper>
 
-      {/* ⭐ Интерфейс */}
-      <Paper sx={{ p: 2.5, borderRadius: 2, mb: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-          <TuneIcon sx={{ color: '#1976d2' }} />
-          <Typography variant="subtitle1" fontWeight={700}>Нижнее меню</Typography>
-        </Box>
+      {/* ⭐ Интерфейс — свёрнут по умолчанию (настройка редкая, не должна
+          оттеснять профиль и приватность) */}
+      <Accordion
+        disableGutters
+        elevation={0}
+        sx={{ borderRadius: 2, mb: 2, '&:before': { display: 'none' }, border: '1px solid', borderColor: 'divider' }}
+      >
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <TuneIcon sx={{ color: '#1976d2' }} />
+            <Typography variant="subtitle1" fontWeight={700}>Нижнее меню</Typography>
+            <Chip size="small" label={`${selected.length} из ${MAX_TABS}`} sx={{ bgcolor: '#e3f2fd', color: '#1976d2', fontWeight: 600 }} />
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           Выбери от {MIN_TABS} до {MAX_TABS} кнопок для нижней навигации. Порядок — как в списке.
         </Typography>
@@ -204,7 +261,8 @@ const Settings: React.FC = () => {
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
           Выбрано: {selected.length} из {MAX_TABS}. Меню обновится сразу после сохранения.
         </Typography>
-      </Paper>
+        </AccordionDetails>
+      </Accordion>
 
       {/* ⭐ Данные и конфиденциальность */}
       <Paper sx={{ p: 2.5, borderRadius: 2, mb: 2 }}>

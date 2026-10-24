@@ -689,6 +689,54 @@ export class MaterialsService {
     });
   }
 
+  // ⭐ №162: копирование строки материала.
+  // Копируем только «план» (название, объём, расценки и их снапшоты);
+  // факт и фиксации НЕ переносим — новая строка всегда totalUsed = 0.
+  async duplicate(id: number, userId: number) {
+    const access = await this.checkMaterialAccess(id, userId);
+    // 🔒 VIEWER не имеет права создавать материалы
+    if (access.role === 'VIEWER') {
+      throw new ForbiddenException('Наблюдатель не может копировать материалы');
+    }
+    const source = await this.prisma.material.findUnique({ where: { id } });
+    if (!source) throw new NotFoundException('Материал не найден');
+
+    const copy = await this.prisma.material.create({
+      data: {
+        name: this.buildCopyName(source.name),
+        article: source.article,
+        unit: source.unit,
+        specQuantity: source.specQuantity,
+        note: source.note,
+        projectId: source.projectId,
+        // снапшоты цен берём из источника: справочник мог измениться с момента создания
+        priceItemId: source.priceItemId,
+        unitPrice: source.unitPrice,
+        totalUsed: 0,
+        totalCost: 0,
+        materialItemId: source.materialItemId,
+        materialUnitPrice: source.materialUnitPrice,
+        materialTotalCost: 0,
+        isSpecLocked: source.isSpecLocked,
+      },
+      include: MATERIAL_INCLUDE,
+    });
+    await this.audit.log(userId, 'material', copy.id, 'create', undefined, {
+      name: copy.name,
+      copiedFrom: source.id,
+    });
+    return this.mustHidePrices(access) ? this.stripPrices(copy) : copy;
+  }
+
+  /** «Стяжка пола» → «Стяжка пола (копия)», «… (копия)» → «… (копия 2)» */
+  private buildCopyName(name: string): string {
+    const match = name.match(/^(.*) \(копия(?: (\d+))?\)$/);
+    if (!match) return `${name} (копия)`;
+    const base = match[1];
+    const next = match[2] ? Number(match[2]) + 1 : 2;
+    return `${base} (копия ${next})`;
+  }
+
   // Удаление (фиксации удалятся каскадно)
   async remove(id: number, userId?: number) {
     // ⭐ Проверка доступа через ObjectAccess (запоминаем access)

@@ -56,6 +56,12 @@ export class MaterialsController {
     return this.materialsService.addFix(id, dto, req.user.userId);
   }
 
+  // ⭐ №162: копировать строку материала (план без факта и фиксаций)
+  @Post(':id/duplicate')
+  duplicate(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.materialsService.duplicate(id, req.user.userId);
+  }
+
   @Patch(':id/last-fix')
   editLastFix(
     @Param('id', ParseIntPipe) id: number,

@@ -2,12 +2,15 @@ import {
   Body,
   Controller,
   Post,
+  Req,
   UnauthorizedException,
+  UseGuards,
   ValidationPipe,
   Request,
 } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
 import { AuthService } from './auth.service';
+import { JwtAuthGuard } from './jwt-auth.guard';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto'; // ⭐ P0-4
@@ -34,6 +37,13 @@ export class AuthController {
       throw new UnauthorizedException('Неверный телефон/email или пароль');
     }
     return this.authService.login(user, dto.rememberMe);
+  }
+
+  // ⭐ №160: «Выйти на всех устройствах» — отзывает все выданные JWT
+  @Post('logout-all')
+  @UseGuards(JwtAuthGuard)
+  async logoutAll(@Req() req) {
+    return this.authService.logoutAll(req.user.userId);
   }
 
   // ⭐ Регистрация нового пользователя

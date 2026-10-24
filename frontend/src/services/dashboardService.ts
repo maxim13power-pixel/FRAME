@@ -24,7 +24,7 @@ export interface DashboardSummary {
       name: string;
       unitPrice: number;
       materialUnitPrice: number;
-      project: { id: number; name: string };
+      project: { id: number; name: string; objectId: number };
     }[];
     count: number;
   };

@@ -22,7 +22,10 @@ import { getApiErrorMessage } from '../utils/errors';
 const Login: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  // ⭐ №160: по умолчанию «Запомнить меня» включён — сессия живёт 180 дней
+  // (без галочки — 15 дней). Оба срока безопасны: токен можно отозвать
+  // кнопкой «Выйти на всех устройствах» (tokenVersion).
+  const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const handleClickShowPassword = () => setShowPassword((show) => !show);
   const [error, setError] = useState('');

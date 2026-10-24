@@ -48,8 +48,13 @@ export class AuthService {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      // ⭐ №160: версия сессий — сравнивается в jwt.strategy.ts.
+      // Старые токены (без tv) считаются версией 0 и живут до истечения.
+      tv: user.tokenVersion ?? 0,
     };
-    const expiresIn = rememberMe ? '30d' : '1d';
+    // ⭐ №160: 15 дней по умолчанию, 180 — с «Запомнить меня».
+    // (365 — после внедрения refresh-токенов.)
+    const expiresIn = rememberMe ? '180d' : '15d';
     const access_token = this.jwtService.sign(payload, { expiresIn });
 
     return {
@@ -61,6 +66,20 @@ export class AuthService {
         phone: user.phone,
         role: user.role,
       },
+    };
+  }
+
+  // ⭐ №160: «Выйти на всех устройствах» — инкремент tokenVersion делает
+  // невалидными все ранее выданные JWT (включая текущий).
+  async logoutAll(userId: number) {
+    const user = await this.prismaService.user.update({
+      where: { id: userId },
+      data: { tokenVersion: { increment: 1 } },
+      select: { tokenVersion: true },
+    });
+    return {
+      message: 'Все сессии завершены',
+      tokenVersion: user.tokenVersion,
     };
   }
 
@@ -164,7 +183,8 @@ export class AuthService {
     await this.prismaService.$transaction([
       this.prismaService.user.update({
         where: { id: resetToken.userId },
-        data: { password: hashedPassword },
+        // ⭐ №160: сброс пароля заодно завершает все активные сессии
+        data: { password: hashedPassword, tokenVersion: { increment: 1 } },
       }),
       this.prismaService.passwordResetToken.update({
         where: { id: resetToken.id },
