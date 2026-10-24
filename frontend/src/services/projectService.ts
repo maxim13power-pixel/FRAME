@@ -16,6 +16,10 @@ export interface ProjectData {
   // ⭐ №158: привязка справочника цен — новые строки сметы берут цены из него
   catalogId?: number | null;
   catalog?: { id: number; name: string } | null;
+  // ⭐ №164: действующий справочник = свой проекта → справочник объекта → нет
+  effectiveCatalogId?: number | null;
+  effectiveCatalogName?: string | null;
+  catalogSource?: 'project' | 'object' | null;
   // ⭐ №158: сколько строк уже в смете (нужно для предупреждения при смене справочника)
   materialsCount?: number;
 }

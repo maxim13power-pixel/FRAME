@@ -107,6 +107,28 @@ const ROLE_PRIORITY: Record<AccessRole, number> = {
 };
 
 /**
+ * ⭐ №164: роль пользователя на конкретном проекте.
+ * Объектная запись (projectId=null) важнее проектной — та же семантика, что в resolveObjectRole.
+ */
+export function resolveProjectRole(
+  grants: AccessGrant[],
+  objectId: number,
+  projectId: number,
+): AccessRole | null {
+  const own = grants.filter(
+    (g) =>
+      g.objectId === objectId &&
+      (g.projectId == null || g.projectId === projectId),
+  );
+  if (own.length === 0) return null;
+  const full = own.find((g) => g.projectId == null);
+  if (full) return full.role;
+  return own.reduce((a, b) =>
+    ROLE_PRIORITY[b.role] > ROLE_PRIORITY[a.role] ? b : a,
+  ).role;
+}
+
+/**
  * Роль пользователя на уровне объекта.
  * Объектная запись (projectId=null) важнее проектных: она и определяет права
  * на сам объект (редактирование, архив, создание проектов).

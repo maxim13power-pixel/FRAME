@@ -8,9 +8,13 @@ import {
   Button,
   Chip,
   CircularProgress,
+  FormControl,
   IconButton,
+  InputLabel,
+  MenuItem,
   Modal,
   Paper,
+  Select,
   Stack,
   TextField,
   Typography,
@@ -19,14 +23,20 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import {
   archivePriceCatalog,
+  copyPriceCatalog,
   createPriceCatalog,
   fetchPriceCatalogs,
   renamePriceCatalog,
 } from '../services/priceListService';
 import type { PriceCatalogData } from '../services/priceListService';
+import { fetchObjects } from '../services/objectService';
+import { fetchProjectsByObject } from '../services/projectService';
+import type { ObjectData } from '../services/objectService';
+import type { ProjectData } from '../services/projectService';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { getApiErrorText } from '../utils/errors';
 
@@ -45,6 +55,14 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
   const [editing, setEditing] = useState<PriceCatalogData | null>(null);
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
+  // ⭐ №164: «поделиться» — копия расценок в справочник объекта/проекта
+  const [copySource, setCopySource] = useState<PriceCatalogData | null>(null);
+  const [copyObjects, setCopyObjects] = useState<ObjectData[]>([]);
+  const [copyProjects, setCopyProjects] = useState<ProjectData[]>([]);
+  const [copyObjectId, setCopyObjectId] = useState<number | ''>('');
+  const [copyProjectId, setCopyProjectId] = useState<number | ''>('');
+  const [copyName, setCopyName] = useState('');
+  const [copySaving, setCopySaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -115,6 +133,60 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
     }
   };
 
+  // ⭐ №164: «поделиться» справочником — копия расценок в справочник объекта/проекта
+  const handleOpenCopy = async (catalog: PriceCatalogData) => {
+    setCopySource(catalog);
+    setCopyName(`Копия «${catalog.name}»`);
+    setCopyObjectId('');
+    setCopyProjectId('');
+    setCopyProjects([]);
+    try {
+      const objects = await fetchObjects();
+      setCopyObjects(objects.filter((o) => !o.isArchived));
+    } catch {
+      setCopyObjects([]);
+    }
+  };
+
+  const handleCopyObjectChange = async (value: number | '') => {
+    setCopyObjectId(value);
+    setCopyProjectId('');
+    if (!value) {
+      setCopyProjects([]);
+      return;
+    }
+    try {
+      setCopyProjects(await fetchProjectsByObject(value));
+    } catch {
+      setCopyProjects([]);
+    }
+  };
+
+  const handleCopyConfirm = async () => {
+    if (!copySource) return;
+    if (!copyObjectId && !copyProjectId) {
+      notify('Выберите объект или проект', 'warning');
+      return;
+    }
+    setCopySaving(true);
+    try {
+      const created = await copyPriceCatalog(copySource.id, {
+        name: copyName.trim() || undefined,
+        objectId: copyProjectId ? undefined : Number(copyObjectId),
+        projectId: copyProjectId ? Number(copyProjectId) : undefined,
+      });
+      success(
+        `Скопировано расценок: ${created.itemsCount ?? 0} → «${created.name}»`,
+      );
+      setCopySource(null);
+      await load();
+    } catch (err) {
+      notifyError(getApiErrorText(err, 'Не удалось скопировать справочник'));
+    } finally {
+      setCopySaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
@@ -160,22 +232,54 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
             onClick={() => navigate(`/price-list/${catalog.id}`)}
           >
             <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-              <Stack direction="row" alignItems="center" spacing={1}>
+              <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#04164b' }} noWrap>
                   {catalog.name}
                 </Typography>
                 {catalog.isSystem && (
                   <Chip label="системный" size="small" sx={{ bgcolor: '#e3f2fd', color: '#1565c0' }} />
                 )}
+                {catalog.scope === 'object' && (
+                  <Chip
+                    label={`объект: ${catalog.objectName ?? '—'}`}
+                    size="small"
+                    sx={{ bgcolor: '#e8f5e9', color: '#2e7d32' }}
+                  />
+                )}
+                {catalog.scope === 'project' && (
+                  <Chip
+                    label={`проект: ${catalog.projectName ?? '—'}`}
+                    size="small"
+                    sx={{ bgcolor: '#fff3e0', color: '#ef6c00' }}
+                  />
+                )}
+                {catalog.scope === 'personal' && (
+                  <Chip label="личный" size="small" sx={{ bgcolor: '#eceff1', color: '#455a64' }} />
+                )}
+                {catalog.canWrite === false && (
+                  <Chip label="только чтение" size="small" variant="outlined" />
+                )}
               </Stack>
               <Typography variant="caption" color="text.secondary">
                 расценок: {catalog.itemsCount} · проектов: {catalog.projectsCount}
+                {catalog.scope === 'object' ? ' · справочник объекта' : ''}
               </Typography>
             </Box>
 
             <IconButton
               size="small"
-              title="Переименовать"
+              title="Скопировать расценки в справочник объекта или проекта"
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleOpenCopy(catalog);
+              }}
+            >
+              <ContentCopyIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              title={catalog.canWrite === false ? 'Только чтение' : 'Переименовать'}
+              disabled={catalog.canWrite === false}
               onClick={(e) => {
                 e.stopPropagation();
                 handleOpenRename(catalog);
@@ -185,7 +289,8 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
             </IconButton>
             <IconButton
               size="small"
-              title="Архивировать"
+              title={catalog.canWrite === false ? 'Только чтение' : 'Архивировать'}
+              disabled={catalog.canWrite === false}
               onClick={(e) => {
                 e.stopPropagation();
                 void handleArchive(catalog);
@@ -240,6 +345,94 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
           </Stack>
         </Paper>
       </Modal>
+      {/* ⭐ №164: «поделиться» — копия расценок в справочник объекта/проекта */}
+      <Modal open={!!copySource} onClose={() => setCopySource(null)} disableRestoreFocus>
+        <Paper
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '92%', sm: 460 },
+            p: 3,
+            borderRadius: 2,
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Поделиться справочником
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Расценки «{copySource?.name}» ({copySource?.itemsCount ?? 0}) будут скопированы
+            в новый справочник выбранного объекта или проекта. Исходный справочник не меняется.
+          </Typography>
+          <Stack spacing={2}>
+            <TextField
+              fullWidth
+              label="Название нового справочника"
+              value={copyName}
+              onChange={(e) => setCopyName(e.target.value)}
+              inputProps={{ maxLength: 80 }}
+            />
+            <FormControl fullWidth>
+              <InputLabel id="catalog-copy-object-label">Объект</InputLabel>
+              <Select
+                labelId="catalog-copy-object-label"
+                label="Объект"
+                value={copyObjectId}
+                onChange={(e) => {
+                  void handleCopyObjectChange(
+                    e.target.value === '' ? '' : Number(e.target.value),
+                  );
+                }}
+              >
+                <MenuItem value="">
+                  <em>Не выбран</em>
+                </MenuItem>
+                {copyObjects.map((o) => (
+                  <MenuItem key={o.id} value={o.id}>
+                    {o.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth disabled={!copyObjectId}>
+              <InputLabel id="catalog-copy-project-label">Проект (необязательно)</InputLabel>
+              <Select
+                labelId="catalog-copy-project-label"
+                label="Проект (необязательно)"
+                value={copyProjectId}
+                onChange={(e) =>
+                  setCopyProjectId(
+                    e.target.value === '' ? '' : Number(e.target.value),
+                  )
+                }
+              >
+                <MenuItem value="">
+                  <em>Весь объект</em>
+                </MenuItem>
+                {copyProjects.map((p) => (
+                  <MenuItem key={p.id} value={p.id}>
+                    {p.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
+          <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
+            <Button onClick={() => setCopySource(null)}>Отмена</Button>
+            <Button
+              variant="contained"
+              onClick={() => {
+                void handleCopyConfirm();
+              }}
+              disabled={copySaving}
+            >
+              {copySaving ? <CircularProgress size={18} /> : 'Скопировать'}
+            </Button>
+          </Stack>
+        </Paper>
+      </Modal>
+
     </Box>
   );
 };

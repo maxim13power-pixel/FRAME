@@ -31,7 +31,7 @@ export interface PriceItemData {
   updatedAt?: string;
 }
 
-// ⭐ №151: справочник цен (несколько независимых наборов расценок)
+// ⭐ №151/№164: справочник цен (несколько независимых наборов расценок)
 export interface PriceCatalogData {
   id: number;
   name: string;
@@ -39,6 +39,14 @@ export interface PriceCatalogData {
   isSystem: boolean;
   itemsCount: number;
   projectsCount: number;
+  // ⭐ №164: область справочника и права
+  scope?: 'system' | 'object' | 'project' | 'personal';
+  objectId?: number | null;
+  objectName?: string | null;
+  projectId?: number | null;
+  projectName?: string | null;
+  objectsCount?: number;
+  canWrite?: boolean;
   createdAt?: string;
 }
 
@@ -178,14 +186,27 @@ export const deletePriceItem = async (
 // ⭐ №151: СПРАВОЧНИКИ ЦЕН
 // ============================================================
 
-// Доступные справочники (системные + свои) со счётчиками
+// Доступные справочники (системные + свои + объектные/проектные) со счётчиками
 export const fetchPriceCatalogs = async (): Promise<PriceCatalogData[]> => {
   const response = await api.get('/price-list/catalogs');
   return response.data;
 };
 
-export const createPriceCatalog = async (name: string): Promise<PriceCatalogData> => {
-  const response = await api.post('/price-list/catalogs', { name });
+// ⭐ №164: создать справочник; objectId/projectId — сразу привязать к объекту/проекту
+export const createPriceCatalog = async (
+  name: string,
+  opts?: { objectId?: number; projectId?: number }
+): Promise<PriceCatalogData> => {
+  const response = await api.post('/price-list/catalogs', { name, ...opts });
+  return response.data;
+};
+
+// ⭐ №164: «поделиться» = скопировать расценки в справочник объекта/проекта
+export const copyPriceCatalog = async (
+  id: number,
+  data: { name?: string; objectId?: number; projectId?: number }
+): Promise<PriceCatalogData> => {
+  const response = await api.post(`/price-list/catalogs/${id}/copy`, data);
   return response.data;
 };
 

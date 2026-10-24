@@ -17,6 +17,8 @@ export interface ObjectData {
   hidePrices?: boolean; // ⭐ скрывать ли цены для этого участника
   hasObjectAccess?: boolean; // ⭐ №163: доступ на весь объект (иначе — только конкретный проект)
   projectsCount?: number; // ⭐ №163: сколько проектов объекта доступно пользователю
+  catalogId?: number | null; // ⭐ №164: справочник цен объекта (наследуют проекты)
+  catalog?: { id: number; name: string } | null;
   isDemo?: boolean; // ⭐ №127: демо-объект онбординга
   isArchived?: boolean; // ⭐ архив вместо удаления (ТЗ 3.8)
 }

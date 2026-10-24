@@ -19,6 +19,7 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreatePriceItemDto } from './dto/create-price-item.dto';
 import { CreateCatalogDto } from './dto/create-catalog.dto';
+import { CopyCatalogDto } from './dto/copy-catalog.dto';
 
 @Controller('price-list')
 @UseGuards(JwtAuthGuard)
@@ -55,7 +56,21 @@ export class PriceListController {
     dto: CreateCatalogDto,
     @Req() req,
   ) {
-    return this.priceListService.createCatalog(dto.name, req.user.userId);
+    return this.priceListService.createCatalog(dto.name, req.user.userId, {
+      objectId: dto.objectId,
+      projectId: dto.projectId,
+    });
+  }
+
+  // ⭐ №164: поделиться справочником — копия расценок в справочник объекта/проекта
+  @Post('catalogs/:id/copy')
+  copyCatalog(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: CopyCatalogDto,
+    @Req() req,
+  ) {
+    return this.priceListService.copyCatalog(id, req.user.userId, dto);
   }
 
   @Patch('catalogs/:id')

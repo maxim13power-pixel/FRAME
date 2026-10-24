@@ -58,7 +58,7 @@ export class ProjectsService {
     return access.hidePrices ?? false;
   }
 
-  // ⭐ №158: справочник, доступный пользователю (системный или свой) и не в архиве
+  // ⭐ №158/№164: справочник, доступный пользователю (системный, свой, объектный/проектный) и не в архиве
   private async resolveCatalogId(
     catalogId: number,
     userId?: number,
@@ -66,7 +66,20 @@ export class ProjectsService {
     const catalog = await this.prisma.priceCatalog.findFirst({
       where: {
         id: catalogId,
-        ...(userId ? { OR: [{ ownerId: null }, { ownerId: userId }] } : {}),
+        ...(userId
+          ? {
+              OR: [
+                { ownerId: null },
+                { ownerId: userId },
+                { objects: { some: { accesses: { some: { userId } } } } },
+                {
+                  projects: {
+                    some: { object: { accesses: { some: { userId } } } },
+                  },
+                },
+              ],
+            }
+          : { ownerId: null }),
       },
       select: { id: true, isArchived: true },
     });
@@ -147,6 +160,13 @@ export class ProjectsService {
           select: { specQuantity: true, totalUsed: true, totalCost: true },
         },
         catalog: { select: { id: true, name: true } },
+        // ⭐ №164: справочник объекта — фолбэк, если у проекта свой не выбран
+        object: {
+          select: {
+            catalogId: true,
+            catalog: { select: { id: true, name: true } },
+          },
+        },
       },
     });
 
@@ -165,7 +185,7 @@ export class ProjectsService {
         (a, m) => a + Number(m.totalCost || 0),
         0,
       );
-      const { materials, ...rest } = p;
+      const { materials, object, ...rest } = p;
       return {
         ...rest,
         materialsCount: p.materials.length,
@@ -173,6 +193,10 @@ export class ProjectsService {
           sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
         // ⭐ Скрываем стоимость, если у юзера скрыты цены
         totalCost: hidePrices ? 0 : sumCost,
+        // ⭐ №164: действующий справочник проекта (свой → объекта → нет)
+        effectiveCatalogId: p.catalog?.id ?? object.catalog?.id ?? null,
+        effectiveCatalogName: p.catalog?.name ?? object.catalog?.name ?? null,
+        catalogSource: p.catalog ? 'project' : object.catalog ? 'object' : null,
       };
     });
   }
@@ -191,6 +215,13 @@ export class ProjectsService {
           select: { specQuantity: true, totalUsed: true, totalCost: true },
         },
         catalog: { select: { id: true, name: true } },
+        // ⭐ №164: справочник объекта — фолбэк для сметы
+        object: {
+          select: {
+            catalogId: true,
+            catalog: { select: { id: true, name: true } },
+          },
+        },
       },
     });
     if (!project) return null;
@@ -207,7 +238,7 @@ export class ProjectsService {
       (a, m) => a + Number(m.totalCost || 0),
       0,
     );
-    const { materials, ...rest } = project;
+    const { materials, object, ...rest } = project;
     return {
       ...rest,
       materialsCount: project.materials.length,
@@ -215,6 +246,15 @@ export class ProjectsService {
       progressPercent: sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
       // ⭐ Скрываем стоимость, если у юзера скрыты цены
       totalCost: hidePrices ? 0 : sumCost,
+      // ⭐ №164: действующий справочник проекта (свой → объекта → нет)
+      effectiveCatalogId: project.catalog?.id ?? object.catalog?.id ?? null,
+      effectiveCatalogName:
+        project.catalog?.name ?? object.catalog?.name ?? null,
+      catalogSource: project.catalog
+        ? 'project'
+        : object.catalog
+          ? 'object'
+          : null,
     };
   }
 

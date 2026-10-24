@@ -46,6 +46,9 @@ model Object {
   isArchived      Boolean       @default(false) // Архив вместо удаления (P3)
   isDemo          Boolean       @default(false) // ⭐ демо-объект для онбординга (№127)
   note            String?
+  // ⭐ №164: справочник цен объекта — по умолчанию для всех его проектов
+  catalogId       Int?
+  catalog         PriceCatalog? @relation("ObjectCatalog", fields: [catalogId], references: [id], onDelete: SetNull)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   
@@ -55,6 +58,8 @@ model Object {
   warehouseItems  WarehouseItem[] // ⭐ Складские позиции, привязанные к объекту
   reports         Report[]        // ⭐ Акты/сметы по объекту
   brigades        Brigade[]       // ⭐ Бригады, привязанные к объекту
+
+  @@index([catalogId])
 }
 
 model Project {
@@ -207,6 +212,7 @@ model PriceCatalog {
   updatedAt  DateTime    @updatedAt
   items      PriceItem[]
   projects   Project[]
+  objects    Object[]    @relation("ObjectCatalog") // ⭐ №164: справочник как «объектный»
 
   @@index([ownerId])
   @@map("price_catalogs")

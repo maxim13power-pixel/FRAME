@@ -215,8 +215,13 @@ const [allCategories, setAllCategories] = useState<{ id: number; name: string }[
 // ⭐ Определяем нужно ли скрывать цены (VIEWER или hidePrices=true)
 const hidePrices = currentObject?.hidePrices === true || currentObject?.role === 'VIEWER';
   // №159: смета работает в справочнике проекта — поиск и новые расценки идут в него.
-  // Если справочник не привязан — поиск по всем доступным (прежнее поведение).
-  const priceCatalogId = currentProject?.catalogId ?? undefined;
+  // ⭐ №164: действующий справочник = свой проекта → справочник объекта → нет.
+  // Если справочник не выбран — поиск по всем доступным (прежнее поведение).
+  const priceCatalogId =
+    currentProject?.effectiveCatalogId ?? currentProject?.catalogId ?? undefined;
+  const priceCatalogName =
+    currentProject?.effectiveCatalogName ?? currentProject?.catalog?.name ?? null;
+  const priceCatalogFromObject = currentProject?.catalogSource === 'object';
 
 // ⭐ Экспорт XLSX/PDF (клиентская генерация)
 const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
@@ -1043,17 +1048,21 @@ setSortAnchorEl(null);
           {!hidePrices && (
             <Chip
               size="small"
-              title={currentProject?.catalog ? 'Открыть справочник цен' : 'Справочник не выбран — поиск идёт по всем доступным'}
-              label={currentProject?.catalog ? `Справочник: ${currentProject.catalog.name}` : 'Справочник не выбран'}
-              onClick={currentProject?.catalog ? () => navigate(`/price-list/${currentProject.catalog!.id}`) : undefined}
+              title={priceCatalogId ? 'Открыть справочник цен' : 'Справочник не выбран — поиск идёт по всем доступным'}
+              label={
+                priceCatalogId
+                  ? `Справочник: ${priceCatalogName ?? '—'}${priceCatalogFromObject ? ' (объект)' : ''}`
+                  : 'Справочник не выбран'
+              }
+              onClick={priceCatalogId ? () => navigate(`/price-list/${priceCatalogId}`) : undefined}
               sx={{
                 ml: { xs: 0, md: 1 },
                 height: 24,
                 fontSize: 12,
                 fontWeight: 600,
-                bgcolor: currentProject?.catalog ? 'rgba(25, 118, 210, 0.10)' : 'rgba(0, 0, 0, 0.05)',
-                color: currentProject?.catalog ? '#1565c0' : 'text.secondary',
-                cursor: currentProject?.catalog ? 'pointer' : 'default',
+                bgcolor: priceCatalogId ? 'rgba(25, 118, 210, 0.10)' : 'rgba(0, 0, 0, 0.05)',
+                color: priceCatalogId ? '#1565c0' : 'text.secondary',
+                cursor: priceCatalogId ? 'pointer' : 'default',
               }}
             />
           )}

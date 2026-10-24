@@ -13,6 +13,7 @@ import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
+import { loadCatalogAccess } from '../price-list/catalog-access'; // ⭐ №164
 
 // ⭐ Общий include: расценка работы + расценка материала (с категориями)
 const MATERIAL_INCLUDE = {
@@ -567,22 +568,21 @@ export class MaterialsService {
     return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
   }
 
-  // ⭐ №159: справочник для новой расценки (системный или свой) и не архивный.
-  // Та же проверка, что в projects.service.resolveCatalogId — привязка проекта и запись расценки согласованы.
+  // ⭐ №159/№164: справочник для новой расценки — доступный пользователю
+  // (системный, свой, объектный/проектный) и не архивный; писать можно только туда,
+  // где есть права (заказчик/прораб объекта, владелец, ADMIN).
   private async resolvePriceCatalog(catalogId: number, userId?: number) {
-    const catalog = await this.prisma.priceCatalog.findFirst({
-      where: {
-        id: catalogId,
-        ...(userId ? { OR: [{ ownerId: null }, { ownerId: userId }] } : {}),
-      },
-    });
-    if (!catalog) {
+    const access = await loadCatalogAccess(this.prisma, catalogId, userId);
+    if (!access || !access.canRead) {
       throw new NotFoundException('Справочник не найден или нет доступа');
     }
-    if (catalog.isArchived) {
+    if (access.catalog.isArchived) {
       throw new BadRequestException('Справочник в архиве — выберите активный');
     }
-    return catalog;
+    if (!access.canWrite) {
+      throw new ForbiddenException('Нет прав на изменение этого справочника');
+    }
+    return access.catalog;
   }
 
   // ✨ Создать расценку (+ опционально новую категорию) в одном запросе

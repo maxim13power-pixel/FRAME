@@ -1,14 +1,25 @@
 // backend/src/materials/materials.service.spec.ts
 // ⭐ №159: новая расценка из сметы пишется в справочник проекта, а не в первый личный.
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { MaterialsService } from './materials.service';
 
 describe('MaterialsService — справочник новой расценки (№159)', () => {
   const prisma = {
     objectAccess: { findMany: jest.fn() },
     priceCategory: { findUnique: jest.fn() },
-    priceCatalog: { findFirst: jest.fn(), create: jest.fn() },
+    priceCatalog: {
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      create: jest.fn(),
+    },
     priceItem: { create: jest.fn() },
+    object: { findMany: jest.fn() },
+    project: { findMany: jest.fn() },
+    user: { findUnique: jest.fn() },
   };
   const audit = { log: jest.fn() };
   let service: MaterialsService;
@@ -29,16 +40,20 @@ describe('MaterialsService — справочник новой расценки 
       kind: 'WORK',
     });
     prisma.priceItem.create.mockResolvedValue({ id: 100 });
+    // ⭐ №164: доступ к справочнику считается через loadCatalogAccess
+    prisma.priceCatalog.findUnique.mockResolvedValue({
+      id: 8,
+      name: 'Справочник проекта',
+      ownerId: 7,
+      isArchived: false,
+    });
+    prisma.object.findMany.mockResolvedValue([]);
+    prisma.project.findMany.mockResolvedValue([]);
+    prisma.user.findUnique.mockResolvedValue({ role: 'FOREMAN' });
     service = new MaterialsService(prisma as any, audit as any);
   });
 
   it('catalogId проекта: расценка пишется в него, личный справочник не ищется', async () => {
-    prisma.priceCatalog.findFirst.mockResolvedValue({
-      id: 8,
-      ownerId: 7,
-      isArchived: false,
-    });
-
     await service.createPriceItemWithCategory(
       dto as any,
       undefined,
@@ -47,10 +62,11 @@ describe('MaterialsService — справочник новой расценки 
       8,
     );
 
-    expect(prisma.priceCatalog.findFirst).toHaveBeenCalledTimes(1);
-    expect(prisma.priceCatalog.findFirst).toHaveBeenCalledWith({
-      where: { id: 8, OR: [{ ownerId: null }, { ownerId: 7 }] },
+    expect(prisma.priceCatalog.findUnique).toHaveBeenCalledWith({
+      where: { id: 8 },
+      select: { id: true, name: true, ownerId: true, isArchived: true },
     });
+    expect(prisma.priceCatalog.findFirst).not.toHaveBeenCalled();
     expect(prisma.priceItem.create.mock.calls[0][0].data).toMatchObject({
       name: 'Штукатурка стен',
       categoryId: 4,
@@ -60,8 +76,9 @@ describe('MaterialsService — справочник новой расценки 
   });
 
   it('архивный справочник ⇒ BadRequestException, расценка не создаётся', async () => {
-    prisma.priceCatalog.findFirst.mockResolvedValue({
+    prisma.priceCatalog.findUnique.mockResolvedValue({
       id: 8,
+      name: 'Справочник проекта',
       ownerId: 7,
       isArchived: true,
     });
@@ -69,6 +86,20 @@ describe('MaterialsService — справочник новой расценки 
     await expect(
       service.createPriceItemWithCategory(dto as any, undefined, 'WORK', 7, 8),
     ).rejects.toThrow(BadRequestException);
+    expect(prisma.priceItem.create).not.toHaveBeenCalled();
+  });
+
+  it('чужой справочник без доступа ⇒ NotFoundException', async () => {
+    prisma.priceCatalog.findUnique.mockResolvedValue({
+      id: 8,
+      name: 'Чужой справочник',
+      ownerId: 99,
+      isArchived: false,
+    });
+
+    await expect(
+      service.createPriceItemWithCategory(dto as any, undefined, 'WORK', 7, 8),
+    ).rejects.toThrow(NotFoundException);
     expect(prisma.priceItem.create).not.toHaveBeenCalled();
   });
 

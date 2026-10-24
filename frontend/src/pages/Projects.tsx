@@ -1029,15 +1029,24 @@ onBack: () => navigate('/objects'),
             value={newCatalogId}
             onChange={(e) => handleCatalogSelectChange(e.target.value as CatalogSelectValue, 'create')}
           >
-            <MenuItem value=""><em>Не выбран</em></MenuItem>
+            <MenuItem value="">
+              <em>Как у объекта (наследуется)</em>
+            </MenuItem>
             {catalogs.map((c) => (
               <MenuItem key={c.id} value={c.id}>
                 {c.name}{c.isSystem ? ' (демо)' : ''}
+                {c.scope === 'object' ? ' (объект)' : ''}
+                {c.scope === 'project' ? ' (проект)' : ''}
               </MenuItem>
             ))}
             <MenuItem value="new">➕ Создать новый…</MenuItem>
           </Select>
         </FormControl>
+      )}
+      {!hideFinance && currentObject?.catalog?.name && (
+        <Typography variant="caption" color="text.secondary">
+          Справочник объекта: «{currentObject.catalog.name}» — используется, пока у проекта не выбран свой.
+        </Typography>
       )}
       {!hideFinance && catalogs.length === 0 && (
         <Typography variant="caption" color="text.secondary">
@@ -1167,12 +1176,16 @@ onBack: () => navigate('/objects'),
                   value={editCatalogId}
                   onChange={(e) => handleCatalogSelectChange(e.target.value as CatalogSelectValue, 'edit')}
                 >
-                  <MenuItem value=""><em>Не выбран</em></MenuItem>
-                  {catalogs.map((c) => (
-                    <MenuItem key={c.id} value={c.id}>
-                      {c.name}{c.isSystem ? ' (демо)' : ''}
-                    </MenuItem>
-                  ))}
+                <MenuItem value="">
+                  <em>Как у объекта (наследуется)</em>
+                </MenuItem>
+                {catalogs.map((c) => (
+                  <MenuItem key={c.id} value={c.id}>
+                    {c.name}{c.isSystem ? ' (демо)' : ''}
+                    {c.scope === 'object' ? ' (объект)' : ''}
+                    {c.scope === 'project' ? ' (проект)' : ''}
+                  </MenuItem>
+                ))}
                   {archivedCatalog && (
                     <MenuItem value={archivedCatalog.id}>
                       {archivedCatalog.name} (в архиве)

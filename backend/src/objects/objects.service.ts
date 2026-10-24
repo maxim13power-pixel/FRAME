@@ -1,5 +1,5 @@
-// backend/src/objects/objects.service.ts
-import { ForbiddenException, Injectable } from '@nestjs/common';
+﻿// backend/src/objects/objects.service.ts
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { AccessRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateObjectDto } from './dto/create-object.dto';
@@ -15,17 +15,38 @@ import {
 export class ObjectsService {
   constructor(private prisma: PrismaService) {}
 
-  // ⭐ Хелпер: проверяет доступ юзера к объекту. Кидает 403 если доступа нет.
-  // Возвращает запись доступа (там роль — пригодится для проверок прав).
-  // Детерминированный резолв: объектный контекст требует общую запись (projectId: null).
-  private async checkAccess(objectId: number, userId: number) {
-    const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId, projectId: null },
-    });
-    if (!access) {
+  // ⭐ №164: менять сам объект может только участник с объектным доступом
+  // и не наблюдатель (раньше хватало любой записи projectId=null).
+  private async assertCanEdit(objectId: number, userId: number) {
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const my = resolveObjectRole(grants, objectId);
+    if (!my.hasObjectAccess) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
-    return access;
+    if (my.role === AccessRole.VIEWER) {
+      throw new ForbiddenException('Наблюдатель не может менять объект');
+    }
+  }
+
+  // ⭐ №164: справочник, доступный пользователю (системный, свой, объектный/проектный)
+  private async resolveCatalogId(catalogId: number, userId: number) {
+    const catalog = await this.prisma.priceCatalog.findFirst({
+      where: {
+        id: catalogId,
+        isArchived: false,
+        OR: [
+          { ownerId: null },
+          { ownerId: userId },
+          { objects: { some: { accesses: { some: { userId } } } } },
+          { projects: { some: { object: { accesses: { some: { userId } } } } } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!catalog) {
+      throw new BadRequestException('Справочник цен не найден или в архиве');
+    }
+    return catalog.id;
   }
 
   // Создание объекта.
@@ -35,6 +56,12 @@ export class ObjectsService {
     // Через (dto as any) — чтобы не ломаться, если поле ещё не добавлено в DTO.
     const createRole: AccessRole =
       ((dto as any).role as AccessRole) || AccessRole.CUSTOMER;
+
+    // ⭐ №164: справочник цен объекта (если передан) — проверяем доступ до создания
+    const catalogId =
+      dto.catalogId != null
+        ? await this.resolveCatalogId(dto.catalogId, userId)
+        : null;
 
     return this.prisma.object.create({
       data: {
@@ -47,6 +74,7 @@ export class ObjectsService {
           : new Date(dto.endDate),
         note: dto.note || null,
         isArchived: false,
+        catalogId,
         // ⭐ Сразу создаём доступ для создателя (вложенный create)
         accesses: {
           create: {
@@ -55,6 +83,7 @@ export class ObjectsService {
           },
         },
       },
+      include: { catalog: { select: { id: true, name: true } } },
     });
   }
 
@@ -68,6 +97,8 @@ export class ObjectsService {
       where: accessibleObjectWhere(scope, { includeArchived: true }),
       orderBy: { createdAt: 'desc' },
       include: {
+        // ⭐ №164: справочник цен объекта (наследуют проекты)
+        catalog: { select: { id: true, name: true } },
         projects: {
           where: accessibleProjectWhere(scope, { includeArchived: true }),
           include: {
@@ -116,7 +147,14 @@ export class ObjectsService {
 
   // Обновление — только если есть доступ к объекту
   async update(id: number, dto: Partial<CreateObjectDto>, userId: number) {
-    await this.checkAccess(id, userId);
+    await this.assertCanEdit(id, userId);
+    // ⭐ №164: смена справочника объекта (undefined = не трогаем, null = отвязать)
+    const catalogId =
+      dto.catalogId === undefined
+        ? undefined
+        : dto.catalogId === null
+          ? null
+          : await this.resolveCatalogId(dto.catalogId, userId);
     return this.prisma.object.update({
       where: { id },
       data: {
@@ -125,14 +163,16 @@ export class ObjectsService {
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
         endDate: dto.endDate ? new Date(dto.endDate) : undefined,
         note: dto.note !== undefined ? dto.note : undefined,
+        catalogId,
       },
+      include: { catalog: { select: { id: true, name: true } } },
     });
   }
 
   // Удаление → АРХИВАЦИЯ (ТЗ 3.8: архив вместо жёсткого удаления).
   // ⭐ permanent=true — жёсткое удаление (для демо-объекта, который не жалко).
   async remove(id: number, userId: number, permanent = false) {
-    await this.checkAccess(id, userId);
+    await this.assertCanEdit(id, userId);
     if (permanent) {
       return this.prisma.object.delete({ where: { id } });
     }
@@ -144,7 +184,7 @@ export class ObjectsService {
 
   // ⭐ Восстановить объект из архива
   async restore(id: number, userId: number) {
-    await this.checkAccess(id, userId);
+    await this.assertCanEdit(id, userId);
     return this.prisma.object.update({
       where: { id },
       data: { isArchived: false },
@@ -158,7 +198,10 @@ export class ObjectsService {
     if (!my.role) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
-    const object = await this.prisma.object.findUnique({ where: { id } });
+    const object = await this.prisma.object.findUnique({
+      where: { id },
+      include: { catalog: { select: { id: true, name: true } } },
+    });
     if (!object) return null;
     // ⭐ Возвращаем роль и флаг юзера (фронт использует для UI-правил)
     return {
@@ -170,7 +213,7 @@ export class ObjectsService {
   }
 
   async updateEndDate(id: number, newEndDate: string, userId: number) {
-    await this.checkAccess(id, userId);
+    await this.assertCanEdit(id, userId);
     return this.prisma.object.update({
       where: { id },
       data: { endDate: new Date(newEndDate) },

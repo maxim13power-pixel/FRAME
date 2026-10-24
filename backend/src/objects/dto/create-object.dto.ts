@@ -5,6 +5,7 @@ import {
   IsOptional,
   MaxLength,
   IsIn,
+  IsInt,
 } from 'class-validator';
 export class CreateObjectDto {
   @IsString()
@@ -38,4 +39,9 @@ export class CreateObjectDto {
     message: 'Роль должна быть CUSTOMER или FOREMAN',
   })
   role?: 'CUSTOMER' | 'FOREMAN';
+
+  // ⭐ №164: справочник цен объекта (null — отвязать)
+  @IsOptional()
+  @IsInt({ message: 'catalogId должен быть целым числом' })
+  catalogId?: number | null;
 }
