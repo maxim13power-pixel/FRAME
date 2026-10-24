@@ -9,6 +9,7 @@ import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { fetchDashboardSummary } from '../services/dashboardService';
@@ -217,21 +218,40 @@ const Home: React.FC = () => {
           </Box>
           <Stack spacing={0.5} sx={{ mb: 1 }}>
             {data.noPrice.items.map(m => (
-              <Box key={m.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+              <Box
+                key={m.id}
+                onClick={() => navigate(`/objects/${m.project.objectId}/projects/${m.project.id}/materials?materialId=${m.id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate(`/objects/${m.project.objectId}/projects/${m.project.id}/materials?materialId=${m.id}`);
+                  }
+                }}
+                sx={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1,
+                  cursor: 'pointer', borderRadius: 1, px: 0.5, py: 0.25,
+                  '&:hover': { bgcolor: 'rgba(25,118,210,0.06)' },
+                }}
+              >
                 <Typography variant="body2">
                   • <b>{m.name}</b>{' '}
                   <Typography component="span" variant="caption" color="text.secondary">({m.project.name})</Typography>
                 </Typography>
-                <Chip
-                  size="small" variant="outlined" color="warning"
-                  label={m.unitPrice === 0 && m.materialUnitPrice === 0 ? 'нет цен' : m.materialUnitPrice === 0 ? 'нет материала' : 'нет работы'}
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Chip
+                    size="small" variant="outlined" color="warning"
+                    label={m.unitPrice === 0 && m.materialUnitPrice === 0 ? 'нет цен' : m.materialUnitPrice === 0 ? 'нет материала' : 'нет работы'}
+                  />
+                  <ChevronRightIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                </Box>
               </Box>
             ))}
           </Stack>
-          {data.noPrice.count > data.noPrice.items.length && (
+            {data.noPrice.count > data.noPrice.items.length && (
             <Typography variant="caption" color="text.secondary">
-              + ещё {data.noPrice.count - data.noPrice.items.length}…
+              + ещё {data.noPrice.count - data.noPrice.items.length}… Нажмите на позицию, чтобы открыть строку сметы.
             </Typography>
           )}
         </Paper>

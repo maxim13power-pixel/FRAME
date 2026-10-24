@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -47,6 +47,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import InventoryIcon from '@mui/icons-material/Inventory';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
@@ -60,6 +61,7 @@ import {
   editLastFix,
   updateMaterial,
   createPriceItemForMaterial,
+  duplicateMaterial,
 } from '../services/materialService';
 import type { MaterialData, MaterialFixData } from '../services/materialService';
 import { fetchProjectById } from '../services/materialService';
@@ -106,6 +108,11 @@ const Materials: React.FC = () => {
   const { token } = useAuth();
   const { notify, error: notifyError } = useFeedback();
   const direction = useScrollDirection();
+
+  // ⭐ №161: deep-link из виджета «Без расценки» → ?materialId=…
+  const [searchParams] = useSearchParams();
+  const highlightId = Number(searchParams.get('materialId')) || null;
+  const [highlightVisible, setHighlightVisible] = useState(false);
 
   const [materials, setMaterials] = useState<MaterialData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -390,6 +397,17 @@ useEffect(() => {
   };
   loadData();
 }, [token, projectId, objectId]);
+
+  // ⭐ №161: подсветка строки, на которую перешли из виджета «Без расценки»
+  useEffect(() => {
+    if (!highlightId || loading || materials.length === 0) return;
+    const el = document.getElementById(`material-row-${highlightId}`);
+    if (!el) return; // строку не нашли (например, отфильтрована) — молча выходим
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightVisible(true);
+    const timer = setTimeout(() => setHighlightVisible(false), 2500);
+    return () => clearTimeout(timer);
+  }, [highlightId, loading, materials.length]);
 const handleOpenAddModal = () => {
   setAddModalOpen(true);
   setAddCreatingNew(false);
@@ -595,6 +613,23 @@ setPriceLoading(false);
       setDeletingMaterial(null);
     } catch (err: unknown) {
       notifyError('Ошибка удаления: ' + getApiErrorText(err, 'неизвестная ошибка'));
+    }
+  };
+
+  // ⭐ №162: копирование строки — копия вставляется сразу под источником
+  const handleDuplicate = async (material: MaterialData) => {
+    if (!token) return;
+    try {
+      const copy = await duplicateMaterial(material.id);
+      setMaterials(prev => {
+        const idx = prev.findIndex(m => m.id === material.id);
+        if (idx === -1) return [...prev, copy];
+        return [...prev.slice(0, idx + 1), copy, ...prev.slice(idx + 1)];
+      });
+      handleCloseSettings();
+      notify(`Скопировано: ${copy.name}`, 'success');
+    } catch (err: unknown) {
+      notifyError('Ошибка копирования: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
@@ -1234,7 +1269,14 @@ onClose={() => setFilterAnchorEl(null)}
 </TableHead>
             <TableBody>
 {sortedMaterials.map((m, idx) => (
-<TableRow key={m.id} hover>
+<TableRow
+  key={m.id}
+  hover
+  id={`material-row-${m.id}`}
+  sx={highlightId === m.id && highlightVisible
+    ? { bgcolor: '#fff8e1', transition: 'background-color 0.3s' }
+    : undefined}
+>
 <TableCell>{idx + 1}</TableCell>
 <TableCell>{m.name}</TableCell>
 <TableCell>{m.article || '-'}</TableCell>
@@ -1272,6 +1314,18 @@ onClose={() => setFilterAnchorEl(null)}
                 {!hidePrices && (
                   <IconButton size="small" onClick={() => handleOpenSettings(m)} sx={{ bgcolor: 'action.hover' }}>
                     <SettingsIcon fontSize="small" />
+                  </IconButton>
+                )}
+                {/* ⭐ №162: быстрое копирование строки (десктоп) */}
+                {!hidePrices && (
+                  <IconButton
+                    size="small"
+                    onClick={() => handleDuplicate(m)}
+                    sx={{ bgcolor: 'action.hover', ml: 0.5 }}
+                    aria-label="Дублировать строку"
+                    title="Дублировать строку"
+                  >
+                    <ContentCopyIcon fontSize="small" />
                   </IconButton>
                 )}
               </TableCell>
@@ -1313,7 +1367,17 @@ onClose={() => setFilterAnchorEl(null)}
     <Stack spacing={1} sx={{ pb: direction === 'none' ? 0 : `${SUMMARY_LIST_CLEARANCE_PX}px` }}>
       {sortedMaterials.length > 0 ? (
         sortedMaterials.map((m) => (
-            <Paper key={m.id} sx={{ p: 1.5, borderRadius: 2 }}>
+            <Paper
+              key={m.id}
+              id={`material-row-${m.id}`}
+              sx={{
+                p: 1.5,
+                borderRadius: 2,
+                ...(highlightId === m.id && highlightVisible
+                  ? { bgcolor: '#fff8e1', transition: 'background-color 0.3s' }
+                  : {}),
+              }}
+            >
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
               <InventoryIcon sx={{ color: '#1976d2', mr: 1, fontSize: 22 }} />
               <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>
@@ -1756,6 +1820,14 @@ renderInput={(params) => (
           onClick={handleOpenEdit}
           >
           Редактировать материал
+          </Button>
+          {/* ⭐ №162: копия строки — доступна и с мобилы через меню настроек */}
+          <Button
+          fullWidth
+          variant="outlined"
+          onClick={() => settingsMaterial && handleDuplicate(settingsMaterial)}
+          >
+          Дублировать строку
           </Button>
           <Button
           fullWidth

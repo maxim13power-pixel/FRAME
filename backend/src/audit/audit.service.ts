@@ -66,6 +66,15 @@ export class AuditService {
       await this.checkProjectAccess(report.projectId, userId);
       return;
     }
+    if (entity === 'material') {
+      const material = await this.prisma.material.findUnique({
+        where: { id: entityId },
+        select: { projectId: true },
+      });
+      if (!material) throw new NotFoundException('Материал не найден');
+      await this.checkProjectAccess(material.projectId, userId);
+      return;
+    }
     if (entity === 'material_fix') {
       const material = await this.prisma.material.findUnique({
         where: { id: entityId },

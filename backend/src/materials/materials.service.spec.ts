@@ -1,6 +1,6 @@
 // backend/src/materials/materials.service.spec.ts
 // ⭐ №159: новая расценка из сметы пишется в справочник проекта, а не в первый личный.
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { MaterialsService } from './materials.service';
 
 describe('MaterialsService — справочник новой расценки (№159)', () => {
@@ -93,5 +93,94 @@ describe('MaterialsService — справочник новой расценки 
     expect(prisma.priceItem.create.mock.calls[0][0].data).toMatchObject({
       catalogId: 3,
     });
+  });
+});
+
+// ⭐ №162: копирование строки материала — план копируется, факт и фиксации нет
+describe('MaterialsService — копирование строки (№162)', () => {
+  const source = {
+    id: 10,
+    name: 'Стяжка пола',
+    article: 'ST-10',
+    unit: 'SQUARE_METER',
+    specQuantity: 68,
+    totalUsed: 20,
+    note: 'черновая',
+    projectId: 3,
+    priceItemId: 5,
+    unitPrice: 450,
+    totalCost: 9000,
+    materialItemId: null,
+    materialUnitPrice: 0,
+    materialTotalCost: 0,
+    isSpecLocked: true,
+  };
+  const prisma = {
+    objectAccess: { findFirst: jest.fn() },
+    material: { findUnique: jest.fn(), create: jest.fn() },
+  };
+  const audit = { log: jest.fn() };
+  let service: MaterialsService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.objectAccess.findFirst.mockResolvedValue({
+      role: 'CUSTOMER',
+      hidePrices: false,
+    });
+    prisma.material.findUnique.mockResolvedValue({
+      ...source,
+      project: { objectId: 1 },
+    });
+    prisma.material.create.mockImplementation(({ data }) => ({ id: 11, ...data }));
+    service = new MaterialsService(prisma as any, audit as any);
+  });
+
+  it('копирует план, но не факт: totalUsed/totalCost = 0', async () => {
+    const copy = await service.duplicate(10, 7);
+
+    const data = prisma.material.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({
+      name: 'Стяжка пола (копия)',
+      specQuantity: 68,
+      totalUsed: 0,
+      totalCost: 0,
+      priceItemId: 5,
+      unitPrice: 450,
+      projectId: 3,
+    });
+    expect(copy.id).toBe(11);
+    expect(audit.log).toHaveBeenCalledWith(
+      7,
+      'material',
+      11,
+      'create',
+      undefined,
+      { name: 'Стяжка пола (копия)', copiedFrom: 10 },
+    );
+  });
+
+  it('именует копии по счётчику: «(копия)» → «(копия 2)»', async () => {
+    prisma.material.findUnique.mockResolvedValue({
+      ...source,
+      name: 'Стяжка пола (копия)',
+      project: { objectId: 1 },
+    });
+
+    await service.duplicate(10, 7);
+
+    expect(prisma.material.create.mock.calls[0][0].data.name).toBe(
+      'Стяжка пола (копия 2)',
+    );
+  });
+
+  it('VIEWER не может копировать (403)', async () => {
+    prisma.objectAccess.findFirst.mockResolvedValue({
+      role: 'VIEWER',
+      hidePrices: true,
+    });
+
+    await expect(service.duplicate(10, 7)).rejects.toThrow(ForbiddenException);
+    expect(prisma.material.create).not.toHaveBeenCalled();
   });
 });

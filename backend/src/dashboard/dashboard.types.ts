@@ -40,7 +40,8 @@ export interface DashboardNoPriceItemDto {
   name: string;
   unitPrice: number;
   materialUnitPrice: number;
-  project: { id: number; name: string };
+  /** objectId — для перехода на страницу сметы конкретного проекта (№161). */
+  project: { id: number; name: string; objectId: number };
 }
 
 export interface DashboardNoPriceDto {
