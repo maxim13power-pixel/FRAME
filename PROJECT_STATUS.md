@@ -883,7 +883,7 @@ kpi.fixesWeekCount вместо kpi.fixesLast7dCount).
      В демо-БД две старые одинаковые «Разработка грунта экскаватором (копия)» (id 291, 292,
      projectId 29) — оставлены как данные владельца, удалить вручную, если не нужны.
   6) Плотность мобильных полей (theme.ts): на ≤599.95px у OutlinedInput padding 16.5→13.5 px
-     (56→50 px, −10%) и кегль 1→0.95 rem; десктоп не меняется.
+     и кегль 1→0.95 rem, значит высота поля ≈56→49 px (−12%); десктоп не меняется.
   7) Railway: `.nvmrc`=22 в backend и frontend (Nixpacks перестал угадывать версию Node),
      у фронта startCommand `serve -s dist -l tcp://0.0.0.0:${PORT:-3000}` и `npm install --no-audit --no-fund`.
 ПРОВЕРЕНО (локально, prorab@frame.app / Demo1234!, tzOffset −240):
