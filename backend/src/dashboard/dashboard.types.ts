@@ -6,8 +6,12 @@ export interface DashboardKpiDto {
   objectsCount: number;
   projectsCount: number;
   materialsCount: number;
-  /** Кол-во фиксаций за последние 7 дней (включая сегодня). */
-  fixesLast7dCount: number;
+  /**
+   * Кол-во фиксаций за текущую календарную неделю Пн→Вс (совпадает с суммой
+   * точек `weekChart`). ⭐ №173: раньше считалось «последние 7 дней» и
+   * расходилось с графиком.
+   */
+  fixesWeekCount: number;
 }
 
 export interface DashboardMoneyDto {

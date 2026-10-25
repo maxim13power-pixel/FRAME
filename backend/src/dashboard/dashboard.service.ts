@@ -17,10 +17,46 @@ interface MoneyRow {
   total_used: number;
   spec_quantity: number;
 }
-interface WeekPointRow {
-  day: Date;
-  count: number;
+
+// ── ⭐ №173: календарная неделя Пн→Вс ────────────────────────────────────────
+// Раньше неделя считалась как «сегодня − 6 дней … сегодня», причём границы
+// вычисляла БД: `(today::timestamptz)::date` в UTC давал ВЧЕРАШНЮЮ дату
+// (локальные 00:00 +04 = 20:00 UTC предыдущего дня). Итог: сегодняшние
+// фиксации в график не попадали вообще, а сам график начинался не с
+// понедельника.
+//
+// Теперь дни считаются по часам ПОЛЬЗОВАТЕЛЯ: фронт присылает
+// ?tzOffset=<Date#getTimezoneOffset()> (минуты, UTC − локальное).
+// «Настенное» время кодируем как UTC-инстант (wall) и дальше читаем UTC-поля —
+// так локальные сутки не зависят от часового пояса сервера (Railway = UTC).
+
+/** Понедельник 00:00 недели, в которую попадает wall-дата */
+function startOfWeekWall(date: Date): Date {
+  const d = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); // Вс(0) → 6 дней назад
+  return d;
 }
+
+function addDaysWall(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
+/** YYYY-MM-DD для wall-даты (UTC-поля = локальные дни пользователя) */
+function dateKeyWall(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/** День (YYYY-MM-DD) реального инстанта в зоне пользователя (offset в мс) */
+export function dayKeyForInstant(instant: Date, offsetMs: number): string {
+  return dateKeyWall(new Date(instant.getTime() - offsetMs));
+}
+
+/** Экспорт для тестов (см. dashboard.week.spec.ts) */
+export { startOfWeekWall, addDaysWall, dateKeyWall };
 
 @Injectable()
 export class DashboardService {
@@ -28,13 +64,29 @@ export class DashboardService {
 
   // ⭐ Новая модель доступа: показываем только объекты, к которым у юзера
   // есть запись в ObjectAccess. Архивные объекты (isArchived=true) исключаются.
-  async getSummary(userId: number): Promise<DashboardSummaryDto> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayPlus7 = new Date(today);
-    todayPlus7.setDate(todayPlus7.getDate() + 7);
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // 7 дней включительно
+  async getSummary(
+    userId: number,
+    tzOffsetMinutes: number = -new Date().getTimezoneOffset(),
+  ): Promise<DashboardSummaryDto> {
+    // ⭐ №173: смещение клиента (минуты, UTC − локальное). Без параметра — зона сервера.
+    const offset = tzOffsetMinutes * 60_000;
+    // «Настенное» время пользователя: сдвигаем инстант и читаем UTC-поля.
+    const wallNow = new Date(Date.now() - offset);
+    const wallToday = new Date(
+      Date.UTC(
+        wallNow.getUTCFullYear(),
+        wallNow.getUTCMonth(),
+        wallNow.getUTCDate(),
+      ),
+    );
+    const today = new Date(wallToday.getTime() + offset); // локальные сутки юзера
+    const todayPlus7 = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    // ⭐ №173: «Неделя прораба» — текущая календарная неделя Пн→Вс.
+    const weekStartWall = startOfWeekWall(wallToday);
+    const weekStart = new Date(weekStartWall.getTime() + offset);
+    const weekEnd = new Date(
+      addDaysWall(weekStartWall, 7).getTime() + offset, // следующий Пн, не включая
+    );
 
     // ⭐ №163: скоупы доступа — объектный (все проекты) и проектный (точечно).
     // ⭐ №168: отозванные доступы в KPI/деньгах не участвуют (buildWorkScope).
@@ -49,7 +101,7 @@ export class DashboardService {
       objectsCount,
       projectsCount,
       materialsCount,
-      fixesLast7dCount,
+      weekFixes,
       demoObjects,
       volumeRows,
       moneyRows,
@@ -59,11 +111,15 @@ export class DashboardService {
       this.prisma.material.count({
         where: { project: accessibleProject },
       }),
-      this.prisma.materialFix.count({
+      // ⭐ №173: фиксации текущей недели (Пн→Вс) — одна выборка и для KPI,
+      // и для графика: бакеты по дням считаем ниже в JS, чтобы день определялся
+      // по локальной зоне, а не по UTC базы.
+      this.prisma.materialFix.findMany({
         where: {
-          fixedAt: { gte: sevenDaysAgo },
+          fixedAt: { gte: weekStart, lt: weekEnd },
           material: { project: accessibleProject },
         },
+        select: { fixedAt: true },
       }),
       // ⭐ №169: демо-объекты, попавшие в расчёты (для стикера «цифры неточные»)
       this.prisma.object.count({
@@ -121,33 +177,19 @@ export class DashboardService {
     const money = moneyRows[0] ?? { estimate: 0, actual: 0 };
     const percent =
       volume.spec_quantity > 0 ? volume.total_used / volume.spec_quantity : 0;
-    // ── 2. WeekChart — generate_series + LEFT JOIN material_fixes ───────────────
-    // ⭐ Фиксации считаем только по доступным юзеру (и не архивным) объектам — через EXISTS.
-    const weekRows = await this.prisma.$queryRaw<WeekPointRow[]>`
-      SELECT
-        d::date                          AS day,
-        COALESCE(COUNT(mf.id), 0)::int   AS count
-      FROM generate_series(
-        (${today}::timestamptz)::date - INTERVAL '6 days',
-        (${today}::timestamptz)::date,
-        INTERVAL '1 day'
-      ) AS d
-      LEFT JOIN material_fixes mf
-        ON mf."fixedAt"::date = d
-        AND EXISTS (
-          SELECT 1
-          FROM materials m
-          INNER JOIN "Project" p ON p.id = m."projectId"
-          INNER JOIN "Object" o ON o.id = p."objectId" AND o."isArchived" = false
-          INNER JOIN object_access oa ON oa."objectId" = o.id AND oa."userId" = ${userId}
-            AND oa."revokedAt" IS NULL
-            AND oa."isHidden" = false
-            AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
-          WHERE m.id = mf."materialId"
-        )
-      GROUP BY d
-      ORDER BY d
-    `;
+    // ── 2. WeekChart — Пн…Вс текущей недели ────────────────────────────────────
+    // ⭐ №173: границы недели и дни считаются по часам пользователя (tzOffset),
+    // поэтому фиксации за сегодня попадают в правую часть графика, а не теряются
+    // из-за того, что БД живёт в UTC.
+    const perDay = new Map<string, number>();
+    for (const fix of weekFixes) {
+      const key = dayKeyForInstant(fix.fixedAt, offset);
+      perDay.set(key, (perDay.get(key) ?? 0) + 1);
+    }
+    const weekChart = Array.from({ length: 7 }, (_, i) => {
+      const key = dateKeyWall(addDaysWall(weekStartWall, i));
+      return { day: key, count: perDay.get(key) ?? 0 };
+    });
 
     // ── 3. HotProjects + NoPrice(items, count) + RecentFixes — одним батчем ────
     const [hotProjectRows, noPriceItems, noPriceCount, recentFixes] =
@@ -213,7 +255,12 @@ export class DashboardService {
       ]);
 
     return {
-      kpi: { objectsCount, projectsCount, materialsCount, fixesLast7dCount },
+      kpi: {
+        objectsCount,
+        projectsCount,
+        materialsCount,
+        fixesWeekCount: weekFixes.length,
+      },
       // ⭐ №169: сколько демо-объектов участвует в расчётах (0 = цифры точные)
       demoObjects,
       money: {
@@ -221,10 +268,7 @@ export class DashboardService {
         actual: money.actual,
         percent,
       },
-      weekChart: weekRows.map((w) => ({
-        day: w.day.toISOString().slice(0, 10),
-        count: w.count,
-      })),
+      weekChart,
       hotProjects: hotProjectRows.map((p) => ({
         id: p.id,
         name: p.name,

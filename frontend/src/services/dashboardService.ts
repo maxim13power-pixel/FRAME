@@ -7,7 +7,8 @@ export interface DashboardSummary {
     objectsCount: number;
     projectsCount: number;
     materialsCount: number;
-    fixesLast7dCount: number;
+    /** ⭐ №173: фиксаций за текущую неделю Пн→Вс (= сумма weekChart) */
+    fixesWeekCount: number;
   };
   money: { estimate: number; actual: number; percent: number };
   /** ⭐ №169: сколько демо-объектов попало в расчёты (0 = цифры точные) */
@@ -44,6 +45,11 @@ export interface DashboardSummary {
 }
 
 export const fetchDashboardSummary = async (): Promise<DashboardSummary> => {
-  const response = await api.get('/dashboard/summary');
+  // ⭐ №173: отдаём смещение зоны браузера (Date#getTimezoneOffset: минуты,
+  // UTC − локальное), чтобы «Неделя прораба» считалась по локальным суткам,
+  // а не по UTC сервера.
+  const response = await api.get('/dashboard/summary', {
+    params: { tzOffset: new Date().getTimezoneOffset() },
+  });
   return response.data;
 };

@@ -303,13 +303,24 @@ const REAL_PROJECTS: ProjectSeed[] = [
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
+/** Дата N дней назад (локальное время) — демо-данные должны быть «свежими» */
+function daysAgo(days: number, hour = 10): Date {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  d.setHours(hour, 0, 0, 0);
+  return d;
+}
+
 /** 2–3 фиксации на строку, чтобы в истории была динамика */
 function buildFixes(used: number, userId: number) {
   const parts = used >= 20 ? [0.5, 0.3, 0.2] : [0.6, 0.4];
+  // ⭐ №173: даты считаем от «сегодня». Раньше были зашиты 12.08 / 21.09 / 30.10.2026,
+  // и последняя партия оказывалась в будущем — «Неделя прораба» на главной пустовала.
+  const days = parts.length === 3 ? [45, 21, 3] : [21, 3];
   return parts.map((part, index) => ({
     amount: round3(used * part),
     note: index === 0 ? 'Первичная фиксация объёма' : undefined,
-    fixedAt: new Date(Date.UTC(2026, 7 + index, 12 + index * 9)),
+    fixedAt: daysAgo(days[index]),
     userId,
   }));
 }
@@ -373,7 +384,7 @@ async function seedProject(
         specQuantity: line.qty,
         totalUsed: used,
         lastEntry: used > 0 ? used : null,
-        lastEntryDate: used > 0 ? new Date(Date.UTC(2026, 9, 15)) : null,
+        lastEntryDate: used > 0 ? daysAgo(3) : null,
         progressPercent:
           line.qty > 0 ? Math.round((used / line.qty) * 100) : 0,
         unitPrice: line.work,
@@ -460,7 +471,8 @@ async function seedBrigade(
         data: {
           brigadeId: brigade.id,
           projectId,
-          date: new Date(Date.UTC(2026, 9, day)),
+          // ⭐ №173: выходы — последние 6 дней, а не зашитые даты октября 2026
+          date: daysAgo(7 - day, 9),
           hoursWorked: 8,
           outputValue: 12000 + i * 1500,
           outputArea: 18 + i * 4,
