@@ -29,6 +29,16 @@ const MATERIAL_INCLUDE = {
   materialItem: { include: { category: true } },
 };
 
+/**
+ * ⭐ №174: запись доступа к объекту — ровно те поля, которые нужны для скрытия цен.
+ * Раньше в методах стояло `let access: any`, из-за чего терялась типизация.
+ */
+type MaterialAccess = {
+  role: string;
+  hidePrices: boolean;
+  revokedAt: Date | null;
+};
+
 @Injectable()
 export class MaterialsService {
   constructor(
@@ -42,7 +52,11 @@ export class MaterialsService {
 
   /** Нужно ли скрывать цены для этой записи доступа (без лишнего запроса к БД) */
   private mustHidePrices(
-    access?: { role?: string; hidePrices?: boolean; revokedAt?: Date | null } | null,
+    access?: {
+      role?: string;
+      hidePrices?: boolean;
+      revokedAt?: Date | null;
+    } | null,
   ): boolean {
     if (!access) return false;
     // ⭐ №168: отозванный доступ видит только снимок в шаблонах — живые цены скрыты
@@ -54,7 +68,10 @@ export class MaterialsService {
 
   /** Обнулить все ценовые поля материала (для ответа клиенту) */
   private stripPrices<T>(material: T): T {
-    const m = material as any;
+    const m = material as {
+      priceItem?: Record<string, unknown> | null;
+      materialItem?: Record<string, unknown> | null;
+    } & Record<string, unknown>;
     if (!m) return material;
     return {
       ...m,
@@ -224,7 +241,7 @@ export class MaterialsService {
     }
     const fixedAt = resolveFixInstant(dto.fixedDate, now, tzOffset);
     // ⭐ Проверка доступа через ObjectAccess (запоминаем access для проверки скрытия цен)
-    let access: any = null;
+    let access: MaterialAccess | null = null;
     if (userId) {
       access = await this.checkMaterialAccess(materialId, userId);
       // 🔒 VIEWER не имеет права фиксировать объёмы (только смотреть)
@@ -312,7 +329,7 @@ export class MaterialsService {
   // Обновление спеки + пересчёт процента
   async updateSpecQty(id: number, specQuantity: number, userId?: number) {
     // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
-    let access: any = null;
+    let access: MaterialAccess | null = null;
     if (userId) {
       access = await this.checkMaterialAccess(id, userId);
       // 🔒 VIEWER не имеет права менять спецификацию
@@ -360,7 +377,7 @@ export class MaterialsService {
   // 🔒 Переключение защиты спецификации
   async toggleSpecLock(id: number, userId?: number) {
     // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
-    let access: any = null;
+    let access: MaterialAccess | null = null;
     if (userId) {
       access = await this.checkMaterialAccess(id, userId);
       // 🔒 VIEWER не имеет права менять защиту спецификации
@@ -391,7 +408,7 @@ export class MaterialsService {
     }
 
     // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
-    let access: any = null;
+    let access: MaterialAccess | null = null;
     if (userId) {
       access = await this.checkMaterialAccess(id, userId);
       // 🔒 VIEWER не имеет права редактировать фиксации
@@ -402,7 +419,7 @@ export class MaterialsService {
       }
     }
 
-    // Фиксация, которую польрузке формы
+    // Фиксация, которую пользователь видит в форме «править»
     const expectedLastFix = await this.prisma.materialFix.findFirst({
       where: { materialId: id },
       orderBy: { fixedAt: 'desc' },
@@ -499,7 +516,7 @@ export class MaterialsService {
   // ✏️ Полное редактирование (смена расценок работы и материала)
   async update(id: number, dto: UpdateMaterialDto, userId?: number) {
     // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
-    let access: any = null;
+    let access: MaterialAccess | null = null;
     if (userId) {
       access = await this.checkMaterialAccess(id, userId);
       // 🔒 VIEWER не имеет права редактировать материалы
@@ -707,20 +724,20 @@ export class MaterialsService {
     const catalog = catalogId
       ? await this.resolvePriceCatalog(catalogId, userId)
       : userId
-      ? ((await this.prisma.priceCatalog.findFirst({
-          where: { ownerId: userId },
-          orderBy: { id: 'asc' },
-        })) ??
-        (await this.prisma.priceCatalog.create({
-          data: { name: 'Личный справочник', ownerId: userId },
-        })))
-      : ((await this.prisma.priceCatalog.findFirst({
-          where: { ownerId: null },
-          orderBy: { id: 'asc' },
-        })) ??
-        (await this.prisma.priceCatalog.create({
-          data: { name: 'Демо-справочник', ownerId: null },
-        })));
+        ? ((await this.prisma.priceCatalog.findFirst({
+            where: { ownerId: userId },
+            orderBy: { id: 'asc' },
+          })) ??
+          (await this.prisma.priceCatalog.create({
+            data: { name: 'Личный справочник', ownerId: userId },
+          })))
+        : ((await this.prisma.priceCatalog.findFirst({
+            where: { ownerId: null },
+            orderBy: { id: 'asc' },
+          })) ??
+          (await this.prisma.priceCatalog.create({
+            data: { name: 'Демо-справочник', ownerId: null },
+          })));
 
     return this.prisma.priceItem.create({
       data: {
@@ -788,7 +805,7 @@ export class MaterialsService {
   // Удаление (фиксации удалятся каскадно)
   async remove(id: number, userId?: number) {
     // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
-    let access: any = null;
+    let access: MaterialAccess | null = null;
     if (userId) {
       access = await this.checkMaterialAccess(id, userId);
       // 🔒 VIEWER не имеет права удалять материалы
