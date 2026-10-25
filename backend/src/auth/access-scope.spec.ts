@@ -230,6 +230,20 @@ describe('access-scope (№163)', () => {
       expect(buildWorkScope(grants).objectIds).toEqual([2]);
       expect(buildMoneyScope(grants).projectIds).toEqual([20]);
     });
+
+    // ⭐ №169: личный архив убирает объект из KPI/аналитики, но не из списков
+    it('выкидывает объекты из личного архива только из рабочих скоупов', () => {
+      const grants = [
+        grant(1, null, AccessRole.CUSTOMER, false, { isHidden: true }),
+        grant(2, 20, AccessRole.FOREMAN),
+      ];
+      // списки видят всё (вкладка «Архив» в Объектах)
+      expect(buildAccessScope(grants).objectIds.sort()).toEqual([1, 2]);
+      // KPI/деньги/аналитика — без архивного объекта
+      expect(buildWorkScope(grants).objectIds).toEqual([2]);
+      expect(buildMoneyScope(grants).objectIds).toEqual([2]);
+      expect(buildMoneyScope(grants).fullObjectIds).toEqual([]);
+    });
   });
 
 });

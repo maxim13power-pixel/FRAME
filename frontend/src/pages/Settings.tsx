@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, Stack, FormControlLabel, Checkbox, Avatar,
-  Button, Divider, Modal, Alert, Chip, Switch,
+  Button, Divider, Modal, Alert, Chip,
   List, ListItemButton, ListItemIcon, ListItemText,
   IconButton, useMediaQuery, useTheme,
   Accordion, AccordionSummary, AccordionDetails,
@@ -29,7 +29,7 @@ import { ALL_BOTTOM_TABS, getBottomNavConfig, DEFAULT_BOTTOM_TABS } from '../com
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { exportMyData, deleteMyAccount } from '../services/usersService';
-import { fetchMyAccess, setMyAccessHidden } from '../services/accessService';
+import { fetchMyAccess } from '../services/accessService';
 import type { MyAccess } from '../services/accessService';
 import { logoutAll } from '../services/authService';
 import { getTokenExpiry } from '../utils/jwt';
@@ -69,15 +69,24 @@ const Settings: React.FC = () => {
       .finally(() => setAccessLoading(false));
   }, [token]);
 
-  // ⭐ №168: личный архив — объект скрывается только у меня
-  const toggleArchive = async (row: MyAccess, hidden: boolean) => {
-    try {
-      await setMyAccessHidden(row.id, hidden);
-      setMyAccess(prev => prev.map(a => a.id === row.id ? { ...a, isHidden: hidden } : a));
-    } catch {
-      notifyError('Не удалось изменить личный архив');
+  // ⭐ №169: личный архив НЕ переключаем в настройках — единственное место записи
+  // это раздел «Объекты» (кнопка «Архив» в шапке). Раньше слайдер здесь писал
+  // флаг в отдельную запись доступа, и состояние расходилось с объектами.
+
+  // ⭐ №169: личный архив — свойство ОБЪЕКТА, поэтому группируем записи доступа
+  // по объекту (у одного объекта их может быть несколько: весь объект + проекты).
+  const myAccessGroups = useMemo(() => {
+    const map = new Map<
+      number,
+      { objectId: number; objectName: string; rows: MyAccess[] }
+    >();
+    for (const row of myAccess) {
+      const group = map.get(row.objectId);
+      if (group) group.rows.push(row);
+      else map.set(row.objectId, { objectId: row.objectId, objectName: row.objectName, rows: [row] });
     }
-  };
+    return [...map.values()];
+  }, [myAccess]);
 
   // ⭐ №160: «Сессия активна до …» — читаем exp из текущего JWT
   const sessionExpiry = getTokenExpiry(token);
@@ -296,55 +305,58 @@ const Settings: React.FC = () => {
           <Typography variant="subtitle1" fontWeight={700}>Мои доступы</Typography>
         </Box>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Объекты, где вы участник. Архив — личный: у остальных участников объект
-          остаётся на месте, данные не удаляются.
+          Объекты, где вы участник. Личный архив включается в разделе «Объекты»
+          (кнопка «Архив» в шапке) — здесь только статус. Архив личный: у остальных
+          участников объект остаётся на месте, данные не удаляются.
         </Typography>
         {accessLoading ? (
           <Typography variant="body2" color="text.secondary">Загрузка…</Typography>
-        ) : myAccess.length === 0 ? (
+        ) : myAccessGroups.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             Пока нет доступа ни к одному объекту.
           </Typography>
         ) : (
           <Stack spacing={1}>
-            {myAccess.map(row => (
-              <Box
-                key={row.id}
-                sx={{
-                  p: 1.25,
-                  borderRadius: 2,
-                  bgcolor: row.revokedAt ? '#fdecea' : '#f5f7fa',
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                    <Typography variant="body2" fontWeight={600} noWrap>
-                      {row.objectName}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" noWrap>
-                      {row.projectId ? `📁 ${row.projectName ?? 'проект'}` : '🏗 весь объект'}
-                      {' · '}
-                      {ROLE_LABELS[row.role] ?? row.role}
-                      {row.isManager ? ' · менеджер' : ''}
-                    </Typography>
+            {myAccessGroups.map(group => {
+              // Архив и отзыв считаем на уровне объекта: записей доступа может быть несколько
+              const hidden = group.rows.every(r => r.isHidden);
+              const revoked = group.rows.every(r => !!r.revokedAt);
+              return (
+                <Box
+                  key={group.objectId}
+                  onClick={() => navigate('/objects')}
+                  sx={{
+                    p: 1.25,
+                    borderRadius: 2,
+                    bgcolor: revoked ? '#fdecea' : hidden ? '#eef1f5' : '#f5f7fa',
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: revoked ? '#fbdcd7' : '#e9f1fc' },
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                      <Typography variant="body2" fontWeight={600} noWrap>
+                        {group.objectName}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap>
+                        {group.rows
+                          .map(r => (r.projectId ? `📁 ${r.projectName ?? 'проект'}` : '🏗 весь объект'))
+                          .join(' · ')}
+                        {' · '}
+                        {[...new Set(group.rows.map(r => ROLE_LABELS[r.role] ?? r.role))].join(', ')}
+                        {group.rows.some(r => r.isManager) ? ' · менеджер' : ''}
+                      </Typography>
+                    </Box>
+                    {revoked ? (
+                      <Chip size="small" color="error" label="🔒 Доступ отозван" />
+                    ) : hidden ? (
+                      <Chip size="small" label="в архиве" sx={{ bgcolor: '#e0e0e0', color: '#424242' }} />
+                    ) : null}
+                    <ChevronRightIcon sx={{ color: 'text.secondary' }} />
                   </Box>
-                  {row.revokedAt && (
-                    <Chip size="small" color="error" label="🔒 Доступ отозван" />
-                  )}
-                  <FormControlLabel
-                    sx={{ mr: 0 }}
-                    control={
-                      <Switch
-                        size="small"
-                        checked={row.isHidden}
-                        onChange={(e) => toggleArchive(row, e.target.checked)}
-                      />
-                    }
-                    label={<Typography variant="caption">архив</Typography>}
-                  />
                 </Box>
-              </Box>
-            ))}
+              );
+            })}
           </Stack>
         )}
       </Paper>

@@ -150,14 +150,16 @@ export class ObjectsService {
         role: my.role ?? undefined,
         hidePrices: my.hidePrices,
         hasObjectAccess: my.hasObjectAccess, // ⭐ №163: можно ли править сам объект
-        // ⭐ №168: личный архив / отзыв / управление командой
+        // ⭐ №168/№169: личный архив — на объект целиком (флаг живёт в записях доступа).
+        // accessId берём объектную запись, а если её нет (доступ только на проект) —
+        // любую свою запись, чтобы «в архив» работало и для проектного доступа.
         accessId:
           grants.find(
             (g) => g.objectId === o.id && g.projectId == null && !g.revokedAt,
-          )?.id ?? null,
-        hiddenForMe: !!grants.find(
-          (g) => g.objectId === o.id && g.projectId == null && g.isHidden,
-        ),
+          )?.id ??
+          grants.find((g) => g.objectId === o.id && !g.revokedAt)?.id ??
+          null,
+        hiddenForMe: grants.some((g) => g.objectId === o.id && g.isHidden),
         revoked: my.revoked,
         isManager: my.isManager,
         canWrite: my.canWrite,
@@ -212,14 +214,14 @@ export class ObjectsService {
       role: my.role,
       hidePrices: my.hidePrices,
       hasObjectAccess: my.hasObjectAccess, // ⭐ №163: права на сам объект
-      // ⭐ №168: личный архив / отзыв / управление командой
+      // ⭐ №168/№169: личный архив / отзыв / управление командой
       accessId:
         grants.find(
           (g) => g.objectId === id && g.projectId == null && !g.revokedAt,
-        )?.id ?? null,
-      hiddenForMe: !!grants.find(
-        (g) => g.objectId === id && g.projectId == null && g.isHidden,
-      ),
+        )?.id ??
+        grants.find((g) => g.objectId === id && !g.revokedAt)?.id ??
+        null,
+      hiddenForMe: grants.some((g) => g.objectId === id && g.isHidden),
       revoked: my.revoked,
       isManager: my.isManager,
       canWrite: my.canWrite,

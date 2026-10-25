@@ -50,6 +50,7 @@ export class DashboardService {
       projectsCount,
       materialsCount,
       fixesLast7dCount,
+      demoObjects,
       volumeRows,
       moneyRows,
     ] = await Promise.all([
@@ -63,6 +64,10 @@ export class DashboardService {
           fixedAt: { gte: sevenDaysAgo },
           material: { project: accessibleProject },
         },
+      }),
+      // ⭐ №169: демо-объекты, попавшие в расчёты (для стикера «цифры неточные»)
+      this.prisma.object.count({
+        where: { ...accessibleObjectWhere(scope), isDemo: true },
       }),
       // ⭐ EXISTS по object_access вместо o."orgId" = ...: не двоирует суммы,
       //    даже если у юзера несколько записей доступа на один объект.
@@ -81,6 +86,7 @@ export class DashboardService {
             WHERE oa."objectId" = o.id
               AND oa."userId" = ${userId}
               AND oa."revokedAt" IS NULL
+              AND oa."isHidden" = false
               AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
           )
       `,
@@ -101,6 +107,7 @@ export class DashboardService {
             WHERE oa."objectId" = o.id
               AND oa."userId" = ${userId}
               AND oa."revokedAt" IS NULL
+              AND oa."isHidden" = false
               AND oa."hidePrices" = false
               AND oa."role" <> 'VIEWER'
               AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
@@ -134,6 +141,7 @@ export class DashboardService {
           INNER JOIN "Object" o ON o.id = p."objectId" AND o."isArchived" = false
           INNER JOIN object_access oa ON oa."objectId" = o.id AND oa."userId" = ${userId}
             AND oa."revokedAt" IS NULL
+            AND oa."isHidden" = false
             AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
           WHERE m.id = mf."materialId"
         )
@@ -206,6 +214,8 @@ export class DashboardService {
 
     return {
       kpi: { objectsCount, projectsCount, materialsCount, fixesLast7dCount },
+      // ⭐ №169: сколько демо-объектов участвует в расчётах (0 = цифры точные)
+      demoObjects,
       money: {
         estimate: money.estimate,
         actual: money.actual,

@@ -161,6 +161,12 @@ export class ProjectsService {
     if (!my.role) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
+    // ⭐ №169: объект в ЛИЧНОМ архиве → его проекты не предлагаем в выборах.
+    // Иначе демо-объект, убранный в архив, продолжал подсовывать свои проекты
+    // в «Зафиксировать выход» и фильтры.
+    if (grants.some((g) => g.objectId === objectId && g.isHidden)) {
+      return [];
+    }
     const hidePrices = my.hidePrices;
 
     // Проекты, доступные юзеру внутри объекта

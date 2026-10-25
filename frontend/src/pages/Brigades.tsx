@@ -4,7 +4,8 @@ import {
   Box, Typography, Paper, TextField, InputAdornment, Button, Modal, Stack,
   Fab, useMediaQuery, useTheme, CircularProgress, Alert, Chip, IconButton,
   Menu, MenuItem, Select, FormControl, InputLabel, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Tabs, Tab,
+  TableContainer, TableHead, TableRow, Tabs, Tab, Checkbox, Collapse, Divider,
+  Tooltip,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
@@ -15,6 +16,8 @@ import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import PhoneIcon from '@mui/icons-material/Phone';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
@@ -24,7 +27,9 @@ import {
   addBrigadeMember, deleteBrigadeMember, fetchBrigadeShifts, logBrigadeShift,
   updateBrigadeShift, deleteBrigadeShift, fetchBrigadeStats,
 } from '../services/brigadesService';
-import type { BrigadeData, BrigadeShiftData, BrigadeStats } from '../services/brigadesService';
+import type {
+  BrigadeData, BrigadeShiftData, BrigadeShiftPayload, BrigadeStats,
+} from '../services/brigadesService';
 import { fetchObjects } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
 import { fetchProjectsByObject } from '../services/projectService';
@@ -33,11 +38,23 @@ import { getApiErrorMessage } from '../utils/errors';
 import { parseDecimal } from '../utils/decimal';
 
 const fmtNum = (v: number | string) => parseDecimal(v).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
-const todayStr = () => new Date().toISOString().slice(0, 10);
+/** ⭐ №169: локальная дата, а не UTC — иначе вечером «сегодня» уезжает на завтра */
+const localDay = (d: Date) => {
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+};
+const todayStr = () => localDay(new Date());
 const daysAgoStr = (n: number) => {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return localDay(d);
+};
+/** ⭐ №169: 2026-10-25 → 25.10.2026 (в списке выходов больше не видно ISO-строки) */
+const fmtDate = (value?: string | null) => {
+  const s = String(value ?? '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s)
+    ? `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}`
+    : value || '—';
 };
 
 const Brigades: React.FC = () => {
@@ -85,11 +102,12 @@ const Brigades: React.FC = () => {
   const [editingShift, setEditingShift] = useState<BrigadeShiftData | null>(null);
   const [deletingShift, setDeletingShift] = useState<BrigadeShiftData | null>(null);
   const [sDate, setSDate] = useState(todayStr());
-  const [sHours, setSHours] = useState('');
+  const [sHours, setSHours] = useState(''); // мобильная бригада без состава
   const [sProjectId, setSProjectId] = useState<number | ''>('');
-  const [sOutputValue, setSOutputValue] = useState('');
-  const [sOutputArea, setSOutputArea] = useState('');
   const [sComment, setSComment] = useState('');
+  // ⭐ №169: состав выхода — чекбокс «был / не был» + часы у каждого рабочего
+  const [sRoster, setSRoster] = useState<Record<number, { checked: boolean; hours: string }>>({});
+  const [rosterOpen, setRosterOpen] = useState(true);
   const [sProjects, setSProjects] = useState<ProjectData[]>([]);
   const [fFrom, setFFrom] = useState('');
   const [fTo, setFTo] = useState('');
@@ -114,7 +132,7 @@ const Brigades: React.FC = () => {
     </IconButton>
   ) : undefined, [isMobile, objectFilter]);
 
-  useMobileHeader({ title: 'Бригады', onBack: () => { if (viewRef.current === 'detail') { setView('list'); setSelectedBrigade(null); } else { navigate(-1); } }, searchOpen: mobileSearchOpen, searchValue: searchQuery, searchPlaceholder: 'Поиск бригад...', onSearchOpen: () => setMobileSearchOpen(true), onSearchClose: () => { setSearchQuery(''); setMobileSearchOpen(false); }, onSearchChange: (v) => setSearchQuery(v), trailing: headerTrailing });
+  useMobileHeader({ title: view === 'detail' && selectedBrigade ? selectedBrigade.name : 'Бригады', onBack: () => { if (viewRef.current === 'detail') { setView('list'); setSelectedBrigade(null); } else { navigate(-1); } }, searchOpen: mobileSearchOpen, searchValue: searchQuery, searchPlaceholder: 'Поиск бригад...', onSearchOpen: () => setMobileSearchOpen(true), onSearchClose: () => { setSearchQuery(''); setMobileSearchOpen(false); }, onSearchChange: (v) => setSearchQuery(v), trailing: headerTrailing });
 
   const loadObjects = useCallback(async () => {
     try {
@@ -301,14 +319,40 @@ const Brigades: React.FC = () => {
   };
 
   // ─── Выходы ───
+  // ⭐ №169: состав бригады и сумма часов — из чекбоксов, а не из ручного поля
+  const brigadeMembers = selectedBrigade?.members ?? [];
+  const hasRoster = brigadeMembers.length > 0;
+  const rosterRows = useMemo(
+    () =>
+      Object.entries(sRoster)
+        .filter(([, v]) => v.checked)
+        .map(([id, v]) => ({ memberId: Number(id), hours: parseDecimal(v.hours) })),
+    [sRoster],
+  );
+  const rosterHours = useMemo(
+    () => Math.round(rosterRows.reduce((a, r) => a + r.hours, 0) * 100) / 100,
+    [rosterRows],
+  );
+
   const openShiftModal = async (shift?: BrigadeShiftData) => {
     setEditingShift(shift ?? null);
-    setSDate(shift ? shift.date : todayStr());
+    setSDate(shift ? String(shift.date).slice(0, 10) : todayStr());
     setSHours(shift ? String(shift.hoursWorked) : '');
     setSProjectId(shift?.projectId ?? '');
-    setSOutputValue(shift?.outputValue != null ? String(shift.outputValue) : '');
-    setSOutputArea(shift?.outputArea != null ? String(shift.outputArea) : '');
     setSComment(shift?.comment ?? '');
+    // Новый выход: все отмечены, у каждого 8 ч. Правка: отмечены те, кто был,
+    // часы — сохранённые (старые записи без состава показываются без галочёк).
+    const saved = new Map((shift?.members ?? []).map((m) => [m.memberId ?? -1, m.hours]));
+    const roster: Record<number, { checked: boolean; hours: string }> = {};
+    for (const m of selectedBrigade?.members ?? []) {
+      const savedHours = saved.get(m.id);
+      roster[m.id] = {
+        checked: shift ? savedHours != null : true,
+        hours: savedHours != null ? String(savedHours) : '8',
+      };
+    }
+    setSRoster(roster);
+    setRosterOpen(!shift);
     setFormError('');
     setSProjects([]);
     if (selectedBrigade?.objectId != null) {
@@ -321,26 +365,58 @@ const Brigades: React.FC = () => {
     setShiftOpen(true);
   };
 
+  const toggleRosterMember = (memberId: number) => {
+    setSRoster((prev) => ({
+      ...prev,
+      [memberId]: {
+        checked: !prev[memberId]?.checked,
+        hours: prev[memberId]?.hours ?? '8',
+      },
+    }));
+  };
+
+  const setRosterHours = (memberId: number, value: string) => {
+    setSRoster((prev) => ({
+      ...prev,
+      [memberId]: { checked: prev[memberId]?.checked ?? true, hours: value },
+    }));
+  };
+
   const handleSaveShift = async () => {
     if (!selectedBrigade) return;
-    const hours = parseDecimal(sHours);
-    if (hours <= 0 || hours > 24) {
-      setFormError('Часы: от 0.5 до 24');
-      return;
-    }
     if (!sDate || sDate > todayStr()) {
       setFormError('Дата не может быть в будущем');
       return;
     }
+    let hoursWorked: number;
+    let members: { memberId: number; hours: number }[] | undefined;
+    if (hasRoster) {
+      if (rosterRows.length === 0) {
+        setFormError('Отметьте хотя бы одного рабочего в составе бригады');
+        return;
+      }
+      if (rosterRows.some((r) => r.hours <= 0 || r.hours > 24)) {
+        setFormError('Часы рабочего: от 0.5 до 24');
+        return;
+      }
+      members = rosterRows;
+      hoursWorked = rosterHours;
+    } else {
+      // мобильная бригада без состава — прежний ручной ввод часов
+      hoursWorked = parseDecimal(sHours);
+      if (hoursWorked <= 0 || hoursWorked > 24) {
+        setFormError('Часы: от 0.5 до 24');
+        return;
+      }
+    }
     setSaving(true); setFormError('');
     try {
-      const data = {
+      const data: BrigadeShiftPayload = {
         date: sDate,
-        hoursWorked: hours,
-        outputValue: sOutputValue === '' ? undefined : parseDecimal(sOutputValue),
-        outputArea: sOutputArea === '' ? undefined : parseDecimal(sOutputArea),
+        hoursWorked,
+        members,
         projectId: sProjectId === '' ? undefined : sProjectId,
-        comment: sComment || undefined,
+        comment: sComment.trim() || undefined,
       };
       if (editingShift) {
         await updateBrigadeShift(selectedBrigade.id, editingShift.id, data);
@@ -391,15 +467,47 @@ const Brigades: React.FC = () => {
   return (
     <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
       {!isMobile && (
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: view === 'detail' ? 1 : 2 }}>
+          {/* ⭐ №169: назад — на одну ступень (из бригады в список), а не на главную */}
           <IconButton
-            onClick={() => navigate('/')}
+            onClick={() => {
+              if (view === 'detail') {
+                setView('list');
+                setSelectedBrigade(null);
+              } else {
+                navigate('/');
+              }
+            }}
             sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
-            aria-label="В главное меню"
+            aria-label={view === 'detail' ? 'К списку бригад' : 'В главное меню'}
           >
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h4" sx={{ flexGrow: 1 }}>Бригады</Typography>
+        </Box>
+      )}
+      {/* ⭐ №169: хлебные крошки «Бригады › название» — как в «Объекты → Проекты → Сметы» */}
+      {view === 'detail' && selectedBrigade && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: isMobile ? 0.5 : 0, mb: 1.5, flexWrap: 'wrap' }}>
+          <Typography
+            component="button"
+            onClick={() => {
+              setView('list');
+              setSelectedBrigade(null);
+            }}
+            sx={{
+              background: 'none', border: 'none', padding: 0,
+              color: '#1976d2', cursor: 'pointer', fontSize: isMobile ? 13 : 14,
+              textDecoration: 'underline',
+              '&:hover': { color: '#1565c0' },
+            }}
+          >
+            Бригады
+          </Typography>
+          <Typography sx={{ color: 'text.secondary', fontSize: isMobile ? 13 : 14 }}>›</Typography>
+          <Typography sx={{ fontSize: isMobile ? 13 : 14, fontWeight: 600 }} noWrap>
+            {selectedBrigade.name}
+          </Typography>
         </Box>
       )}
       <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={() => setFilterAnchorEl(null)}>
@@ -473,7 +581,7 @@ const Brigades: React.FC = () => {
 
             {tab === 'shifts' && (
               <Paper sx={{ p: 2, borderRadius: 2 }}>
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1.5, flexWrap: 'wrap' }}>
                   <TextField size="small" type="date" label="С" InputLabelProps={{ shrink: true }} value={fFrom} onChange={(e) => setFFrom(e.target.value)} />
                   <TextField size="small" type="date" label="По" InputLabelProps={{ shrink: true }} value={fTo} onChange={(e) => setFTo(e.target.value)} />
                   <FormControl size="small" sx={{ minWidth: 140 }}>
@@ -484,10 +592,17 @@ const Brigades: React.FC = () => {
                     </Select>
                   </FormControl>
                   <Button size="small" variant="outlined" onClick={loadFilteredShifts}>Применить</Button>
-                  <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => openShiftModal()} sx={{ ml: 'auto' }}>
-                    Зафиксировать выход
-                  </Button>
                 </Box>
+                {/* ⭐ №169: кнопка отдельной строкой — раньше «улетала» при переносе фильтров */}
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => openShiftModal()}
+                  fullWidth={isMobile}
+                  sx={{ mb: 1.5, ...(isMobile ? {} : { ml: 'auto', display: 'flex', width: 'fit-content' }) }}
+                >
+                  Зафиксировать выход
+                </Button>
                 {shifts.length === 0 ? (
                   <Typography color="text.secondary">Выходов пока нет.</Typography>
                 ) : isMobile ? (
@@ -496,7 +611,7 @@ const Brigades: React.FC = () => {
                       <Paper key={s.id} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Typography variant="body2" fontWeight={600} sx={{ flexGrow: 1 }}>
-                            {s.date} • {fmtNum(s.hoursWorked)} ч
+                            {fmtDate(s.date)} • {fmtNum(s.hoursWorked)} ч
                           </Typography>
                           <IconButton size="small" onClick={() => openShiftModal(s)} sx={{ bgcolor: 'action.hover' }}>
                             <SettingsIcon fontSize="small" />
@@ -505,12 +620,16 @@ const Brigades: React.FC = () => {
                             <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Box>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                           {s.project?.name || 'Без проекта'}
-                          {s.outputValue != null ? ` • ${fmtNum(s.outputValue)} ₽` : ''}
-                          {s.outputArea != null ? ` • ${fmtNum(s.outputArea)} м²` : ''}
                           {s.comment ? ` • ${s.comment}` : ''}
                         </Typography>
+                        {/* ⭐ №169: кто именно выходил и по сколько часов */}
+                        {s.members && s.members.length > 0 && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {s.members.map((m) => `${m.fullName} — ${fmtNum(m.hours)} ч`).join(' · ')}
+                          </Typography>
+                        )}
                       </Paper>
                     ))}
                   </Stack>
@@ -521,20 +640,39 @@ const Brigades: React.FC = () => {
                         <TableRow>
                           <TableCell>Дата</TableCell>
                           <TableCell align="right">Часы</TableCell>
+                          <TableCell>Состав</TableCell>
                           <TableCell>Проект</TableCell>
-                          <TableCell align="right">Выработка ₽</TableCell>
-                          <TableCell align="right">м²</TableCell>
+                          <TableCell>Комментарий</TableCell>
                           <TableCell align="center"></TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {shifts.map((s) => (
                           <TableRow key={s.id} hover>
-                            <TableCell>{s.date}</TableCell>
+                            <TableCell>{fmtDate(s.date)}</TableCell>
                             <TableCell align="right">{fmtNum(s.hoursWorked)}</TableCell>
+                            <TableCell>
+                              {s.members && s.members.length > 0 ? (
+                                <Tooltip
+                                  title={s.members
+                                    .map((m) => `${m.fullName} — ${fmtNum(m.hours)} ч`)
+                                    .join(', ')}
+                                >
+                                  <span>{s.members.length} чел.</span>
+                                </Tooltip>
+                              ) : '—'}
+                            </TableCell>
                             <TableCell>{s.project?.name || '—'}</TableCell>
-                            <TableCell align="right">{s.outputValue != null ? `${fmtNum(s.outputValue)} ₽` : '—'}</TableCell>
-                            <TableCell align="right">{s.outputArea != null ? fmtNum(s.outputArea) : '—'}</TableCell>
+                            <TableCell
+                              sx={{
+                                maxWidth: 220,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {s.comment || '—'}
+                            </TableCell>
                             <TableCell align="center">
                               <IconButton size="small" onClick={() => openShiftModal(s)} sx={{ bgcolor: 'action.hover' }}>
                                 <SettingsIcon fontSize="small" />
@@ -560,12 +698,12 @@ const Brigades: React.FC = () => {
                     <Typography variant="h6" fontWeight={700} color="#1976d2">{fmtNum(stats?.totalHours ?? 0)}</Typography>
                   </Paper>
                   <Paper sx={{ p: 2, borderRadius: 2 }}>
-                    <Typography variant="caption" color="text.secondary">Выработка ₽</Typography>
-                    <Typography variant="h6" fontWeight={700} color="#2e7d32">{fmtNum(stats?.totalOutputValue ?? 0)}</Typography>
+                    <Typography variant="caption" color="text.secondary">Выходов</Typography>
+                    <Typography variant="h6" fontWeight={700} color="#2e7d32">{stats?.shiftsCount ?? 0}</Typography>
                   </Paper>
                   <Paper sx={{ p: 2, borderRadius: 2 }}>
-                    <Typography variant="caption" color="text.secondary">Всего м²</Typography>
-                    <Typography variant="h6" fontWeight={700} color="#ef6c00">{fmtNum(stats?.totalOutputArea ?? 0)}</Typography>
+                    <Typography variant="caption" color="text.secondary">Последний выход</Typography>
+                    <Typography variant="h6" fontWeight={700} color="#ef6c00">{shifts[0] ? fmtDate(shifts[0].date) : '—'}</Typography>
                   </Paper>
                   <Paper sx={{ p: 2, borderRadius: 2 }}>
                     <Typography variant="caption" color="text.secondary">Средние часы/смену</Typography>
@@ -574,15 +712,21 @@ const Brigades: React.FC = () => {
                 </Box>
                 <Paper sx={{ p: 2, borderRadius: 2 }}>
                   <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>Часы по дням (30 дней)</Typography>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <AreaChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" fontSize={10} interval={4} />
-                      <YAxis fontSize={11} />
-                      <RTooltip formatter={(v) => `${fmtNum(Number(v))} ч`} />
-                      <Area type="monotone" dataKey="Часы" stroke="#1976d2" fill="#1976d2" fillOpacity={0.3} />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  {chartData.every((d) => !d['Часы']) ? (
+                    <Typography variant="body2" color="text.secondary">
+                      За последние 30 дней выходов нет — график появится после первой фиксации.
+                    </Typography>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <AreaChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" fontSize={10} interval={4} />
+                        <YAxis fontSize={11} />
+                        <RTooltip formatter={(v) => `${fmtNum(Number(v))} ч`} />
+                        <Area type="monotone" dataKey="Часы" stroke="#1976d2" fill="#1976d2" fillOpacity={0.3} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
                 </Paper>
               </Stack>
             )}
@@ -734,7 +878,78 @@ const Brigades: React.FC = () => {
           <Typography variant="h6" gutterBottom>{editingShift ? 'Редактировать выход' : 'Зафиксировать выход'}</Typography>
           <Stack spacing={2}>
             <TextField fullWidth type="date" label="Дата" InputLabelProps={{ shrink: true }} inputProps={{ max: todayStr() }} value={sDate} onChange={(e) => setSDate(e.target.value)} />
-            <TextField fullWidth label="Часы (0.5–24)" type="number" inputProps={{ min: 0.5, max: 24, step: 0.5 }} value={sHours} onChange={(e) => setSHours(e.target.value)} />
+            {/* ⭐ №169: состав бригады — раскрывается по клику, чекбоксы + часы (по умолчанию 8 ч) */}
+            {hasRoster ? (
+              <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+                <Box
+                  component="button"
+                  type="button"
+                  onClick={() => setRosterOpen((v) => !v)}
+                  sx={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 1,
+                    p: 1.5, background: 'none', border: 'none', cursor: 'pointer',
+                    textAlign: 'left', font: 'inherit', color: 'inherit',
+                  }}
+                >
+                  <GroupsIcon fontSize="small" sx={{ color: '#1976d2' }} />
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography variant="body2" fontWeight={600}>Состав бригады</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Отмечено {rosterRows.length} из {brigadeMembers.length} · {fmtNum(rosterHours)} ч
+                    </Typography>
+                  </Box>
+                  {rosterOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                </Box>
+                <Collapse in={rosterOpen}>
+                  <Divider />
+                  <Box sx={{ px: 1.5, py: 1 }}>
+                    {brigadeMembers.map((m) => {
+                      const row = sRoster[m.id] ?? { checked: false, hours: '8' };
+                      return (
+                        <Box key={m.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+                          <Checkbox
+                            size="small"
+                            checked={row.checked}
+                            onChange={() => toggleRosterMember(m.id)}
+                            inputProps={{ 'aria-label': `${m.fullName}: выходил` }}
+                          />
+                          <Typography
+                            variant="body2"
+                            noWrap
+                            sx={{ flexGrow: 1, color: row.checked ? 'text.primary' : 'text.secondary' }}
+                          >
+                            {m.fullName}
+                          </Typography>
+                          <TextField
+                            size="small"
+                            type="number"
+                            value={row.hours}
+                            onChange={(e) => setRosterHours(m.id, e.target.value)}
+                            disabled={!row.checked}
+                            inputProps={{ min: 0.5, max: 24, step: 0.5, 'aria-label': `Часы: ${m.fullName}` }}
+                            sx={{ width: 96 }}
+                            InputProps={{ endAdornment: <InputAdornment position="end">ч</InputAdornment> }}
+                          />
+                        </Box>
+                      );
+                    })}
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                      Снимите галочку у тех, кто не выходил. Часы по умолчанию — 8.
+                    </Typography>
+                  </Box>
+                </Collapse>
+              </Paper>
+            ) : (
+              <TextField
+                fullWidth
+                label="Часы (0.5–24)"
+                type="number"
+                inputProps={{ min: 0.5, max: 24, step: 0.5 }}
+                value={sHours}
+                onChange={(e) => setSHours(e.target.value)}
+                helperText="В бригаде нет состава — укажите часы вручную"
+              />
+            )}
             {selectedBrigade?.objectId != null && (
               <FormControl fullWidth size="small">
                 <InputLabel>Проект</InputLabel>
@@ -744,13 +959,22 @@ const Brigades: React.FC = () => {
                 </Select>
               </FormControl>
             )}
-            <Stack direction="row" spacing={2}>
-              <TextField fullWidth label="Выработка, ₽" type="number" value={sOutputValue} onChange={(e) => setSOutputValue(e.target.value)} />
-              <TextField fullWidth label="Выработка, м²" type="number" value={sOutputArea} onChange={(e) => setSOutputArea(e.target.value)} />
-            </Stack>
-            <TextField fullWidth label="Комментарий" multiline rows={2} value={sComment} onChange={(e) => setSComment(e.target.value)} />
+            <TextField
+              fullWidth
+              label="Комментарий"
+              multiline
+              rows={2}
+              value={sComment}
+              onChange={(e) => setSComment(e.target.value)}
+              helperText="Необязательно. Виден в списке выходов."
+            />
             {formError && <Alert severity="error">{formError}</Alert>}
-            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+            <Stack direction="row" justifyContent="flex-end" alignItems="center" spacing={1}>
+              {hasRoster && (
+                <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
+                  Итого: {fmtNum(rosterHours)} ч
+                </Typography>
+              )}
               <Button variant="outlined" onClick={() => setShiftOpen(false)}>Отмена</Button>
               <Button variant="contained" onClick={handleSaveShift} disabled={saving}>Сохранить</Button>
               {editingShift && (
@@ -788,7 +1012,7 @@ const Brigades: React.FC = () => {
       <Modal open={!!deletingShift} onClose={() => setDeletingShift(null)}>
         <Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 360 }, p: 3, borderRadius: 2, outline: 'none' }}>
           <Typography variant="h6" gutterBottom>Удалить выход</Typography>
-          <Typography sx={{ mb: 2 }}>Удалить выход от {deletingShift?.date}?</Typography>
+          <Typography sx={{ mb: 2 }}>Удалить выход от {fmtDate(deletingShift?.date)}?</Typography>
           <Stack direction="row" justifyContent="flex-end" spacing={1}>
             <Button variant="outlined" onClick={() => setDeletingShift(null)}>Отмена</Button>
             <Button variant="contained" color="error" onClick={handleDeleteShift}>Удалить</Button>

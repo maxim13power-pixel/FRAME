@@ -476,6 +476,7 @@ model BrigadeMember {
   role       String?   // "бригадир", "мастер", "рабочий"
   phone      String?
   createdAt  DateTime  @default(now())
+  shiftLogs  BrigadeShiftMember[] // ⭐ №169: отметки в выходах
 
   @@index([brigadeId])
   @@map("brigade_members")
@@ -494,11 +495,30 @@ model BrigadeShift {
   comment     String?
   createdBy   Int?      // ⭐ №168: nullable — при удалении аккаунта автор обезличивается
   createdAt   DateTime  @default(now())
+  members     BrigadeShiftMember[] // ⭐ №169: кто именно выходил и по сколько часов
 
   @@index([brigadeId])
   @@index([projectId])
   @@index([date])
   @@map("brigade_shifts")
+}
+
+// ⭐ №169: состав одного выхода — по строке на рабочего.
+// hoursWorked в BrigadeShift остаётся суммой (совместимость с отчётами и статистикой),
+// а здесь хранится разрез: «кто был» + «сколько часов у каждого».
+model BrigadeShiftMember {
+  id        Int           @id @default(autoincrement())
+  shiftId   Int
+  shift     BrigadeShift  @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  memberId  Int?          // null — рабочего потом удалили из бригады
+  member    BrigadeMember? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  fullName  String        // снимок ФИО на момент выхода
+  hours     Decimal       @db.Decimal(5, 2)
+  createdAt DateTime      @default(now())
+
+  @@index([shiftId])
+  @@index([memberId])
+  @@map("brigade_shift_members")
 }
 
 // ============================================================

@@ -16,9 +16,91 @@ const BRIGADE_INCLUDE = {
   _count: { select: { members: true } },
 } satisfies Prisma.BrigadeInclude;
 
+// ⭐ №169: выход всегда отдаётся вместе с составом (кто был + часы каждого).
+const SHIFT_INCLUDE = {
+  project: { select: { id: true, name: true } },
+  members: { orderBy: { id: 'asc' } },
+} satisfies Prisma.BrigadeShiftInclude;
+
 @Injectable()
 export class BrigadesService {
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * ⭐ №169: Prisma отдаёт `@db.Date` как Date → в JSON «2026-10-25T00:00:00.000Z».
+   * Из-за этого не работал график статистики (ключ дня не совпадал с YYYY-MM-DD)
+   * и в списке выходов была ISO-строка. Отдаём чистый YYYY-MM-DD.
+   */
+  private mapShift<T extends { date: Date }>(shift: T) {
+    return { ...shift, date: shift.date.toISOString().slice(0, 10) };
+  }
+
+  /**
+   * ⭐ №169: состав выхода → строки brigade_shift_members.
+   * ФИО сохраняем снимком: уберут рабочего из бригады — история выходов не рассыпется.
+   */
+  private async resolveShiftMembers(
+    brigadeId: number,
+    members?: { memberId?: number; hours: number }[],
+  ): Promise<{ memberId: number; fullName: string; hours: number }[] | null> {
+    if (!members || members.length === 0) return null;
+    for (const m of members) {
+      if (m.memberId == null) {
+        throw new BadRequestException('members.memberId: обязателен для каждой строки');
+      }
+    }
+    const ids = members.map((m) => m.memberId as number);
+    if (new Set(ids).size !== ids.length) {
+      throw new BadRequestException('members: рабочий указан дважды');
+    }
+    const found = await this.prisma.brigadeMember.findMany({
+      where: { brigadeId, id: { in: ids } },
+      select: { id: true, fullName: true },
+    });
+    const byId = new Map(found.map((m) => [m.id, m]));
+    const missing = ids.filter((id) => !byId.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `members: рабочие ${missing.join(', ')} не из этой бригады`,
+      );
+    }
+    return ids.map((id) => ({
+      memberId: id,
+      fullName: byId.get(id)!.fullName,
+      hours: Math.round((members.find((m) => m.memberId === id)!.hours) * 100) / 100,
+    }));
+  }
+
+  /** ⭐ №169: дата выхода — валидная и не в будущем */
+  private parseShiftDate(value: string): Date {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException('date: некорректная дата');
+    }
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    if (date.getTime() > today.getTime()) {
+      throw new BadRequestException('date: нельзя фиксировать выход в будущем');
+    }
+    return date;
+  }
+
+  /** ⭐ №169: сумма часов состава — она и уходит в brigade_shifts.hoursWorked */
+  private totalHours(
+    rows: { hours: number }[] | null,
+    fallback?: number,
+  ): number {
+    const total = rows
+      ? rows.reduce((a, r) => a + r.hours, 0)
+      : Number(fallback ?? 0);
+    const rounded = Math.round(total * 100) / 100;
+    if (!(rounded > 0)) {
+      throw new BadRequestException(
+        'Часы: отметьте в составе хотя бы одного рабочего или укажите часы',
+      );
+    }
+    return rounded;
+  }
 
   private async checkObjectAccess(objectId: number, userId: number) {
     const access = await this.prisma.objectAccess.findFirst({
@@ -91,8 +173,10 @@ export class BrigadesService {
   }
 
   async detail(userId: number, id: number) {
-    const brigade = await this.checkBrigadeAccess(id, userId);
-    const [members, shifts] = await Promise.all([
+    await this.checkBrigadeAccess(id, userId);
+    const [full, members, shifts] = await Promise.all([
+      // ⭐ №169: без include object карточка объекта показывала «Мобильная бригада»
+      this.prisma.brigade.findUniqueOrThrow({ where: { id }, include: BRIGADE_INCLUDE }),
       this.prisma.brigadeMember.findMany({
         where: { brigadeId: id },
         orderBy: { createdAt: 'asc' },
@@ -101,10 +185,14 @@ export class BrigadesService {
         where: { brigadeId: id },
         orderBy: { date: 'desc' },
         take: 20,
-        include: { project: { select: { id: true, name: true } } },
+        include: SHIFT_INCLUDE,
       }),
     ]);
-    return { ...brigade, members, shifts };
+    return {
+      ...full,
+      members,
+      shifts: shifts.map((s) => this.mapShift(s)),
+    };
   }
 
   async create(userId: number, dto: CreateBrigadeDto) {
@@ -193,40 +281,40 @@ export class BrigadesService {
     if (projectId != null && !Number.isNaN(projectId)) {
       where.projectId = projectId;
     }
-    return this.prisma.brigadeShift.findMany({
-      where,
-      orderBy: { date: 'desc' },
-      include: { project: { select: { id: true, name: true } } },
-    });
+    return this.prisma.brigadeShift
+      .findMany({
+        where,
+        orderBy: { date: 'desc' },
+        include: SHIFT_INCLUDE,
+      })
+      // ⭐ №169: дата — строка YYYY-MM-DD (фильтры и график сравнивают именно её)
+      .then((rows) => rows.map((s) => this.mapShift(s)));
   }
 
   async logShift(userId: number, brigadeId: number, dto: LogShiftDto) {
     await this.checkBrigadeAccess(brigadeId, userId);
-    // ⭐ date не в будущем
-    const date = new Date(dto.date);
-    if (Number.isNaN(date.getTime())) {
-      throw new BadRequestException('date: некорректная дата');
-    }
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    if (date.getTime() > today.getTime()) {
-      throw new BadRequestException('date: нельзя фиксировать выход в будущем');
-    }
+    const date = this.parseShiftDate(dto.date);
     if (dto.projectId != null) {
       await this.checkProjectAccess(dto.projectId, userId);
     }
-    return this.prisma.brigadeShift.create({
+    // ⭐ №169: состав бригады — источник истины по часам (сумма считается здесь)
+    const memberRows = await this.resolveShiftMembers(brigadeId, dto.members);
+    const hoursWorked = this.totalHours(memberRows, dto.hoursWorked);
+    const shift = await this.prisma.brigadeShift.create({
       data: {
         brigadeId,
         projectId: dto.projectId ?? null,
         date,
-        hoursWorked: dto.hoursWorked,
+        hoursWorked,
         outputValue: dto.outputValue ?? null,
         outputArea: dto.outputArea ?? null,
         comment: dto.comment?.trim() || null,
         createdBy: userId,
+        ...(memberRows ? { members: { create: memberRows } } : {}),
       },
+      include: SHIFT_INCLUDE,
     });
+    return this.mapShift(shift);
   }
 
   async updateShift(userId: number, brigadeId: number, shiftId: number, dto: LogShiftDto) {
@@ -237,29 +325,39 @@ export class BrigadesService {
     if (!shift) {
       throw new NotFoundException('Выход не найден');
     }
-    const date = new Date(dto.date);
-    if (Number.isNaN(date.getTime())) {
-      throw new BadRequestException('date: некорректная дата');
-    }
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    if (date.getTime() > today.getTime()) {
-      throw new BadRequestException('date: нельзя фиксировать выход в будущем');
-    }
+    const date = this.parseShiftDate(dto.date);
     if (dto.projectId != null) {
       await this.checkProjectAccess(dto.projectId, userId);
     }
-    return this.prisma.brigadeShift.update({
-      where: { id: shiftId },
-      data: {
-        projectId: dto.projectId !== undefined ? dto.projectId : undefined,
-        date,
-        hoursWorked: dto.hoursWorked,
-        outputValue: dto.outputValue !== undefined ? dto.outputValue : undefined,
-        outputArea: dto.outputArea !== undefined ? dto.outputArea : undefined,
-        comment: dto.comment !== undefined ? dto.comment.trim() || null : undefined,
-      },
+    // ⭐ №169: новый состав заменяет старый; без состава — прежние часы/из DTO
+    const memberRows = await this.resolveShiftMembers(brigadeId, dto.members);
+    const hoursWorked = memberRows
+      ? this.totalHours(memberRows, dto.hoursWorked)
+      : dto.hoursWorked != null
+        ? this.totalHours(null, dto.hoursWorked)
+        : Number(shift.hoursWorked);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (memberRows) {
+        await tx.brigadeShiftMember.deleteMany({ where: { shiftId } });
+        await tx.brigadeShiftMember.createMany({
+          data: memberRows.map((r) => ({ ...r, shiftId })),
+        });
+      }
+      return tx.brigadeShift.update({
+        where: { id: shiftId },
+        data: {
+          projectId: dto.projectId !== undefined ? dto.projectId : undefined,
+          date,
+          hoursWorked,
+          outputValue: dto.outputValue !== undefined ? dto.outputValue : undefined,
+          outputArea: dto.outputArea !== undefined ? dto.outputArea : undefined,
+          comment: dto.comment !== undefined ? dto.comment.trim() || null : undefined,
+        },
+        include: SHIFT_INCLUDE,
+      });
     });
+    return this.mapShift(updated);
   }
 
   async removeShift(userId: number, brigadeId: number, shiftId: number) {

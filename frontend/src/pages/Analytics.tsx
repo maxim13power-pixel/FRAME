@@ -60,7 +60,8 @@ const Analytics: React.FC = () => {
 
   const loadObjects = useCallback(async () => {
     try {
-      setObjects(await fetchObjects());
+      // ⭐ №169: архивные (глобально) и лично скрытые объекты в фильтр не попадают
+      setObjects((await fetchObjects()).filter(o => !o.isArchived && !o.hiddenForMe));
     } catch {
       /* объекты не критичны */
     }
@@ -128,6 +129,22 @@ const Analytics: React.FC = () => {
 
   return (
     <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
+      {/* ⭐ №169: демо-объект в расчётах → цифры неточные, клик ведёт в «Объекты» */}
+      {(summary?.demoObjects ?? 0) > 0 && (
+        <Alert
+          severity="warning"
+          onClick={() => navigate('/objects')}
+          sx={{ mb: 1, borderRadius: 2, cursor: 'pointer', alignItems: 'flex-start' }}
+        >
+          <Typography variant="body2" fontWeight={600}>
+            В расчёты входит демо-объект{(summary?.demoObjects ?? 0) > 1 ? `ы (${summary?.demoObjects})` : ''}
+          </Typography>
+          <Typography variant="caption">
+            Аналитика считается вместе с демо-данными. Для точных цифр перенесите демо-объект
+            в архив или удалите — нажмите, чтобы открыть «Объекты».
+          </Typography>
+        </Alert>
+      )}
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <IconButton

@@ -50,6 +50,7 @@ export class AnalyticsService {
           WHERE oa."objectId" = o.id
             AND oa."userId" = ${userId}
             AND oa."revokedAt" IS NULL
+            AND oa."isHidden" = false
             AND oa."hidePrices" = false
             AND oa."role" <> 'VIEWER'
             AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
@@ -62,7 +63,7 @@ export class AnalyticsService {
 
   // ─── 1. Сводка: бюджеты/факт/склад/перерасходы ───
   async getSummary(userId: number) {
-    const [moneyRows, warehouseRows, projectRows] = await Promise.all([
+    const [moneyRows, warehouseRows, projectRows, demoRows] = await Promise.all([
       this.prisma.$queryRaw<MoneyRow[]>`
         SELECT
           COALESCE(SUM((m."unitPrice" + m."materialUnitPrice") * m."specQuantity"), 0)::float AS total_budget,
@@ -76,6 +77,7 @@ export class AnalyticsService {
             WHERE oa."objectId" = o.id
               AND oa."userId" = ${userId}
               AND oa."revokedAt" IS NULL
+              AND oa."isHidden" = false
               AND oa."hidePrices" = false
               AND oa."role" <> 'VIEWER'
               AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
@@ -91,11 +93,26 @@ export class AnalyticsService {
             WHERE oa."objectId" = wi."objectId"
               AND oa."userId" = ${userId}
               AND oa."revokedAt" IS NULL
+              AND oa."isHidden" = false
               AND oa."hidePrices" = false
               AND oa."role" <> 'VIEWER'
           )
       `,
       this.budgetRows(userId),
+      // ⭐ №169: демо-объекты в расчётах (для стикера на главной/в аналитике)
+      this.prisma.$queryRaw<{ cnt: number }[]>`
+        SELECT COUNT(DISTINCT o.id)::int AS cnt
+        FROM "Object" o
+        WHERE o."isDemo" = true
+          AND o."isArchived" = false
+          AND EXISTS (
+            SELECT 1 FROM object_access oa
+            WHERE oa."objectId" = o.id
+              AND oa."userId" = ${userId}
+              AND oa."revokedAt" IS NULL
+              AND oa."isHidden" = false
+          )
+      `,
     ]);
 
     const money = moneyRows[0] ?? { total_budget: 0, total_actual: 0 };
@@ -109,6 +126,8 @@ export class AnalyticsService {
       overrunCount,
       onTrackCount,
       totalProjects: projectRows.length,
+      // ⭐ №169: демо-объекты в расчётах (0 = цифры точные)
+      demoObjects: demoRows[0]?.cnt ?? 0,
     };
   }
 
@@ -158,6 +177,7 @@ export class AnalyticsService {
             ON oa."objectId" = o.id
             AND oa."userId" = ${userId}
             AND oa."revokedAt" IS NULL
+            AND oa."isHidden" = false
             AND oa."hidePrices" = false
             AND oa."role" <> 'VIEWER'
             AND (oa."projectId" IS NULL OR oa."projectId" = p.id)

@@ -7,9 +7,15 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import SellIcon from '@mui/icons-material/Sell';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import HelpIcon from '@mui/icons-material/Help';
+import GroupsIcon from '@mui/icons-material/Groups';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import HandshakeIcon from '@mui/icons-material/Handshake';
+import BarChartIcon from '@mui/icons-material/BarChart';
 import { safeParse } from '../utils/storage';
 
 // ⭐ ВСЕ доступные табы (в Настройках юзер сможет выбрать любые 5)
+// ⭐ №169: список синхронизирован с боковым меню (DrawerMenu) — раньше здесь
+// было только 6 разделов, и половину приложения нельзя было вынести вниз.
 export const ALL_BOTTOM_TABS: {
   value: string;
   label: string;
@@ -18,10 +24,14 @@ export const ALL_BOTTOM_TABS: {
 }[] = [
   { value: 'home', label: 'Главная', path: '/', icon: SpaceDashboardIcon },
   { value: 'objects', label: 'Объекты', path: '/objects', icon: HomeIcon },
+  { value: 'brigades', label: 'Бригады', path: '/brigades', icon: GroupsIcon },
   { value: 'price-list', label: 'Цены', path: '/price-list', icon: SellIcon },
+  { value: 'warehouse', label: 'Склад', path: '/warehouse', icon: InventoryIcon },
+  { value: 'rentals', label: 'Аренда', path: '/rentals', icon: HandshakeIcon },
   { value: 'calculators', label: 'Калькуляторы', path: '/calculators', icon: CalculateIcon },
-  { value: 'help', label: 'Помощь', path: '/help', icon: HelpIcon },
+  { value: 'analytics', label: 'Аналитика', path: '/analytics', icon: BarChartIcon },
   { value: 'settings', label: 'Настройки', path: '/settings', icon: SettingsIcon },
+  { value: 'help', label: 'Помощь', path: '/help', icon: HelpIcon },
 ];
 
 export const DEFAULT_BOTTOM_TABS = ['home', 'objects', 'settings'];

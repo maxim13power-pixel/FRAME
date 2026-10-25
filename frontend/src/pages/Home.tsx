@@ -85,6 +85,22 @@ const Home: React.FC = () => {
 
   return (
     <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
+      {/* ⭐ №169: демо-объект в расчётах → цифры неточные, клик ведёт в «Объекты» */}
+      {data.demoObjects > 0 && (
+        <Alert
+          severity="warning"
+          onClick={() => navigate('/objects')}
+          sx={{ mb: 2, borderRadius: 2, cursor: 'pointer', alignItems: 'flex-start' }}
+        >
+          <Typography variant="body2" fontWeight={600}>
+            В расчёты входит демо-объект{data.demoObjects > 1 ? `ы (${data.demoObjects})` : ''}
+          </Typography>
+          <Typography variant="caption">
+            Для точных цифр перенесите демо-объект в архив или удалите его — нажмите,
+            чтобы открыть «Объекты».
+          </Typography>
+        </Alert>
+      )}
      {/* ─── 1. HERO: ДЕНЬГИ (кликабельный → в Объекты) ─── */}
     <Paper
       onClick={() => navigate('/objects')}

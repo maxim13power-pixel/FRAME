@@ -9,6 +9,8 @@ export interface AnalyticsSummary {
   overrunCount: number;
   onTrackCount: number;
   totalProjects: number;
+  /** ⭐ №169: сколько демо-объектов попало в расчёты (0 = цифры точные) */
+  demoObjects: number;
 }
 
 export interface BudgetVsActualItem {

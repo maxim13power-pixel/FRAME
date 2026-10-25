@@ -87,7 +87,12 @@ export function buildAccessScope(grants: AccessGrant[]): AccessScope {
 export function buildMoneyScope(grants: AccessGrant[]): AccessScope {
   return buildAccessScope(
     grants.filter(
-      (g) => !g.revokedAt && g.role !== AccessRole.VIEWER && !g.hidePrices,
+      // ⭐ №169: объект из личного архива в деньгах/KPI не участвует
+      (g) =>
+        !g.revokedAt &&
+        !g.isHidden &&
+        g.role !== AccessRole.VIEWER &&
+        !g.hidePrices,
     ),
   );
 }
@@ -96,9 +101,10 @@ export function buildMoneyScope(grants: AccessGrant[]): AccessScope {
  * ⭐ №168: скоуп «рабочих» объектов — отозванные доступы не считаются.
  * Списки читают через buildAccessScope (замороженный объект остаётся видимым),
  * а KPI/аналитика — через этот хелпер: отозванный участник в цифрах не участвует.
+ * ⭐ №169: личный архив тоже исключается — «убрал в архив» = убрал из расчётов.
  */
 export function buildWorkScope(grants: AccessGrant[]): AccessScope {
-  return buildAccessScope(grants.filter((g) => !g.revokedAt));
+  return buildAccessScope(grants.filter((g) => !g.revokedAt && !g.isHidden));
 }
 
 export function isScopeEmpty(scope: AccessScope): boolean {

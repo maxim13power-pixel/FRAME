@@ -428,20 +428,23 @@ export class AccessService {
     }));
   }
 
-  // 8. ⭐ №168: личный архив — скрыть/показать объект только у себя
+  // 8. ⭐ №168/№169: личный архив — скрыть/показать объект только у себя.
+  // Архив — это свойство ОБЪЕКТА, а не отдельной записи: у одного участника их
+  // может быть несколько (весь объект + точечные проекты), поэтому флаг пишем
+  // во все его записи этого объекта. Иначе «в настройках архив, а в объектах нет».
   async setHidden(accessId: number, userId: number, isHidden: boolean) {
     const row = await this.prisma.objectAccess.findFirst({
       where: { id: accessId, userId },
-      select: { id: true },
+      select: { id: true, objectId: true },
     });
     if (!row) {
       throw new NotFoundException('Запись доступа не найдена');
     }
-    await this.prisma.objectAccess.update({
-      where: { id: accessId },
+    await this.prisma.objectAccess.updateMany({
+      where: { userId, objectId: row.objectId },
       data: { isHidden },
     });
-    return { success: true, isHidden };
+    return { success: true, isHidden, objectId: row.objectId };
   }
 
   /** dd.mm.yyyy без зависимости от локали сервера */

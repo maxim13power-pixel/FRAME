@@ -93,7 +93,7 @@ const PriceList: React.FC = () => {
     // Основные данные
   const [activeTab, setActiveTab] = useState<'WORK' | 'MATERIAL'>('WORK');
   const [categories, setCategories] = useState<PriceCategoryData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!catalogId);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -173,7 +173,12 @@ const PriceList: React.FC = () => {
   }, [token]);
 
   useEffect(() => {
-    if (!token || !catalogId) return;
+    // ⭐ №169: на маршруте списка справочников (/price-list) грузить нечего —
+    // иначе loading оставался true и страница навсегда показывала спиннер.
+    if (!token || !catalogId) {
+      setLoading(false);
+      return;
+    }
     const loadData = async () => {
       try {
         setLoading(true);

@@ -68,6 +68,8 @@ export interface DashboardRecentFixDto {
 
 export interface DashboardSummaryDto {
   kpi: DashboardKpiDto;
+  /** ⭐ №169: демо-объекты в расчётах (стикер «цифры неточные») */
+  demoObjects: number;
   money: DashboardMoneyDto;
   weekChart: DashboardWeekPointDto[];
   hotProjects: DashboardHotProjectDto[];

@@ -10,6 +10,8 @@ export interface DashboardSummary {
     fixesLast7dCount: number;
   };
   money: { estimate: number; actual: number; percent: number };
+  /** ⭐ №169: сколько демо-объектов попало в расчёты (0 = цифры точные) */
+  demoObjects: number;
   weekChart: { day: string; count: number }[];
   hotProjects: {
     id: number;

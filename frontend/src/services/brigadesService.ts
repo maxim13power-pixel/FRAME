@@ -12,18 +12,29 @@ export interface BrigadeMemberData {
   createdAt?: string;
 }
 
+/** ⭐ №169: строка состава выхода — кто был и сколько часов */
+export interface BrigadeShiftMemberData {
+  id: number;
+  shiftId: number;
+  memberId?: number | null;
+  fullName: string;
+  hours: number;
+}
+
 export interface BrigadeShiftData {
   id: number;
   brigadeId: number;
   projectId?: number | null;
   project?: { id: number; name: string } | null;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD (бэкенд отдаёт строку, №169)
   hoursWorked: number;
   outputValue?: number | null;
   outputArea?: number | null;
   comment?: string | null;
   createdBy: number;
   createdAt?: string;
+  /** ⭐ №169: состав выхода (пусто у старых записей) */
+  members?: BrigadeShiftMemberData[];
 }
 
 export interface BrigadeData {
@@ -50,9 +61,13 @@ export interface BrigadeStats {
 
 const normalizeShift = (s: BrigadeShiftData): BrigadeShiftData => ({
   ...s,
+  // ⭐ №169: страховка — даже если бэкенд отдал полный ISO, оставляем YYYY-MM-DD,
+  // иначе фильтры и график статистики не находят день.
+  date: String(s.date).slice(0, 10),
   hoursWorked: parseDecimal(s.hoursWorked),
   outputValue: s.outputValue != null ? parseDecimal(s.outputValue) : null,
   outputArea: s.outputArea != null ? parseDecimal(s.outputArea) : null,
+  members: s.members?.map((m) => ({ ...m, hours: parseDecimal(m.hours) })),
 });
 
 const normalizeBrigade = (b: BrigadeData): BrigadeData => ({
@@ -126,16 +141,20 @@ export const fetchBrigadeShifts = async (
   return response.data.map(normalizeShift);
 };
 
+/** ⭐ №169: тело запроса на выход — часы считает сервер по составу */
+export interface BrigadeShiftPayload {
+  date: string;
+  hoursWorked?: number;
+  members?: { memberId: number; hours: number }[];
+  outputValue?: number;
+  outputArea?: number;
+  projectId?: number;
+  comment?: string;
+}
+
 export const logBrigadeShift = async (
   brigadeId: number,
-  data: {
-    date: string;
-    hoursWorked: number;
-    outputValue?: number;
-    outputArea?: number;
-    projectId?: number;
-    comment?: string;
-  },
+  data: BrigadeShiftPayload,
 ): Promise<BrigadeShiftData> => {
   const response = await api.post(`/brigades/${brigadeId}/shifts`, data);
   return normalizeShift(response.data);
@@ -144,14 +163,7 @@ export const logBrigadeShift = async (
 export const updateBrigadeShift = async (
   brigadeId: number,
   shiftId: number,
-  data: {
-    date: string;
-    hoursWorked: number;
-    outputValue?: number;
-    outputArea?: number;
-    projectId?: number;
-    comment?: string;
-  },
+  data: BrigadeShiftPayload,
 ): Promise<BrigadeShiftData> => {
   const response = await api.patch(`/brigades/${brigadeId}/shifts/${shiftId}`, data);
   return normalizeShift(response.data);
