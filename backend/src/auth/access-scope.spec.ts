@@ -7,8 +7,11 @@ import {
   accessibleProjectWhere,
   buildAccessScope,
   buildMoneyScope,
+  buildWorkScope,
   isScopeEmpty,
   resolveObjectRole,
+  resolveProjectAccess,
+  resolveProjectRole,
 } from './access-scope';
 
 const grant = (
@@ -16,7 +19,19 @@ const grant = (
   projectId: number | null,
   role: AccessRole = AccessRole.FOREMAN,
   hidePrices = false,
-): AccessGrant => ({ objectId, projectId, role, hidePrices });
+  extra: Partial<AccessGrant> = {},
+): AccessGrant => ({ objectId, projectId, role, hidePrices, ...extra });
+
+/** Права «нет доступа» — эталон для сравнения */
+const NO_ACCESS = {
+  role: null,
+  hidePrices: false,
+  hasObjectAccess: false,
+  isManager: false,
+  revoked: false,
+  canWrite: false,
+  canManage: false,
+};
 
 describe('access-scope (№163)', () => {
   describe('buildAccessScope', () => {
@@ -97,7 +112,15 @@ describe('access-scope (№163)', () => {
         [grant(1, null, AccessRole.CUSTOMER), grant(1, 10, AccessRole.VIEWER)],
         1,
       );
-      expect(my).toEqual({ role: 'CUSTOMER', hidePrices: false, hasObjectAccess: true });
+      expect(my).toEqual({
+        role: 'CUSTOMER',
+        hidePrices: false,
+        hasObjectAccess: true,
+        isManager: false,
+        revoked: false,
+        canWrite: true,
+        canManage: true,
+      });
     });
 
     it('только проектные записи → сильнейшая роль, без прав на объект', () => {
@@ -119,7 +142,94 @@ describe('access-scope (№163)', () => {
 
     it('нет доступа к объекту → role=null', () => {
       const my = resolveObjectRole([grant(2, 20)], 1);
-      expect(my).toEqual({ role: null, hidePrices: false, hasObjectAccess: false });
+      expect(my).toEqual(NO_ACCESS);
+    });
+
+    // ⭐ №168: мягкий отзыв = только чтение, живые цены скрыты (снимок в шаблонах)
+    it('отозванный доступ → read-only и без живых цен', () => {
+      const my = resolveObjectRole(
+        [
+          grant(1, null, AccessRole.FOREMAN, false, {
+            revokedAt: new Date('2026-11-01'),
+          }),
+        ],
+        1,
+      );
+      expect(my.role).toBe('FOREMAN');
+      expect(my.revoked).toBe(true);
+      expect(my.canWrite).toBe(false);
+      expect(my.canManage).toBe(false);
+      expect(my.hidePrices).toBe(true);
+      expect(my.hasObjectAccess).toBe(true);
+    });
+
+    // ⭐ №168: управлять командой может заказчик и прораб-менеджер
+    it('прораб с isManager управляет командой, обычный — нет', () => {
+      const manager = resolveObjectRole(
+        [grant(1, null, AccessRole.FOREMAN, false, { isManager: true })],
+        1,
+      );
+      const worker = resolveObjectRole([grant(1, null, AccessRole.FOREMAN)], 1);
+      expect(manager.canManage).toBe(true);
+      expect(worker.canManage).toBe(false);
+      expect(worker.canWrite).toBe(true);
+    });
+
+    it('наблюдатель никогда не управляет и не пишет', () => {
+      const my = resolveObjectRole(
+        [grant(1, null, AccessRole.VIEWER, false, { isManager: true })],
+        1,
+      );
+      expect(my.canManage).toBe(false);
+      expect(my.canWrite).toBe(false);
+      expect(my.hidePrices).toBe(true);
     });
   });
+
+  // ⭐ №168: шаблоны смет — копию сохраняет любой читатель, применяет только пишущий
+  describe('resolveProjectAccess / resolveProjectRole', () => {
+    it('роль проекта с фолбэком на объектную запись', () => {
+      expect(
+        resolveProjectRole([grant(1, null, AccessRole.CUSTOMER)], 1, 10),
+      ).toBe('CUSTOMER');
+      expect(resolveProjectRole([grant(1, 11, AccessRole.VIEWER)], 1, 10)).toBe(
+        null,
+      );
+    });
+
+    it('отозванный участник может читать проект, но не писать', () => {
+      const my = resolveProjectAccess(
+        [grant(1, 10, AccessRole.FOREMAN, false, { revokedAt: new Date() })],
+        1,
+        10,
+      );
+      expect(my.role).toBe('FOREMAN');
+      expect(my.revoked).toBe(true);
+      expect(my.canWrite).toBe(false);
+    });
+
+    it('наблюдатель может сохранить копию, но не применить её в проект', () => {
+      const my = resolveProjectAccess(
+        [grant(1, null, AccessRole.VIEWER)],
+        1,
+        10,
+      );
+      expect(my.role).toBe('VIEWER');
+      expect(my.canWrite).toBe(false);
+    });
+  });
+
+  // ⭐ №168: отозванные доступы не участвуют в KPI/деньгах
+  describe('buildWorkScope', () => {
+    it('выкидывает отозванные записи, но списки остаются полными', () => {
+      const grants = [
+        grant(1, null, AccessRole.CUSTOMER, false, { revokedAt: new Date() }),
+        grant(2, 20, AccessRole.FOREMAN),
+      ];
+      expect(buildAccessScope(grants).objectIds.sort()).toEqual([1, 2]);
+      expect(buildWorkScope(grants).objectIds).toEqual([2]);
+      expect(buildMoneyScope(grants).projectIds).toEqual([20]);
+    });
+  });
+
 });

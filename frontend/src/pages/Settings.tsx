@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, Stack, FormControlLabel, Checkbox, Avatar,
-  Button, Divider, Modal, Alert, Chip,
+  Button, Divider, Modal, Alert, Chip, Switch,
   List, ListItemButton, ListItemIcon, ListItemText,
   IconButton, useMediaQuery, useTheme,
   Accordion, AccordionSummary, AccordionDetails,
@@ -22,12 +22,15 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DescriptionIcon from '@mui/icons-material/Description';
 import PrivacyTipIcon from '@mui/icons-material/PrivacyTip';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import PeopleIcon from '@mui/icons-material/People';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { ALL_BOTTOM_TABS, getBottomNavConfig, DEFAULT_BOTTOM_TABS } from '../components/BottomNav';
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { exportMyData, deleteMyAccount } from '../services/usersService';
+import { fetchMyAccess, setMyAccessHidden } from '../services/accessService';
+import type { MyAccess } from '../services/accessService';
 import { logoutAll } from '../services/authService';
 import { getTokenExpiry } from '../utils/jwt';
 
@@ -40,6 +43,7 @@ const ROLE_LABELS: Record<string, string> = {
   STORE_MANAGER: 'Кладовщик',
   FOREMAN: 'Прораб',
   CUSTOMER: 'Заказчик',
+  VIEWER: 'Наблюдатель', // ⭐ №168: роль доступа на объекте
 };
 
 const Settings: React.FC = () => {
@@ -53,6 +57,27 @@ const Settings: React.FC = () => {
   const [selected, setSelected] = useState<string[]>(() => getBottomNavConfig());
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [loggingOutAll, setLoggingOutAll] = useState(false);
+  // ⭐ №168: «Мои доступы» — активные / архив / отозванные
+  const [myAccess, setMyAccess] = useState<MyAccess[]>([]);
+  const [accessLoading, setAccessLoading] = useState(true);
+
+  useEffect(() => {
+    if (!token) return;
+    fetchMyAccess()
+      .then(setMyAccess)
+      .catch(() => setMyAccess([]))
+      .finally(() => setAccessLoading(false));
+  }, [token]);
+
+  // ⭐ №168: личный архив — объект скрывается только у меня
+  const toggleArchive = async (row: MyAccess, hidden: boolean) => {
+    try {
+      await setMyAccessHidden(row.id, hidden);
+      setMyAccess(prev => prev.map(a => a.id === row.id ? { ...a, isHidden: hidden } : a));
+    } catch {
+      notifyError('Не удалось изменить личный архив');
+    }
+  };
 
   // ⭐ №160: «Сессия активна до …» — читаем exp из текущего JWT
   const sessionExpiry = getTokenExpiry(token);
@@ -264,6 +289,66 @@ const Settings: React.FC = () => {
         </AccordionDetails>
       </Accordion>
 
+      {/* ⭐ №168: «Мои доступы» — объекты, где я участник */}
+      <Paper sx={{ p: 2.5, borderRadius: 2, mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+          <PeopleIcon sx={{ color: '#1976d2' }} />
+          <Typography variant="subtitle1" fontWeight={700}>Мои доступы</Typography>
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          Объекты, где вы участник. Архив — личный: у остальных участников объект
+          остаётся на месте, данные не удаляются.
+        </Typography>
+        {accessLoading ? (
+          <Typography variant="body2" color="text.secondary">Загрузка…</Typography>
+        ) : myAccess.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            Пока нет доступа ни к одному объекту.
+          </Typography>
+        ) : (
+          <Stack spacing={1}>
+            {myAccess.map(row => (
+              <Box
+                key={row.id}
+                sx={{
+                  p: 1.25,
+                  borderRadius: 2,
+                  bgcolor: row.revokedAt ? '#fdecea' : '#f5f7fa',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Typography variant="body2" fontWeight={600} noWrap>
+                      {row.objectName}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" noWrap>
+                      {row.projectId ? `📁 ${row.projectName ?? 'проект'}` : '🏗 весь объект'}
+                      {' · '}
+                      {ROLE_LABELS[row.role] ?? row.role}
+                      {row.isManager ? ' · менеджер' : ''}
+                    </Typography>
+                  </Box>
+                  {row.revokedAt && (
+                    <Chip size="small" color="error" label="🔒 Доступ отозван" />
+                  )}
+                  <FormControlLabel
+                    sx={{ mr: 0 }}
+                    control={
+                      <Switch
+                        size="small"
+                        checked={row.isHidden}
+                        onChange={(e) => toggleArchive(row, e.target.checked)}
+                      />
+                    }
+                    label={<Typography variant="caption">архив</Typography>}
+                  />
+                </Box>
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </Paper>
+
       {/* ⭐ Данные и конфиденциальность */}
       <Paper sx={{ p: 2.5, borderRadius: 2, mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -331,7 +416,8 @@ const Settings: React.FC = () => {
         }}>
           <Typography variant="h6" gutterBottom>Удалить аккаунт?</Typography>
           <Alert severity="error" sx={{ mb: 2 }}>
-            Это действие необратимо. Все ваши данные будут удалены безвозвратно.
+            Аккаунт будет обезличен, вход станет невозможен. Общие данные объектов
+            (сметы, акты, склад) останутся у остальных участников — они им принадлежат.
           </Alert>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
             <Button variant="outlined" onClick={() => setDeleteModalOpen(false)}>Отмена</Button>

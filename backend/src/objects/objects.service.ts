@@ -17,13 +17,19 @@ export class ObjectsService {
 
   // ⭐ №164: менять сам объект может только участник с объектным доступом
   // и не наблюдатель (раньше хватало любой записи projectId=null).
+  // ⭐ №168: отозванный доступ — только чтение.
   private async assertCanEdit(objectId: number, userId: number) {
     const grants = await loadAccessGrants(this.prisma, userId);
     const my = resolveObjectRole(grants, objectId);
     if (!my.hasObjectAccess) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
-    if (my.role === AccessRole.VIEWER) {
+    if (my.revoked) {
+      throw new ForbiddenException(
+        'Доступ отозван: объект доступен только для чтения. Копия данных — в ваших шаблонах.',
+      );
+    }
+    if (!my.canWrite) {
       throw new ForbiddenException('Наблюдатель не может менять объект');
     }
   }
@@ -75,11 +81,14 @@ export class ObjectsService {
         note: dto.note || null,
         isArchived: false,
         catalogId,
+        createdById: userId, // ⭐ №168: метка автора (прав не даёт)
         // ⭐ Сразу создаём доступ для создателя (вложенный create)
         accesses: {
           create: {
             userId,
             role: createRole,
+            // Создатель-прораб сразу менеджер: иначе он не сможет собрать команду.
+            isManager: createRole === AccessRole.FOREMAN,
           },
         },
       },
@@ -141,6 +150,18 @@ export class ObjectsService {
         role: my.role ?? undefined,
         hidePrices: my.hidePrices,
         hasObjectAccess: my.hasObjectAccess, // ⭐ №163: можно ли править сам объект
+        // ⭐ №168: личный архив / отзыв / управление командой
+        accessId:
+          grants.find(
+            (g) => g.objectId === o.id && g.projectId == null && !g.revokedAt,
+          )?.id ?? null,
+        hiddenForMe: !!grants.find(
+          (g) => g.objectId === o.id && g.projectId == null && g.isHidden,
+        ),
+        revoked: my.revoked,
+        isManager: my.isManager,
+        canWrite: my.canWrite,
+        canManage: my.canManage,
       };
     });
   }
@@ -169,27 +190,9 @@ export class ObjectsService {
     });
   }
 
-  // Удаление → АРХИВАЦИЯ (ТЗ 3.8: архив вместо жёсткого удаления).
-  // ⭐ permanent=true — жёсткое удаление (для демо-объекта, который не жалко).
-  async remove(id: number, userId: number, permanent = false) {
-    await this.assertCanEdit(id, userId);
-    if (permanent) {
-      return this.prisma.object.delete({ where: { id } });
-    }
-    return this.prisma.object.update({
-      where: { id },
-      data: { isArchived: true },
-    });
-  }
-
-  // ⭐ Восстановить объект из архива
-  async restore(id: number, userId: number) {
-    await this.assertCanEdit(id, userId);
-    return this.prisma.object.update({
-      where: { id },
-      data: { isArchived: false },
-    });
-  }
+  // ⚠️ №168: жёсткое удаление объектов запрещено. «Убрать с глаз» — это личный
+  // архив пользователя (ObjectAccess.isHidden, PATCH /me/access/:id),
+  // а не удаление данных: акты, склад и авторство остаются у остальных участников.
 
   async findOne(id: number, userId: number) {
     // ⭐ №163: объект доступен и участнику отдельного проекта (нужен для шапки сметы)
@@ -209,6 +212,18 @@ export class ObjectsService {
       role: my.role,
       hidePrices: my.hidePrices,
       hasObjectAccess: my.hasObjectAccess, // ⭐ №163: права на сам объект
+      // ⭐ №168: личный архив / отзыв / управление командой
+      accessId:
+        grants.find(
+          (g) => g.objectId === id && g.projectId == null && !g.revokedAt,
+        )?.id ?? null,
+      hiddenForMe: !!grants.find(
+        (g) => g.objectId === id && g.projectId == null && g.isHidden,
+      ),
+      revoked: my.revoked,
+      isManager: my.isManager,
+      canWrite: my.canWrite,
+      canManage: my.canManage,
     };
   }
 

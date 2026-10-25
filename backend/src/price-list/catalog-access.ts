@@ -11,7 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   loadAccessGrants,
   resolveObjectRole,
-  resolveProjectRole,
+  resolveProjectAccess,
 } from '../auth/access-scope';
 
 /** Роли, которым разрешено менять справочник объекта/проекта (решение 10.1(2)) */
@@ -93,14 +93,16 @@ export async function loadCatalogAccess(
     if ((!canRead || !canWrite) && catalog.ownerId !== null) {
       const grants = await loadAccessGrants(prisma, userId);
       for (const o of bindings.objects) {
-        const role = resolveObjectRole(grants, o.id).role;
-        if (role) canRead = true;
-        if (canWriteWithRole(role)) canWrite = true;
+        // ⭐ №168: отозванный доступ читает только снимок (личную копию),
+        // живой справочник объекта ему уже не показываем
+        const my = resolveObjectRole(grants, o.id);
+        if (my.role && !my.revoked) canRead = true;
+        if (my.canWrite) canWrite = true;
       }
       for (const p of bindings.projects) {
-        const role = resolveProjectRole(grants, p.objectId, p.id);
-        if (role) canRead = true;
-        if (canWriteWithRole(role)) canWrite = true;
+        const my = resolveProjectAccess(grants, p.objectId, p.id);
+        if (my.role && !my.revoked) canRead = true;
+        if (my.canWrite) canWrite = true;
       }
     }
   }

@@ -46,9 +46,11 @@ export class ReportsService {
 
   // ⭐ СКРЫТИЕ ЦЕН (флаг hidePrices + роль VIEWER) — как в materials.service.ts
   private mustHidePrices(
-    access?: { role?: string; hidePrices?: boolean } | null,
+    access?: { role?: string; hidePrices?: boolean; revokedAt?: Date | null } | null,
   ): boolean {
     if (!access) return false;
+    // ⭐ №168: отозванный доступ видит только снимок в шаблонах — живые цены скрыты
+    if (access.revokedAt) return true;
     // Наблюдатель не видит деньги по определению роли
     if (access.role === 'VIEWER') return true;
     return access.hidePrices ?? false;

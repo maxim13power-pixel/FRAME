@@ -1,5 +1,6 @@
 // backend/src/access/dto/add-access.dto.ts
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -36,4 +37,9 @@ export class AddAccessDto {
   @IsInt()
   @Min(1)
   projectId?: number;
+
+  // ⭐ №168: «управляет командой» — только для FOREMAN, выдаёт заказчик
+  @IsOptional()
+  @IsBoolean()
+  isManager?: boolean;
 }

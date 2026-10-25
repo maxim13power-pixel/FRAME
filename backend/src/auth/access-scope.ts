@@ -9,10 +9,33 @@ import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface AccessGrant {
+  id?: number;
   objectId: number;
   projectId: number | null;
   role: AccessRole;
   hidePrices: boolean;
+  /** ⭐ №168: право управлять командой (только для FOREMAN) */
+  isManager?: boolean;
+  /** ⭐ №168: объект скрыт в личном архиве этого участника */
+  isHidden?: boolean;
+  /** ⭐ №168: доступ отозван (read-only «как на момент отзыва») */
+  revokedAt?: Date | null;
+}
+
+/**
+ * ⭐ №168: итоговые права пользователя на объект/проект.
+ * Один источник истины и для API-проверок, и для UI-флагов.
+ */
+export interface RoleResolution {
+  role: AccessRole | null;
+  hidePrices: boolean;
+  /** есть общая (projectId = null) запись — права на сам объект */
+  hasObjectAccess: boolean;
+  isManager: boolean;
+  /** доступ отозван → только чтение замороженной копии */
+  revoked: boolean;
+  canWrite: boolean;
+  canManage: boolean;
 }
 
 export interface AccessScope {
@@ -31,7 +54,16 @@ export async function loadAccessGrants(
 ): Promise<AccessGrant[]> {
   return prisma.objectAccess.findMany({
     where: { userId },
-    select: { objectId: true, projectId: true, role: true, hidePrices: true },
+    select: {
+      id: true,
+      objectId: true,
+      projectId: true,
+      role: true,
+      hidePrices: true,
+      isManager: true,
+      isHidden: true,
+      revokedAt: true,
+    },
   });
 }
 
@@ -51,11 +83,22 @@ export function buildAccessScope(grants: AccessGrant[]): AccessScope {
   };
 }
 
-/** Только те записи, где пользователь видит цены (не VIEWER и hidePrices=false) */
+/** Только те записи, где пользователь видит цены (не VIEWER, hidePrices=false, доступ активен) */
 export function buildMoneyScope(grants: AccessGrant[]): AccessScope {
   return buildAccessScope(
-    grants.filter((g) => g.role !== AccessRole.VIEWER && !g.hidePrices),
+    grants.filter(
+      (g) => !g.revokedAt && g.role !== AccessRole.VIEWER && !g.hidePrices,
+    ),
   );
+}
+
+/**
+ * ⭐ №168: скоуп «рабочих» объектов — отозванные доступы не считаются.
+ * Списки читают через buildAccessScope (замороженный объект остаётся видимым),
+ * а KPI/аналитика — через этот хелпер: отозванный участник в цифрах не участвует.
+ */
+export function buildWorkScope(grants: AccessGrant[]): AccessScope {
+  return buildAccessScope(grants.filter((g) => !g.revokedAt));
 }
 
 export function isScopeEmpty(scope: AccessScope): boolean {
@@ -106,6 +149,51 @@ const ROLE_PRIORITY: Record<AccessRole, number> = {
   VIEWER: 1,
 };
 
+const NO_ACCESS: RoleResolution = {
+  role: null,
+  hidePrices: false,
+  hasObjectAccess: false,
+  isManager: false,
+  revoked: false,
+  canWrite: false,
+  canManage: false,
+};
+
+/** Сильнейшая запись из набора (CUSTOMER > FOREMAN > VIEWER) */
+function strongest(grants: AccessGrant[]): AccessGrant {
+  return grants.reduce((a, b) =>
+    ROLE_PRIORITY[b.role] > ROLE_PRIORITY[a.role] ? b : a,
+  );
+}
+
+/** ⭐ №168: собрать итоговые права из записи-источника и всего набора */
+function makeResolution(
+  source: AccessGrant,
+  own: AccessGrant[],
+  hasObjectAccess: boolean,
+  revoked: boolean,
+): RoleResolution {
+  const role = source.role;
+  return {
+    role,
+    // Отозванный доступ = «снимок»: живые цены нигде не показываем,
+    // цифры он видит в собственных шаблонах-копиях.
+    hidePrices:
+      revoked ||
+      role === AccessRole.VIEWER ||
+      source.hidePrices ||
+      own.some((g) => g.hidePrices),
+    hasObjectAccess,
+    isManager: !!source.isManager,
+    revoked,
+    canWrite: !revoked && role !== AccessRole.VIEWER,
+    canManage:
+      !revoked &&
+      (role === AccessRole.CUSTOMER ||
+        (role === AccessRole.FOREMAN && !!source.isManager)),
+  };
+}
+
 /**
  * ⭐ №164: роль пользователя на конкретном проекте.
  * Объектная запись (projectId=null) важнее проектной — та же семантика, что в resolveObjectRole.
@@ -115,48 +203,61 @@ export function resolveProjectRole(
   objectId: number,
   projectId: number,
 ): AccessRole | null {
+  return resolveProjectAccess(grants, objectId, projectId).role;
+}
+
+/**
+ * ⭐ №168: полные права на проект — роль, отзыв, право записи и управления.
+ * Нужны шаблонам смет: сохранить копию может любой читатель (включая отозванного),
+ * а применять её в чужой проект — только тот, кто в нём может писать.
+ */
+export function resolveProjectAccess(
+  grants: AccessGrant[],
+  objectId: number,
+  projectId: number,
+): RoleResolution {
   const own = grants.filter(
     (g) =>
       g.objectId === objectId &&
       (g.projectId == null || g.projectId === projectId),
   );
-  if (own.length === 0) return null;
+  if (own.length === 0) return NO_ACCESS;
   const full = own.find((g) => g.projectId == null);
-  if (full) return full.role;
-  return own.reduce((a, b) =>
-    ROLE_PRIORITY[b.role] > ROLE_PRIORITY[a.role] ? b : a,
-  ).role;
+  if (full) {
+    return makeResolution(full, own, true, !!full.revokedAt);
+  }
+  const source = strongest(own);
+  return makeResolution(
+    source,
+    own,
+    false,
+    own.every((g) => !!g.revokedAt),
+  );
 }
 
 /**
  * Роль пользователя на уровне объекта.
  * Объектная запись (projectId=null) важнее проектных: она и определяет права
- * на сам объект (редактирование, архив, создание проектов).
+ * на сам объект (редактирование, создание проектов, управление командой).
  */
 export function resolveObjectRole(
   grants: AccessGrant[],
   objectId: number,
-): { role: AccessRole | null; hidePrices: boolean; hasObjectAccess: boolean } {
+): RoleResolution {
   const own = grants.filter((g) => g.objectId === objectId);
+  if (own.length === 0) return NO_ACCESS;
   const full = own.find((g) => g.projectId == null);
   if (full) {
-    return {
-      role: full.role,
-      hidePrices: full.role === AccessRole.VIEWER || full.hidePrices,
-      hasObjectAccess: true,
-    };
-  }
-  if (own.length === 0) {
-    return { role: null, hidePrices: false, hasObjectAccess: false };
+    return makeResolution(full, own, true, !!full.revokedAt);
   }
   // Только проектные записи: берём самую сильную роль, цены скрываем,
   // если их прячет любая из записей.
-  const best = own.reduce((a, b) =>
-    ROLE_PRIORITY[b.role] > ROLE_PRIORITY[a.role] ? b : a,
+  const source = strongest(own);
+  return makeResolution(
+    source,
+    own,
+    false,
+    own.every((g) => !!g.revokedAt),
   );
-  return {
-    role: best.role,
-    hidePrices: best.role === AccessRole.VIEWER || own.some((g) => g.hidePrices),
-    hasObjectAccess: false,
-  };
 }
+

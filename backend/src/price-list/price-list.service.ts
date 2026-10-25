@@ -9,7 +9,11 @@ import { PriceKind, Unit } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { canWriteWithRole, loadCatalogAccess } from './catalog-access'; // ⭐ №164
-import { resolveObjectRole, resolveProjectRole } from '../auth/access-scope'; // ⭐ №164
+import {
+  loadAccessGrants,
+  resolveObjectRole,
+  resolveProjectAccess,
+} from '../auth/access-scope'; // ⭐ №164/№168
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreatePriceItemDto } from './dto/create-price-item.dto';
@@ -141,11 +145,9 @@ export class PriceListService {
         (!!userId && c.ownerId === userId) ||
         // системный справочник правит только ADMIN (привязка к объекту не даёт прав)
         (!isSystem &&
-          (c.objects.some((o) =>
-            canWriteWithRole(resolveObjectRole(grants, o.id).role),
-          ) ||
-            c.projects.some((p) =>
-              canWriteWithRole(resolveProjectRole(grants, p.objectId, p.id)),
+          (c.objects.some((o) => resolveObjectRole(grants, o.id).canWrite) ||
+            c.projects.some(
+              (p) => resolveProjectAccess(grants, p.objectId, p.id).canWrite,
             )));
       return {
         id: c.id,
@@ -195,14 +197,12 @@ export class PriceListService {
 
     // В справочник объекта/проекта пишут заказчик и прораб (решение 10.1(2))
     if (objectId) {
-      const grants = await this.prisma.objectAccess.findMany({
-        where: { userId, objectId },
-        select: { objectId: true, projectId: true, role: true, hidePrices: true },
-      });
-      const role = opts.projectId
-        ? resolveProjectRole(grants, objectId, opts.projectId)
-        : resolveObjectRole(grants, objectId).role;
-      if (!canWriteWithRole(role)) {
+      // ⭐ №168: отозванный доступ и наблюдатель не пишут (canWrite = false)
+      const grants = await loadAccessGrants(this.prisma, userId);
+      const my = opts.projectId
+        ? resolveProjectAccess(grants, objectId, opts.projectId)
+        : resolveObjectRole(grants, objectId);
+      if (!my.canWrite) {
         throw new ForbiddenException(
           'Менять справочник объекта может только заказчик или прораб',
         );

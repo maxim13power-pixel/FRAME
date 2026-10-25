@@ -43,9 +43,12 @@ model Object {
   startDate       DateTime
   endDate         DateTime
   plannedEndDate  DateTime?     // первоначальная плановая дата
-  isArchived      Boolean       @default(false) // Архив вместо удаления (P3)
+  isArchived      Boolean       @default(false) // ⚠️ №168: легаси, глобального архива больше нет (сброшено миграцией)
   isDemo          Boolean       @default(false) // ⭐ демо-объект для онбординга (№127)
   note            String?
+  // ⭐ №168: кто создал объект. Только метка в карточке — прав не даёт
+  // (права определяет ObjectAccess, чтобы не было «второго источника истины»).
+  createdById     Int?
   // ⭐ №164: справочник цен объекта — по умолчанию для всех его проектов
   catalogId       Int?
   catalog         PriceCatalog? @relation("ObjectCatalog", fields: [catalogId], references: [id], onDelete: SetNull)
@@ -236,12 +239,26 @@ model ObjectAccess {
   role       AccessRole @default(FOREMAN)
   hidePrices Boolean    @default(false)  // ⭐ скрывать ли цены для этого участника
   invitedBy  Int?
+  // ⭐ №168: управление командой. Имеет смысл только для FOREMAN:
+  // заказчик управляет и так, наблюдатель — никогда.
+  isManager  Boolean    @default(false)
+  // ⭐ №168: личный архив участника (объект скрыт только у него, остальным виден).
+  isHidden   Boolean    @default(false)
+  // ⭐ №168: мягкий отзыв доступа. null = доступ активен.
+  // Отозванный участник видит объект «как на момент отзыва» (read-only),
+  // все записи блокируются, данные остаются в его шаблонах-снимках.
+  revokedAt  DateTime?
+  revokedById Int?      // кто отозвал (метка, без FK — как invitedBy)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   object     Object     @relation(fields: [objectId], references: [id], onDelete: Cascade)
   createdAt  DateTime   @default(now())
 
-  @@unique([userId, objectId, projectId])
+  // ⚠️ №168: обычный @@unique([userId, objectId, projectId]) не работает для NULL
+  // (в Postgres NULL != NULL), поэтому уникальность держит ЧАСТИЧНЫЙ индекс
+  // object_access_user_object_project_key ON (userId, objectId, COALESCE(projectId, 0)).
+  // Он создаётся в миграции 20261026120000_access_ownership_freeze вручную.
   @@index([objectId])
+  @@index([userId, isHidden])
   @@map("object_access")
 }
 
@@ -364,7 +381,7 @@ model WarehouseTransaction {
   projectId       Int?           // куда списано (для expense/write-off)
   project         Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   comment         String?
-  createdBy       Int
+  createdBy       Int?           // ⭐ №168: nullable — при удалении аккаунта автор обезличивается
   createdAt       DateTime       @default(now())
 
   @@index([warehouseItemId])
@@ -386,7 +403,7 @@ model Report {
   totalAmount Decimal   @db.Decimal(12, 2) @default(0)
   status      String    @default("draft") // "draft" / "sent" / "approved" / "rejected"
   comment     String?
-  createdBy   Int
+  createdBy   Int?      // ⭐ №168: nullable — при удалении аккаунта автор обезличивается
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   items       ReportItem[]
@@ -475,7 +492,7 @@ model BrigadeShift {
   outputValue Decimal?  @db.Decimal(12, 2) // выработка в ₽ (опционально)
   outputArea  Decimal?  @db.Decimal(10, 2) // выработка в м² (опционально)
   comment     String?
-  createdBy   Int
+  createdBy   Int?      // ⭐ №168: nullable — при удалении аккаунта автор обезличивается
   createdAt   DateTime  @default(now())
 
   @@index([brigadeId])

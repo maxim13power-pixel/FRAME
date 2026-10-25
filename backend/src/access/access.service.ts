@@ -1,4 +1,4 @@
-// backend/src/access/access.service.ts
+﻿// backend/src/access/access.service.ts
 import {
   BadRequestException,
   ConflictException,
@@ -6,7 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AccessRole } from '@prisma/client';
+import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { AddAccessDto } from './dto/add-access.dto';
@@ -29,6 +29,26 @@ export class AccessService {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
     return access;
+  }
+
+  // ⭐ №168: управлять командой может заказчик или прораб-менеджер (isManager).
+  // Отозванный участник не управляет ничем — он в режиме чтения.
+  private async assertManager(objectId: number, userId: number) {
+    const my = await this.getMyAccess(objectId, userId);
+    if (my.revokedAt) {
+      throw new ForbiddenException(
+        'Доступ отозван: управление участниками недоступно',
+      );
+    }
+    const canManage =
+      my.role === AccessRole.CUSTOMER ||
+      (my.role === AccessRole.FOREMAN && my.isManager);
+    if (!canManage) {
+      throw new ForbiddenException(
+        'Управлять участниками может заказчик или прораб-менеджер',
+      );
+    }
+    return my;
   }
 
   // ⭐ Хелпер: найти приглашаемого юзера (по userId / email / телефону)
@@ -74,15 +94,18 @@ export class AccessService {
   }
 
   // 2. Пригласить пользователя (ТЗ 3.5)
+  // ⭐ №168: если запись уже есть и была отозвана — это «вернуть доступ» одним действием,
+  // без повторного приглашения и без создания дубля.
   async addAccess(objectId: number, dto: AddAccessDto, actorUserId: number) {
-    const myAccess = await this.getMyAccess(objectId, actorUserId);
+    const myAccess = await this.assertManager(objectId, actorUserId);
 
-    // ⭐ Кто может приглашать: наблюдатель — нет; прораб и заказчик — могут.
-    // Прораб МОЖЕТ пригласить заказчика: кейс «хозяин недвижки сам объект не создаёт,
-    // прораб создаёт объект за него и зовёт его утверждать сметы».
-    if (myAccess.role === AccessRole.VIEWER) {
+    // Только заказчик может выдать роль заказчика или права менеджера.
+    if (
+      (dto.role === AccessRole.CUSTOMER || dto.isManager) &&
+      myAccess.role !== AccessRole.CUSTOMER
+    ) {
       throw new ForbiddenException(
-        'Наблюдатель не может приглашать пользователей',
+        'Только заказчик может выдать роль заказчика или права менеджера',
       );
     }
 
@@ -94,26 +117,53 @@ export class AccessService {
       throw new BadRequestException('Нельзя пригласить самого себя');
     }
 
-    // ⭐ Проверка что юзер ещё не добавлен (уникальный индекс [userId, objectId, projectId])
+    const projectId = dto.projectId ?? null;
+    // ⭐ Уникальность держит частичный индекс (COALESCE(projectId,0)) — ищем вручную,
+    // чтобы NULL-safe вернуть отозванного, а не ловить P2002.
     const existing = await this.prisma.objectAccess.findFirst({
-      where: {
-        userId: invitedUser.id,
-        objectId,
-        projectId: dto.projectId ?? null,
-      },
+      where: { userId: invitedUser.id, objectId, projectId },
     });
+
     if (existing) {
-      throw new ConflictException(
-        'Пользователь уже имеет доступ к этому объекту/проекту',
+      if (!existing.revokedAt) {
+        throw new ConflictException(
+          'У этого пользователя уже есть доступ к объекту',
+        );
+      }
+      const restored = await this.prisma.objectAccess.update({
+        where: { id: existing.id },
+        data: {
+          revokedAt: null,
+          revokedById: null,
+          isHidden: false,
+          role: dto.role,
+          isManager: dto.role === AccessRole.FOREMAN && !!dto.isManager,
+          invitedBy: actorUserId,
+        },
+        include: {
+          user: {
+            select: { id: true, fullName: true, email: true, phone: true },
+          },
+        },
+      });
+      await this.audit.log(
+        actorUserId,
+        'object_access',
+        objectId,
+        'restore',
+        { userId: invitedUser.id, revokedAt: existing.revokedAt },
+        { userId: invitedUser.id, role: dto.role },
       );
+      return restored;
     }
 
     const created = await this.prisma.objectAccess.create({
       data: {
         userId: invitedUser.id,
         objectId,
-        projectId: dto.projectId ?? null, // null = весь объект
+        projectId, // null = весь объект
         role: dto.role,
+        isManager: dto.role === AccessRole.FOREMAN && !!dto.isManager,
         invitedBy: actorUserId,
       },
       include: {
@@ -129,81 +179,94 @@ export class AccessService {
       objectId,
       'create',
       undefined,
-      { userId: invitedUser.id, role: dto.role },
+      { userId: invitedUser.id, role: dto.role, isManager: created.isManager },
     );
     return created;
   }
-
-  // 3. Сменить роль участника
+  // 3. Сменить роль участника и/или права менеджера
   async updateAccess(
     objectId: number,
     accessId: number,
     dto: UpdateAccessDto,
     actorUserId: number,
   ) {
-    const myAccess = await this.getMyAccess(objectId, actorUserId);
+    const myAccess = await this.assertManager(objectId, actorUserId);
 
-    // Найти изменяемую запись доступа
     const target = await this.prisma.objectAccess.findFirst({
       where: { id: accessId, objectId },
     });
     if (!target) {
       throw new NotFoundException('Запись доступа не найдена');
     }
-
-    // ⭐ Менять роли может ТОЛЬКО заказчик
-    if (myAccess.role !== AccessRole.CUSTOMER) {
-      throw new ForbiddenException(
-        'Только заказчик может менять роли участников',
+    if (target.userId === actorUserId) {
+      throw new BadRequestException('Нельзя менять собственный доступ');
+    }
+    if (target.revokedAt) {
+      throw new BadRequestException(
+        'Доступ отозван — сначала верните его, потом меняйте роль',
       );
     }
 
-    // ⭐ Нельзя менять собственную роль
-    if (target.userId === actorUserId) {
-      throw new BadRequestException('Нельзя менять собственную роль');
+    // Прораб-менеджер не трогает заказчиков и не повышает никого до заказчика.
+    if (myAccess.role !== AccessRole.CUSTOMER) {
+      if (
+        target.role === AccessRole.CUSTOMER ||
+        dto.role === AccessRole.CUSTOMER
+      ) {
+        throw new ForbiddenException(
+          'Только заказчик может менять роль заказчика',
+        );
+      }
+      if (dto.isManager) {
+        throw new ForbiddenException(
+          'Только заказчик может назначать прорабов-менеджеров',
+        );
+      }
+    }
+
+    const nextRole = dto.role ?? target.role;
+    const nextManager = dto.isManager ?? target.isManager;
+    if (nextManager && nextRole !== AccessRole.FOREMAN) {
+      throw new BadRequestException('Права менеджера доступны только прорабу');
     }
 
     const updated = await this.prisma.objectAccess.update({
       where: { id: accessId },
-      data: { role: dto.role },
+      data: { role: nextRole, isManager: nextManager },
       include: {
         user: {
           select: { id: true, fullName: true, email: true, phone: true },
         },
       },
     });
-    // ⭐ №131: журнал смены роли
+    // ⭐ №131: журнал смены роли/прав
     await this.audit.log(
       actorUserId,
       'object_access',
       objectId,
       'update',
-      { userId: target.userId, role: target.role },
-      { userId: target.userId, role: dto.role },
+      { userId: target.userId, role: target.role, isManager: target.isManager },
+      { userId: target.userId, role: nextRole, isManager: nextManager },
     );
     return updated;
   }
 
-  // 4. Отозвать доступ (кейс «уволить воригу» 🚪)
-  async removeAccess(objectId: number, accessId: number, actorUserId: number) {
-    const myAccess = await this.getMyAccess(objectId, actorUserId);
+  // 4. Отозвать доступ — МЯГКО: read-only + снимок в личных шаблонах.
+  // Данные не удаляются: акты/склад/авторство остаются, человек видит «как было».
+  async revokeAccess(objectId: number, accessId: number, actorUserId: number) {
+    const myAccess = await this.assertManager(objectId, actorUserId);
 
-    // Найти удаляемую запись доступа
     const target = await this.prisma.objectAccess.findFirst({
       where: { id: accessId, objectId },
     });
     if (!target) {
       throw new NotFoundException('Запись доступа не найдена');
     }
-
-    // ⭐ Нельзя отозвать собственный доступ
     if (target.userId === actorUserId) {
       throw new BadRequestException('Нельзя отозвать собственный доступ');
     }
-
-    // ⭐ Наблюдатель не может отзывать; прораб не может отозвать заказчика
-    if (myAccess.role === AccessRole.VIEWER) {
-      throw new ForbiddenException('Наблюдатель не может отзывать доступ');
+    if (target.revokedAt) {
+      throw new BadRequestException('Доступ уже отозван');
     }
     if (
       myAccess.role === AccessRole.FOREMAN &&
@@ -211,16 +274,278 @@ export class AccessService {
     ) {
       throw new ForbiddenException('Прораб не может отозвать доступ заказчика');
     }
+    await this.assertNotLastCustomer(objectId, target);
 
-    await this.prisma.objectAccess.delete({ where: { id: accessId } });
+    const now = new Date();
+    // Снимок и отзыв — в одной транзакции: либо есть копия, либо доступ остаётся.
+    const snapshot = await this.prisma.$transaction(async (tx) => {
+      const created = await this.createSnapshot(tx, target, now);
+      await tx.objectAccess.update({
+        where: { id: accessId },
+        data: { revokedAt: now, revokedById: actorUserId },
+      });
+      return created;
+    });
+
     // ⭐ №131: журнал отзыва доступа
     await this.audit.log(
       actorUserId,
       'object_access',
       objectId,
-      'delete',
+      'revoke',
       { userId: target.userId, role: target.role },
+      { userId: target.userId, revokedAt: now, ...snapshot },
     );
+    return { success: true, revokedAt: now, ...snapshot };
+  }
+
+  // 5. Вернуть доступ одним кликом (без повторного приглашения)
+  async restoreAccess(objectId: number, accessId: number, actorUserId: number) {
+    const myAccess = await this.assertManager(objectId, actorUserId);
+
+    const target = await this.prisma.objectAccess.findFirst({
+      where: { id: accessId, objectId },
+    });
+    if (!target) {
+      throw new NotFoundException('Запись доступа не найдена');
+    }
+    if (!target.revokedAt) {
+      throw new BadRequestException('Доступ не был отозван');
+    }
+    if (
+      myAccess.role === AccessRole.FOREMAN &&
+      target.role === AccessRole.CUSTOMER
+    ) {
+      throw new ForbiddenException(
+        'Прораб не может вернуть доступ заказчику — это делает заказчик',
+      );
+    }
+
+    const updated = await this.prisma.objectAccess.update({
+      where: { id: accessId },
+      data: { revokedAt: null, revokedById: null },
+      include: {
+        user: {
+          select: { id: true, fullName: true, email: true, phone: true },
+        },
+      },
+    });
+    await this.audit.log(
+      actorUserId,
+      'object_access',
+      objectId,
+      'restore',
+      { userId: target.userId, revokedAt: target.revokedAt },
+      { userId: target.userId, revokedAt: null },
+    );
+    return updated;
+  }
+
+  // 6. Удалить запись доступа навсегда (после отзыва)
+  async purgeAccess(objectId: number, accessId: number, actorUserId: number) {
+    const myAccess = await this.assertManager(objectId, actorUserId);
+
+    const target = await this.prisma.objectAccess.findFirst({
+      where: { id: accessId, objectId },
+    });
+    if (!target) {
+      throw new NotFoundException('Запись доступа не найдена');
+    }
+    if (target.userId === actorUserId) {
+      throw new BadRequestException('Нельзя удалить собственный доступ');
+    }
+    if (
+      myAccess.role === AccessRole.FOREMAN &&
+      target.role === AccessRole.CUSTOMER
+    ) {
+      throw new ForbiddenException('Прораб не может удалить доступ заказчика');
+    }
+    await this.assertNotLastCustomer(objectId, target);
+
+    await this.prisma.objectAccess.delete({ where: { id: accessId } });
+    await this.audit.log(actorUserId, 'object_access', objectId, 'delete', {
+      userId: target.userId,
+      role: target.role,
+      revokedAt: target.revokedAt,
+    });
     return { success: true };
   }
+
+  // ⭐ №168: нельзя остаться без заказчика (инвариант И1)
+  private async assertNotLastCustomer(
+    objectId: number,
+    target: { userId: number; role: AccessRole; projectId: number | null },
+  ) {
+    if (target.role !== AccessRole.CUSTOMER || target.projectId != null) return;
+    const others = await this.prisma.objectAccess.count({
+      where: {
+        objectId,
+        projectId: null,
+        role: AccessRole.CUSTOMER,
+        revokedAt: null,
+        userId: { not: target.userId },
+      },
+    });
+    if (others === 0) {
+      throw new BadRequestException(
+        'Это последний заказчик объекта — сначала назначьте другого заказчика',
+      );
+    }
+  }
+
+  // 7. ⭐ №168: «Мои доступы» — активные / архив / отозванные
+  async listMine(userId: number) {
+    const rows = await this.prisma.objectAccess.findMany({
+      where: { userId },
+      include: {
+        object: { select: { id: true, name: true, address: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const projectIds = rows
+      .map((r) => r.projectId)
+      .filter((id): id is number => id != null);
+    const projects = projectIds.length
+      ? await this.prisma.project.findMany({
+          where: { id: { in: projectIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const projectNames = new Map(projects.map((p) => [p.id, p.name]));
+
+    return rows.map((r) => ({
+      id: r.id,
+      objectId: r.objectId,
+      objectName: r.object.name,
+      objectAddress: r.object.address,
+      projectId: r.projectId,
+      projectName: r.projectId ? (projectNames.get(r.projectId) ?? null) : null,
+      role: r.role,
+      isManager: r.isManager,
+      isHidden: r.isHidden,
+      revokedAt: r.revokedAt,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  // 8. ⭐ №168: личный архив — скрыть/показать объект только у себя
+  async setHidden(accessId: number, userId: number, isHidden: boolean) {
+    const row = await this.prisma.objectAccess.findFirst({
+      where: { id: accessId, userId },
+      select: { id: true },
+    });
+    if (!row) {
+      throw new NotFoundException('Запись доступа не найдена');
+    }
+    await this.prisma.objectAccess.update({
+      where: { id: accessId },
+      data: { isHidden },
+    });
+    return { success: true, isHidden };
+  }
+
+  /** dd.mm.yyyy без зависимости от локали сервера */
+  private formatDateRu(d: Date): string {
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    return `${dd}.${mm}.${d.getFullYear()}`;
+  }
+
+  /**
+   * ⭐ №168: снимок данных проекта на момент отзыва.
+   * Использует существующие шаблоны смет (№129): name/unit/quantity/unitPrice/
+   * materialUnitPrice/priceItemId уже хранятся в EstimateTemplateItem.
+   * Справочник цен объекта копируется в ЛИЧНЫЙ справочник участника,
+   * чтобы закупочные цены не «исчезали» вместе с доступом.
+   */
+  private async createSnapshot(
+    tx: Prisma.TransactionClient,
+    access: { objectId: number; projectId: number | null; userId: number },
+    now: Date,
+  ) {
+    const object = await tx.object.findUnique({
+      where: { id: access.objectId },
+      select: { id: true, name: true, catalogId: true },
+    });
+    if (!object) return { templates: 0, catalogCopied: false };
+
+    const projects = await tx.project.findMany({
+      where: {
+        objectId: access.objectId,
+        ...(access.projectId != null ? { id: access.projectId } : {}),
+      },
+      orderBy: { id: 'asc' },
+      select: { id: true, name: true },
+    });
+
+    const stamp = this.formatDateRu(now);
+    let templates = 0;
+    for (const p of projects) {
+      const materials = await tx.material.findMany({
+        where: { projectId: p.id },
+        orderBy: { id: 'asc' },
+        select: {
+          name: true,
+          unit: true,
+          specQuantity: true,
+          unitPrice: true,
+          materialUnitPrice: true,
+          priceItemId: true,
+          materialItemId: true,
+        },
+      });
+      if (materials.length === 0) continue;
+      await tx.estimateTemplate.create({
+        data: {
+          name: `${object.name} · ${p.name} — копия на ${stamp}`,
+          ownerId: access.userId,
+          items: {
+            create: materials.map((m, idx) => ({
+              name: m.name,
+              unit: m.unit,
+              quantity: m.specQuantity,
+              unitPrice: m.unitPrice,
+              materialUnitPrice: m.materialUnitPrice,
+              priceItemId: m.priceItemId,
+              materialItemId: m.materialItemId,
+              sortOrder: idx,
+            })),
+          },
+        },
+      });
+      templates += 1;
+    }
+
+    let catalogCopied = false;
+    if (object.catalogId) {
+      const catalog = await tx.priceCatalog.findUnique({
+        where: { id: object.catalogId },
+        include: { items: true },
+      });
+      if (catalog && catalog.items.length > 0) {
+        await tx.priceCatalog.create({
+          data: {
+            name: `${catalog.name} — копия объекта «${object.name}» на ${stamp}`,
+            ownerId: access.userId,
+            items: {
+              create: catalog.items.map((i) => ({
+                name: i.name,
+                article: i.article,
+                unit: i.unit,
+                price: i.price,
+                categoryId: i.categoryId,
+                isActive: i.isActive,
+                kind: i.kind,
+                ownerId: access.userId,
+              })),
+            },
+          },
+        });
+        catalogCopied = true;
+      }
+    }
+
+    return { templates, catalogCopied };
+  }
 }
+

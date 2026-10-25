@@ -49,6 +49,7 @@ export class AnalyticsService {
           SELECT 1 FROM object_access oa
           WHERE oa."objectId" = o.id
             AND oa."userId" = ${userId}
+            AND oa."revokedAt" IS NULL
             AND oa."hidePrices" = false
             AND oa."role" <> 'VIEWER'
             AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
@@ -74,6 +75,7 @@ export class AnalyticsService {
             SELECT 1 FROM object_access oa
             WHERE oa."objectId" = o.id
               AND oa."userId" = ${userId}
+              AND oa."revokedAt" IS NULL
               AND oa."hidePrices" = false
               AND oa."role" <> 'VIEWER'
               AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
@@ -88,6 +90,7 @@ export class AnalyticsService {
             SELECT 1 FROM object_access oa
             WHERE oa."objectId" = wi."objectId"
               AND oa."userId" = ${userId}
+              AND oa."revokedAt" IS NULL
               AND oa."hidePrices" = false
               AND oa."role" <> 'VIEWER'
           )
@@ -154,6 +157,7 @@ export class AnalyticsService {
           INNER JOIN object_access oa
             ON oa."objectId" = o.id
             AND oa."userId" = ${userId}
+            AND oa."revokedAt" IS NULL
             AND oa."hidePrices" = false
             AND oa."role" <> 'VIEWER'
             AND (oa."projectId" IS NULL OR oa."projectId" = p.id)

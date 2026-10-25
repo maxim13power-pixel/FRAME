@@ -5,10 +5,10 @@ import type { DashboardSummaryDto } from './dashboard.types';
 import {
   accessibleObjectWhere,
   accessibleProjectWhere,
-  buildAccessScope,
   buildMoneyScope,
+  buildWorkScope,
   loadAccessGrants,
-} from '../auth/access-scope'; // ⭐ №163
+} from '../auth/access-scope'; // ⭐ №163/№168
 
 // Сырые строки из $queryRaw приходят в snake_case — мапим во внутренний тип.
 interface MoneyRow {
@@ -37,9 +37,9 @@ export class DashboardService {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // 7 дней включительно
 
     // ⭐ №163: скоупы доступа — объектный (все проекты) и проектный (точечно).
-    // moneyScope = только записи, где юзер видит цены (не VIEWER, hidePrices=false).
+    // ⭐ №168: отозванные доступы в KPI/деньгах не участвуют (buildWorkScope).
     const grants = await loadAccessGrants(this.prisma, userId);
-    const scope = buildAccessScope(grants);
+    const scope = buildWorkScope(grants);
     const moneyScope = buildMoneyScope(grants);
     const accessibleProject = accessibleProjectWhere(scope);
     const moneyVisibleProject = accessibleProjectWhere(moneyScope);
@@ -80,6 +80,7 @@ export class DashboardService {
             SELECT 1 FROM object_access oa
             WHERE oa."objectId" = o.id
               AND oa."userId" = ${userId}
+              AND oa."revokedAt" IS NULL
               AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
           )
       `,
@@ -99,6 +100,7 @@ export class DashboardService {
             SELECT 1 FROM object_access oa
             WHERE oa."objectId" = o.id
               AND oa."userId" = ${userId}
+              AND oa."revokedAt" IS NULL
               AND oa."hidePrices" = false
               AND oa."role" <> 'VIEWER'
               AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
@@ -131,6 +133,7 @@ export class DashboardService {
           INNER JOIN "Project" p ON p.id = m."projectId"
           INNER JOIN "Object" o ON o.id = p."objectId" AND o."isArchived" = false
           INNER JOIN object_access oa ON oa."objectId" = o.id AND oa."userId" = ${userId}
+            AND oa."revokedAt" IS NULL
             AND (oa."projectId" IS NULL OR oa."projectId" = p.id)
           WHERE m.id = mf."materialId"
         )

@@ -41,21 +41,8 @@ export class ObjectsController {
     return this.objectsService.update(id, dto, req.user.userId);
   }
 
-  @Delete(':id')
-  remove(
-    @Param('id', ParseIntPipe) id: number,
-    @Req() req,
-    @Query('permanent') permanent?: string,
-  ) {
-    return this.objectsService.remove(id, req.user.userId, permanent === 'true');
-  }
-
-  // ⭐ Восстановить объект из архива (ТЗ 3.8)
-  @Patch(':id/restore')
-  restore(@Param('id', ParseIntPipe) id: number, @Req() req) {
-    return this.objectsService.restore(id, req.user.userId);
-  }
-
+  // ⚠️ №168: глобального архива и жёсткого удаления объектов больше нет.
+  // Личный архив участника — PATCH /me/access/:id (см. MeAccessController).
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number, @Req() req) {
     return this.objectsService.findOne(id, req.user.userId);

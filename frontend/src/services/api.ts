@@ -59,7 +59,15 @@ api.interceptors.response.use(
 
     // 403 и 500 тоже ловим — раньше молча проглатывались
     if (status === 403) {
-      console.warn('⚠️ Доступ запрещён:', error?.response?.data?.message);
+      const message: string = error?.response?.data?.message || '';
+      console.warn('⚠️ Доступ запрещён:', message);
+      // ⭐ №168: отозванный доступ = read-only. Показываем модалку один раз,
+      // чтобы человек понял, почему запись не прошла и где лежит копия.
+      if (message.includes('Доступ отозван')) {
+        window.dispatchEvent(
+          new CustomEvent('frame:access-revoked', { detail: message }),
+        );
+      }
     }
     if (status && status >= 500) {
       console.error('❌ Ошибка сервера:', error?.response?.data?.message || error?.message);

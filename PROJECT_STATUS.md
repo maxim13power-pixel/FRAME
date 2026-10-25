@@ -13,8 +13,8 @@
 1. СОСТОЯНИЕ
 Стек: backend NestJS 11+Prisma 5.22+PG 15 (:3000), frontend React 19+TS 5.9+MUI 6.5+Vite 7 (:5000, прод — serve -s dist).
 GitHub: maxim13power-pixel/FRAME. Код в main: №115 Users, №116 экспорт XLSX/PDF (клиентский, xlsx+pdfmake, hidePrices учтён).
-ТЕКУЩАЯ РАБОТА (23.10.2026): СПРАВОЧНИКИ ЦЕН + ИМПОРТ СМЕТ → подробности в §9 (состояние git, что сделано,
-решения по импорту, план, шпаргалка, открытые вопросы). Всё, что ниже в §1–§8, — история и инфраструктура.
+ТЕКУЩАЯ РАБОТА (25.10.2026): №168 — владение, личный архив, мягкий отзыв доступа → §15
+(справочники цен и импорт смет → §9, демо-стенд → §13, справочники объекта/проекта → §14).
 GIT: origin/main = до №152; локально НЕ запушено №153 (справочники, фронт) и №154 (docs) → `git push`.
 
 ⚠️ №118 (дашборд, зона перерасхода >100%) — промт выдавался Cline в чате №11, ВЫПОЛНЕНИЕ НЕ ПОДТВЕРЖДЕНО:
@@ -458,4 +458,104 @@ prisma db push + migrate resolve.
   - архивирование объектного справочника не отвязывает его от объектов: поиск в смете продолжит его показывать,
     создание новой расценки ответит 400 — лечится сменой справочника в настройках объекта;
   - пересчёт уже добавленных строк по справочнику — отдельный срез №165.
+
+15. ВЛАДЕНИЕ, ЛИЧНЫЙ АРХИВ, МЯГКИЙ ОТЗЫВ (№168, 25.10.2026)
+Согласовано: №169 «Личный архив работ» растворён в №168 (отдельного среза нет).
+РЕШЕНИЯ:
+  - Архив — ЛИЧНЫЙ. ObjectAccess.isHidden скрывает объект только у одного участника;
+    роли архив не ограничивают, в UI раздел называется «Архив» (не «Скрытые»),
+    отдельных вкладок «Отозванные» нет — отозванные объекты остаются в общем списке
+    с бейджем «🔒 Доступ отозван», участник сам решает, убрать их к себе в архив.
+    Глобального архива объектов больше нет (Object.isArchived — легаси, сброшен миграцией).
+  - Object.isArchived = legacy (вариант «а»): кнопка убрана, поле и SQL дашборда/аналитики
+    не тронуты, миграция ставит всем false. Статус «Завершён» (completedAt, согласование,
+    конфетти) — отдельный срез.
+  - Отзыв доступа — МЯГКАЯ ЗАМОРОЗКА, а не 403: ObjectAccess.revokedAt/revokedById.
+    Отозванный видит объект «как на момент отзыва» (read-only), все записи → 403,
+    возврат одним кликом (без повторного приглашения), затем удаление записи навсегда.
+  - Снимок при отзыве — через существующие шаблоны смет (№129): на каждый проект объекта
+    создаётся личный EstimateTemplate «<объект> · <проект> — копия на DD.MM.YYYY»
+    (name/unit/quantity/unitPrice/materialUnitPrice/priceItemId уже хранятся в
+    EstimateTemplateItem). Отозванный видит смету из снимка, а не из живых данных.
+  - Справочник цен объекта при отзыве копируется в ЛИЧНЫЙ справочник участника
+    (ownerId = userId), чтобы закупочные цены не «исчезали» вместе с доступом.
+  - Владение: Object.createdById — только метка автора в карточке, прав не даёт
+    (единственный источник прав — ObjectAccess). ObjectAccess.isManager — право
+    управлять командой, имеет смысл только для FOREMAN (заказчик управляет и так).
+  - Жёсткое удаление запрещено: объекты — никогда; проекты — только пустые
+    (0 материалов/заявок/отчётов/складских операций/выходов бригад), с записью в AuditLog.
+  - deleteMe = обезличивание, а не удаление: профиль теряет email/телефон/имя, пароль
+    случайный, tokenVersion++, личные справочники/шаблоны/аренды удаляются, участие
+    в объектах удаляется, авторство в reports/warehouse_transactions/brigade_shifts
+    и Object.createdById обнуляется; объекты/проекты/материалы остаются участникам.
+  - Дашборд/аналитика — личные: отозванные доступы исключены (buildWorkScope,
+    oa."revokedAt" IS NULL в raw SQL). Документы/отчёты/акты/Excel по объекту от чужого
+    личного архива не зависят.
+  - ИСПРАВЛЕНА ДЫРА: estimate-templates.checkProjectAccess проверял только наличие записи
+    доступа (VIEWER и отозванный могли «применить» шаблон в чужой проект). Теперь
+    create (сохранить копию) разрешён любому читателю — это и есть снимок при отзыве,
+    а apply требует canWrite.
+ИНВАРИАНТЫ:
+  И1 у объекта всегда есть хотя бы один активный CUSTOMER (последнего не отозвать/не удалить);
+  И2 отозванный доступ не даёт записи нигде (guard + canWrite в сервисах);
+  И3 снимок и отзыв атомарны (одна транзакция: либо есть копия, либо доступ остаётся);
+  И4 уникальность доступа держит ЧАСТИЧНЫЙ индекс COALESCE(projectId,0) — обычный
+     @@unique не работает для NULL;
+  И5 hard delete объектов запрещён; И6 личный архив не влияет на других;
+  И7 удаление пустого проекта — только через AuditLog.
+МИГРАЦИЯ: backend/prisma/migrations/20261026120000_access_ownership_freeze
+  dedupe object_access → DROP старого unique → partial unique index
+  object_access_user_object_project_key (userId, objectId, COALESCE(projectId,0));
+  +isManager/isHidden/revokedAt/revokedById (+index userId,isHidden);
+  legacy-прорабы с доступом на весь объект получают isManager = true (иначе потеряли бы
+  возможность собирать команду); Object.createdById + backfill (первый CUSTOMER, иначе
+  любой участник); createdBy → NULL в reports/warehouse_transactions/brigade_shifts;
+  UPDATE "Object" SET "isArchived" = false. Применено на dev (migrate deploy).
+API:
+  GET    /objects                                 + accessId, hiddenForMe, revoked, isManager, canWrite, canManage
+  PATCH  /objects/:id                             (без изменений; отозванный → 403)
+  DELETE /objects/:id, PATCH /objects/:id/restore УДАЛЕНЫ (404) — глобального архива нет
+  GET    /objects/:objectId/access                + isManager/isHidden/revokedAt
+  POST   /objects/:objectId/access                приглашение ИЛИ возврат отозванного (isManager опц.)
+  PATCH  /objects/:objectId/access/:accessId      { role?, isManager? } — заказчик или прораб-менеджер
+  POST   /objects/:objectId/access/:accessId/revoke  мягкий отзыв + снимок → { templates, catalogCopied }
+  POST   /objects/:objectId/access/:accessId/restore возврат доступа
+  DELETE /objects/:objectId/access/:accessId      удалить запись доступа навсегда
+  GET    /me/access                               мои доступы (активные/архив/отозванные)
+  PATCH  /me/access/:id                           { isHidden } — личный архив
+КОД:
+  backend/src/auth/access-scope.ts — RoleResolution { role, hidePrices, hasObjectAccess,
+    isManager, revoked, canWrite, canManage }, resolveProjectAccess, buildWorkScope;
+  backend/src/auth/object-access.guard.ts — отозванный: GET/HEAD/OPTIONS можно, остальное 403;
+  backend/src/access/access.service.ts — revoke/restore/purge/snapshot/listMine/setHidden,
+    assertNotLastCustomer; backend/src/access/me-access.controller.ts — /me/access;
+  objects/projects/users/estimate-templates/price-list/materials/reports — canWrite + сокрытие
+    живых цен (revokedAt ⇒ hidePrices), hard delete убран, deleteMe = обезличивание.
+ФРОНТ:
+  Objects.tsx — «Архив» фильтрует hiddenForMe, «В архив» = личный архив, бейдж
+  «🔒 Доступ отозван», в модалке участников: чекбокс «менеджер» (у прораба, выдаёт заказчик),
+  кнопки «Отозвать» / «Вернуть» / «Удалить навсегда» с подтверждением и сообщением
+  «Сохранено шаблонов: N»; доступ к управлению — по canManage с бэка.
+  Settings.tsx — блок «Мои доступы»: объект, проект/весь объект, роль, менеджер,
+  бейдж отозванного, переключатель личного архива.
+  components/AccessRevokedModal.tsx + api.ts — любой 403 «Доступ отозван» открывает
+  модалку «🔒 Доступ отозван … копия сметы сохранена в ваших шаблонах».
+ТЕСТЫ: access-scope.spec.ts — 19 кейсов (отзыв ⇒ read-only и hidePrices, isManager
+  ⇒ canManage, VIEWER никогда, canWrite проекта, buildWorkScope). Backend tsc/nest build —
+  зелёные, jest access-scope 19/19. Frontend tsc -b — зелёный.
+ПРОВЕРЕНО ВЖИВУЮ (25.10.2026, dev-БД, объект 14 «Коттедж 180 м²», 5 проектов):
+  отзыв доступа прораба → 5 шаблонов-копий с 74 позициями; PATCH проекта → 403;
+  чтение работает, но totalCost и unitPrice = 0; /me/access показывает revokedAt;
+  возврат → запись снова 200; личный архив → hiddenForMe=true, у заказчика объект виден;
+  DELETE объекта → 404, DELETE непустого проекта → 400.
+ОГРАНИЧЕНИЯ:
+  - priceItemId в снимке указывает на исходный справочник: после отзыва живой справочник
+    не читается, но цены в шаблонных строках сохранены (unitPrice/materialUnitPrice);
+  - копия справочника создаётся только если Object.catalogId задан (иначе переносить нечего);
+  - приглашение теперь доступно заказчику и прорабу-менеджеру (legacy-прорабы получают
+    isManager миграцией), остальные прорабы команду не собирают;
+  - isArchived в SQL дашборда/аналитики остался (после миграции всегда false);
+  - «Завершён» (completedAt + согласование + конфетти) — отдельный срез, здесь не делали.
+ДАЛЬШЕ: №165 пересчёт сметы по справочнику → №166 шаблоны объектов → импорт Excel →
+аудит → Railway→Amvera.
 

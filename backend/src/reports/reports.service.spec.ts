@@ -43,7 +43,7 @@ describe('ReportsService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new ReportsService(prisma as any);
+    service = new ReportsService(prisma as any, {} as any);
     prisma.report.findUnique.mockResolvedValue(report);
     prisma.project.findUnique.mockResolvedValue({ objectId: 2 });
     prisma.reportItem.findMany.mockResolvedValue(items);

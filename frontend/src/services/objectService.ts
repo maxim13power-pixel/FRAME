@@ -20,7 +20,14 @@ export interface ObjectData {
   catalogId?: number | null; // ⭐ №164: справочник цен объекта (наследуют проекты)
   catalog?: { id: number; name: string } | null;
   isDemo?: boolean; // ⭐ №127: демо-объект онбординга
-  isArchived?: boolean; // ⭐ архив вместо удаления (ТЗ 3.8)
+  isArchived?: boolean; // ⚠️ №168: легаси, глобального архива больше нет
+  // ⭐ №168: личный архив / отзыв доступа / управление командой
+  accessId?: number | null;
+  hiddenForMe?: boolean;
+  revoked?: boolean;
+  isManager?: boolean;
+  canWrite?: boolean;
+  canManage?: boolean;
 }
 
 // Получить все объекты
@@ -40,18 +47,8 @@ export const updateObject = async (id: number, data: Partial<Omit<ObjectData, 'i
   return response.data;
 };
 
-export const deleteObject = async (id: number, permanent = false) => {
-  const response = await api.delete(`/objects/${id}`, {
-    params: permanent ? { permanent: 'true' } : undefined,
-  });
-  return response.data;
-};
-
-// ⭐ Восстановить объект из архива
-export const restoreObject = async (id: number) => {
-  const response = await api.patch(`/objects/${id}/restore`);
-  return response.data;
-};
+// ⚠️ №168: deleteObject/restoreObject удалены — глобального архива и жёсткого
+// удаления объектов больше нет. Личный архив: setMyAccessHidden (accessService).
 
 // Получить один объект по ID
 export const fetchObjectById = async (id: number): Promise<ObjectData> => {

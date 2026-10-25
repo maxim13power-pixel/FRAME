@@ -112,9 +112,20 @@ export class ObjectAccessGuard implements CanActivate {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
 
+    // ⭐ №168: отозванный доступ = read-only. Читать «как на момент отзыва»
+    // можно (и сохранить копию в шаблоны), любые изменения — 403.
+    const method = String(request.method || 'GET').toUpperCase();
+    const isRead = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+    if (access.revokedAt && !isRead) {
+      throw new ForbiddenException(
+        'Доступ отозван: изменения недоступны. Снимок данных сохранён в ваших шаблонах.',
+      );
+    }
+
     // Кладём в request для использования в контроллерах/сервисах
     request.accessRole = access.role;
     request.accessObjectId = objectId;
+    request.accessRevoked = !!access.revokedAt;
     return true;
   }
 }

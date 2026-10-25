@@ -83,7 +83,7 @@ const Users: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
                 <HomeWorkIcon sx={{ color: '#1976d2' }} />
                 <Typography variant="h6" sx={{ flexGrow: 1 }}>{obj.name}</Typography>
-                {obj.isArchived && <Chip label="архив" size="small" variant="outlined" />}
+                {/* ⚠️ №168: глобального архива объектов больше нет — бейдж «архив» убран */}
                 <Chip label={`Вы: ${roleLabel(obj.myRole)}`} size="small" variant="outlined" />
               </Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>

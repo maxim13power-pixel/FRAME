@@ -7,12 +7,31 @@ import {
 } from '@nestjs/common';
 import { AccessRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service'; // ⭐ №168: журнал удалений
 import { CreateProjectDto } from './dto/create-project.dto';
 import { loadAccessGrants, resolveObjectRole } from '../auth/access-scope'; // ⭐ №163
 
 @Injectable()
 export class ProjectsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService, // ⭐ №168
+  ) {}
+
+  // ⭐ №168: отозванный доступ и наблюдатель — только чтение.
+  private assertWritable(
+    access: { role?: string; revokedAt?: Date | null },
+    action: string,
+  ) {
+    if (access.revokedAt) {
+      throw new ForbiddenException(
+        `Доступ отозван: ${action} недоступно. Снимок данных сохранён в ваших шаблонах.`,
+      );
+    }
+    if (access.role === AccessRole.VIEWER) {
+      throw new ForbiddenException(`Наблюдатель не может ${action}`);
+    }
+  }
 
   // ⭐ Хелпер: проверяет доступ к объекту. Кидает 403 если доступа нет.
   // Детерминированный резолв: объектный контекст требует общую запись (projectId: null).
@@ -51,9 +70,11 @@ export class ProjectsService {
 
   // ⭐ Нужно ли скрывать цены для этой записи доступа
   private mustHidePrices(
-    access?: { role?: string; hidePrices?: boolean } | null,
+    access?: { role?: string; hidePrices?: boolean; revokedAt?: Date | null } | null,
   ): boolean {
     if (!access) return false;
+    // ⭐ №168: отозванный доступ видит только снимок в шаблонах — живые цены скрыты
+    if (access.revokedAt) return true;
     if (access.role === 'VIEWER') return true;
     return access.hidePrices ?? false;
   }
@@ -112,10 +133,8 @@ export class ProjectsService {
 
     // ⭐ Проверяем доступ к объекту (вместо старой проверки по организации)
     const access = await this.checkObjectAccess(dto.objectId, userId);
-    // Наблюдатель не может создавать проекты
-    if (access.role === AccessRole.VIEWER) {
-      throw new ForbiddenException('Наблюдатель не может создавать проекты');
-    }
+    // Наблюдатель не может создавать проекты (и отозванный — тоже)
+    this.assertWritable(access, 'создавать проекты');
 
     // ⭐ №158: справочник проекта (если передан)
     const catalogId =
@@ -261,11 +280,7 @@ export class ProjectsService {
   async update(id: number, dto: Partial<CreateProjectDto>, userId?: number) {
     if (userId) {
       const access = await this.checkProjectAccess(id, userId);
-      if (access.role === AccessRole.VIEWER) {
-        throw new ForbiddenException(
-          'Наблюдатель не может редактировать проекты',
-        );
-      }
+      this.assertWritable(access, 'редактировать проекты');
     }
     // ⭐ №158: смена справочника проекта (undefined = не трогаем, null = отвязать)
     const nextCatalogId =
@@ -288,13 +303,37 @@ export class ProjectsService {
     return this.findOne(id, userId);
   }
 
+  // ⚠️ №168: жёсткое удаление разрешено только для ПУСТОГО проекта (создан по ошибке).
+  // Всё остальное — это чужие данные (материалы, акты, склад, выходы бригад),
+  // поэтому проект с данными удалить нельзя: его просто убирают из своего архива.
   async remove(id: number, userId?: number) {
     if (userId) {
       const access = await this.checkProjectAccess(id, userId);
-      if (access.role === AccessRole.VIEWER) {
-        throw new ForbiddenException('Наблюдатель не может удалять проекты');
-      }
+      this.assertWritable(access, 'удалять проекты');
     }
-    return this.prisma.project.delete({ where: { id } });
+
+    const [materials, changeRequests, reports, transactions, shifts] =
+      await Promise.all([
+        this.prisma.material.count({ where: { projectId: id } }),
+        this.prisma.changeRequest.count({ where: { projectId: id } }),
+        this.prisma.report.count({ where: { projectId: id } }),
+        this.prisma.warehouseTransaction.count({ where: { projectId: id } }),
+        this.prisma.brigadeShift.count({ where: { projectId: id } }),
+      ]);
+    if (materials + changeRequests + reports + transactions + shifts > 0) {
+      throw new BadRequestException(
+        `Проект не пуст: ${materials} материалов, ${reports} отчётов, ${transactions} складских операций. ` +
+          'Удаление запрещено — данные принадлежат всем участникам. Уберите проект в личный архив.',
+      );
+    }
+
+    const deleted = await this.prisma.project.delete({ where: { id } });
+    if (userId) {
+      await this.audit.log(userId, 'project', id, 'delete', {
+        name: deleted.name,
+        objectId: deleted.objectId,
+      });
+    }
+    return deleted;
   }
 }

@@ -1,5 +1,7 @@
 // backend/src/users/users.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -126,41 +128,65 @@ export class UsersService {
     };
   }
 
-  // ⭐ №130 (152-ФЗ): удаление аккаунта и связанных данных.
+  // ⭐ №168 (152-ФЗ): удаление аккаунта БЕЗ потери общих данных.
+  // Раньше deleteMe сносил объекты-«одиночки» и все отчёты/склад/выходы автора —
+  // это уничтожало данные других участников. Теперь аккаунт обезличивается:
+  //  • профиль теряет email/телефон/имя, вход невозможен (случайный пароль + tokenVersion++);
+  //  • личное (шаблоны, личные справочники, аренды) удаляется;
+  //  • участие в объектах удаляется;
+  //  • авторство в отчётах/складе/выходах обнуляется (createdBy = NULL);
+  //  • объекты/проекты/материалы остаются у остальных участников.
   async deleteMe(userId: number) {
+    const anonPassword = await bcrypt.hash(randomUUID(), 10);
+
     await this.prisma.$transaction(async (tx) => {
-      // 1. Объекты, где юзер — единственный владелец (CUSTOMER + нет других доступов).
-      const myAccesses = await tx.objectAccess.findMany({
-        where: { userId, projectId: null },
-      });
-      const soleOwnedObjectIds: number[] = [];
-      for (const acc of myAccesses) {
-        if (acc.role !== 'CUSTOMER') continue;
-        const others = await tx.objectAccess.count({
-          where: { objectId: acc.objectId, projectId: null, userId: { not: userId } },
-        });
-        if (others === 0) soleOwnedObjectIds.push(acc.objectId);
-      }
-
-      // 2. Скалярные связи (createdBy/ownerId) — удаляем явно (нет FK-каскада).
-      await tx.warehouseTransaction.deleteMany({ where: { createdBy: userId } });
-      await tx.report.deleteMany({ where: { createdBy: userId } });
-      await tx.brigadeShift.deleteMany({ where: { createdBy: userId } });
-      await tx.estimateTemplate.deleteMany({ where: { ownerId: userId } });
+      // 1. Личные справочники: удаляем ЦЕЛИКОМ.
+      //    Нельзя просто обнулить ownerId — справочник стал бы системным (ownerId=null).
       await tx.priceItem.deleteMany({ where: { ownerId: userId } });
+      await tx.priceCatalog.deleteMany({ where: { ownerId: userId } });
 
-      // 3. Объекты-одиночки: удаляем связанные склады/бригады + сам объект (каскадно).
-      for (const objectId of soleOwnedObjectIds) {
-        await tx.warehouseItem.deleteMany({ where: { objectId } });
-        await tx.brigade.deleteMany({ where: { objectId } });
-        await tx.object.delete({ where: { id: objectId } });
-      }
+      // 2. Личные шаблоны смет и аренды оборудования
+      await tx.estimateTemplate.deleteMany({ where: { ownerId: userId } });
+      await tx.rental.deleteMany({ where: { userId } });
 
-      // 4. Пользователь (каскадно ObjectAccess/ChangeRequest/InviteToken/PasswordResetToken/Rental;
-      //    SetNull — PriceItem.owner и ChangeRequest.reviewer).
-      await tx.user.delete({ where: { id: userId } });
+      // 3. Он больше не участник объектов (каскадом ушли бы при удалении user)
+      await tx.objectAccess.deleteMany({ where: { userId } });
+
+      // 4. Авторство обезличиваем, данные остаются
+      await tx.report.updateMany({
+        where: { createdBy: userId },
+        data: { createdBy: null },
+      });
+      await tx.warehouseTransaction.updateMany({
+        where: { createdBy: userId },
+        data: { createdBy: null },
+      });
+      await tx.brigadeShift.updateMany({
+        where: { createdBy: userId },
+        data: { createdBy: null },
+      });
+      await tx.object.updateMany({
+        where: { createdById: userId },
+        data: { createdById: null },
+      });
+
+      // 5. Профиль: персональные данные стираем, запись оставляем
+      //    (на неё ссылаются ChangeRequest.proposedBy/MaterialFix.userId и т.п.).
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          email: null,
+          phone: null,
+          fullName: 'Удалённый пользователь',
+          password: anonPassword,
+          tokenVersion: { increment: 1 }, // ⭐ №160: все сессии невалидны
+        },
+      });
     });
 
-    return { success: true, message: 'Аккаунт удалён' };
+    return {
+      success: true,
+      message: 'Аккаунт удалён, общие данные объекта сохранены',
+    };
   }
 }

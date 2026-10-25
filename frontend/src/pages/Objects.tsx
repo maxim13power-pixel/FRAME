@@ -39,15 +39,17 @@ import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SettingsIcon from '@mui/icons-material/Settings';
 import PeopleIcon from '@mui/icons-material/People';
 import DeleteIcon from '@mui/icons-material/Delete';
+import LockIcon from '@mui/icons-material/Lock';
+import RestoreIcon from '@mui/icons-material/Restore';
 import LinkIcon from '@mui/icons-material/Link';
 import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import { fetchAccessList, addAccess, updateAccess, removeAccess } from '../services/accessService';
+import { fetchAccessList, addAccess, updateAccess, revokeAccess, restoreAccess, purgeAccess, setMyAccessHidden } from '../services/accessService';
 import { APP_URL } from '../config';
 import type { AccessMember, AccessRole } from '../services/accessService';
 import { createInviteLink, fetchInviteLinks, revokeInviteLink } from '../services/inviteService';
 import type { InviteLink } from '../services/inviteService';
-import { updateObject, deleteObject, restoreObject } from '../services/objectService';
+import { updateObject } from '../services/objectService';
 import { fetchPriceCatalogs, createPriceCatalog } from '../services/priceListService'; // ⭐ №164
 import type { PriceCatalogData } from '../services/priceListService'; // ⭐ №164
 import Select from '@mui/material/Select';
@@ -84,7 +86,7 @@ const Objects: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth(); // получаем токен из контекста (если используете)
-  const { notify, error: notifyError } = useFeedback();
+  const { notify, error: notifyError, confirm } = useFeedback();
   const navigate = useNavigate();
   const [objects, setObjects] = useState<ObjectData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,7 +182,8 @@ useEffect(() => {
 const filteredAndSortedObjects = useMemo(() => {
   // Сначала фильтруем
   const filtered = objects.filter(obj => {
-    const archived = obj.isArchived === true;
+    // ⭐ №168: архив стал ЛИЧНЫМ — фильтруем по своей записи доступа (hiddenForMe)
+    const archived = obj.hiddenForMe === true;
     if (archived !== showArchived) return false;
     return (
       obj.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -311,51 +314,50 @@ const handleUpdateObject = async () => {
   }
 };
 
+// ⭐ №168: «Убрать в архив» — это ЛИЧНЫЙ архив (объект исчезает только у меня).
+// Данные, акты и склад остаются у всех остальных участников.
+const hideObjectForMe = async (obj: ObjectData) => {
+  if (!token) return;
+  if (!obj.accessId) {
+    notifyError('Архивировать можно только объект с доступом на весь объект');
+    return;
+  }
+  try {
+    await setMyAccessHidden(obj.accessId, true);
+    setObjects(prev => prev.map(o => o.id === obj.id ? { ...o, hiddenForMe: true } : o));
+  } catch {
+    notifyError('Не удалось убрать объект в архив');
+  }
+};
+
 const handleDeleteObject = async () => {
-  if (!token || !deletingObject) return;
-  const permanent = deletingObject.isDemo === true;
-  try {
-    await deleteObject(Number(deletingObject.id), permanent);
-    if (permanent) {
-      // жёсткое удаление (демо) — убираем из списка
-      setObjects(prev => prev.filter(obj => obj.id !== deletingObject.id));
-    } else {
-      // архивация — объект сразу уходит в «Архив» без перезагрузки
-      setObjects(prev => prev.map(obj => obj.id === deletingObject.id ? { ...obj, isArchived: true } : obj));
-    }
-    setDeleteConfirmOpen(false);
-    setDeletingObject(null); // очищаем
-  } catch {
-    notifyError('Ошибка удаления');
-  }
+  if (!deletingObject) return;
+  await hideObjectForMe(deletingObject);
+  setDeleteConfirmOpen(false);
+  setDeletingObject(null); // очищаем
 };
 
-// ⭐ Демо-объект удаляется сразу (жёстко), без тяжёлого подтверждения
+// ⭐ Демо-объект тоже просто скрываем у себя: жёсткое удаление запрещено (№168)
 const handleDeleteDemo = async (obj: ObjectData) => {
-  if (!token) return;
-  try {
-    await deleteObject(obj.id, true);
-    setObjects(prev => prev.filter(o => o.id !== obj.id));
-  } catch {
-    notifyError('Не удалось удалить демо-объект');
-  }
+  await hideObjectForMe(obj);
 };
 
-// ⭐ Вернуть объект из архива
+// ⭐ Вернуть объект из личного архива
 const handleRestoreObject = async (obj: ObjectData) => {
-  if (!token) return;
+  if (!token || !obj.accessId) return;
   try {
-    await restoreObject(obj.id);
-    setObjects(prev => prev.map(o => o.id === obj.id ? { ...o, isArchived: false } : o));
+    await setMyAccessHidden(obj.accessId, false);
+    setObjects(prev => prev.map(o => o.id === obj.id ? { ...o, hiddenForMe: false } : o));
   } catch {
-    notifyError('Не удалось восстановить объект');
+    notifyError('Не удалось вернуть объект из архива');
   }
 };
 
 
-// ⭐ Текущая роль пользователя на объекте (для управления правами в UI)
+// ⭐ №168: право управлять командой (заказчик или прораб-менеджер) — с бэка
+const canManage = accessObject?.canManage === true;
+// ⭐ Текущая роль пользователя на объекте (для UI-подсказок в модалке)
 const myRole = accessObject?.role;
-const canManage = myRole === 'CUSTOMER'; // только Заказчик управляет ролями
 
 // ⭐ Загрузить список участников
 const loadAccessMembers = async (objectId: number) => {
@@ -448,15 +450,73 @@ const handleChangeRole = async (accessId: number, newRole: AccessRole) => {
   }
 };
 
-// ⭐ Отозвать доступ (уволить воригу 🚪)
-const handleRemoveAccess = async (accessId: number) => {
+// ⭐ №168: отзыв доступа — МЯГКИЙ. Человек сохраняет доступ на чтение,
+// а его смета автоматически сохраняется в личные шаблоны (снимок на дату).
+const handleRevokeAccess = async (member: AccessMember) => {
+  if (!token || !accessObject) return;
+  const who = member.user.fullName || member.user.email || member.user.phone || 'участника';
+  const ok = await confirm({
+    title: 'Отозвать доступ?',
+    text: `Доступ для ${who} станет только для чтения. Смета проекта сохранится в его личных шаблонах, данные объекта останутся на месте.`,
+    confirmText: 'Отозвать',
+    danger: true,
+  });
+  if (!ok) return;
+  setAccessError('');
+  try {
+    const res = await revokeAccess(accessObject.id, member.id);
+    const copy = res.templates > 0
+      ? ` Сохранено шаблонов: ${res.templates}${res.catalogCopied ? ' + справочник цен' : ''}.`
+      : '';
+    notify(`Доступ отозван.${copy}`, 'success');
+    await loadAccessMembers(accessObject.id);
+  } catch (err: unknown) {
+    setAccessError(getApiErrorMessage(err, 'Ошибка отзыва доступа'));
+  }
+};
+
+// ⭐ №168: вернуть доступ одним кликом (без повторного приглашения)
+const handleRestoreAccess = async (accessId: number) => {
   if (!token || !accessObject) return;
   setAccessError('');
   try {
-    await removeAccess(accessObject.id, accessId);
+    await restoreAccess(accessObject.id, accessId);
+    notify('Доступ возвращён', 'success');
     await loadAccessMembers(accessObject.id);
   } catch (err: unknown) {
-    setAccessError(getApiErrorMessage(err, 'Ошибка удаления участника'));
+    setAccessError(getApiErrorMessage(err, 'Ошибка возврата доступа'));
+  }
+};
+
+// ⭐ №168: удалить запись доступа навсегда
+const handlePurgeAccess = async (member: AccessMember) => {
+  if (!token || !accessObject) return;
+  const who = member.user.fullName || member.user.email || member.user.phone || 'участника';
+  const ok = await confirm({
+    title: 'Удалить доступ навсегда?',
+    text: `Запись доступа для ${who} будет удалена. Снимок его сметы останется в его шаблонах.`,
+    confirmText: 'Удалить',
+    danger: true,
+  });
+  if (!ok) return;
+  setAccessError('');
+  try {
+    await purgeAccess(accessObject.id, member.id);
+    await loadAccessMembers(accessObject.id);
+  } catch (err: unknown) {
+    setAccessError(getApiErrorMessage(err, 'Ошибка удаления доступа'));
+  }
+};
+
+// ⭐ №168: «управляет командой» — флаг прораба, выдаёт заказчик
+const handleToggleManager = async (accessId: number, isManager: boolean) => {
+  if (!token || !accessObject) return;
+  setAccessError('');
+  try {
+    await updateAccess(accessObject.id, accessId, { isManager });
+    await loadAccessMembers(accessObject.id);
+  } catch (err: unknown) {
+    setAccessError(getApiErrorMessage(err, 'Ошибка смены прав'));
   }
 };
 
@@ -789,7 +849,7 @@ trailing: headerTrailing,
                     Это демо-данные.
                   </Alert>
                 )}
-                {obj.isArchived && (
+                {obj.hiddenForMe && (
                   <Alert
                     severity="warning"
                     onClick={(e) => e.stopPropagation()}
@@ -807,7 +867,17 @@ trailing: headerTrailing,
                       </Button>
                     }
                   >
-                    Объект в архиве.
+                    Объект в вашем архиве — виден только вам.
+                  </Alert>
+                )}
+                {obj.revoked && (
+                  <Alert
+                    severity="error"
+                    onClick={(e) => e.stopPropagation()}
+                    sx={{ mb: 1, borderRadius: 2 }}
+                  >
+                    🔒 Доступ отозван — только чтение. Копия сметы сохранена в ваших
+                    шаблонах.
                   </Alert>
                 )}
                 {/* Верхняя строка: иконка, название, процент */}
@@ -1215,10 +1285,12 @@ trailing: headerTrailing,
           }}
         >
           <Typography variant="h6" gutterBottom>
-            Переместить в архив
+            Убрать в архив
           </Typography>
           <Typography sx={{ mb: 3 }}>
-            Объект <b>"{deletingObject?.name}"</b> будет перемещён в архив. Вернуть его можно из раздела «Архив».
+            Объект <b>"{deletingObject?.name}"</b> будет скрыт только у вас. Остальные
+            участники продолжат работу, данные не удаляются. Вернуть объект можно из
+            раздела «Архив».
           </Typography>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
             <Button 
@@ -1333,9 +1405,33 @@ trailing: headerTrailing,
                         }
                         sx={{ mt: 0.5, height: 20, fontSize: '0.7rem' }}
                       />
+                      {/* ⭐ №168: отозванный доступ остаётся в списке, но только для чтения */}
+                      {member.revokedAt && (
+                        <Chip
+                          size="small"
+                          color="error"
+                          label="🔒 Доступ отозван"
+                          sx={{ mt: 0.5, ml: 0.5, height: 20, fontSize: '0.7rem' }}
+                        />
+                      )}
                     </Box>
 
-                    {canManage ? (
+                    {/* ⭐ №168: «управляет командой» — флаг прораба, выдаёт заказчик */}
+                    {canManage && member.role === 'FOREMAN' && myRole === 'CUSTOMER' && !member.revokedAt && (
+                      <FormControlLabel
+                        sx={{ mr: 0 }}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={member.isManager}
+                            onChange={(e) => handleToggleManager(member.id, e.target.checked)}
+                          />
+                        }
+                        label={<Typography variant="caption">менеджер</Typography>}
+                      />
+                    )}
+
+                    {canManage && !member.revokedAt ? (
                       <Select
                         size="small"
                         value={member.role}
@@ -1350,11 +1446,20 @@ trailing: headerTrailing,
                       <Chip label={roleLabel(member.role)} size="small" color={roleColor(member.role)} />
                     )}
 
-                    {canManage && (
-                      <IconButton size="small" color="error" onClick={() => handleRemoveAccess(member.id)}>
-                        <DeleteIcon fontSize="small" />
+                    {canManage && (member.revokedAt ? (
+                      <>
+                        <IconButton size="small" color="primary" title="Вернуть доступ" onClick={() => handleRestoreAccess(member.id)}>
+                          <RestoreIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" color="error" title="Удалить навсегда" onClick={() => handlePurgeAccess(member)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </>
+                    ) : (
+                      <IconButton size="small" color="warning" title="Отозвать доступ" onClick={() => handleRevokeAccess(member)}>
+                        <LockIcon fontSize="small" />
                       </IconButton>
-                    )}
+                    ))}
                   </Box>
                 ))}
               </Box>
@@ -1363,8 +1468,8 @@ trailing: headerTrailing,
             <Divider sx={{ my: 2 }} />
 
             {/* Форма приглашения */}
-            {myRole === 'VIEWER' ? (
-              <Alert severity="warning">Наблюдатель не может приглашать участников.</Alert>
+            {!canManage ? (
+              <Alert severity="warning">Управлять участниками может заказчик или прораб-менеджер.</Alert>
             ) : (
               <>
                 <Typography variant="subtitle1" gutterBottom>➕ Пригласить участника</Typography>

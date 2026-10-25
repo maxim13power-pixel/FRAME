@@ -36,6 +36,21 @@ export class EstimateTemplatesService {
     return access;
   }
 
+  // ⭐ №168: проверка права записи. Сохранить копию (create) может любой читатель,
+  // включая отозванного, а ПРИМЕНЯТЬ шаблон в проект — только тот, кто в нём пишет.
+  private assertCanApply(access: { role: string; revokedAt: Date | null }) {
+    if (access.revokedAt) {
+      throw new ForbiddenException(
+        'Доступ отозван: применять шаблоны в этот проект нельзя. Копия сохранена у вас.',
+      );
+    }
+    if (access.role === 'VIEWER') {
+      throw new ForbiddenException(
+        'Наблюдатель не может применять шаблоны в проект',
+      );
+    }
+  }
+
   // Список СВОИХ шаблонов (с позициями).
   async list(userId: number) {
     return this.prisma.estimateTemplate.findMany({
@@ -52,6 +67,8 @@ export class EstimateTemplatesService {
       throw new BadRequestException('Название шаблона обязательно');
     }
     await this.checkProjectAccess(dto.projectId, userId);
+    // ℹ️ №168: create оставлен «читательским» намеренно — отозванный участник
+    // сохраняет снимок проекта в личные шаблоны (см. revoke в access.service).
 
     const materials = await this.prisma.material.findMany({
       where: { projectId: dto.projectId },
@@ -110,7 +127,8 @@ export class EstimateTemplatesService {
     if (!template) {
       throw new NotFoundException('Шаблон не найден');
     }
-    await this.checkProjectAccess(dto.projectId, userId);
+    const access = await this.checkProjectAccess(dto.projectId, userId);
+    this.assertCanApply(access);
 
     if (template.items.length === 0) {
       return { created: 0 };

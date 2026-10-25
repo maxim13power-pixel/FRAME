@@ -34,9 +34,11 @@ export class MaterialsService {
 
   /** Нужно ли скрывать цены для этой записи доступа (без лишнего запроса к БД) */
   private mustHidePrices(
-    access?: { role?: string; hidePrices?: boolean } | null,
+    access?: { role?: string; hidePrices?: boolean; revokedAt?: Date | null } | null,
   ): boolean {
     if (!access) return false;
+    // ⭐ №168: отозванный доступ видит только снимок в шаблонах — живые цены скрыты
+    if (access.revokedAt) return true;
     // Наблюдатель не видит деньги по определению роли
     if (access.role === 'VIEWER') return true;
     return access.hidePrices ?? false;
