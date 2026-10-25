@@ -768,7 +768,7 @@ export class MaterialsService {
 
     const copy = await this.prisma.material.create({
       data: {
-        name: this.buildCopyName(source.name),
+        name: await this.buildCopyName(source.projectId, source.name),
         article: source.article,
         unit: source.unit,
         specQuantity: source.specQuantity,
@@ -793,13 +793,29 @@ export class MaterialsService {
     return this.mustHidePrices(access) ? this.stripPrices(copy) : copy;
   }
 
-  /** «Стяжка пола» → «Стяжка пола (копия)», «… (копия)» → «… (копия 2)» */
-  private buildCopyName(name: string): string {
+  /**
+   * «Стяжка пола» → «Стяжка пола (копия)», «… (копия)» → «… (копия 2)».
+   * ⭐ №174 (б): номер подбираем по уже существующим строкам проекта — иначе двойной
+   * клик «Дублировать» давал две строки с одинаковым именем «(копия)».
+   */
+  private async buildCopyName(
+    projectId: number,
+    name: string,
+  ): Promise<string> {
     const match = name.match(/^(.*) \(копия(?: (\d+))?\)$/);
-    if (!match) return `${name} (копия)`;
-    const base = match[1];
-    const next = match[2] ? Number(match[2]) + 1 : 2;
-    return `${base} (копия ${next})`;
+    const base = match ? match[1] : name;
+    const siblings = await this.prisma.material.findMany({
+      where: { projectId, name: { startsWith: `${base} (копия` } },
+      select: { name: true },
+    });
+    const taken = new Set(siblings.map((s) => s.name));
+    let candidate = `${base} (копия)`;
+    let next = 2;
+    while (taken.has(candidate)) {
+      candidate = `${base} (копия ${next})`;
+      next += 1;
+    }
+    return candidate;
   }
 
   // Удаление (фиксации удалятся каскадно)

@@ -173,7 +173,11 @@ describe('MaterialsService — копирование строки (№162)', ()
   };
   const prisma = {
     objectAccess: { findFirst: jest.fn() },
-    material: { findUnique: jest.fn(), create: jest.fn() },
+    material: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn(),
+    },
   };
   const audit = { log: jest.fn() };
   let service: MaterialsService;
@@ -188,6 +192,7 @@ describe('MaterialsService — копирование строки (№162)', ()
       ...source,
       project: { objectId: 1 },
     });
+    prisma.material.findMany.mockResolvedValue([]);
     prisma.material.create.mockImplementation(
       (arg: { data: Record<string, unknown> }) =>
         Object.assign({ id: 11 }, arg.data),
@@ -221,12 +226,42 @@ describe('MaterialsService — копирование строки (№162)', ()
     );
   });
 
-  it('именует копии по счётчику: «(копия)» → «(копия 2)»', async () => {
+  it('именует копии по уже занятым именам: «(копия)» → «(копия 2)»', async () => {
+    prisma.material.findMany.mockResolvedValue([
+      { name: 'Стяжка пола (копия)' },
+    ]);
+
+    await service.duplicate(10, 7);
+
+    expect(
+      callArg<{ data: Record<string, unknown> }>(prisma.material.create).data
+        .name,
+    ).toBe('Стяжка пола (копия 2)');
+  });
+
+  it('двойной клик по «Дублировать» не создаёт две «(копия)»', async () => {
+    prisma.material.findMany.mockResolvedValue([
+      { name: 'Стяжка пола (копия)' },
+      { name: 'Стяжка пола (копия 2)' },
+    ]);
+
+    await service.duplicate(10, 7);
+
+    expect(
+      callArg<{ data: Record<string, unknown> }>(prisma.material.create).data
+        .name,
+    ).toBe('Стяжка пола (копия 3)');
+  });
+
+  it('копия с копии продолжает нумерацию от исходного имени', async () => {
     prisma.material.findUnique.mockResolvedValue({
       ...source,
       name: 'Стяжка пола (копия)',
       project: { objectId: 1 },
     });
+    prisma.material.findMany.mockResolvedValue([
+      { name: 'Стяжка пола (копия)' },
+    ]);
 
     await service.duplicate(10, 7);
 
