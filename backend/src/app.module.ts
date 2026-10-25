@@ -19,6 +19,7 @@ import { AnalyticsModule } from './analytics/analytics.module'; // ⭐ Срез 
 import { BrigadesModule } from './brigades/brigades.module'; // ⭐ Срез 4: Бригады
 import { EstimateTemplatesModule } from './estimate-templates/estimate-templates.module'; // ⭐ №129
 import { AuditModule } from './audit/audit.module'; // ⭐ №131
+import { EstimateRecalcModule } from './estimate-recalc/estimate-recalc.module'; // ⭐ №170
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -42,6 +43,7 @@ import { AuditModule } from './audit/audit.module'; // ⭐ №131
     BrigadesModule, // ⭐ Срез 4: Бригады
     EstimateTemplatesModule, // ⭐ №129: шаблоны смет
     AuditModule, // ⭐ №131: аудит-лог (global)
+    EstimateRecalcModule, // ⭐ №170: пересчёт сметы по справочнику
   ],
   controllers: [AppController],
   providers: [AppService],

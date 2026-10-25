@@ -81,6 +81,9 @@ import { FAB_STYLE } from '../theme';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
+import PriceChangeIcon from '@mui/icons-material/PriceChange';
+// ⭐ №170: пересчёт сметы по справочнику цен (превью «было → станет» + откат)
+import { PriceRecalcModal } from '../components/PriceRecalcModal';
 
 // ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено».
 const BOTTOM_NAV_HEIGHT = 56; // высота BottomNav (MUI BottomNavigation по умолчанию)
@@ -120,6 +123,8 @@ const Materials: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentProject, setCurrentProject] = useState<ProjectData | null>(null);
   const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
+  // ⭐ №170: модалка пересчёта сметы по справочнику
+  const [recalcOpen, setRecalcOpen] = useState(false);
 
   // Состояния для сортировки
   const [sortBy, setSortBy] = useState<'name' | 'specQuantity' | 'totalPrice' | 'percentage' | null>(null);
@@ -929,6 +934,12 @@ setSortAnchorEl(null);
     [projectId, notify, notifyError],
   );
 
+  // ⭐ №170: после пересчёта/отката перечитываем смету (цены строк изменились)
+  const handleRecalcApplied = useCallback(async () => {
+    if (!projectId) return;
+    setMaterials(await fetchMaterialsByProject(parseInt(projectId)));
+  }, [projectId]);
+
   // ⭐ Мобильный хэдер v2: trailing в useMemo — стабильная ссылка, нет бесконечного цикла
   const headerTrailing = useMemo(() => isMobile ? (
     <>
@@ -1066,6 +1077,26 @@ setSortAnchorEl(null);
               }}
             />
           )}
+          {!hidePrices && priceCatalogId && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setRecalcOpen(true)}
+              title={`Пересчитать цены сметы по справочнику «${priceCatalogName ?? ''}»`}
+              sx={{
+                ml: { xs: 0, md: 0.5 },
+                height: 24,
+                minWidth: 0,
+                px: 1,
+                py: 0,
+                fontSize: 12,
+                fontWeight: 600,
+                textTransform: 'none',
+              }}
+            >
+              {isMobile ? <PriceChangeIcon fontSize="small" /> : 'Пересчитать'}
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -1201,6 +1232,18 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
           </Box>
         </Paper>
       </Modal>
+
+      {/* ⭐ №170: пересчёт сметы по справочнику (превью + история с откатом) */}
+      {priceCatalogId && (
+        <PriceRecalcModal
+          open={recalcOpen}
+          projectId={currentProject?.id ?? Number(projectId)}
+          catalogId={priceCatalogId}
+          catalogName={priceCatalogName}
+          onClose={() => setRecalcOpen(false)}
+          onApplied={handleRecalcApplied}
+        />
+      )}
       </Box>
       {/* Мобильное меню сортировки (открывается из иконки) */}
       <Menu
