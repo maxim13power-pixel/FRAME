@@ -100,6 +100,35 @@ const theme = createTheme({
         },
       },
     },
+    // ⭐ №174: на мобилке поля ввода были высокими (56px) — форма «Добавить позицию»
+    // не помещалась в модалку. Уменьшаем высоту полей на ~10% (56 → 50px)
+    // и кегль на 5% только на узких экранах; десктоп не меняется.
+    MuiOutlinedInput: {
+      styleOverrides: {
+        input: {
+          '@media (max-width: 599.95px)': {
+            paddingTop: 13.5,
+            paddingBottom: 13.5,
+            fontSize: '0.95rem',
+          },
+        },
+        inputMultiline: {
+          '@media (max-width: 599.95px)': {
+            paddingTop: 13.5,
+            paddingBottom: 13.5,
+          },
+        },
+      },
+    },
+    MuiInputLabel: {
+      styleOverrides: {
+        root: {
+          '@media (max-width: 599.95px)': {
+            fontSize: '0.95rem',
+          },
+        },
+      },
+    },
   },
 });
 

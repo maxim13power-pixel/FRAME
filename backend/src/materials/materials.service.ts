@@ -14,6 +14,14 @@ import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
 import { loadCatalogAccess } from '../price-list/catalog-access'; // ⭐ №164
+import {
+  FIX_EDIT_WINDOW_MS,
+  FIX_WINDOW_DAYS,
+  isFixDateAllowed,
+  isValidDateKey,
+  normalizeTzOffset,
+  resolveFixInstant,
+} from './fix-window'; // ⭐ №174
 
 // ⭐ Общий include: расценка работы + расценка материала (с категориями)
 const MATERIAL_INCLUDE = {
@@ -195,11 +203,26 @@ export class MaterialsService {
   // ⭐ Фиксация объёма + пересчёт ОБЕИХ стоимостей
   // 🔒 Race condition fix (аудит 3.2): SELECT ... FOR UPDATE внутри транзакции —
   // две параллельные фиксации сериализуются на строке материала и больше не теряют апдейт.
+  // ⭐ №174: в будущее фиксировать нельзя; назад — «сегодня + 3 предыдущих дня».
   async addFix(materialId: number, dto: CreateFixDto, userId?: number | null) {
     // Валидация ДО транзакции: заведомо битый запрос не должен занимать блокировку
     if (!dto.amount || dto.amount <= 0) {
       throw new BadRequestException('Объём фиксации должен быть больше нуля');
     }
+    // ⭐ №174: окно фиксации по календарю устройства клиента
+    const now = new Date();
+    const tzOffset = normalizeTzOffset(dto.tzOffset);
+    if (dto.fixedDate && !isValidDateKey(dto.fixedDate)) {
+      throw new BadRequestException(
+        'Дата фиксации должна быть в формате ГГГГ-ММ-ДД',
+      );
+    }
+    if (dto.fixedDate && !isFixDateAllowed(dto.fixedDate, now, tzOffset)) {
+      throw new BadRequestException(
+        `Фиксацию можно внести за сегодня и ${FIX_WINDOW_DAYS} предыдущих дня; в будущее — нельзя`,
+      );
+    }
+    const fixedAt = resolveFixInstant(dto.fixedDate, now, tzOffset);
     // ⭐ Проверка доступа через ObjectAccess (запоминаем access для проверки скрытия цен)
     let access: any = null;
     if (userId) {
@@ -220,8 +243,9 @@ export class MaterialsService {
           specQuantity: number;
           unitPrice: number;
           materialUnitPrice: number;
+          lastEntryDate: Date | null;
         }[]
-      >`SELECT id, "totalUsed", "specQuantity", "unitPrice", "materialUnitPrice" FROM "materials" WHERE id = ${materialId} FOR UPDATE`;
+      >`SELECT id, "totalUsed", "specQuantity", "unitPrice", "materialUnitPrice", "lastEntryDate" FROM "materials" WHERE id = ${materialId} FOR UPDATE`;
 
       if (!material) throw new NotFoundException('Материал не найден');
 
@@ -237,15 +261,24 @@ export class MaterialsService {
           amount: dto.amount,
           note: dto.note ?? null,
           userId: userId ?? null,
+          fixedAt, // ⭐ №174: дата фиксации (сейчас или «задним числом»)
         },
       });
+
+      // ⭐ №174: подпись «последняя фиксация» обновляем только если внесённая
+      // действительно самая свежая — иначе фиксация задним числом откатила бы
+      // карточку материала на более старую дату.
+      const isNewestFix =
+        !material.lastEntryDate ||
+        fixedAt.getTime() >= new Date(material.lastEntryDate).getTime();
 
       return tx.material.update({
         where: { id: materialId },
         data: {
           totalUsed: newTotal,
-          lastEntry: dto.amount,
-          lastEntryDate: new Date(),
+          ...(isNewestFix
+            ? { lastEntry: dto.amount, lastEntryDate: fixedAt }
+            : {}),
           progressPercent: progress,
           totalCost: newTotal * Number(material.unitPrice),
           materialTotalCost: newTotal * Number(material.materialUnitPrice),
@@ -256,10 +289,20 @@ export class MaterialsService {
 
     // ⭐ №131: журнал фиксации объёма
     if (userId) {
-      await this.audit.log(userId, 'material_fix', materialId, 'create', undefined, {
-        amount: dto.amount,
-        note: dto.note ?? null,
-      });
+      await this.audit.log(
+        userId,
+        'material_fix',
+        materialId,
+        'create',
+        undefined,
+        {
+          amount: dto.amount,
+          note: dto.note ?? null,
+          // ⭐ №174: видно, если фиксация внесена задним числом
+          fixedAt: fixedAt.toISOString(),
+          ...(dto.fixedDate ? { fixedDate: dto.fixedDate } : {}),
+        },
+      );
     }
 
     // ⭐ Скрываем цены для VIEWER / юзеров с hidePrices
@@ -367,10 +410,13 @@ export class MaterialsService {
     if (!expectedLastFix)
       throw new BadRequestException('У материала ещё нет фиксаций');
 
-    const ageMs = Date.now() - expectedLastFix.fixedAt.getTime();
-    if (ageMs > 72 * 60 * 60 * 1000) {
+    // ⭐ №174: правим по моменту ВНЕСЕНИЯ (createdAt), а не по дате работы:
+    // фиксацию за пятницу, внесённую в понедельник, можно исправить до четверга.
+    const fixCreatedAt = expectedLastFix.createdAt ?? expectedLastFix.fixedAt;
+    const ageMs = Date.now() - fixCreatedAt.getTime();
+    if (ageMs > FIX_EDIT_WINDOW_MS) {
       throw new BadRequestException(
-        'Исправить можно только фиксацию младше 72 часов',
+        'Исправить можно только фиксацию, внесённую не позже 72 часов назад',
       );
     }
 

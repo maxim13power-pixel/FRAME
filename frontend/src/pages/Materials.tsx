@@ -184,6 +184,10 @@ const [editMatPricePrice, setEditMatPricePrice] = useState('');
   //const [fixAmount, setFixAmount] = useState<number>(0);
   const [fixAmount, setFixAmount] = useState('');
   const [fixNote, setFixNote] = useState('');
+  // ⭐ №174: за какой день фиксация — 0 = сегодня, 1..3 = предыдущие календарные дни
+  const [fixDayOffset, setFixDayOffset] = useState(0);
+  // ⭐ №174: подсветка/скролл к только что скопированной строке
+  const [flashId, setFlashId] = useState<number | null>(null);
 
   // Шестерёнка (настройки материала) и подтверждение удаления
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -418,6 +422,16 @@ useEffect(() => {
     const timer = setTimeout(() => setHighlightVisible(false), 2500);
     return () => clearTimeout(timer);
   }, [highlightId, loading, materials.length]);
+  // ⭐ №174: прокрутить к копии и подсветить её — копия создаётся сразу,
+  // «вставлять» её никуда не надо (раньше копия молча терялась в отсортированном списке)
+  useEffect(() => {
+    if (flashId == null) return;
+    const el = document.getElementById(`material-row-${flashId}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const timer = setTimeout(() => setFlashId(null), 2500);
+    return () => clearTimeout(timer);
+  }, [flashId, materials.length]);
+
 const handleOpenAddModal = () => {
   setAddModalOpen(true);
   setAddCreatingNew(false);
@@ -562,12 +576,31 @@ setPriceLoading(false);
     setFixingMaterial(material);
     setFixAmount('');
     setFixNote('');
+    setFixDayOffset(0); // ⭐ №174: по умолчанию — сегодня
     setFixModalOpen(true);
   };
 
   const handleCloseFixModal = () => {
     setFixModalOpen(false);
     setFixingMaterial(null);
+  };
+
+  // ⭐ №174: ключ календарного дня устройства (YYYY-MM-DD).
+  // offsetDays < 0 — назад. Считаем локально, чтобы «сегодня» не уезжало в UTC.
+  const localDateKey = (offsetDays = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${mm}-${dd}`;
+  };
+
+  // ⭐ №174: подпись кнопки выбора дня фиксации
+  const fixDayLabel = (offset: number) => {
+    const date = localDateKey(-offset).slice(5).replace('-', '.');
+    if (offset === 0) return `Сегодня · ${date}`;
+    if (offset === 1) return `Вчера · ${date}`;
+    return `${offset} дн. назад · ${date}`;
   };
 
   //const handleAddFix = async () => {
@@ -588,6 +621,9 @@ setPriceLoading(false);
       const updated = await addFix(fixingMaterial.id, {
         amount,
         note: fixNote || undefined,
+        // ⭐ №174: дата фиксации задним числом (для сегодняшней не передаём — сервер ставит «сейчас»)
+        ...(fixDayOffset > 0 ? { fixedDate: localDateKey(-fixDayOffset) } : {}),
+        tzOffset: new Date().getTimezoneOffset(), // окно считаем по календарю устройства
       });
       setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
       handleCloseFixModal();
@@ -637,6 +673,7 @@ setPriceLoading(false);
         return [...prev.slice(0, idx + 1), copy, ...prev.slice(idx + 1)];
       });
       handleCloseSettings();
+      setFlashId(copy.id); // ⭐ №174: прокрутим и подсветим копию
       notify(`Скопировано: ${copy.name}`, 'success');
     } catch (err: unknown) {
       notifyError('Ошибка копирования: ' + getApiErrorText(err, 'неизвестная ошибка'));
@@ -653,9 +690,10 @@ const handleOpenEditFix = async () => {
       return;
     }
     const last = fixes[0]; // отсортированы по fixedAt desc
-    const ageMs = Date.now() - new Date(last.fixedAt).getTime();
-    if (ageMs > 72 * 60 * 60 * 1000) {
-      setInfoModal({ open: true, text: 'Исправить можно только фиксацию младше 72 часов' });
+    // ⭐ №174: 72 часа считаем от момента ВНЕСЕНИЯ (createdAt), а не от даты работы
+    const fixCreatedAt = new Date(last.createdAt ?? last.fixedAt).getTime();
+    if (Date.now() - fixCreatedAt > 72 * 60 * 60 * 1000) {
+      setInfoModal({ open: true, text: 'Исправить можно только фиксацию, внесённую не позже 72 часов назад' });
       return;
     }
     setEditFixAmount(String(last.amount));
@@ -1325,7 +1363,7 @@ onClose={() => setFilterAnchorEl(null)}
   key={m.id}
   hover
   id={`material-row-${m.id}`}
-  sx={highlightId === m.id && highlightVisible
+  sx={(highlightId === m.id && highlightVisible) || flashId === m.id
     ? { bgcolor: '#fff8e1', transition: 'background-color 0.3s' }
     : undefined}
 >
@@ -1425,7 +1463,7 @@ onClose={() => setFilterAnchorEl(null)}
               sx={{
                 p: 1.5,
                 borderRadius: 2,
-                ...(highlightId === m.id && highlightVisible
+                ...((highlightId === m.id && highlightVisible) || flashId === m.id
                   ? { bgcolor: '#fff8e1', transition: 'background-color 0.3s' }
                   : {}),
               }}
@@ -1834,6 +1872,29 @@ renderInput={(params) => (
               value={fixAmount}
               onChange={e => setFixAmount(e.target.value)}
             />
+            {/* ⭐ №174: за какой день фиксация. В будущее нельзя, назад — 3 дня
+                (в пятницу забыл → в понедельник вносишь задним числом) */}
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                За какой день · назад можно 3 дня
+              </Typography>
+              <Stack direction="row" spacing={0.5} sx={{ mt: 0.5, flexWrap: 'wrap' }}>
+                {[0, 1, 2, 3].map(offset => (
+                  <Button
+                    key={offset}
+                    size="small"
+                    variant={fixDayOffset === offset ? 'contained' : 'outlined'}
+                    onClick={() => setFixDayOffset(offset)}
+                    sx={{ px: 1, minWidth: 0, fontSize: 12 }}
+                  >
+                    {fixDayLabel(offset)}
+                  </Button>
+                ))}
+              </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Будущее запрещено. Внесённую фиксацию можно исправить 72 часа.
+              </Typography>
+            </Box>
             <TextField
               fullWidth
               label="Примечание"

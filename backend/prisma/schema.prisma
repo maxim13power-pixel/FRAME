@@ -155,7 +155,8 @@ model MaterialFix {
   material    Material  @relation(fields: [materialId], references: [id], onDelete: Cascade)
   amount      Decimal   @db.Decimal(14, 3) // объём этой фиксации
   note        String?   // примечание к фиксации
-  fixedAt     DateTime  @default(now())  // когда зафиксировано
+  fixedAt     DateTime  @default(now())  // ЗА КАКОЙ день/момент работа (можно задним числом)
+  createdAt   DateTime  @default(now())  // ⭐ №174: когда ВНЕСЛИ — от него 72 часа на правку
   userId      Int?      // кто зафиксировал
   isEdited    Boolean   @default(false)
   editedAt    DateTime?

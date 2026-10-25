@@ -59,6 +59,7 @@ export interface MaterialFixData {
   amount: number;
   note?: string | null;
   fixedAt: string;
+  createdAt?: string; // ⭐ №174: когда внесли (от него 72 часа на правку)
   userId?: number | null;
 }
 
@@ -121,9 +122,11 @@ export const createMaterial = async (
 };
 
 // ⭐ Фиксация объёма (главная фича из старого кода)
+// ⭐ №174: fixedDate (ГГГГ-ММ-ДД) — фиксация задним числом (сегодня..−3 дня),
+// tzOffset — смещение зоны устройства, чтобы окно считалось по его календарю.
 export const addFix = async (
   materialId: number,
-  data: { amount: number; note?: string }
+  data: { amount: number; note?: string; fixedDate?: string; tzOffset?: number }
 ): Promise<MaterialData> => {
   const response = await api.post(`/materials/${materialId}/fix`, data);
   return normalizeMaterial(response.data);
