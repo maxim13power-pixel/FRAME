@@ -24,8 +24,15 @@ export interface ProjectData {
   materialsCount?: number;
 }
 
-export const fetchProjectsByObject = async (objectId: number): Promise<ProjectData[]> => {
-  const response = await api.get(`/projects/object/${objectId}`);
+// ⭐ №172: opts.includeHidden — вернуть проекты объекта, даже если он в личном
+// архиве (карточка бригады: выбор проекта ограничен объектом бригады).
+export const fetchProjectsByObject = async (
+  objectId: number,
+  opts: { includeHidden?: boolean } = {},
+): Promise<ProjectData[]> => {
+  const response = await api.get(`/projects/object/${objectId}`, {
+    params: opts.includeHidden ? { includeHidden: 1 } : undefined,
+  });
   return response.data;
 };
 

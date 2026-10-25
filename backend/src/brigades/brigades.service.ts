@@ -6,6 +6,12 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+// ⭐ №172: доступ к бригадам считается по тем же правилам, что и к проектам
+// (№163): общая запись объекта ИЛИ запись на конкретный проект.
+import {
+  buildAccessScope, loadAccessGrants, resolveObjectRole, resolveProjectAccess,
+  type RoleResolution,
+} from '../auth/access-scope';
 import { CreateBrigadeDto } from './dto/create-brigade.dto';
 import { UpdateBrigadeDto } from './dto/update-brigade.dto';
 import { AddMemberDto } from './dto/add-member.dto';
@@ -102,17 +108,40 @@ export class BrigadesService {
     return rounded;
   }
 
-  private async checkObjectAccess(objectId: number, userId: number) {
-    const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId, projectId: null },
-    });
-    if (!access) {
-      throw new ForbiddenException('Нет доступа к этому объекту');
+  /**
+   * ⭐ №172: отозванный доступ и наблюдатель пишут только на чтение —
+   * та же логика, что в проектах (№168).
+   */
+  private assertWritable(my: RoleResolution, action: string) {
+    if (my.revoked) {
+      throw new ForbiddenException(
+        `Доступ отозван: ${action} недоступно. Данные доступны только на чтение.`,
+      );
     }
-    return access;
+    if (!my.canWrite) {
+      throw new ForbiddenException(`Наблюдатель не может ${action}`);
+    }
   }
 
-  private async checkProjectAccess(projectId: number, userId: number) {
+  /**
+   * ⭐ №172: доступ к объекту бригады.
+   * Раньше требовалась запись `projectId = null`, из-за чего прораб, приглашённый
+   * на проект, не мог ни создать бригаду, ни зафиксировать выход (403).
+   * Теперь — как в проектах: хватает любой записи (объект или проект).
+   * action передан → операция пишущая → нужны права на запись.
+   */
+  private async checkObjectAccess(objectId: number, userId: number, action?: string) {
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const my = resolveObjectRole(grants, objectId);
+    if (!my.role) {
+      throw new ForbiddenException('Нет доступа к этому объекту');
+    }
+    if (action) this.assertWritable(my, action);
+    return my;
+  }
+
+  /** ⭐ №172: доступ к проекту выхода (общая запись объекта или запись на проект) */
+  private async checkProjectAccess(projectId: number, userId: number, action?: string) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
       select: { objectId: true },
@@ -120,20 +149,16 @@ export class BrigadesService {
     if (!project) {
       throw new NotFoundException('Проект не найден');
     }
-    const access =
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId },
-      })) ??
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId: null },
-      }));
-    if (!access) {
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const my = resolveProjectAccess(grants, project.objectId, projectId);
+    if (!my.role) {
       throw new ForbiddenException('Нет доступа к этому проекту');
     }
-    return access;
+    if (action) this.assertWritable(my, action);
+    return my;
   }
 
-  private async checkBrigadeAccess(brigadeId: number, userId: number) {
+  private async checkBrigadeAccess(brigadeId: number, userId: number, action?: string) {
     const brigade = await this.prisma.brigade.findUnique({
       where: { id: brigadeId },
     });
@@ -141,7 +166,7 @@ export class BrigadesService {
       throw new NotFoundException('Бригада не найдена');
     }
     if (brigade.objectId != null) {
-      await this.checkObjectAccess(brigade.objectId, userId);
+      await this.checkObjectAccess(brigade.objectId, userId, action);
     }
     return brigade;
   }
@@ -153,11 +178,10 @@ export class BrigadesService {
       await this.checkObjectAccess(objectId, userId);
       where.objectId = objectId;
     } else {
-      const accesses = await this.prisma.objectAccess.findMany({
-        where: { userId, projectId: null },
-        select: { objectId: true },
-      });
-      const ids = accesses.map((a) => a.objectId);
+      // ⭐ №172: видим бригады всех объектов, где есть хоть какой-то доступ
+      // (раньше — только общая запись объекта, поэтому прораб с проектом не видел бригад)
+      const grants = await loadAccessGrants(this.prisma, userId);
+      const ids = buildAccessScope(grants).objectIds;
       where.OR = [{ objectId: null }, { objectId: { in: ids } }];
     }
 
@@ -197,7 +221,7 @@ export class BrigadesService {
 
   async create(userId: number, dto: CreateBrigadeDto) {
     if (dto.objectId != null) {
-      await this.checkObjectAccess(dto.objectId, userId);
+      await this.checkObjectAccess(dto.objectId, userId, 'создавать бригады на объекте');
     }
     return this.prisma.brigade.create({
       data: {
@@ -213,9 +237,9 @@ export class BrigadesService {
   }
 
   async update(userId: number, id: number, dto: UpdateBrigadeDto) {
-    const brigade = await this.checkBrigadeAccess(id, userId);
+    const brigade = await this.checkBrigadeAccess(id, userId, 'изменять бригаду');
     if (dto.objectId !== undefined && dto.objectId !== brigade.objectId) {
-      await this.checkObjectAccess(dto.objectId, userId);
+      await this.checkObjectAccess(dto.objectId, userId, 'переносить бригаду на объект');
     }
     return this.prisma.brigade.update({
       where: { id },
@@ -232,14 +256,14 @@ export class BrigadesService {
   }
 
   async remove(userId: number, id: number) {
-    await this.checkBrigadeAccess(id, userId);
+    await this.checkBrigadeAccess(id, userId, 'удалять бригады');
     await this.prisma.brigade.delete({ where: { id } });
     return { success: true };
   }
 
   // ─── Состав ───
   async addMember(userId: number, brigadeId: number, dto: AddMemberDto) {
-    await this.checkBrigadeAccess(brigadeId, userId);
+    await this.checkBrigadeAccess(brigadeId, userId, 'изменять состав бригады');
     return this.prisma.brigadeMember.create({
       data: {
         brigadeId,
@@ -251,7 +275,7 @@ export class BrigadesService {
   }
 
   async removeMember(userId: number, brigadeId: number, memberId: number) {
-    await this.checkBrigadeAccess(brigadeId, userId);
+    await this.checkBrigadeAccess(brigadeId, userId, 'изменять состав бригады');
     const member = await this.prisma.brigadeMember.findFirst({
       where: { id: memberId, brigadeId },
     });
@@ -292,10 +316,11 @@ export class BrigadesService {
   }
 
   async logShift(userId: number, brigadeId: number, dto: LogShiftDto) {
-    await this.checkBrigadeAccess(brigadeId, userId);
+    // ⭐ №172: прораб, приглашённый на проект, теперь может фиксировать выходы
+    await this.checkBrigadeAccess(brigadeId, userId, 'фиксировать выходы бригады');
     const date = this.parseShiftDate(dto.date);
     if (dto.projectId != null) {
-      await this.checkProjectAccess(dto.projectId, userId);
+      await this.checkProjectAccess(dto.projectId, userId, 'фиксировать выход по этому проекту');
     }
     // ⭐ №169: состав бригады — источник истины по часам (сумма считается здесь)
     const memberRows = await this.resolveShiftMembers(brigadeId, dto.members);
@@ -318,7 +343,7 @@ export class BrigadesService {
   }
 
   async updateShift(userId: number, brigadeId: number, shiftId: number, dto: LogShiftDto) {
-    await this.checkBrigadeAccess(brigadeId, userId);
+    await this.checkBrigadeAccess(brigadeId, userId, 'изменять выходы бригады');
     const shift = await this.prisma.brigadeShift.findFirst({
       where: { id: shiftId, brigadeId },
     });
@@ -327,7 +352,7 @@ export class BrigadesService {
     }
     const date = this.parseShiftDate(dto.date);
     if (dto.projectId != null) {
-      await this.checkProjectAccess(dto.projectId, userId);
+      await this.checkProjectAccess(dto.projectId, userId, 'фиксировать выход по этому проекту');
     }
     // ⭐ №169: новый состав заменяет старый; без состава — прежние часы/из DTO
     const memberRows = await this.resolveShiftMembers(brigadeId, dto.members);
@@ -361,7 +386,7 @@ export class BrigadesService {
   }
 
   async removeShift(userId: number, brigadeId: number, shiftId: number) {
-    await this.checkBrigadeAccess(brigadeId, userId);
+    await this.checkBrigadeAccess(brigadeId, userId, 'удалять выходы бригады');
     const shift = await this.prisma.brigadeShift.findFirst({
       where: { id: shiftId, brigadeId },
     });

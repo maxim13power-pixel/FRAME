@@ -144,6 +144,19 @@ const Brigades: React.FC = () => {
     }
   }, []);
 
+  // ⭐ №172: в селектах объектов не показываем архив (личный и глобальный).
+  // Текущий выбранный/редактируемый объект оставляем — иначе селект станет пустым.
+  const visibleObjects = useMemo(
+    () =>
+      objects.filter((o) => {
+        const archived = o.isArchived === true || o.hiddenForMe === true;
+        return !archived || o.id === bObjectId || o.id === objectFilter;
+      }),
+    [objects, bObjectId, objectFilter],
+  );
+  const objectLabel = (o: ObjectData) =>
+    o.isArchived === true || o.hiddenForMe === true ? `${o.name} (в архиве)` : o.name;
+
   const loadBrigades = useCallback(async () => {
     if (!token) return;
     setLoading(true);
@@ -216,7 +229,9 @@ const Brigades: React.FC = () => {
 
   const loadProjectsForBrigade = async (objectId: number) => {
     try {
-      setSProjects(await fetchProjectsByObject(objectId));
+      // ⭐ №172: includeHidden — иначе у бригады на объекте из личного архива
+      // список проектов пустой и выбрать проект своего объекта нельзя
+      setSProjects(await fetchProjectsByObject(objectId, { includeHidden: true }));
     } catch {
       setSProjects([]);
     }
@@ -386,7 +401,8 @@ const Brigades: React.FC = () => {
     setSProjects([]);
     if (selectedBrigade?.objectId != null) {
       try {
-        setSProjects(await fetchProjectsByObject(selectedBrigade.objectId));
+        // ⭐ №172: проекты объекта бригады — даже если объект в личном архиве
+        setSProjects(await fetchProjectsByObject(selectedBrigade.objectId, { includeHidden: true }));
       } catch {
         setSProjects([]);
       }
@@ -530,8 +546,8 @@ const Brigades: React.FC = () => {
       )}
       <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={() => setFilterAnchorEl(null)}>
         <MenuItem onClick={() => { setObjectFilter(''); setFilterAnchorEl(null); }}>Все объекты</MenuItem>
-        {objects.map((o) => (
-          <MenuItem key={o.id} onClick={() => { setObjectFilter(o.id); setFilterAnchorEl(null); }}>{o.name}</MenuItem>
+        {visibleObjects.map((o) => (
+          <MenuItem key={o.id} onClick={() => { setObjectFilter(o.id); setFilterAnchorEl(null); }}>{objectLabel(o)}</MenuItem>
         ))}
       </Menu>
       {view === 'detail' && selectedBrigade ? (
@@ -788,7 +804,7 @@ const Brigades: React.FC = () => {
                   sx={{ flexGrow: 1 }}
                   InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
                 />
-                {objects.length > 0 && (
+                {visibleObjects.length > 0 && (
                   <FormControl size="small" sx={{ minWidth: 180 }}>
                     <InputLabel>Объект</InputLabel>
                     <Select
@@ -797,8 +813,8 @@ const Brigades: React.FC = () => {
                       onChange={(e) => setObjectFilter(e.target.value === '' ? '' : Number(e.target.value))}
                     >
                       <MenuItem value=""><em>Все объекты</em></MenuItem>
-                      {objects.map((o) => (
-                        <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>
+                      {visibleObjects.map((o) => (
+                        <MenuItem key={o.id} value={o.id}>{objectLabel(o)}</MenuItem>
                       ))}
                     </Select>
                   </FormControl>
@@ -881,7 +897,7 @@ const Brigades: React.FC = () => {
               <InputLabel>Объект</InputLabel>
               <Select value={bObjectId} label="Объект" onChange={(e) => setBObjectId(e.target.value === '' ? '' : Number(e.target.value))}>
                 <MenuItem value="">Мобильная бригада (без объекта)</MenuItem>
-                {objects.map((o) => <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>)}
+                {visibleObjects.map((o) => <MenuItem key={o.id} value={o.id}>{objectLabel(o)}</MenuItem>)}
               </Select>
             </FormControl>
             <TextField fullWidth label="Комментарий" multiline rows={2} value={bComment} onChange={(e) => setBComment(e.target.value)} />
@@ -998,6 +1014,9 @@ const Brigades: React.FC = () => {
                 <Select value={sProjectId} label="Проект" onChange={(e) => setSProjectId(e.target.value === '' ? '' : Number(e.target.value))}>
                   <MenuItem value="">Без проекта</MenuItem>
                   {sProjects.map((p) => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
+                  {sProjects.length === 0 && (
+                    <MenuItem value="" disabled>На объекте нет доступных проектов</MenuItem>
+                  )}
                 </Select>
               </FormControl>
             )}

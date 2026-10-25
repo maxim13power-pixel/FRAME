@@ -153,7 +153,7 @@ export class ProjectsService {
     });
   }
 
-  async findAllByObject(objectId: number, userId: number) {
+  async findAllByObject(objectId: number, userId: number, includeHidden = false) {
     // ⭐ №163: участник, приглашённый в один проект, получает только его
     // (раньше checkObjectAccess требовал projectId=null и отдавал 403).
     const grants = await loadAccessGrants(this.prisma, userId);
@@ -164,7 +164,9 @@ export class ProjectsService {
     // ⭐ №169: объект в ЛИЧНОМ архиве → его проекты не предлагаем в выборах.
     // Иначе демо-объект, убранный в архив, продолжал подсовывать свои проекты
     // в «Зафиксировать выход» и фильтры.
-    if (grants.some((g) => g.objectId === objectId && g.isHidden)) {
+    // ⭐ №172: но из карточки бригады проекты нужны — там выбор идёт строго
+    // внутри объекта бригады, поэтому фронт просит includeHidden=1.
+    if (!includeHidden && grants.some((g) => g.objectId === objectId && g.isHidden)) {
       return [];
     }
     const hidePrices = my.hidePrices;

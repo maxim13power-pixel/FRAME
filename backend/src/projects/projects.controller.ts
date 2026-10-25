@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Delete,
+  Query,
   UseGuards,
   ParseIntPipe,
   Req,
@@ -34,8 +35,15 @@ export class ProjectsController {
   findAllByObject(
     @Param('objectId', ParseIntPipe) objectId: number,
     @Req() req,
+    // ⭐ №172: includeHidden=1 — вернуть проекты даже если объект в личном архиве
+    // (нужно карточке бригады: там выбор проекта ограничен объектом бригады).
+    @Query('includeHidden') includeHidden?: string,
   ) {
-    return this.projectsService.findAllByObject(objectId, req.user.userId);
+    return this.projectsService.findAllByObject(
+      objectId,
+      req.user.userId,
+      includeHidden === '1' || includeHidden === 'true',
+    );
   }
 
   @Get(':id')
