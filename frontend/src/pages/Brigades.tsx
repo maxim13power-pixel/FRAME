@@ -73,7 +73,8 @@ const Brigades: React.FC = () => {
 
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [selectedBrigade, setSelectedBrigade] = useState<BrigadeData | null>(null);
-  const [tab, setTab] = useState<'members' | 'shifts' | 'stats'>('members');
+  // ⭐ №171: при входе в бригаду сразу «Выходы» — там часы, а не список состава
+  const [tab, setTab] = useState<'members' | 'shifts' | 'stats'>('shifts');
   const viewRef = useRef(view);
   useEffect(() => { viewRef.current = view; }, [view]);
 
@@ -98,6 +99,7 @@ const Brigades: React.FC = () => {
 
   // ─── Выходы ───
   const [shifts, setShifts] = useState<BrigadeShiftData[]>([]);
+  const [shiftsVersion, setShiftsVersion] = useState(0);
   const [shiftOpen, setShiftOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<BrigadeShiftData | null>(null);
   const [deletingShift, setDeletingShift] = useState<BrigadeShiftData | null>(null);
@@ -164,7 +166,6 @@ const Brigades: React.FC = () => {
 
   useEffect(() => {
     loadBrigades();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadBrigades]);
 
   const loadTabData = async (id: number) => {
@@ -173,7 +174,6 @@ const Brigades: React.FC = () => {
         fetchBrigadeShifts(id),
         fetchBrigadeStats(id),
       ]);
-      setShifts(sh);
       setStats(st);
       const map = new Map<string, number>();
       sh.forEach((s) => map.set(s.date, (map.get(s.date) ?? 0) + s.hoursWorked));
@@ -188,6 +188,32 @@ const Brigades: React.FC = () => {
     }
   };
 
+  // ⭐ №171: фильтры выходов применяются сами (кнопки «Применить» больше нет).
+  // Даты пишутся посимвольно — ждём паузу 300 мс, чтобы не дёргать сервер на каждый символ.
+  useEffect(() => {
+    if (!selectedBrigade || tab !== 'shifts') return;
+    const id = selectedBrigade.id;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      fetchBrigadeShifts(id, {
+        ...(fFrom ? { from: fFrom } : {}),
+        ...(fTo ? { to: fTo } : {}),
+        ...(fProjectId !== '' ? { projectId: fProjectId } : {}),
+      })
+        .then((rows) => {
+          if (!cancelled) setShifts(rows);
+        })
+        .catch((err) => {
+          if (!cancelled) setError(getApiErrorMessage(err, 'Не удалось загрузить выходы'));
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBrigade?.id, tab, fFrom, fTo, fProjectId, shiftsVersion]);
+
   const loadProjectsForBrigade = async (objectId: number) => {
     try {
       setSProjects(await fetchProjectsByObject(objectId));
@@ -201,7 +227,10 @@ const Brigades: React.FC = () => {
       const d = await fetchBrigade(b.id);
       setSelectedBrigade(d);
       setView('detail');
-      setTab('members');
+      setTab('shifts');
+      // фильтры выходов не переносим между бригадами
+      setFFrom(''); setFTo(''); setFProjectId('');
+      setShifts([]);
       loadTabData(d.id);
       if (d.objectId != null) loadProjectsForBrigade(d.objectId);
     } catch (err) {
@@ -425,6 +454,7 @@ const Brigades: React.FC = () => {
       }
       setShiftOpen(false);
       loadTabData(selectedBrigade.id);
+      setShiftsVersion((v) => v + 1);
     } catch (err) {
       setFormError(getApiErrorMessage(err, 'Не удалось сохранить выход'));
     } finally {
@@ -438,21 +468,9 @@ const Brigades: React.FC = () => {
       await deleteBrigadeShift(selectedBrigade.id, deletingShift.id);
       setDeletingShift(null);
       loadTabData(selectedBrigade.id);
+      setShiftsVersion((v) => v + 1);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Не удалось удалить выход'));
-    }
-  };
-
-  const loadFilteredShifts = async () => {
-    if (!selectedBrigade) return;
-    try {
-      setShifts(await fetchBrigadeShifts(selectedBrigade.id, {
-        ...(fFrom ? { from: fFrom } : {}),
-        ...(fTo ? { to: fTo } : {}),
-        ...(fProjectId !== '' ? { projectId: fProjectId } : {}),
-      }));
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Не удалось загрузить выходы'));
     }
   };
 
@@ -581,17 +599,41 @@ const Brigades: React.FC = () => {
 
             {tab === 'shifts' && (
               <Paper sx={{ p: 2, borderRadius: 2 }}>
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1.5, flexWrap: 'wrap' }}>
-                  <TextField size="small" type="date" label="С" InputLabelProps={{ shrink: true }} value={fFrom} onChange={(e) => setFFrom(e.target.value)} />
-                  <TextField size="small" type="date" label="По" InputLabelProps={{ shrink: true }} value={fTo} onChange={(e) => setFTo(e.target.value)} />
-                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                {/* ⭐ №171: без кнопки «Применить» — даты и проект фильтруют сразу.
+                    На мобилке проект на всю ширину под датами, на десктопе — в одну полку с датами. */}
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gap: 1,
+                    mb: 1.5,
+                    gridTemplateColumns: { xs: '1fr 1fr', md: '170px 170px 1fr' },
+                  }}
+                >
+                  <TextField
+                    size="small"
+                    type="date"
+                    label="С"
+                    InputLabelProps={{ shrink: true }}
+                    value={fFrom}
+                    onChange={(e) => setFFrom(e.target.value)}
+                    fullWidth
+                  />
+                  <TextField
+                    size="small"
+                    type="date"
+                    label="По"
+                    InputLabelProps={{ shrink: true }}
+                    value={fTo}
+                    onChange={(e) => setFTo(e.target.value)}
+                    fullWidth
+                  />
+                  <FormControl size="small" sx={{ gridColumn: { xs: '1 / -1', md: 'auto' } }}>
                     <InputLabel>Проект</InputLabel>
                     <Select value={fProjectId} label="Проект" onChange={(e) => setFProjectId(e.target.value === '' ? '' : Number(e.target.value))}>
                       <MenuItem value="">Все проекты</MenuItem>
                       {sProjects.map((p) => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
                     </Select>
                   </FormControl>
-                  <Button size="small" variant="outlined" onClick={loadFilteredShifts}>Применить</Button>
                 </Box>
                 {/* ⭐ №169: кнопка отдельной строкой — раньше «улетала» при переносе фильтров */}
                 <Button
