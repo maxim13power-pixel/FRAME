@@ -38,8 +38,13 @@ export class AddAccessDto {
   @Min(1)
   projectId?: number;
 
-  // ⭐ №168: «управляет командой» — только для FOREMAN, выдаёт заказчик
+  // ⭐ №168: «управляет командой» — только для FOREMAN, выдаёт администратор объекта
   @IsOptional()
   @IsBoolean()
   isManager?: boolean;
+
+  // ⭐ №182: делегирование «скрыть цены» (true — участник не видит деньги)
+  @IsOptional()
+  @IsBoolean()
+  hidePrices?: boolean;
 }

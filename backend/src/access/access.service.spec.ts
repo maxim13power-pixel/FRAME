@@ -56,4 +56,50 @@ describe('AccessService — понижение последнего админи
 
     expect(prisma.objectAccess.update).toHaveBeenCalled();
   });
+
+  // ⭐ №182: делегирование видимости цен
+  it('нельзя открыть цены, если у самого актора они скрыты ⇒ ForbiddenException', async () => {
+    prisma.objectAccess.findFirst
+      .mockReset()
+      .mockResolvedValueOnce({ ...adminGrant, hidePrices: true })
+      .mockResolvedValueOnce({
+        ...adminGrant,
+        id: 2,
+        userId: 9,
+        hidePrices: false,
+      });
+
+    await expect(
+      service.updateAccess(3, 2, { hidePrices: false } as any, 7),
+    ).rejects.toThrow(/скрыты цены/);
+    expect(prisma.objectAccess.update).not.toHaveBeenCalled();
+  });
+
+  it('скрыть цены участнику можно, и это попадает в журнал', async () => {
+    prisma.objectAccess.findFirst
+      .mockReset()
+      .mockResolvedValueOnce({ ...adminGrant })
+      .mockResolvedValueOnce({
+        ...adminGrant,
+        id: 2,
+        userId: 9,
+        hidePrices: false,
+      });
+
+    await service.updateAccess(3, 2, { hidePrices: true } as any, 7);
+
+    expect(prisma.objectAccess.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ hidePrices: true }),
+      }),
+    );
+    expect(audit.log).toHaveBeenCalledWith(
+      7,
+      'object_access',
+      3,
+      'update',
+      expect.objectContaining({ hidePrices: false }),
+      expect.objectContaining({ hidePrices: true }),
+    );
+  });
 });

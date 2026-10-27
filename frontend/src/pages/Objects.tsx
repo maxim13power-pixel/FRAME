@@ -154,6 +154,7 @@ const [accessProjects, setAccessProjects] = useState<ProjectData[]>([]);
 // ⭐ Приглашение по ссылке (как в Google Docs)
 const [inviteTab, setInviteTab] = useState<'link' | 'direct'>('link');
 const [linkRole, setLinkRole] = useState<AccessRole>('FOREMAN');
+const [inviteHidePrices, setInviteHidePrices] = useState(false); // ⭐ №182
 const [linkHidePrices, setLinkHidePrices] = useState(false);
 const [createdLinkUrl, setCreatedLinkUrl] = useState<string | null>(null);
 const [activeLinks, setActiveLinks] = useState<InviteLink[]>([]);
@@ -624,6 +625,7 @@ const handleCloseAccess = () => {
   setAccessProjects([]);
   setInviteTab('link');
   setLinkRole('FOREMAN');
+  setInviteHidePrices(false);
   setLinkHidePrices(false);
   setCreatedLinkUrl(null);
   setActiveLinks([]);
@@ -647,6 +649,7 @@ const handleInvite = async () => {
       role: inviteRole,
       // ⭐ №163: '' = на весь объект, иначе — только на выбранный проект
       projectId: inviteProjectId === '' ? null : inviteProjectId,
+      hidePrices: inviteHidePrices, // ⭐ №182
     });
     setInviteIdentifier('');
     await loadAccessMembers(accessObject.id);
@@ -736,6 +739,18 @@ const handleToggleManager = async (accessId: number, isManager: boolean) => {
     await loadAccessMembers(accessObject.id);
   } catch (err: unknown) {
     setAccessError(getApiErrorMessage(err, 'Ошибка смены прав'));
+  }
+};
+
+// ⭐ №182: скрыть/показать цены участнику (делегирование прав)
+const handleToggleHidePrices = async (accessId: number, hidePrices: boolean) => {
+  if (!token || !accessObject) return;
+  setAccessError('');
+  try {
+    await updateAccess(accessObject.id, accessId, { hidePrices });
+    await loadAccessMembers(accessObject.id);
+  } catch (err: unknown) {
+    setAccessError(getApiErrorMessage(err, 'Ошибка смены видимости цен'));
   }
 };
 
@@ -1925,6 +1940,13 @@ trailing: headerTrailing,
                           sx={{ mt: 0.5, ml: 0.5, height: 20, fontSize: '0.7rem' }}
                         />
                       )}
+                      {member.hidePrices && !member.revokedAt && (
+                        <Chip
+                          size="small"
+                          label="🙈 цены скрыты"
+                          sx={{ mt: 0.5, ml: 0.5, height: 20, fontSize: '0.7rem' }}
+                        />
+                      )}
                     </Box>
 
                     {/* ⭐ №168: «управляет командой» — флаг прораба, выдаёт администратор объекта */}
@@ -1939,6 +1961,21 @@ trailing: headerTrailing,
                           />
                         }
                         label={<Typography variant="caption">менеджер</Typography>}
+                      />
+                    )}
+
+                    {/* ⭐ №182: видимость цен — отдельное право, не роль */}
+                    {canManage && member.role !== 'VIEWER' && !member.revokedAt && (
+                      <FormControlLabel
+                        sx={{ mr: 0 }}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={member.hidePrices}
+                            onChange={(e) => handleToggleHidePrices(member.id, e.target.checked)}
+                          />
+                        }
+                        label={<Typography variant="caption">🙈 цены</Typography>}
                       />
                     )}
 
@@ -2137,6 +2174,25 @@ trailing: headerTrailing,
                         ? 'Участник увидит все проекты объекта, включая созданные позже.'
                         : 'Участник увидит только выбранный проект. Остальные проекты объекта ему недоступны.'}
                     </Typography>
+                    {/* ⭐ №182: видимость цен — отдельное право (как в приглашении ссылкой) */}
+                    {inviteRole !== 'VIEWER' && (
+                      <>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={inviteHidePrices}
+                              onChange={(e) => setInviteHidePrices(e.target.checked)}
+                            />
+                          }
+                          label="🙈 Скрыть цены для этого участника"
+                        />
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: -2 }}>
+                          {inviteHidePrices
+                            ? 'Участник сможет вносить работы и объёмы, но не увидит цены и суммы.'
+                            : 'Участник будет видеть цены и суммы объекта.'}
+                        </Typography>
+                      </>
+                    )}
                     <Button
                       variant="contained"
                       onClick={handleInvite}

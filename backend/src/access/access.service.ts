@@ -51,6 +51,19 @@ export class AccessService {
     return my;
   }
 
+  // ⭐ №182: делегировать можно только то, что есть у тебя.
+  // Если цены скрыты у самого актора — он не может «открыть» их другому.
+  private assertCanDelegatePrices(
+    my: { hidePrices?: boolean },
+    hidePrices?: boolean,
+  ) {
+    if (hidePrices === false && my.hidePrices) {
+      throw new ForbiddenException(
+        'У вас скрыты цены — вы не можете открыть их другому участнику',
+      );
+    }
+  }
+
   // ⭐ Хелпер: найти приглашаемого юзера (по userId / email / телефону)
   private async resolveUser(dto: AddAccessDto) {
     if (dto.userId) {
@@ -109,6 +122,9 @@ export class AccessService {
       );
     }
 
+    // ⭐ №182: нельзя открыть другому цены, которые скрыты у тебя самого
+    this.assertCanDelegatePrices(myAccess, dto.hidePrices);
+
     // Найти приглашаемого юзера
     const invitedUser = await this.resolveUser(dto);
 
@@ -138,6 +154,7 @@ export class AccessService {
           isHidden: false,
           role: dto.role,
           isManager: dto.role === AccessRole.FOREMAN && !!dto.isManager,
+          hidePrices: dto.hidePrices ?? existing.hidePrices,
           invitedBy: actorUserId,
         },
         include: {
@@ -152,7 +169,12 @@ export class AccessService {
         objectId,
         'restore',
         { userId: invitedUser.id, revokedAt: existing.revokedAt },
-        { userId: invitedUser.id, role: dto.role },
+        {
+          userId: invitedUser.id,
+          role: dto.role,
+          isManager: restored.isManager,
+          hidePrices: restored.hidePrices,
+        },
       );
       return restored;
     }
@@ -164,6 +186,7 @@ export class AccessService {
         projectId, // null = весь объект
         role: dto.role,
         isManager: dto.role === AccessRole.FOREMAN && !!dto.isManager,
+        hidePrices: dto.hidePrices ?? false,
         invitedBy: actorUserId,
       },
       include: {
@@ -179,7 +202,7 @@ export class AccessService {
       objectId,
       'create',
       undefined,
-      { userId: invitedUser.id, role: dto.role, isManager: created.isManager },
+      { userId: invitedUser.id, role: dto.role, isManager: created.isManager, hidePrices: created.hidePrices },
     );
     return created;
   }
@@ -226,6 +249,10 @@ export class AccessService {
 
     const nextRole = dto.role ?? target.role;
     const nextManager = dto.isManager ?? target.isManager;
+    const nextHidePrices = dto.hidePrices ?? target.hidePrices;
+
+    // ⭐ №182: открыть цены другому может только тот, у кого они не скрыты
+    this.assertCanDelegatePrices(myAccess, dto.hidePrices);
 
     // ⭐ №181: последнего администратора объекта нельзя понизить (инвариант «≥1 администратор»).
     // Раньше проверка стояла только на отзыве и удалении доступа — понижение роли её обходило.
@@ -239,7 +266,11 @@ export class AccessService {
 
     const updated = await this.prisma.objectAccess.update({
       where: { id: accessId },
-      data: { role: nextRole, isManager: nextManager },
+      data: {
+        role: nextRole,
+        isManager: nextManager,
+        hidePrices: nextHidePrices,
+      },
       include: {
         user: {
           select: { id: true, fullName: true, email: true, phone: true },
@@ -252,8 +283,18 @@ export class AccessService {
       'object_access',
       objectId,
       'update',
-      { userId: target.userId, role: target.role, isManager: target.isManager },
-      { userId: target.userId, role: nextRole, isManager: nextManager },
+      {
+        userId: target.userId,
+        role: target.role,
+        isManager: target.isManager,
+        hidePrices: target.hidePrices,
+      },
+      {
+        userId: target.userId,
+        role: nextRole,
+        isManager: nextManager,
+        hidePrices: nextHidePrices,
+      },
     );
     return updated;
   }
