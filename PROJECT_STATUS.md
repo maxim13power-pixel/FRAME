@@ -1209,5 +1209,27 @@ Jest: 16 сьютов, 117 passed, 2 todo. `tsc --noEmit` чисто, `npm run v
 ДАЛЬШЕ: выключить ChangeRequest (вариант «в» из §24 п.1) — убрать модуль из AppModule, затем migration
 drop модели; после — F6 (`priceItemId` без проверки справочника) и UI-гейтинг склад/отчёты.
 
+28. №183: ChangeRequest ВЫКЛЮЧЕН И УДАЛЁН + ДЕМО-ДАННЫЕ (27.10.2026)
+РЕШЕНИЕ (§24 п.1 «в») исполнено: согласования официально выключены, мёртвый код удалён.
+ - Удалено: `backend/src/change/` целиком (controller, service, module, dto) + мусорный
+   `change.service copy.ts.txt` (17 КБ валялись в src); `ChangeModule` из `app.module.ts`;
+   модель `ChangeRequest` и enum `ChangeStatus` из `schema.prisma`; связи `User.proposedChanges/
+   reviewedChanges`, `Project.changeRequests`, `Material.changeRequests`; подсчёт `changeRequest`
+   в `projects.service.remove` (guard «проект не пуст» сохранён, просто без этой строки).
+ - Миграция `20261027150000_drop_change_requests`: `DROP TABLE IF EXISTS "change_requests"`,
+   `DROP TYPE IF EXISTS "ChangeStatus"`. На dev применено `prisma db push --accept-data-loss`
+   (локальная политика — db push). ДО удаления проверено: `change_requests` = 0 строк → потерь нет.
+ - `prisma generate` дал EPERM на rename query_engine (живут node-процессы) — по правилам проекта
+   не блокер: типы записались, `changeRequest`/`ChangeStatus` в `index.d.ts` = 0 совпадений.
+ - ЗАКРЫТ 🔴 из отчёта A: «отозванный прораб может propose/approve изменений» — API больше не
+   существует (роутов /change нет).
+ДЕМО-ДАННЫЕ (по просьбе владельца, сразу): 2 объекта, где создатель был прорабом, подняты до
+администратора — #2 «Объект №1», #10 «ЭОМ» (FOREMAN → CUSTOMER, isManager=false). Повторная проверка
+«создатель не админ» = 0 объектов. Демо-скрипт (`prisma/demo-object.ts`) правки не требовал: он
+выдаёт доступы создателям напрямую из конфига (admin/owner → CUSTOMER).
+ПРОВЕРКИ: jest 16 сьютов / 117 passed / 2 todo; `tsc --noEmit` чисто; `npm run verify` зелёный.
+ДАЛЬШЕ: F6 — `priceItemId`/`materialItemId` принимаются по глобальному id без проверки справочника
+(утечка цены, отчёт A₂); затем UI-гейтинг «Склад/Отчёты» по canWrite (сейчас кнопки видны у VIEWER).
+
 
 

@@ -10,7 +10,6 @@ import { PriceListModule } from './price-list/price-list.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AccessModule } from './access/access.module';
 import { InviteModule } from './invite/invite.module';
-import { ChangeModule } from './change/change.module'; // ⭐ P0-6
 import { RentalsModule } from './rentals/rentals.module'; // ⭐ Аренда
 import { UsersModule } from './users/users.module'; // ⭐ Участники (сводный список)
 import { WarehouseModule } from './warehouse/warehouse.module'; // ⭐ Склад
@@ -36,7 +35,6 @@ import { ObjectTemplatesModule } from './object-templates/object-templates.modul
     DashboardModule,
     AccessModule,
     InviteModule,
-    ChangeModule, // ⭐ P0-6
     RentalsModule, // ⭐ Аренда
     UsersModule, // ⭐ Участники (сводный список)
     WarehouseModule, // ⭐ Склад

@@ -171,7 +171,7 @@ export class UsersService {
       });
 
       // 5. Профиль: персональные данные стираем, запись оставляем
-      //    (на неё ссылаются ChangeRequest.proposedBy/MaterialFix.userId и т.п.).
+      //    (на неё ссылаются MaterialFix.userId, AuditLog.actorId и т.п.).
       await tx.user.update({
         where: { id: userId },
         data: {

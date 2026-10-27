@@ -320,15 +320,13 @@ export class ProjectsService {
       this.assertWritable(access, 'удалять проекты');
     }
 
-    const [materials, changeRequests, reports, transactions, shifts] =
-      await Promise.all([
-        this.prisma.material.count({ where: { projectId: id } }),
-        this.prisma.changeRequest.count({ where: { projectId: id } }),
-        this.prisma.report.count({ where: { projectId: id } }),
-        this.prisma.warehouseTransaction.count({ where: { projectId: id } }),
-        this.prisma.brigadeShift.count({ where: { projectId: id } }),
-      ]);
-    if (materials + changeRequests + reports + transactions + shifts > 0) {
+    const [materials, reports, transactions, shifts] = await Promise.all([
+      this.prisma.material.count({ where: { projectId: id } }),
+      this.prisma.report.count({ where: { projectId: id } }),
+      this.prisma.warehouseTransaction.count({ where: { projectId: id } }),
+      this.prisma.brigadeShift.count({ where: { projectId: id } }),
+    ]);
+    if (materials + reports + transactions + shifts > 0) {
       throw new BadRequestException(
         `Проект не пуст: ${materials} материалов, ${reports} отчётов, ${transactions} складских операций. ` +
           'Удаление запрещено — данные принадлежат всем участникам. Уберите проект в личный архив.',

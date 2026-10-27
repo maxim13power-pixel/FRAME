@@ -27,8 +27,6 @@ model User {
 
   // Новые связи вместо Organization
   objectAccesses    ObjectAccess[]
-  proposedChanges   ChangeRequest[]  @relation("ProposedChanges")
-  reviewedChanges   ChangeRequest[]  @relation("ReviewedChanges")
   ownedPriceItems   PriceItem[]
   priceCatalogs     PriceCatalog[] @relation("CatalogOwner") // ⭐ №151: личные справочники цен
   createdInvites    InviteToken[]  @relation("CreatedInvites")
@@ -81,7 +79,6 @@ model Project {
   catalogId   Int?     // ⭐ №151: справочник цен проекта (по умолчанию — для подстановки в смете)
   catalog     PriceCatalog? @relation(fields: [catalogId], references: [id], onDelete: SetNull)
   materials   Material[]
-  changeRequests ChangeRequest[] // Согласования на уровне проекта
   warehouseTransactions WarehouseTransaction[] // ⭐ Складские списания на проект
   reports     Report[] // ⭐ Акты/сметы по проекту
   brigadeShifts BrigadeShift[] // ⭐ Выходы бригад на проекте
@@ -147,7 +144,6 @@ model Material {
   projectId       Int
   project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   fixes           MaterialFix[]  // история всех фиксаций
-  changeRequests  ChangeRequest[] // Согласования по конкретному материалу
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -267,33 +263,6 @@ model ObjectAccess {
   @@index([objectId])
   @@index([userId, isHidden])
   @@map("object_access")
-}
-
-enum ChangeStatus {
-  PENDING  // Ждет согласования (розовая идея)
-  APPROVED // Утверждено (входит в сумму)
-  REJECTED // Отклонено (не входит в сумму, но строка видна прорабу)
-}
-
-model ChangeRequest {
-  id          Int          @id @default(autoincrement())
-  projectId   Int
-  materialId  Int?
-  type        String       // ADD_ROW / CHANGE_QTY / CHANGE_PRICE
-  payload     Json         // Контекст изменения
-  status      ChangeStatus @default(PENDING)
-  proposedBy  Int          // прораб
-  reviewedBy  Int?         // заказчик
-  reviewComment String?    // ⭐ P0-6: комментарий ревьюера (причина отклонения)
-  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  material    Material?    @relation(fields: [materialId], references: [id], onDelete: SetNull)
-  proposer    User         @relation("ProposedChanges", fields: [proposedBy], references: [id], onDelete: Cascade)
-  reviewer    User?        @relation("ReviewedChanges", fields: [reviewedBy], references: [id], onDelete: SetNull)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-
-  @@index([projectId, createdAt])
-  @@map("change_requests")
 }
 
 // ============================================================
