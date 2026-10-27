@@ -106,8 +106,22 @@ export class AuditService {
   }
 
   // ⭐ Чтение журнала (с проверкой доступа к сущности).
-  async list(userId: number, entity?: string, entityId?: number) {
-    if (entity && entityId != null) {
+  async list(
+    userId: number,
+    entity?: string,
+    entityId?: number,
+    actorRole?: string,
+  ) {
+    // ⭐ №180: запрос без области возвращал последние 100 записей ЖУРНАЛА ВСЕЙ СИСТЕМЫ
+    // (цены, отзывы доступов, e-mail акторов). Теперь — только администратору,
+    // остальным обязательны entity + entityId.
+    if (!entity || entityId == null) {
+      if (actorRole !== 'ADMIN') {
+        throw new ForbiddenException(
+          'Журнал целиком доступен только администратору: укажите entity и entityId',
+        );
+      }
+    } else {
       await this.checkEntityAccess(userId, entity, entityId);
     }
     const where: any = {};

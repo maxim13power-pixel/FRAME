@@ -40,6 +40,21 @@ export class InviteService {
       );
     }
 
+    // ⭐ №180: отозванный доступ приглашать не может (семантика №168 — только чтение)
+    if (myAccess.revokedAt) {
+      throw new ForbiddenException(
+        'Доступ отозван: создавать ссылки-приглашения нельзя',
+      );
+    }
+
+    // ⭐ №180: нельзя выдать роль выше своей — тот же запрет, что в access.service.addAccess.
+    // Иначе прораб выпускал ссылку с role=CUSTOMER и любой принимающий получал права администратора.
+    if (dto.role === 'CUSTOMER' && myAccess.role !== 'CUSTOMER') {
+      throw new ForbiddenException(
+        'Только администратор объекта может приглашать с ролью администратора',
+      );
+    }
+
     // Проверка что объект существует
     const object = await this.prisma.object.findUnique({
       where: { id: objectId },

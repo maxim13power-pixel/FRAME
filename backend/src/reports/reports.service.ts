@@ -6,7 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { CreateReportDto } from './dto/create-report.dto';
@@ -71,6 +71,21 @@ export class ReportsService {
     return { ...r, totalAmount: 0, items } as T;
   }
 
+  // ⭐ №180: наблюдатель и отозванный доступ — только чтение (как в projects/brigades).
+  private assertWritable(
+    access: { role?: AccessRole | string; revokedAt?: Date | null },
+    action: string,
+  ) {
+    if (access.revokedAt) {
+      throw new ForbiddenException(
+        `Доступ отозван: ${action} недоступно. Отчёты открыты только на чтение.`,
+      );
+    }
+    if (access.role === AccessRole.VIEWER) {
+      throw new ForbiddenException(`Наблюдатель не может ${action}`);
+    }
+  }
+
   private async checkProjectAccess(projectId: number, userId: number) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -119,9 +134,20 @@ export class ReportsService {
     filters: { projectId?: number; objectId?: number; type?: string; status?: string },
   ) {
     const where: Prisma.ReportWhereInput = {};
+    // ⭐ №180: суммы скрываем и в списке — раньше hidePrices работал только в карточке.
+    let hideAll = false;
+    let grants: Array<{
+      objectId: number;
+      projectId: number | null;
+      role?: string;
+      hidePrices?: boolean;
+      revokedAt?: Date | null;
+    }> = [];
 
     if (filters.projectId != null && !Number.isNaN(filters.projectId)) {
-      await this.checkProjectAccess(filters.projectId, userId);
+      hideAll = this.mustHidePrices(
+        await this.checkProjectAccess(filters.projectId, userId),
+      );
       where.projectId = filters.projectId;
     } else if (filters.objectId != null && !Number.isNaN(filters.objectId)) {
       const acc = await this.prisma.objectAccess.findFirst({
@@ -130,16 +156,23 @@ export class ReportsService {
       if (!acc) {
         throw new ForbiddenException('Нет доступа к этому объекту');
       }
+      hideAll = this.mustHidePrices(acc);
       where.objectId = filters.objectId;
     } else {
-      const accesses = await this.prisma.objectAccess.findMany({
+      grants = await this.prisma.objectAccess.findMany({
         where: { userId },
-        select: { objectId: true, projectId: true },
+        select: {
+          objectId: true,
+          projectId: true,
+          role: true,
+          hidePrices: true,
+          revokedAt: true,
+        },
       });
-      const objectLevelIds = accesses
+      const objectLevelIds = grants
         .filter((a) => a.projectId == null)
         .map((a) => a.objectId);
-      const projectLevelIds = accesses
+      const projectLevelIds = grants
         .filter((a) => a.projectId != null)
         .map((a) => a.projectId as number);
       where.OR = [
@@ -151,10 +184,25 @@ export class ReportsService {
     if (filters.type) where.type = filters.type;
     if (filters.status) where.status = filters.status;
 
-    return this.prisma.report.findMany({
+    const reports = await this.prisma.report.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
       include: REPORT_INCLUDE,
+    });
+
+    if (hideAll) return reports.map((r) => this.stripPrices(r));
+    if (grants.length === 0) return reports;
+
+    // Скрываем суммы там, где хотя бы одна выданная запись требует скрытия.
+    return reports.map((r) => {
+      const own = grants.filter(
+        (g) =>
+          g.objectId === r.objectId &&
+          (g.projectId == null || g.projectId === r.projectId),
+      );
+      return own.some((g) => this.mustHidePrices(g))
+        ? this.stripPrices(r)
+        : r;
     });
   }
 
@@ -187,7 +235,10 @@ export class ReportsService {
     if (project.objectId !== dto.objectId) {
       throw new BadRequestException('objectId: проект не принадлежит этому объекту');
     }
-    await this.checkProjectAccess(dto.projectId, userId);
+    this.assertWritable(
+      await this.checkProjectAccess(dto.projectId, userId),
+      'создавать отчёт',
+    );
 
     return this.prisma.report.create({
       data: {
@@ -204,7 +255,8 @@ export class ReportsService {
   }
 
   async update(userId: number, id: number, dto: UpdateReportDto) {
-    const { report } = await this.checkReportAccess(id, userId);
+    const { report, access } = await this.checkReportAccess(id, userId);
+    this.assertWritable(access, 'изменять отчёт');
     if (dto.status && !REPORT_STATUSES.includes(dto.status)) {
       throw new BadRequestException('status: draft / sent / approved / rejected');
     }
@@ -234,7 +286,8 @@ export class ReportsService {
   }
 
   async remove(userId: number, id: number) {
-    await this.checkReportAccess(id, userId);
+    const { access } = await this.checkReportAccess(id, userId);
+    this.assertWritable(access, 'удалять отчёт');
     await this.prisma.report.delete({ where: { id } });
     return { success: true };
   }
@@ -251,7 +304,8 @@ export class ReportsService {
   }
 
   async addItem(userId: number, reportId: number, dto: AddReportItemDto) {
-    await this.checkReportAccess(reportId, userId);
+    const { access } = await this.checkReportAccess(reportId, userId);
+    this.assertWritable(access, 'добавлять позиции в отчёт');
     const quantity = dto.quantity;
     let name: string;
     let unit: string;
@@ -296,7 +350,8 @@ export class ReportsService {
     itemId: number,
     dto: UpdateReportItemDto,
   ) {
-    await this.checkReportAccess(reportId, userId);
+    const { access } = await this.checkReportAccess(reportId, userId);
+    this.assertWritable(access, 'изменять позиции отчёта');
 
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.reportItem.findFirst({
@@ -341,7 +396,8 @@ export class ReportsService {
   }
 
   async removeItem(userId: number, reportId: number, itemId: number) {
-    await this.checkReportAccess(reportId, userId);
+    const { access } = await this.checkReportAccess(reportId, userId);
+    this.assertWritable(access, 'удалять позиции отчёта');
 
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.reportItem.findFirst({

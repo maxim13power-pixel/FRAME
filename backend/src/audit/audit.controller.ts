@@ -18,6 +18,7 @@ export class AuditController {
       req.user.userId,
       entity,
       entityId != null ? Number(entityId) : undefined,
+      req.user.role, // ⭐ №180: глобальное чтение журнала — только ADMIN
     );
   }
 }
