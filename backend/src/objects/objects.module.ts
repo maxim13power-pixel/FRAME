@@ -7,5 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module'; // путь может �
   imports: [PrismaModule], // обязательно!
   controllers: [ObjectsController],
   providers: [ObjectsService],
+  // ⭐ №175: ObjectTemplatesService переиспользует создание объекта (доступ создателя)
+  exports: [ObjectsService],
 })
 export class ObjectsModule {}

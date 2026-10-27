@@ -77,7 +77,7 @@ const UNIT_OPTIONS = [
 // ⭐ Служебное значение для селекта: "создать новую категорию прямо отсюда"
 const NEW_CATEGORY_VALUE = '__new__';
 
-const PriceList: React.FC = () => {
+const PriceListInner: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -458,14 +458,8 @@ const PriceList: React.FC = () => {
     );
   }
 
-  // ⭐ №151: справочник не выбран → показываем список справочников (как «Объекты → Проекты»)
-  if (!catalogId) {
-    return (
-      <Box sx={{ minHeight: '100vh', bgcolor: '#f0f4fa' }}>
-        <PriceCatalogList />
-      </Box>
-    );
-  }
+  // ⭐ №179: ветку «список справочников» вынес в обёртку ниже — списку нужна СВОЯ мобильная
+  // шапка (архив + поиск), иначе шапка PriceList дублировала поиск и показывала нерабочую сортировку.
 
 
   return (
@@ -1042,6 +1036,20 @@ const PriceList: React.FC = () => {
       </Modal>
     </Box>
   );
+};
+
+// ⭐ №179: если справочник не выбран — показываем СПИСОК справочников как отдельную страницу
+// (свой заголовок, архив в шапке и поиск по справочникам, а не по расценкам).
+const PriceList: React.FC = () => {
+  const { catalogId } = useParams<{ catalogId?: string }>();
+  if (!catalogId) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: '#f0f4fa' }}>
+        <PriceCatalogList />
+      </Box>
+    );
+  }
+  return <PriceListInner />;
 };
 
 export default PriceList;

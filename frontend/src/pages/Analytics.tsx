@@ -60,8 +60,8 @@ const Analytics: React.FC = () => {
 
   const loadObjects = useCallback(async () => {
     try {
-      // ⭐ №169: архивные (глобально) и лично скрытые объекты в фильтр не попадают
-      setObjects((await fetchObjects()).filter(o => !o.isArchived && !o.hiddenForMe));
+      // ⭐ №176: fetchObjects по умолчанию уже без архивных и лично скрытых объектов
+      setObjects(await fetchObjects());
     } catch {
       /* объекты не критичны */
     }

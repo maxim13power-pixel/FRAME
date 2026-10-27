@@ -46,8 +46,18 @@ export class PriceListController {
 
   // ⭐ №151: справочники цен
   @Get('catalogs')
-  listCatalogs(@Req() req) {
-    return this.priceListService.listCatalogs(req.user.userId);
+  listCatalogs(@Req() req, @Query('includeArchived') includeArchived?: string) {
+    // ⭐ №179: ?includeArchived=1 — вернуть и архивные (экран «Архив»)
+    return this.priceListService.listCatalogs(
+      req.user.userId,
+      includeArchived === '1' || includeArchived === 'true',
+    );
+  }
+
+  // ⭐ №179: вернуть справочник из архива
+  @Post('catalogs/:id/restore')
+  restoreCatalog(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.priceListService.restoreCatalog(id, req.user.userId);
   }
 
   @Post('catalogs')

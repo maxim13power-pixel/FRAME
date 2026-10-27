@@ -44,11 +44,29 @@ import RestoreIcon from '@mui/icons-material/Restore';
 import LinkIcon from '@mui/icons-material/Link';
 import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
 import { fetchAccessList, addAccess, updateAccess, revokeAccess, restoreAccess, purgeAccess, setMyAccessHidden } from '../services/accessService';
 import { APP_URL } from '../config';
 import type { AccessMember, AccessRole } from '../services/accessService';
 import { createInviteLink, fetchInviteLinks, revokeInviteLink } from '../services/inviteService';
 import type { InviteLink } from '../services/inviteService';
+// ⭐ №178: заявки на право создавать проекты в объекте
+import {
+  approveAccessRequest,
+  fetchIncomingAccessRequests,
+  fetchObjectAccessRequests,
+  rejectAccessRequest,
+} from '../services/accessRequestService';
+import type { AccessRequestData } from '../services/accessRequestService';
+// ⭐ №175: шаблоны объектов
+import {
+  createObjectFromTemplate,
+  createObjectTemplate,
+  deleteObjectTemplate,
+  fetchObjectTemplates,
+  updateObjectTemplate,
+} from '../services/objectTemplateService';
+import type { ObjectTemplateData } from '../services/objectTemplateService';
 import { updateObject } from '../services/objectService';
 import { fetchPriceCatalogs, createPriceCatalog } from '../services/priceListService'; // ⭐ №164
 import type { PriceCatalogData } from '../services/priceListService'; // ⭐ №164
@@ -85,7 +103,9 @@ const daysUntil = (endDateStr: string) => {
 const Objects: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { token } = useAuth(); // получаем токен из контекста (если используете)
+  const { token, user } = useAuth(); // получаем токен и профиль из контекста
+  // ⭐ №175: id текущего пользователя — чтобы понимать, «мой» ли шаблон
+  const myUserId: number | undefined = user?.id;
   const { notify, error: notifyError, confirm } = useFeedback();
   const navigate = useNavigate();
   const [objects, setObjects] = useState<ObjectData[]>([]);
@@ -142,6 +162,27 @@ const [linkHidePrices, setLinkHidePrices] = useState(false);
 const [createdLinkUrl, setCreatedLinkUrl] = useState<string | null>(null);
 const [activeLinks, setActiveLinks] = useState<InviteLink[]>([]);
 const [linkCopied, setLinkCopied] = useState(false);
+// ⭐ №178: заявки на право создавать проекты (входящие — для менеджера/админа)
+const [accessRequests, setAccessRequests] = useState<AccessRequestData[]>([]);
+const [accessRequestBusy, setAccessRequestBusy] = useState<number | null>(null);
+const [pendingByObject, setPendingByObject] = useState<Record<number, number>>({});
+// ⭐ №175: шаблоны объектов
+const [templatesOpen, setTemplatesOpen] = useState(false);
+const [templates, setTemplates] = useState<ObjectTemplateData[]>([]);
+const [templateScope, setTemplateScope] = useState<'mine' | 'all'>('all');
+const [templatesLoading, setTemplatesLoading] = useState(false);
+const [saveTemplateObject, setSaveTemplateObject] = useState<ObjectData | null>(null);
+const [saveTemplateName, setSaveTemplateName] = useState('');
+const [saveTemplateNote, setSaveTemplateNote] = useState('');
+const [saveTemplatePublic, setSaveTemplatePublic] = useState(false);
+const [saveTemplateSaving, setSaveTemplateSaving] = useState(false);
+const [fromTemplate, setFromTemplate] = useState<ObjectTemplateData | null>(null);
+const [fromTplName, setFromTplName] = useState('');
+const [fromTplAddress, setFromTplAddress] = useState('');
+const [fromTplStart, setFromTplStart] = useState('');
+const [fromTplEnd, setFromTplEnd] = useState('');
+const [fromTplRole, setFromTplRole] = useState<'CUSTOMER' | 'FOREMAN'>('CUSTOMER');
+const [fromTplSaving, setFromTplSaving] = useState(false);
 
   // Загрузка объектов при монтировании
 useEffect(() => {
@@ -155,7 +196,8 @@ useEffect(() => {
     try {
       console.log('Загружаем объекты...');
       setLoading(true);
-      const data = await fetchObjects();
+      // ⭐ №176: главному списку архив нужен — там раздел «Архив»
+      const data = await fetchObjects({ includeArchived: true });
       setObjects(data);
       //console.log('Получены объекты:', data);
       setError('');
@@ -176,6 +218,20 @@ useEffect(() => {
     fetchPriceCatalogs()
       .then(setObjectCatalogs)
       .catch(() => setObjectCatalogs([]));
+  }, [token]);
+
+  // ⭐ №178: входящие заявки «право создавать проекты» — счётчик для карточек объектов
+  useEffect(() => {
+    if (!token) return;
+    fetchIncomingAccessRequests('PENDING')
+      .then((rows) => {
+        const map: Record<number, number> = {};
+        rows.forEach((r) => {
+          map[r.objectId] = (map[r.objectId] ?? 0) + 1;
+        });
+        setPendingByObject(map);
+      })
+      .catch(() => setPendingByObject({}));
   }, [token]);
 
   // Фильтрация по поиску + архив
@@ -380,10 +436,188 @@ const handleOpenAccess = (obj: ObjectData) => {
   setAccessModalOpen(true);
   loadAccessMembers(obj.id);
   loadInviteLinks(obj.id);
+  // ⭐ №178: заявки «право создавать проекты» — видны менеджеру объекта и админу
+  setAccessRequests([]);
+  fetchObjectAccessRequests(obj.id)
+    .then(setAccessRequests)
+    .catch(() => setAccessRequests([]));
   // ⭐ №163: проекты объекта — для выбора «доступ только к проекту»
   fetchProjectsByObject(obj.id)
     .then(setAccessProjects)
     .catch(() => setAccessProjects([]));
+};
+
+// ⭐ №178: одобрить / отклонить заявку на право создавать проекты
+const handleApproveAccessRequest = async (request: AccessRequestData) => {
+  setAccessRequestBusy(request.id);
+  try {
+    await approveAccessRequest(request.id);
+    setAccessRequests((prev) =>
+      prev.map((r) => (r.id === request.id ? { ...r, status: 'APPROVED' } : r)),
+    );
+    setPendingByObject((prev) => {
+      const next = { ...prev };
+      if (next[request.objectId]) {
+        next[request.objectId] = Math.max(0, next[request.objectId] - 1);
+      }
+      return next;
+    });
+    notify(
+      `Доступ выдан: ${request.requester?.fullName ?? 'участник'} теперь может создавать проекты в объекте`,
+    );
+    // Обновляем список участников — появилась объектная запись
+    if (accessObject) {
+      loadAccessMembers(accessObject.id);
+      // и карточка объекта: право на объект изменилось
+      fetchObjects({ includeArchived: true }).then(setObjects).catch(() => undefined);
+    }
+  } catch (err: unknown) {
+    notifyError(getApiErrorMessage(err, 'Не удалось одобрить заявку'));
+  } finally {
+    setAccessRequestBusy(null);
+  }
+};
+
+const handleRejectAccessRequest = async (request: AccessRequestData) => {
+  const ok = await confirm({
+    title: 'Отклонить заявку?',
+    text: `${request.requester?.fullName ?? 'Участник'} просит право создавать проекты в объекте.`,
+    confirmText: 'Отклонить',
+    danger: true,
+  });
+  if (!ok) return;
+  setAccessRequestBusy(request.id);
+  try {
+    await rejectAccessRequest(request.id);
+    setAccessRequests((prev) =>
+      prev.map((r) => (r.id === request.id ? { ...r, status: 'REJECTED' } : r)),
+    );
+    setPendingByObject((prev) => {
+      const next = { ...prev };
+      if (next[request.objectId]) {
+        next[request.objectId] = Math.max(0, next[request.objectId] - 1);
+      }
+      return next;
+    });
+    notify('Заявка отклонена');
+  } catch (err: unknown) {
+    notifyError(getApiErrorMessage(err, 'Не удалось отклонить заявку'));
+  } finally {
+    setAccessRequestBusy(null);
+  }
+};
+
+// ⭐ №175: шаблоны объектов — список, сохранение, создание объекта из шаблона
+const loadTemplates = async (scope: 'mine' | 'all') => {
+  setTemplatesLoading(true);
+  try {
+    setTemplates(await fetchObjectTemplates(scope));
+  } catch (err: unknown) {
+    setTemplates([]);
+    notifyError(getApiErrorMessage(err, 'Не удалось загрузить шаблоны'));
+  } finally {
+    setTemplatesLoading(false);
+  }
+};
+
+const handleOpenTemplates = () => {
+  setTemplatesOpen(true);
+  void loadTemplates(templateScope);
+};
+
+const handleOpenSaveTemplate = (obj: ObjectData) => {
+  setSaveTemplateObject(obj);
+  setSaveTemplateName(obj.name);
+  setSaveTemplateNote(obj.note ?? '');
+  setSaveTemplatePublic(false);
+};
+
+const handleSaveTemplate = async () => {
+  if (!saveTemplateObject) return;
+  setSaveTemplateSaving(true);
+  try {
+    const saved = await createObjectTemplate({
+      objectId: saveTemplateObject.id,
+      name: saveTemplateName.trim() || undefined,
+      note: saveTemplateNote.trim() || undefined,
+      isPublic: saveTemplatePublic,
+    });
+    notify(`Шаблон «${saved.name}» сохранён: проектов ${saved.projects.length}`);
+    setSaveTemplateObject(null);
+    if (templatesOpen) void loadTemplates(templateScope);
+  } catch (err: unknown) {
+    notifyError(getApiErrorMessage(err, 'Не удалось сохранить шаблон'));
+  } finally {
+    setSaveTemplateSaving(false);
+  }
+};
+
+const handleOpenFromTemplate = (tpl: ObjectTemplateData) => {
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const today = new Date();
+  const inSixMonths = new Date(today);
+  inSixMonths.setMonth(inSixMonths.getMonth() + 6);
+  setFromTemplate(tpl);
+  setFromTplName(tpl.name);
+  setFromTplAddress('');
+  setFromTplStart(iso(today));
+  setFromTplEnd(iso(inSixMonths));
+  setFromTplRole('CUSTOMER');
+};
+
+const handleCreateFromTemplate = async () => {
+  if (!fromTemplate) return;
+  if (!fromTplName.trim() || !fromTplAddress.trim() || !fromTplStart || !fromTplEnd) {
+    notify('Заполните название, адрес и даты', 'warning');
+    return;
+  }
+  setFromTplSaving(true);
+  try {
+    const created = await createObjectFromTemplate(fromTemplate.id, {
+      name: fromTplName.trim(),
+      address: fromTplAddress.trim(),
+      startDate: fromTplStart,
+      endDate: fromTplEnd,
+      role: fromTplRole,
+    });
+    setObjects((prev) => [created, ...prev]);
+    notify(`Объект «${created.name}» создан из шаблона`);
+    setFromTemplate(null);
+    setTemplatesOpen(false);
+  } catch (err: unknown) {
+    notifyError(getApiErrorMessage(err, 'Не удалось создать объект из шаблона'));
+  } finally {
+    setFromTplSaving(false);
+  }
+};
+
+const handleTogglePublishTemplate = async (tpl: ObjectTemplateData) => {
+  try {
+    const updated = await updateObjectTemplate(tpl.id, { isPublic: !tpl.isPublic });
+    setTemplates((prev) =>
+      prev.map((t) => (t.id === tpl.id ? { ...t, isPublic: updated.isPublic } : t)),
+    );
+    notify(updated.isPublic ? 'Шаблон теперь общий' : 'Шаблон снова личный');
+  } catch (err: unknown) {
+    notifyError(getApiErrorMessage(err, 'Не удалось изменить шаблон'));
+  }
+};
+
+const handleDeleteTemplate = async (tpl: ObjectTemplateData) => {
+  const ok = await confirm({
+    title: 'Удалить шаблон?',
+    text: `«${tpl.name}» будет удалён. Объекты, уже созданные из него, не пострадают.`,
+    confirmText: 'Удалить',
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await deleteObjectTemplate(tpl.id);
+    setTemplates((prev) => prev.filter((t) => t.id !== tpl.id));
+    notify('Шаблон удалён');
+  } catch (err: unknown) {
+    notifyError(getApiErrorMessage(err, 'Не удалось удалить шаблон'));
+  }
 };
 
 // ⭐ Название проекта по id — для бейджа области доступа
@@ -399,6 +633,7 @@ const handleCloseAccess = () => {
   setAccessObject(null);
   setAccessMembers([]);
   setAccessError('');
+  setAccessRequests([]); // ⭐ №178
   setInviteIdentifier('');
   setInviteRole('FOREMAN');
   setInviteProjectId(''); // ⭐ №163
@@ -782,6 +1017,16 @@ trailing: headerTrailing,
       </FormControl>
       {!showArchived && (
         <Button
+          variant="outlined"
+          startIcon={<BookmarkAddIcon />}
+          onClick={handleOpenTemplates}
+          sx={{ whiteSpace: 'nowrap' }}
+        >
+          Из шаблона
+        </Button>
+      )}
+      {!showArchived && (
+        <Button
           variant="contained"
           startIcon={<AddHomeIcon />}
           onClick={handleOpenAddModal}
@@ -886,6 +1131,19 @@ trailing: headerTrailing,
               <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1, fontSize: { xs: '1.05rem', md: '1.15rem' } }}>
                 {obj.name}
               </Typography>
+              {/* ⭐ №178: есть заявка на право создавать проекты */}
+              {pendingByObject[obj.id] > 0 && (
+                <Chip
+                  size="small"
+                  color="info"
+                  label={`📨 ${pendingByObject[obj.id]}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenAccess(obj);
+                  }}
+                  sx={{ mr: 1, height: 22, fontSize: '0.72rem' }}
+                />
+              )}
 <IconButton
   size="small"
   onClick={(e) => {
@@ -925,7 +1183,35 @@ trailing: headerTrailing,
 >
   <SettingsIcon fontSize="small" />
 </IconButton>
+{/* ⭐ №175: сохранить объект как шаблон (для новых объектов) */}
+<IconButton
+  size="small"
+  title="Сохранить как шаблон"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleOpenSaveTemplate(obj);
+  }}
+  sx={{ mr: 1, bgcolor: 'action.hover' }}
+>
+  <BookmarkAddIcon fontSize="small" />
+</IconButton>
                   </>
+                )}
+                {/* ⭐ №179: участник с доступом только на проект не мог убрать объект в архив —
+                    действие было спрятано вместе с «настройками объекта». Теперь отдельная кнопка. */}
+                {obj.hasObjectAccess === false && !obj.hiddenForMe && obj.accessId && (
+                  <IconButton
+                    size="small"
+                    title="Убрать в архив (видно только вам)"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeletingObject(obj);
+                      setDeleteConfirmOpen(true);
+                    }}
+                    sx={{ mr: 1, bgcolor: 'action.hover' }}
+                  >
+                    <ArchiveIcon fontSize="small" />
+                  </IconButton>
                 )}
                   
                   <Chip
@@ -1348,7 +1634,267 @@ trailing: headerTrailing,
       </Paper>
     </Modal>
 
-    {/* ⭐ Модалка управления доступом (участники) */}
+    {/* ⭐ №175: шаблоны объектов — список */}
+    <Modal open={templatesOpen} onClose={() => setTemplatesOpen(false)}>
+      <Paper
+        sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '94%', sm: 560 },
+          maxHeight: '85vh',
+          overflowY: 'auto',
+          p: 3,
+          borderRadius: 3,
+          outline: 'none',
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          📋 Шаблоны объектов
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          Шаблон — снимок структуры объекта: проекты и позиции смет. Создание объекта из
+          шаблона — разовая копия, дальше они живут независимо.
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+          <Chip
+            label="Все доступные"
+            color={templateScope === 'all' ? 'primary' : 'default'}
+            onClick={() => {
+              setTemplateScope('all');
+              void loadTemplates('all');
+            }}
+          />
+          <Chip
+            label="Только мои"
+            color={templateScope === 'mine' ? 'primary' : 'default'}
+            onClick={() => {
+              setTemplateScope('mine');
+              void loadTemplates('mine');
+            }}
+          />
+        </Stack>
+
+        {templatesLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+            <CircularProgress />
+          </Box>
+        ) : templates.length === 0 ? (
+          <Alert severity="info">
+            Пока нет шаблонов. Откройте объект и нажмите 🔖 «Сохранить как шаблон».
+          </Alert>
+        ) : (
+          <Stack spacing={1}>
+            {templates.map((tpl) => {
+              const materialsCount = tpl.projects.reduce(
+                (sum, p) => sum + (p._count?.materials ?? p.materials?.length ?? 0),
+                0,
+              );
+              const isMine = tpl.authorId === myUserId;
+              return (
+                <Box key={tpl.id} sx={{ p: 1.5, bgcolor: '#f5f7fa', borderRadius: 2 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {tpl.name}
+                    {tpl.isPublic && (
+                      <Chip
+                        size="small"
+                        label="общий"
+                        color="success"
+                        sx={{ ml: 1, height: 18, fontSize: '0.65rem' }}
+                      />
+                    )}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    {tpl.projects.length} проект(ов) · {materialsCount} позиций
+                    {tpl.sourceObjectName ? ` · из объекта «${tpl.sourceObjectName}»` : ''}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    Автор: {tpl.author?.fullName || tpl.author?.email || '—'}
+                    {' · '}
+                    {new Date(tpl.updatedAt).toLocaleDateString('ru-RU')}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <Button size="small" variant="contained" onClick={() => handleOpenFromTemplate(tpl)}>
+                      Создать объект
+                    </Button>
+                    {isMine && (
+                      <FormControlLabel
+                        sx={{ mr: 0 }}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={tpl.isPublic}
+                            onChange={() => void handleTogglePublishTemplate(tpl)}
+                          />
+                        }
+                        label={<Typography variant="caption">общий для всех</Typography>}
+                      />
+                    )}
+                    {isMine && (
+                      <IconButton size="small" onClick={() => void handleDeleteTemplate(tpl)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
+                </Box>
+              );
+            })}
+          </Stack>
+        )}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+          <Button variant="outlined" onClick={() => setTemplatesOpen(false)}>
+            Закрыть
+          </Button>
+        </Box>
+      </Paper>
+    </Modal>
+
+
+    {/* ⭐ №175: создать объект из шаблона */}
+    <Modal open={!!fromTemplate} onClose={() => setFromTemplate(null)} disableRestoreFocus>
+      <Paper
+        sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '92%', sm: 480 },
+          maxHeight: '88vh',
+          overflowY: 'auto',
+          p: 3,
+          borderRadius: 3,
+          outline: 'none',
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          🏗 Объект из шаблона «{fromTemplate?.name}»
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+          Создастся объект с {fromTemplate?.projects.length ?? 0} проектом(ами) и позициями смет.
+          Дальше объект живёт отдельно от шаблона — синхронизации нет.
+        </Typography>
+        <Stack spacing={2}>
+          <TextField
+            fullWidth
+            label="Название объекта"
+            value={fromTplName}
+            onChange={(e) => setFromTplName(e.target.value)}
+            required
+          />
+          <TextField
+            fullWidth
+            label="Адрес"
+            value={fromTplAddress}
+            onChange={(e) => setFromTplAddress(e.target.value)}
+            required
+          />
+          <TextField
+            fullWidth
+            label="Дата начала"
+            type="date"
+            InputLabelProps={{ shrink: true }}
+            value={fromTplStart}
+            onChange={(e) => setFromTplStart(e.target.value)}
+            required
+          />
+          <TextField
+            fullWidth
+            label="Дата окончания"
+            type="date"
+            InputLabelProps={{ shrink: true }}
+            value={fromTplEnd}
+            onChange={(e) => setFromTplEnd(e.target.value)}
+            required
+          />
+          <FormControl fullWidth>
+            <InputLabel id="from-tpl-role">Моя роль в объекте</InputLabel>
+            <Select
+              labelId="from-tpl-role"
+              value={fromTplRole}
+              label="Моя роль в объекте"
+              onChange={(e) => setFromTplRole(e.target.value as 'CUSTOMER' | 'FOREMAN')}
+            >
+              <MenuItem value="CUSTOMER">👑 Заказчик — вижу всё, утверждаю</MenuItem>
+              <MenuItem value="FOREMAN">👷 Прораб — веду работы</MenuItem>
+            </Select>
+          </FormControl>
+        </Stack>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
+          <Button variant="outlined" onClick={() => setFromTemplate(null)}>
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            disabled={fromTplSaving}
+            onClick={() => void handleCreateFromTemplate()}
+          >
+            Создать объект
+          </Button>
+        </Box>
+      </Paper>
+    </Modal>
+
+    <Modal open={!!saveTemplateObject} onClose={() => setSaveTemplateObject(null)} disableRestoreFocus>
+      <Paper
+        sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '92%', sm: 460 },
+          p: 3,
+          borderRadius: 3,
+          outline: 'none',
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          🔖 Сохранить как шаблон
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+          Перенесутся проекты и позиции смет (наименования, объёмы по спецификации, цены).
+          Фиксации и фактический расход — нет.
+        </Typography>
+        <TextField
+          fullWidth
+          label="Название шаблона"
+          value={saveTemplateName}
+          onChange={(e) => setSaveTemplateName(e.target.value)}
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          fullWidth
+          label="Описание (необязательно)"
+          multiline
+          rows={2}
+          value={saveTemplateNote}
+          onChange={(e) => setSaveTemplateNote(e.target.value)}
+          sx={{ mb: 1 }}
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={saveTemplatePublic}
+              onChange={(e) => setSaveTemplatePublic(e.target.checked)}
+            />
+          }
+          label={<Typography variant="body2">Сделать общим (виден всем авторам)</Typography>}
+        />
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
+          <Button variant="outlined" onClick={() => setSaveTemplateObject(null)}>
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            disabled={saveTemplateSaving}
+            onClick={() => void handleSaveTemplate()}
+          >
+            Сохранить шаблон
+          </Button>
+        </Box>
+      </Paper>
+    </Modal>
+
     <Modal open={accessModalOpen} onClose={handleCloseAccess}>
       <Paper
         sx={{
@@ -1369,6 +1915,57 @@ trailing: headerTrailing,
         </Typography>
 
         {accessError && <Alert severity="error" sx={{ mb: 2 }}>{accessError}</Alert>}
+
+        {/* ⭐ №178: заявки на право создавать проекты (менеджер объекта / админ) */}
+        {accessRequests.filter((r) => r.status === 'PENDING').length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+              📨 Заявки на право создавать проекты
+            </Typography>
+            {accessRequests
+              .filter((r) => r.status === 'PENDING')
+              .map((r) => (
+                <Box
+                  key={r.id}
+                  sx={{ p: 1.5, mb: 1, bgcolor: 'rgba(25, 118, 210, 0.08)', borderRadius: 2 }}
+                >
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {r.requester?.fullName || r.requester?.email || `Участник #${r.requesterId}`}
+                  </Typography>
+                  {r.comment && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      «{r.comment}»
+                    </Typography>
+                  )}
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(r.createdAt).toLocaleString('ru-RU')}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      disabled={accessRequestBusy === r.id}
+                      onClick={() => void handleApproveAccessRequest(r)}
+                    >
+                      Одобрить
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="error"
+                      disabled={accessRequestBusy === r.id}
+                      onClick={() => void handleRejectAccessRequest(r)}
+                    >
+                      Отклонить
+                    </Button>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                    Одобрение даёт доступ ко всему объекту и право создавать проекты.
+                  </Typography>
+                </Box>
+              ))}
+          </Box>
+        )}
 
         {accessLoading && accessMembers.length === 0 ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>

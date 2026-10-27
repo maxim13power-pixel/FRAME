@@ -28,6 +28,8 @@ import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { ALL_BOTTOM_TABS, getBottomNavConfig, DEFAULT_BOTTOM_TABS } from '../components/BottomNav';
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
+// ⭐ №179: сброс одноразовых подсказок разделов
+import { resetAllIntros } from '../components/SectionIntro';
 import { exportMyData, deleteMyAccount } from '../services/usersService';
 import { fetchMyAccess } from '../services/accessService';
 import type { MyAccess } from '../services/accessService';
@@ -51,7 +53,7 @@ const Settings: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { user, logout, token } = useAuth();
-  const { error: notifyError } = useFeedback();
+  const { error: notifyError, notify } = useFeedback();
   useMobileHeader({ title: 'Настройки', onBack: () => navigate(-1) });
 
   const [selected, setSelected] = useState<string[]>(() => getBottomNavConfig());
@@ -414,6 +416,18 @@ const Settings: React.FC = () => {
           <ListItemButton onClick={() => navigate('/help')} sx={{ borderRadius: 1 }}>
             <ListItemIcon sx={{ minWidth: 36 }}><HelpOutlineIcon sx={{ color: '#1976d2' }} /></ListItemIcon>
             <ListItemText primary="Помощь" />
+            <ChevronRightIcon sx={{ color: 'text.secondary' }} />
+          </ListItemButton>
+          {/* ⭐ №179: вернуть одноразовые подсказки разделов */}
+          <ListItemButton
+            onClick={() => {
+              const count = resetAllIntros();
+              notify(count > 0 ? `Подсказки снова включены: ${count}` : 'Подсказки и так включены');
+            }}
+            sx={{ borderRadius: 1 }}
+          >
+            <ListItemIcon sx={{ minWidth: 36 }}><InfoIcon sx={{ color: '#1976d2' }} /></ListItemIcon>
+            <ListItemText primary="Показать подсказки разделов снова" />
             <ChevronRightIcon sx={{ color: 'text.secondary' }} />
           </ListItemButton>
         </List>

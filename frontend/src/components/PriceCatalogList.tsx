@@ -1,16 +1,19 @@
 // frontend/src/components/PriceCatalogList.tsx
 // ⭐ №151: список справочников цен — оформление как «Объекты → Проекты»:
 // карточки, внутри справочника — привычный вид с категориями и расценками.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
   Chip,
   CircularProgress,
+  Fab,
   FormControl,
   IconButton,
+  InputAdornment,
   InputLabel,
+  Menu,
   MenuItem,
   Modal,
   Paper,
@@ -18,19 +21,30 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import ArchiveIcon from '@mui/icons-material/Archive';
+import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import ListAltIcon from '@mui/icons-material/ListAlt';
+import LibraryAddIcon from '@mui/icons-material/LibraryAdd';
+import SearchIcon from '@mui/icons-material/Search';
+import SortIcon from '@mui/icons-material/Sort';
+import SectionIntro from './SectionIntro'; // ⭐ №179: одноразовая подсказка раздела
+import { FAB_STYLE } from '../theme';
+import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import {
   archivePriceCatalog,
   copyPriceCatalog,
   createPriceCatalog,
   fetchPriceCatalogs,
   renamePriceCatalog,
+  restorePriceCatalog,
 } from '../services/priceListService';
 import type { PriceCatalogData } from '../services/priceListService';
 import { fetchObjects } from '../services/objectService';
@@ -63,11 +77,107 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
   const [copyProjectId, setCopyProjectId] = useState<number | ''>('');
   const [copyName, setCopyName] = useState('');
   const [copySaving, setCopySaving] = useState(false);
+  // ⭐ №179: поиск по справочникам (имя / объект / проект)
+  const [search, setSearch] = useState('');
+  // ⭐ №179: архив справочников — как у объектов (кнопка «Архив» в шапке + возврат)
+  const [showArchived, setShowArchived] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  // ⭐ №179: сортировка списка (архив → сортировка → поиск, как в «Объектах»)
+  const [sortBy, setSortBy] = useState<'name' | 'newest' | 'items'>('name');
+  const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
+  const theme = useTheme();
+  // как в «Объектах»/«Бригадах»: мобильная раскладка — это < md
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  const toggleArchive = () => {
+    setShowArchived((v) => !v);
+    setSearch('');
+    setMobileSearchOpen(false);
+  };
+
+  // ⭐ №179: кнопки в шапке обязательно мемоизируем — useMobileHeader держит trailing
+  // в зависимостях эффекта (иначе бесконечный ре-рендер), как в Objects.tsx.
+  // Порядок как в «Объектах»: сначала архив, потом сортировка (поиск рисует сама шапка).
+  const headerTrailing = useMemo(
+    () => (
+      <>
+        <IconButton
+          onClick={() => {
+            setShowArchived((v) => !v);
+            setSearch('');
+            setMobileSearchOpen(false);
+          }}
+          aria-label={showArchived ? 'Активные справочники' : 'Архив справочников'}
+          sx={{
+            bgcolor: showArchived ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+            color: showArchived ? '#1976d2' : '#424242',
+            flexShrink: 0,
+          }}
+        >
+          {showArchived ? <CheckCircleIcon /> : <ArchiveIcon />}
+        </IconButton>
+        <IconButton
+          onClick={(e) => setSortAnchorEl(e.currentTarget)}
+          aria-label="Сортировка"
+          sx={{
+            bgcolor: sortBy !== 'name' ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+            color: sortBy !== 'name' ? '#1976d2' : '#424242',
+            flexShrink: 0,
+          }}
+        >
+          <SortIcon />
+        </IconButton>
+      </>
+    ),
+    [showArchived, sortBy],
+  );
+
+  // ⭐ №179: своя мобильная шапка — иначе шапка PriceList дублировала поиск и давала
+  // нерабочую сортировку на списке справочников (сортировать тут нечего).
+  useMobileHeader({
+    title: showArchived ? 'Архив справочников' : 'Справочники цен',
+    onBack: () => navigate('/'),
+    searchOpen: mobileSearchOpen,
+    searchValue: search,
+    searchPlaceholder: 'Поиск справочника, объекта или проекта...',
+    onSearchOpen: () => setMobileSearchOpen(true),
+    onSearchClose: () => {
+      setSearch('');
+      setMobileSearchOpen(false);
+    },
+    onSearchChange: (v) => setSearch(v),
+    trailing: headerTrailing,
+  });
+
+  const activeCatalogs = useMemo(() => catalogs.filter((c) => !c.isArchived), [catalogs]);
+  const archivedCatalogs = useMemo(() => catalogs.filter((c) => c.isArchived), [catalogs]);
+
+  const visibleCatalogs = useMemo(() => {
+    const base = showArchived ? archivedCatalogs : activeCatalogs;
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? base.filter((c) =>
+          [c.name, c.objectName ?? '', c.projectName ?? '']
+            .join(' ')
+            .toLowerCase()
+            .includes(q),
+        )
+      : base;
+    // ⭐ №179: сортировка
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'items') return (b.itemsCount ?? 0) - (a.itemsCount ?? 0);
+      if (sortBy === 'newest') {
+        return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+      }
+      return a.name.localeCompare(b.name, 'ru');
+    });
+  }, [activeCatalogs, archivedCatalogs, search, showArchived, sortBy]);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      setCatalogs(await fetchPriceCatalogs());
+      // ⭐ №179: грузим вместе с архивом — иначе кнопка «Архив» не знает, сколько там
+      setCatalogs(await fetchPriceCatalogs({ includeArchived: true }));
     } catch (err) {
       notifyError('Не удалось загрузить справочники: ' + getApiErrorText(err, 'неизвестная ошибка'));
     } finally {
@@ -133,6 +243,17 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
     }
   };
 
+  // ⭐ №179: вернуть справочник из архива (как «Вернуть из архива» у объектов)
+  const handleRestore = async (catalog: PriceCatalogData) => {
+    try {
+      await restorePriceCatalog(catalog.id);
+      success(`Справочник «${catalog.name}» возвращён из архива`);
+      await load();
+    } catch (err) {
+      notifyError(getApiErrorText(err, 'Не удалось вернуть справочник'));
+    }
+  };
+
   // ⭐ №164: «поделиться» справочником — копия расценок в справочник объекта/проекта
   const handleOpenCopy = async (catalog: PriceCatalogData) => {
     setCopySource(catalog);
@@ -141,8 +262,8 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
     setCopyProjectId('');
     setCopyProjects([]);
     try {
-      const objects = await fetchObjects();
-      setCopyObjects(objects.filter((o) => !o.isArchived));
+      // ⭐ №176: архивные объекты в «Поделиться» больше не попадают (фильтр в fetchObjects)
+      setCopyObjects(await fetchObjects());
     } catch {
       setCopyObjects([]);
     }
@@ -196,25 +317,113 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
   }
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-        <ListAltIcon sx={{ color: '#1976d2' }} />
-        <Typography variant="h6" sx={{ fontWeight: 700, color: '#04164b', flexGrow: 1 }}>
-          Справочники цен
-        </Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
-          Создать
-        </Button>
-      </Stack>
+    // ⭐ №179: та же сетка, что в «Объектах» — maxWidth 1000 по центру, без своего padding
+    <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
+      {/* Меню сортировки (привязано к кнопке в шапке на мобилке) */}
+      <Menu
+        anchorEl={sortAnchorEl}
+        open={Boolean(sortAnchorEl)}
+        onClose={() => setSortAnchorEl(null)}
+      >
+        <MenuItem onClick={() => { setSortBy('name'); setSortAnchorEl(null); }}>
+          По названию А-Я
+        </MenuItem>
+        <MenuItem onClick={() => { setSortBy('newest'); setSortAnchorEl(null); }}>
+          Сначала новые
+        </MenuItem>
+        <MenuItem onClick={() => { setSortBy('items'); setSortAnchorEl(null); }}>
+          По числу расценок
+        </MenuItem>
+      </Menu>
 
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Справочник — это отдельный набор расценок под конкретный объект или тип работ
-        (например «Квартиры/Коттеджи» или «Склад X5»). Внутри справочника — свои категории,
-        работы и материалы.
-      </Typography>
+      {/* ⭐ №179: заголовок и «Архив» — точно как в «Объектах» (h4 + кнопка справа) */}
+      {!isMobile && (
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <IconButton
+            onClick={() => navigate('/')}
+            sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
+            aria-label="В главное меню"
+          >
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h4" sx={{ flexGrow: 1 }}>
+            {showArchived ? 'Архив справочников' : 'Справочники цен'}
+          </Typography>
+          <Button
+            variant={showArchived ? 'contained' : 'outlined'}
+            startIcon={showArchived ? <CheckCircleIcon /> : <ArchiveIcon />}
+            onClick={toggleArchive}
+            sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+          >
+            {showArchived ? 'Активные' : 'Архив'}
+          </Button>
+        </Box>
+      )}
+
+      {/* Панель поиска и создания (десктоп) — как в «Объектах»; на мобилке поиск в шапке */}
+      {!isMobile && (
+        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+          <TextField
+            size="small"
+            placeholder="Поиск: справочник, объект или проект"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            sx={{ flexGrow: 1, bgcolor: '#fff', borderRadius: 1 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+            }}
+          />
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel id="catalog-sort-label">Сортировка</InputLabel>
+            <Select
+              labelId="catalog-sort-label"
+              value={sortBy}
+              label="Сортировка"
+              onChange={(e) => setSortBy(e.target.value as 'name' | 'newest' | 'items')}
+            >
+              <MenuItem value="name">По названию А-Я</MenuItem>
+              <MenuItem value="newest">Сначала новые</MenuItem>
+              <MenuItem value="items">По числу расценок</MenuItem>
+            </Select>
+          </FormControl>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleOpenCreate}
+            sx={{
+              bgcolor: '#4caf50',
+              border: '2px solid #388e3c',
+              whiteSpace: 'nowrap',
+              '&:hover': {
+                bgcolor: '#388e3c',
+                borderColor: '#388e3c',
+                transform: 'translateY(-3px)',
+                boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
+              },
+              transition: 'all 0.3s ease',
+            }}
+          >
+            Создать
+          </Button>
+        </Box>
+      )}
+
+      <Box sx={{ mb: 2 }}>
+        {/* ⭐ №179: одноразовая подсказка раздела (закрывается крестиком, больше не мешает) */}
+        <SectionIntro id="price-catalogs" version={3}>
+          <b>Справочник</b> — отдельный набор расценок под конкретный объект или тип работ
+          («Квартиры/Коттеджи», «Склад X5»). Внутри — свои категории, работы и материалы.
+          Нажмите на справочник, чтобы открыть расценки. Архивировать можно кнопкой 🗄 на карточке —
+          вернуть потом через «Архив» в шапке.
+        </SectionIntro>
+      </Box>
 
       <Stack spacing={1}>
-        {catalogs.map((catalog) => (
+        {visibleCatalogs.map((catalog) => (
           <Paper
             key={catalog.id}
             elevation={0}
@@ -227,7 +436,12 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
               gap: 1.5,
               cursor: 'pointer',
               transition: 'all 0.2s ease',
-              '&:hover': { borderColor: '#1976d2', boxShadow: '0 2px 8px rgba(25,118,210,0.12)' },
+              '&:hover': {
+                borderColor: '#1976d2',
+                boxShadow: '0 6px 18px rgba(25,118,210,0.16)',
+                transform: 'translateY(-2px)',
+              },
+              '&:active': { transform: 'translateY(0) scale(0.995)' },
             }}
             onClick={() => navigate(`/price-list/${catalog.id}`)}
           >
@@ -266,48 +480,78 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
               </Typography>
             </Box>
 
-            <IconButton
-              size="small"
-              title="Скопировать расценки в справочник объекта или проекта"
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleOpenCopy(catalog);
-              }}
-            >
-              <ContentCopyIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              size="small"
-              title={catalog.canWrite === false ? 'Только чтение' : 'Переименовать'}
-              disabled={catalog.canWrite === false}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleOpenRename(catalog);
-              }}
-            >
-              <EditIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              size="small"
-              title={catalog.canWrite === false ? 'Только чтение' : 'Архивировать'}
-              disabled={catalog.canWrite === false}
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleArchive(catalog);
-              }}
-            >
-              <ArchiveIcon fontSize="small" />
-            </IconButton>
-            <ChevronRightIcon sx={{ color: '#90a4ae' }} />
+            {catalog.isArchived ? (
+              // ⭐ №179: архивный справочник — только «Вернуть», без правок и копирования
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<UnarchiveIcon />}
+                disabled={catalog.canWrite === false}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleRestore(catalog);
+                }}
+                sx={{ whiteSpace: 'nowrap' }}
+              >
+                Вернуть
+              </Button>
+            ) : (
+              <>
+                <IconButton
+                  size="small"
+                  title="Скопировать расценки в справочник объекта или проекта"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleOpenCopy(catalog);
+                  }}
+                >
+                  <ContentCopyIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  title={catalog.canWrite === false ? 'Только чтение' : 'Переименовать'}
+                  disabled={catalog.canWrite === false}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenRename(catalog);
+                  }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  title={catalog.canWrite === false ? 'Только чтение' : 'Архивировать'}
+                  disabled={catalog.canWrite === false}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleArchive(catalog);
+                  }}
+                >
+                  <ArchiveIcon fontSize="small" />
+                </IconButton>
+                <ChevronRightIcon sx={{ color: '#90a4ae' }} />
+              </>
+            )}
           </Paper>
         ))}
 
-        {catalogs.length === 0 && (
+        {visibleCatalogs.length === 0 && (
           <Typography variant="body2" color="text.secondary">
-            Справочников пока нет — создайте первый.
+            {search.trim()
+              ? `По запросу «${search.trim()}» ничего не найдено.`
+              : showArchived
+                ? 'В архиве пусто — сюда попадают справочники, убранные кнопкой 🗄.'
+                : 'Справочников пока нет — создайте первый.'}
           </Typography>
         )}
       </Stack>
+
+      {/* ⭐ №179: на телефоне «Создать» — FAB внизу справа, как в «Бригадах» */}
+      {isMobile && (
+        <Fab color="primary" sx={{ ...FAB_STYLE, bottom: 80 }} onClick={handleOpenCreate} aria-label="Создать справочник">
+          <LibraryAddIcon />
+        </Fab>
+      )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} disableRestoreFocus>
         <Paper

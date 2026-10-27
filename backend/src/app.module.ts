@@ -20,6 +20,8 @@ import { BrigadesModule } from './brigades/brigades.module'; // ⭐ Срез 4: 
 import { EstimateTemplatesModule } from './estimate-templates/estimate-templates.module'; // ⭐ №129
 import { AuditModule } from './audit/audit.module'; // ⭐ №131
 import { EstimateRecalcModule } from './estimate-recalc/estimate-recalc.module'; // ⭐ №170
+import { AccessRequestModule } from './access-request/access-request.module'; // ⭐ №178
+import { ObjectTemplatesModule } from './object-templates/object-templates.module'; // ⭐ №175
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -44,6 +46,8 @@ import { EstimateRecalcModule } from './estimate-recalc/estimate-recalc.module';
     EstimateTemplatesModule, // ⭐ №129: шаблоны смет
     AuditModule, // ⭐ №131: аудит-лог (global)
     EstimateRecalcModule, // ⭐ №170: пересчёт сметы по справочнику
+    AccessRequestModule, // ⭐ №178: заявки на право создавать проекты
+    ObjectTemplatesModule, // ⭐ №175: шаблоны объектов
   ],
   controllers: [AppController],
   providers: [AppService],

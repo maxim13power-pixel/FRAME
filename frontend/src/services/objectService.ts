@@ -30,10 +30,18 @@ export interface ObjectData {
   canManage?: boolean;
 }
 
-// Получить все объекты
-export const fetchObjects = async (): Promise<ObjectData[]> => {
+// Получить объекты.
+// ⭐ №176: по умолчанию архивные объекты НЕ отдаём — раньше каждый селект фильтровал
+// по-своему (кто-то по легаси isArchived, кто-то вообще без фильтра), из-за чего
+// в «Поделиться справочником», отчётах и на складе выпадали объекты из архива.
+// Кому архив нужен (главный список «Объекты», карточка бригады) — просит includeArchived.
+export const fetchObjects = async (
+  opts: { includeArchived?: boolean } = {},
+): Promise<ObjectData[]> => {
   const response = await api.get('/objects');
-  return response.data;
+  const data = response.data as ObjectData[];
+  if (opts.includeArchived) return data;
+  return data.filter((o) => !o.isArchived && !o.hiddenForMe);
 };
 
 // Создать объект

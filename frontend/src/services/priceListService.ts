@@ -47,6 +47,8 @@ export interface PriceCatalogData {
   projectName?: string | null;
   objectsCount?: number;
   canWrite?: boolean;
+  /** ⭐ №179: справочник в архиве (показывается в разделе «Архив») */
+  isArchived?: boolean;
   createdAt?: string;
 }
 
@@ -186,9 +188,20 @@ export const deletePriceItem = async (
 // ⭐ №151: СПРАВОЧНИКИ ЦЕН
 // ============================================================
 
-// Доступные справочники (системные + свои + объектные/проектные) со счётчиками
-export const fetchPriceCatalogs = async (): Promise<PriceCatalogData[]> => {
-  const response = await api.get('/price-list/catalogs');
+// Доступные справочники (системные + свои + объектные/проектные) со счётчиками.
+// ⭐ №179: includeArchived — для экрана «Архив» (по умолчанию только активные)
+export const fetchPriceCatalogs = async (
+  opts: { includeArchived?: boolean } = {},
+): Promise<PriceCatalogData[]> => {
+  const response = await api.get('/price-list/catalogs', {
+    params: opts.includeArchived ? { includeArchived: 1 } : undefined,
+  });
+  return response.data;
+};
+
+/** ⭐ №179: вернуть справочник из архива */
+export const restorePriceCatalog = async (id: number): Promise<PriceCatalogData> => {
+  const response = await api.post(`/price-list/catalogs/${id}/restore`);
   return response.data;
 };
 

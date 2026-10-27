@@ -34,6 +34,11 @@ model User {
   createdInvites    InviteToken[]  @relation("CreatedInvites")
   passwordResetTokens PasswordResetToken[]  // ⭐ P0-4
   rentals           Rental[]  // ⭐ личные аренды оборудования пользователя
+  // ⭐ №178: заявки на право создавать проекты в объекте
+  accessRequestsMade     AccessRequest[] @relation("AccessRequestsMade")
+  accessRequestsReviewed AccessRequest[] @relation("AccessRequestsReviewed")
+  // ⭐ №175: шаблоны объектов
+  objectTemplates        ObjectTemplate[] @relation("ObjectTemplates")
 }
 
 model Object {
@@ -61,6 +66,7 @@ model Object {
   warehouseItems  WarehouseItem[] // ⭐ Складские позиции, привязанные к объекту
   reports         Report[]        // ⭐ Акты/сметы по объекту
   brigades        Brigade[]       // ⭐ Бригады, привязанные к объекту
+  accessRequests  AccessRequest[] // ⭐ №178: заявки на право создавать проекты
 
   @@index([catalogId])
 }
@@ -288,6 +294,111 @@ model ChangeRequest {
 
   @@index([projectId, createdAt])
   @@map("change_requests")
+}
+
+// ============================================================
+// ⭐ №178: ЗАЯВКИ НА ПРАВО СОЗДАВАТЬ ПРОЕКТЫ В ОБЪЕКТЕ
+// ============================================================
+// Зачем: участник, приглашённый ТОЛЬКО в один проект, не может создать новый
+// проект в объекте (checkObjectAccess требует запись доступа с projectId = null).
+// Он подаёт заявку, а админ или менеджер объекта одобряет её → появляется
+// объектная запись FOREMAN + isManager, и он может создавать проекты.
+
+enum AccessRequestStatus {
+  PENDING   // ждёт решения
+  APPROVED  // одобрено — право выдано
+  REJECTED  // отклонено (с причиной)
+  CANCELLED // заявитель отменил сам
+}
+
+enum AccessRequestKind {
+  CREATE_PROJECTS // право создавать проекты в объекте (пока единственный вид)
+}
+
+model AccessRequest {
+  id            Int                 @id @default(autoincrement())
+  objectId      Int
+  requesterId   Int
+  kind          AccessRequestKind   @default(CREATE_PROJECTS)
+  comment       String?
+  status        AccessRequestStatus @default(PENDING)
+  reviewedBy    Int?
+  reviewComment String?
+  reviewedAt    DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  object    Object @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  requester User   @relation("AccessRequestsMade", fields: [requesterId], references: [id], onDelete: Cascade)
+  reviewer  User?  @relation("AccessRequestsReviewed", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([objectId, status])
+  @@index([requesterId, status])
+  @@map("access_requests")
+}
+
+// ============================================================
+// ⭐ №175: ШАБЛОНЫ ОБЪЕКТОВ
+// ============================================================
+// Отдельная сущность: снимок структуры объекта (проекты + позиции смет).
+// sourceObjectId — только подпись «создан из объекта X», без FK и без каскадов:
+// удаление объекта-образца шаблон не трогает.
+// Публикация: автор сам делает шаблон общим; правит/удаляет автор или админ.
+// Автосинхронизации нет — создание объекта из шаблона это разовая копия.
+
+model ObjectTemplate {
+  id               Int      @id @default(autoincrement())
+  name             String
+  note             String?
+  authorId         Int
+  isPublic         Boolean  @default(false)
+  sourceObjectId   Int? // только метка, без relation
+  sourceObjectName String? // чтобы подпись жила, даже если объект удалён
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  author   User                    @relation("ObjectTemplates", fields: [authorId], references: [id], onDelete: Cascade)
+  projects ObjectTemplateProject[]
+
+  @@index([authorId])
+  @@index([isPublic])
+  @@map("object_templates")
+}
+
+model ObjectTemplateProject {
+  id         Int    @id @default(autoincrement())
+  templateId Int
+  name       String
+  note       String?
+  sortOrder  Int    @default(0)
+
+  template  ObjectTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  materials ObjectTemplateMaterial[]
+
+  @@index([templateId])
+  @@map("object_template_projects")
+}
+
+model ObjectTemplateMaterial {
+  id       Int     @id @default(autoincrement())
+  projectId Int
+  name     String
+  article  String?
+  unit     Unit    @default(PIECE)
+  // объём по спецификации (план) — фиксации не переносим
+  specQuantity Decimal @default(0) @db.Decimal(12, 3)
+  note     String?
+  // ссылки на расценки: при создании объекта переносим, если позиция ещё жива
+  priceItemId    Int?
+  materialItemId Int?
+  // снимок цен на момент сохранения шаблона (не зависит от справочника)
+  unitPrice         Decimal? @db.Decimal(12, 2)
+  materialUnitPrice Decimal? @db.Decimal(12, 2)
+
+  project ObjectTemplateProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("object_template_materials")
 }
 
 // ============================================================

@@ -51,8 +51,16 @@ import { fetchAccessList, addAccess } from '../services/accessService';
 import type { AccessMember } from '../services/accessService';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { updateObjectEndDate } from '../services/objectService';
+// ⭐ №178: заявка на право создавать проекты в объекте
+import {
+  cancelAccessRequest,
+  createAccessRequest,
+  fetchMyAccessRequests,
+} from '../services/accessRequestService';
+import type { AccessRequestData } from '../services/accessRequestService';
 import { getApiErrorText } from '../utils/errors';
 import DeleteIcon from '@mui/icons-material/Delete';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { FAB_STYLE } from '../theme';
 
 // ⭐ №158: значение селекта справочника — id, «не выбран» или «создать новый»
@@ -129,6 +137,21 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [catalogModalTarget, setCatalogModalTarget] = useState<'create' | 'edit'>('create');
   const [newCatalogName, setNewCatalogName] = useState('');
   const [savingCatalog, setSavingCatalog] = useState(false);
+
+  // ⭐ №178: участник с доступом только к проекту не может создать новый проект —
+  // он подаёт заявку, её одобряет админ или менеджер объекта
+  const [myAccessRequest, setMyAccessRequest] = useState<AccessRequestData | null>(null);
+  const [requestModalOpen, setRequestModalOpen] = useState(false);
+  const [requestComment, setRequestComment] = useState('');
+  const [requestSaving, setRequestSaving] = useState(false);
+  // Может ли пользователь создавать проекты в этом объекте.
+  // ⭐ №179: строгая проверка — только объектный доступ (projectId=null). Участнику,
+  // приглашённому в один проект, показываем «Запросить право», а не тупиковый 403.
+  const canCreateProjects =
+    !!currentObject &&
+    currentObject.hasObjectAccess === true &&
+    currentObject.revoked !== true &&
+    currentObject.role !== 'VIEWER';
 
   // ⭐ №158: кому скрыты цены (VIEWER/hidePrices) — блок справочника не показываем
   const hideFinance = currentObject?.hidePrices === true;
@@ -212,6 +235,50 @@ useEffect(() => {
   };
   loadObject();
 }, [token, objectId]);
+
+// ⭐ №178: есть ли уже отправленная заявка на право создавать проекты
+useEffect(() => {
+  if (!token || !objectId || !currentObject || canCreateProjects) return;
+  fetchMyAccessRequests()
+    .then((rows) => {
+      const pending = rows.find(
+        (r) => r.objectId === parseInt(objectId) && r.status === 'PENDING',
+      );
+      setMyAccessRequest(pending ?? null);
+    })
+    .catch(() => setMyAccessRequest(null));
+}, [token, objectId, canCreateProjects, currentObject]);
+
+// ⭐ №178: отправить заявку на право создавать проекты
+const handleSubmitAccessRequest = async () => {
+  if (!objectId) return;
+  setRequestSaving(true);
+  try {
+    const created = await createAccessRequest(parseInt(objectId), {
+      comment: requestComment.trim() || undefined,
+    });
+    setMyAccessRequest(created);
+    setRequestModalOpen(false);
+    setRequestComment('');
+    notify('Заявка отправлена. Админ или менеджер объекта её рассмотрит.', 'success');
+  } catch (err) {
+    notifyError(getApiErrorText(err, 'Не удалось отправить заявку'));
+  } finally {
+    setRequestSaving(false);
+  }
+};
+
+// ⭐ №178: отменить свою заявку
+const handleCancelAccessRequest = async () => {
+  if (!myAccessRequest) return;
+  try {
+    await cancelAccessRequest(myAccessRequest.id);
+    setMyAccessRequest(null);
+    notify('Заявка отменена');
+  } catch (err) {
+    notifyError(getApiErrorText(err, 'Не удалось отменить заявку'));
+  }
+};
 
   // ⭐ №129: загрузить свои шаблоны (для селекта «Из шаблона»)
   const loadTemplates = async () => {
@@ -426,8 +493,16 @@ const createProjectAction = async (projectData?: {
     setPendingProject(null); // очищаем
     // ⭐ №163: сразу предлагаем выдать доступ к новому проекту
     void openAccessReminder(created);
-  } catch {
-    notifyError('Ошибка при создании проекта');
+  } catch (err) {
+    const text = getApiErrorText(err, 'неизвестная ошибка');
+    // ⭐ №179: 403 «нет доступа к объекту» больше не тупик — сразу предлагаем заявку
+    if (/нет доступа/i.test(text) && currentObject && currentObject.hasObjectAccess === false) {
+      notify('Создавать проекты может участник объекта — отправьте заявку', 'warning');
+      setRequestModalOpen(true);
+      return;
+    }
+    // ⭐ №176: раньше текст ошибки терялся («Ошибка при создании проекта» без причины)
+    notifyError('Не удалось создать проект: ' + text);
   }
 };
 
@@ -777,21 +852,38 @@ onBack: () => navigate('/objects'),
               <MenuItem value="progress">По проценту %</MenuItem>
             </Select>
           </FormControl>
-          <Button
-            variant="contained"
-            startIcon={<NoteAddIcon />}
-            onClick={handleOpenAddModal}
-            sx={{
-              bgcolor: '#4caf50',
-              border: '2px solid #388e3c',
-              minWidth: '200px',
-              '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
-              transition: 'all 0.3s ease',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Добавить проект
-          </Button>
+          {/* ⭐ №178: если доступ только к проекту — вместо создания проекта подаём заявку */}
+          {!currentObject ? (
+            <Button variant="contained" startIcon={<NoteAddIcon />} disabled sx={{ minWidth: '200px' }}>
+              Добавить проект
+            </Button>
+          ) : canCreateProjects ? (
+            <Button
+              variant="contained"
+              startIcon={<NoteAddIcon />}
+              onClick={handleOpenAddModal}
+              sx={{
+                bgcolor: '#4caf50',
+                border: '2px solid #388e3c',
+                minWidth: '200px',
+                '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
+                transition: 'all 0.3s ease',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Добавить проект
+            </Button>
+          ) : (
+            <Button
+              variant="outlined"
+              color="inherit"
+              startIcon={<LockOutlinedIcon />}
+              onClick={() => setRequestModalOpen(true)}
+              sx={{ minWidth: '200px', whiteSpace: 'nowrap' }}
+            >
+              {myAccessRequest ? 'Заявка отправлена' : 'Запросить право'}
+            </Button>
+          )}
         </Box>
       )}
 
@@ -1257,6 +1349,81 @@ onBack: () => navigate('/objects'),
           </Stack>
         </Paper>
       </Modal>
+
+      {/* ⭐ №178: заявка на право создавать проекты в объекте */}
+      <Modal open={requestModalOpen} onClose={() => setRequestModalOpen(false)} disableRestoreFocus>
+        <Paper
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '92%', sm: 460 },
+            p: 3,
+            borderRadius: 3,
+            outline: 'none',
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            🔓 Право создавать проекты
+          </Typography>
+          {myAccessRequest ? (
+            <>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Заявка отправлена {new Date(myAccessRequest.createdAt).toLocaleString('ru-RU')} и
+                ждёт решения админа или менеджера объекта
+                {myAccessRequest.object?.name ? ` «${myAccessRequest.object.name}»` : ''}.
+              </Alert>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Как только заявку одобрят, у вас появится доступ ко всему объекту и кнопка
+                «Добавить проект».
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+                <Button variant="text" color="error" onClick={() => void handleCancelAccessRequest()}>
+                  Отменить заявку
+                </Button>
+                <Button variant="outlined" onClick={() => setRequestModalOpen(false)}>
+                  Закрыть
+                </Button>
+              </Box>
+            </>
+          ) : (
+            <>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                У вас доступ только к проекту этого объекта. Создавать новые проекты может
+                участник объекта — отправьте заявку, её рассмотрит админ или менеджер объекта.
+              </Alert>
+              <TextField
+                fullWidth
+                multiline
+                rows={2}
+                label="Комментарий (необязательно)"
+                placeholder="Например: нужно добавить проект по ЭОМ"
+                value={requestComment}
+                onChange={(e) => setRequestComment(e.target.value)}
+                sx={{ mb: 2 }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                Одобрение откроет вам доступ ко всему объекту (роль «Прораб» с управлением
+                командой) — иначе созданный проект был бы виден только частично.
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+                <Button variant="outlined" onClick={() => setRequestModalOpen(false)}>
+                  Отмена
+                </Button>
+                <Button
+                  variant="contained"
+                  disabled={requestSaving}
+                  onClick={() => void handleSubmitAccessRequest()}
+                >
+                  Отправить заявку
+                </Button>
+              </Box>
+            </>
+          )}
+        </Paper>
+      </Modal>
+
 
       {/* Модалка подтверждения удаления */}
       <Modal

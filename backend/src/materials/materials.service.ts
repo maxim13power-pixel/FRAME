@@ -419,10 +419,12 @@ export class MaterialsService {
       }
     }
 
-    // Фиксация, которую пользователь видит в форме «править»
+    // ⭐ №176: целью правки считаем Последнюю ВНЕСЁННУЮ фиксацию (createdAt),
+    // а не с самой поздней датой работ: фиксация задним числом, внесённая только что,
+    // раньше не попадала под правку («прошло 8 дней» считалось по fixedAt старой строки).
     const expectedLastFix = await this.prisma.materialFix.findFirst({
       where: { materialId: id },
-      orderBy: { fixedAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
     if (!expectedLastFix)
       throw new BadRequestException('У материала ещё нет фиксаций');
@@ -453,9 +455,10 @@ export class MaterialsService {
       if (!material) throw new NotFoundException('Материал не найден');
 
       // 2) Перепроверяем «последность» уже под блокировкой
+      // ⭐ №176: «последняя» = последняя внесённая (createdAt), как и при выборе цели
       const lastFix = await tx.materialFix.findFirst({
         where: { materialId: id },
-        orderBy: { fixedAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       });
       if (!lastFix)
         throw new BadRequestException('У материала ещё нет фиксаций');
@@ -481,15 +484,22 @@ export class MaterialsService {
         },
       });
 
+      // ⭐ №176: правкой теперь может быть фиксация задним числом, поэтому
+      // «последнее поступление» на карточке берём из самой поздней ПО ДАТЕ РАБОТ
+      // фиксации, а не из только что отредактированной.
+      const newestByDate = await tx.materialFix.findFirst({
+        where: { materialId: id },
+        orderBy: [{ fixedAt: 'desc' }, { id: 'desc' }],
+      });
+
       return tx.material.update({
         where: { id },
         data: {
           totalUsed: newTotal,
-          lastEntry: dto.amount,
-          // 🔒 P1-2: правка последней фиксации должна обновлять и «когда последняя
+          lastEntry: newestByDate ? Number(newestByDate.amount) : dto.amount,
+          // 🔒 P1-2: правка фиксации должна обновлять и «когда последняя
           // фиксация» — раньше lastEntry/lastEntryDate оставались от старого значения.
-          // Берём дату самой фиксации (fixedAt при правке не меняется), а не new Date().
-          lastEntryDate: lastFix.fixedAt,
+          lastEntryDate: newestByDate?.fixedAt ?? lastFix.fixedAt,
           progressPercent: progress,
           totalCost: newTotal * Number(material.unitPrice),
           materialTotalCost: newTotal * Number(material.materialUnitPrice),

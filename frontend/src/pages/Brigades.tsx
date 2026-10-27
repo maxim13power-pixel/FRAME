@@ -138,7 +138,9 @@ const Brigades: React.FC = () => {
 
   const loadObjects = useCallback(async () => {
     try {
-      setObjects(await fetchObjects());
+      // ⭐ №176: карточке бригады нужны и архивные объекты (там селект объекта
+      // бригады; фильтрацию делает visibleObjects ниже, оставляя текущий выбор)
+      setObjects(await fetchObjects({ includeArchived: true }));
     } catch {
       /* не критично */
     }

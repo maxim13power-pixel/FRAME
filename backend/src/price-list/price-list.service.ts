@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PriceKind, Unit } from '@prisma/client';
+import { Prisma, PriceKind, Unit } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { canWriteWithRole, loadCatalogAccess } from './catalog-access'; // ⭐ №164
@@ -88,10 +88,11 @@ export class PriceListService {
 
   // ⭐ №151/№164: справочники, доступные пользователю.
   // Системные + свои + объектные/проектные (привязка к объектам, где есть доступ).
-  async listCatalogs(userId?: number) {
+  async listCatalogs(userId?: number, includeArchived = false) {
     const catalogs = await this.prisma.priceCatalog.findMany({
       where: {
-        isArchived: false,
+        // ⭐ №179: архивные справочники нужны экрану «Архив» (раньше они просто исчезали)
+        ...(includeArchived ? {} : { isArchived: false }),
         OR: [
           { ownerId: null },
           ...(userId
@@ -163,6 +164,8 @@ export class PriceListService {
         projectsCount: c._count.projects,
         objectsCount: c._count.objects,
         canWrite,
+        // ⭐ №179: фронт показывает архив отдельным разделом
+        isArchived: c.isArchived,
         createdAt: c.createdAt,
       };
     });
@@ -316,6 +319,16 @@ export class PriceListService {
     return this.prisma.priceCatalog.update({ where: { id }, data: { isArchived: true } });
   }
 
+  // ⭐ №179: вернуть справочник из архива (как «Вернуть из архива» у объектов)
+  async restoreCatalog(id: number, userId?: number) {
+    const access = await loadCatalogAccess(this.prisma, id, userId);
+    if (!access) throw new NotFoundException('Справочник не найден');
+    if (!access.canWrite) {
+      throw new ForbiddenException('Нет прав на изменение этого справочника');
+    }
+    return this.prisma.priceCatalog.update({ where: { id }, data: { isArchived: false } });
+  }
+
   // Все категории (для селектов). Категории ОБЩИЕ — без владельца.
   async getCategories(kind?: string, userId?: number) {
     return this.prisma.priceCategory.findMany({
@@ -377,6 +390,51 @@ export class PriceListService {
     });
     return !!linked;
   }
+  // ⭐ №179: поиск по цене. Прораб часто помнит только сумму («5 400»), а не название.
+  // Возвращаем id расценок, у которых цена содержит введённые цифры.
+  // Текстовые токены (если ввели «бетон 5400») сужают выборку по названию.
+  private async findIdsByPrice(
+    search: string,
+    opts: {
+      kind?: string;
+      categoryId?: number;
+      userId?: number;
+      catalogId?: number;
+    },
+  ): Promise<number[]> {
+    const tokens = search.trim().split(/\s+/).filter(Boolean);
+    const isNumber = (t: string) => /^\d[\d.,]*$/.test(t);
+    const numericTokens = tokens.filter(isNumber);
+    if (numericTokens.length === 0) return [];
+    const textTokens = tokens.filter((t) => !isNumber(t));
+    // «5 400» — это 5400: склеиваем цифровые токены
+    const digits = numericTokens.join('').replace(/[.,]/g, '');
+    if (!digits) return [];
+
+    const parts: Prisma.Sql[] = [Prisma.sql`"isActive" = true`];
+    if (opts.kind) parts.push(Prisma.sql`"kind" = ${opts.kind}::"PriceKind"`);
+    if (opts.categoryId) parts.push(Prisma.sql`"categoryId" = ${opts.categoryId}`);
+    if (opts.catalogId) parts.push(Prisma.sql`"catalogId" = ${opts.catalogId}`);
+    else {
+      parts.push(Prisma.sql`("ownerId" IS NULL OR "ownerId" = ${opts.userId ?? 0})`);
+    }
+    // price хранится как NUMERIC → '5400.00': убираем точку, чтобы «5400» находилось
+    parts.push(
+      Prisma.sql`REPLACE(CAST("price" AS TEXT), '.', '') LIKE ${'%' + digits + '%'}`,
+    );
+    for (const t of textTokens) {
+      parts.push(Prisma.sql`"name" ILIKE ${'%' + t + '%'}`);
+    }
+
+    const rows = await this.prisma.$queryRaw<{ id: number }[]>(Prisma.sql`
+      SELECT id FROM "price_items"
+      WHERE ${Prisma.join(parts, ' AND ')}
+      ORDER BY "name" ASC
+      LIMIT 50
+    `);
+    return rows.map((r) => r.id);
+  }
+
   // Поиск расценок (для Autocomplete в материалах): общие + личные юзера.
   // ⭐ Через явный AND, чтобы OR владельца и OR поиска не затёрли друг друга.
   async searchItems(
@@ -390,6 +448,10 @@ export class PriceListService {
     if (catalogId && !(await this.canReadCatalog(catalogId, userId))) {
       throw new NotFoundException('Справочник не найден или нет доступа');
     }
+    // ⭐ №179: цифры в запросе ищем ещё и по цене
+    const priceIds = search
+      ? await this.findIdsByPrice(search, { kind, categoryId, userId, catalogId })
+      : [];
     return this.prisma.priceItem.findMany({
       where: {
         AND: [
@@ -410,6 +472,8 @@ export class PriceListService {
                         mode: 'insensitive' as const,
                       },
                     },
+                    // ⭐ №179: совпадения по цене (см. findIdsByPrice)
+                    ...(priceIds.length ? [{ id: { in: priceIds } }] : []),
                   ],
                 },
               ]
@@ -417,8 +481,10 @@ export class PriceListService {
         ],
       },
       include: { category: true },
-      orderBy: { name: 'asc' },
-      take: 20,
+      // ⭐ №177: раньше отдавали первые 20 по алфавиту — в списке «стена бетона»,
+      // остальные категории не видны. Теперь сортировка по порядку категорий и 50 строк.
+      orderBy: [{ category: { sortOrder: 'asc' } }, { name: 'asc' }],
+      take: 50,
     });
   }
 
