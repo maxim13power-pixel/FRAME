@@ -112,11 +112,11 @@ export class InviteService {
       throw new NotFoundException('Ссылка не найдена');
     }
 
-    // Только создатель или заказчик может отозвать
+    // Только создатель или администратор объекта может отозвать
     const myAccess = await this.checkObjectAccess(objectId, userId);
     if (invite.createdBy !== userId && myAccess.role !== 'CUSTOMER') {
       throw new ForbiddenException(
-        'Только создатель ссылки или заказчик может её отозвать',
+        'Только создатель ссылки или администратор объекта может её отозвать',
       );
     }
 

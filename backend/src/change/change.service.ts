@@ -13,7 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ChangeTypeEnum, CreateChangeDto } from './dto/create-change.dto';
 import { ReviewActionEnum, ReviewChangeDto } from './dto/review-change.dto';
 
-// ⭐ N7: политика одна — предлагать и согласовывать могут прораб и заказчик
+// ⭐ N7: политика одна — предлагать и согласовывать могут прораб и администратор объекта
 const MONEY_ROLES: AccessRole[] = [AccessRole.FOREMAN, AccessRole.CUSTOMER];
 // ⭐ Ценовые ключи payload — вырезаются для VIEWER и hidePrices
 const PRICE_KEYS = [
@@ -62,7 +62,7 @@ export class ChangeService {
     const access = await this.getAccess(userId, dto.projectId);
     if (!MONEY_ROLES.includes(access.role)) {
       throw new ForbiddenException(
-        'Предлагать изменения могут прораб и заказчик',
+        'Предлагать изменения могут прораб и администратор объекта',
       );
     }
     // ⭐ IDOR-защита: materialId обязан принадлежать этому проекту
@@ -167,7 +167,7 @@ export class ChangeService {
     const access = await this.getAccess(userId, change.projectId);
     if (!MONEY_ROLES.includes(access.role)) {
       throw new ForbiddenException(
-        'Согласовывать могут только прораб и заказчик',
+        'Согласовывать могут только прораб и администратор объекта',
       );
     }
     if (change.proposedBy === userId) {

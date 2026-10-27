@@ -101,7 +101,7 @@ export const createObjectFromTemplate = async (
     startDate: string;
     endDate: string;
     note?: string;
-    role?: 'CUSTOMER' | 'FOREMAN';
+    // ⭐ №181: роль не передаётся — создатель объекта всегда администратор объекта
   },
 ) => {
   const response = await api.post(`/object-templates/${id}/create-object`, data);

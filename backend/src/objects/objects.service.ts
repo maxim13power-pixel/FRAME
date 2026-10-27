@@ -56,13 +56,10 @@ export class ObjectsService {
   }
 
   // Создание объекта.
-  // Создатель автоматически получает доступ с ролью из dto (дефолт — заказчик).
+  // ⭐ №181: создатель ВСЕГДА администратор объекта (решение владельца 27.10.2026).
+  // Выбор роли при создании убран: прораб, создавший объект «как прораб», оставался без прав
+  // на команду и настройки. Понизить себя / передать админку — через модалку участников.
   async create(dto: CreateObjectDto, userId: number) {
-    // Роль создателя: из DTO (модалка «В какой роли создаёшь?») или по умолчанию заказчик.
-    // Через (dto as any) — чтобы не ломаться, если поле ещё не добавлено в DTO.
-    const createRole: AccessRole =
-      ((dto as any).role as AccessRole) || AccessRole.CUSTOMER;
-
     // ⭐ №164: справочник цен объекта (если передан) — проверяем доступ до создания
     const catalogId =
       dto.catalogId != null
@@ -86,9 +83,8 @@ export class ObjectsService {
         accesses: {
           create: {
             userId,
-            role: createRole,
-            // Создатель-прораб сразу менеджер: иначе он не сможет собрать команду.
-            isManager: createRole === AccessRole.FOREMAN,
+            role: AccessRole.CUSTOMER, // ⭐ №181: создатель — администратор объекта
+            isManager: false, // isManager относится только к прорабу
           },
         },
       },

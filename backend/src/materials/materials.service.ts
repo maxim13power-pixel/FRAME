@@ -645,7 +645,7 @@ export class MaterialsService {
 
   // ⭐ №159/№164: справочник для новой расценки — доступный пользователю
   // (системный, свой, объектный/проектный) и не архивный; писать можно только туда,
-  // где есть права (заказчик/прораб объекта, владелец, ADMIN).
+  // где есть права (администратор объекта/прораб объекта, владелец, ADMIN).
   private async resolvePriceCatalog(catalogId: number, userId?: number) {
     const access = await loadCatalogAccess(this.prisma, catalogId, userId);
     if (!access || !access.canRead) {

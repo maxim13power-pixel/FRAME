@@ -13,7 +13,7 @@ import { getApiErrorMessage } from '../utils/errors';
 // ⭐ Подпись роли (как на странице принятия приглашения)
 const roleLabel = (role: AccessRole) => {
   switch (role) {
-    case 'CUSTOMER': return '👑 Заказчик';
+    case 'CUSTOMER': return '👑 Администратор объекта';
     case 'FOREMAN': return '👷 Прораб';
     case 'VIEWER': return '👁 Наблюдатель';
     default: return role;

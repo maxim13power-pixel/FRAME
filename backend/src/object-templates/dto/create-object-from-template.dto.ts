@@ -2,7 +2,6 @@
 // ⭐ №175: создание объекта из шаблона (разовая копия)
 import {
   IsDateString,
-  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -29,9 +28,5 @@ export class CreateObjectFromTemplateDto {
   @MaxLength(1000, { message: 'Заметка не более 1000 символов' })
   note?: string;
 
-  @IsOptional()
-  @IsIn(['CUSTOMER', 'FOREMAN'], {
-    message: 'Роль должна быть CUSTOMER или FOREMAN',
-  })
-  role?: 'CUSTOMER' | 'FOREMAN';
+  // ⭐ №181: роль не выбирается — создатель объекта всегда администратор объекта.
 }

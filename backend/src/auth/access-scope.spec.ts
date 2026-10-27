@@ -163,7 +163,7 @@ describe('access-scope (№163)', () => {
       expect(my.hasObjectAccess).toBe(true);
     });
 
-    // ⭐ №168: управлять командой может заказчик и прораб-менеджер
+    // ⭐ №168: управлять командой может администратор объекта и прораб-менеджер
     it('прораб с isManager управляет командой, обычный — нет', () => {
       const manager = resolveObjectRole(
         [grant(1, null, AccessRole.FOREMAN, false, { isManager: true })],

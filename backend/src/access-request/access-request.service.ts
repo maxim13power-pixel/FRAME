@@ -41,7 +41,7 @@ export class AccessRequestService {
     return user?.role === Role.ADMIN;
   }
 
-  // Менеджер объекта = заказчик или прораб-менеджер с ОБЪЕКТНОЙ записью (projectId = null)
+  // Менеджер объекта = администратор объекта или прораб-менеджер с ОБЪЕКТНОЙ записью (projectId = null)
   private async isObjectManager(objectId: number, userId: number) {
     const my = await this.prisma.objectAccess.findFirst({
       where: { userId, objectId, projectId: null },

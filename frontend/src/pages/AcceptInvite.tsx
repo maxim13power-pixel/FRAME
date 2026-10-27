@@ -35,7 +35,7 @@ interface InviteInfo {
 
 const roleLabel = (role: AccessRole) => {
   switch (role) {
-    case 'CUSTOMER': return '👑 Заказчик';
+    case 'CUSTOMER': return '👑 Администратор объекта';
     case 'FOREMAN': return '👷 Прораб';
     case 'VIEWER': return '👁 Наблюдатель';
     default: return role;

@@ -105,7 +105,7 @@ export class EstimateRecalcService {
     }
     if (access.hidePrices) {
       throw new ForbiddenException(
-        'Вам скрыты цены — пересчёт недоступен. Попросите заказчика открыть цены.',
+        'Вам скрыты цены — пересчёт недоступен. Попросите администратора объекта открыть цены.',
       );
     }
   }
@@ -246,7 +246,7 @@ export class EstimateRecalcService {
     const ctx = await this.loadPlan(projectId, userId, catalogId);
     if (this.mustHidePrices(ctx.access)) {
       throw new ForbiddenException(
-        'Вам скрыты цены — пересчёт недоступен. Попросите заказчика открыть цены.',
+        'Вам скрыты цены — пересчёт недоступен. Попросите администратора объекта открыть цены.',
       );
     }
     return this.present(ctx);

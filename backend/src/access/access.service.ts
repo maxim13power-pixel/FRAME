@@ -1,4 +1,4 @@
-﻿// backend/src/access/access.service.ts
+// backend/src/access/access.service.ts
 import {
   BadRequestException,
   ConflictException,
@@ -31,7 +31,7 @@ export class AccessService {
     return access;
   }
 
-  // ⭐ №168: управлять командой может заказчик или прораб-менеджер (isManager).
+  // ⭐ №168: управлять командой может администратор объекта или прораб-менеджер (isManager).
   // Отозванный участник не управляет ничем — он в режиме чтения.
   private async assertManager(objectId: number, userId: number) {
     const my = await this.getMyAccess(objectId, userId);
@@ -45,7 +45,7 @@ export class AccessService {
       (my.role === AccessRole.FOREMAN && my.isManager);
     if (!canManage) {
       throw new ForbiddenException(
-        'Управлять участниками может заказчик или прораб-менеджер',
+        'Управлять участниками может администратор объекта или прораб-менеджер',
       );
     }
     return my;
@@ -99,13 +99,13 @@ export class AccessService {
   async addAccess(objectId: number, dto: AddAccessDto, actorUserId: number) {
     const myAccess = await this.assertManager(objectId, actorUserId);
 
-    // Только заказчик может выдать роль заказчика или права менеджера.
+    // Только администратор объекта может выдать роль администратора или права менеджера.
     if (
       (dto.role === AccessRole.CUSTOMER || dto.isManager) &&
       myAccess.role !== AccessRole.CUSTOMER
     ) {
       throw new ForbiddenException(
-        'Только заказчик может выдать роль заказчика или права менеджера',
+        'Только администратор объекта может выдать роль администратора или права менеджера',
       );
     }
 
@@ -207,25 +207,32 @@ export class AccessService {
       );
     }
 
-    // Прораб-менеджер не трогает заказчиков и не повышает никого до заказчика.
+    // Прораб-менеджер не трогает администраторов объекта и не повышает никого до администратора объекта.
     if (myAccess.role !== AccessRole.CUSTOMER) {
       if (
         target.role === AccessRole.CUSTOMER ||
         dto.role === AccessRole.CUSTOMER
       ) {
         throw new ForbiddenException(
-          'Только заказчик может менять роль заказчика',
+          'Только администратор объекта может менять роль администратора',
         );
       }
       if (dto.isManager) {
         throw new ForbiddenException(
-          'Только заказчик может назначать прорабов-менеджеров',
+          'Только администратор объекта может назначать прорабов-менеджеров',
         );
       }
     }
 
     const nextRole = dto.role ?? target.role;
     const nextManager = dto.isManager ?? target.isManager;
+
+    // ⭐ №181: последнего администратора объекта нельзя понизить (инвариант «≥1 администратор»).
+    // Раньше проверка стояла только на отзыве и удалении доступа — понижение роли её обходило.
+    if (target.role === AccessRole.CUSTOMER && nextRole !== AccessRole.CUSTOMER) {
+      await this.assertNotLastCustomer(objectId, target);
+    }
+
     if (nextManager && nextRole !== AccessRole.FOREMAN) {
       throw new BadRequestException('Права менеджера доступны только прорабу');
     }
@@ -272,7 +279,7 @@ export class AccessService {
       myAccess.role === AccessRole.FOREMAN &&
       target.role === AccessRole.CUSTOMER
     ) {
-      throw new ForbiddenException('Прораб не может отозвать доступ заказчика');
+      throw new ForbiddenException('Прораб не может отозвать доступ администратора объекта');
     }
     await this.assertNotLastCustomer(objectId, target);
 
@@ -317,7 +324,7 @@ export class AccessService {
       target.role === AccessRole.CUSTOMER
     ) {
       throw new ForbiddenException(
-        'Прораб не может вернуть доступ заказчику — это делает заказчик',
+        'Прораб не может вернуть доступ администратору объекта — это делает администратор объекта',
       );
     }
 
@@ -358,7 +365,7 @@ export class AccessService {
       myAccess.role === AccessRole.FOREMAN &&
       target.role === AccessRole.CUSTOMER
     ) {
-      throw new ForbiddenException('Прораб не может удалить доступ заказчика');
+      throw new ForbiddenException('Прораб не может удалить доступ администратора объекта');
     }
     await this.assertNotLastCustomer(objectId, target);
 
@@ -371,7 +378,7 @@ export class AccessService {
     return { success: true };
   }
 
-  // ⭐ №168: нельзя остаться без заказчика (инвариант И1)
+  // ⭐ №168: нельзя остаться без администратора объекта (инвариант И1)
   private async assertNotLastCustomer(
     objectId: number,
     target: { userId: number; role: AccessRole; projectId: number | null },
@@ -388,7 +395,7 @@ export class AccessService {
     });
     if (others === 0) {
       throw new BadRequestException(
-        'Это последний заказчик объекта — сначала назначьте другого заказчика',
+        'Это последний администратор объекта — сначала назначьте другого администратора',
       );
     }
   }

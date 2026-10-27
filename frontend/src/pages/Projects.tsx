@@ -88,7 +88,7 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [editingProject, setEditingProject] = useState<ProjectData | null>(null);
   const [deletingProject, setDeletingProject] = useState<ProjectData | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  // ⭐ №163: после создания проекта предлагаем выдать доступ команде (по умолчанию — только заказчик)
+  // ⭐ №163: после создания проекта предлагаем выдать доступ команде (по умолчанию — только администратор объекта)
   const [reminderOpen, setReminderOpen] = useState(false);
   const [reminderProject, setReminderProject] = useState<ProjectData | null>(null);
   const [reminderMembers, setReminderMembers] = useState<AccessMember[]>([]);
@@ -508,7 +508,7 @@ const createProjectAction = async (projectData?: {
 
 // ⭐ №163: напоминание о доступе. Показываем участников объекта, у которых ещё
 // нет доступа к новому проекту (объектные записи и участники этого проекта исключены).
-// По умолчанию отмечен только заказчик — решение владельца 10.1(1).
+// По умолчанию отмечен только администратор объекта — решение владельца 10.1(1).
 const openAccessReminder = async (project: ProjectData) => {
   if (!objectId) return;
   setReminderProject(project);
@@ -1541,7 +1541,7 @@ onBack: () => navigate('/objects'),
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Проект «{reminderProject?.name}» создан. Отметьте, кто из команды объекта
-            должен его видеть. По умолчанию отмечен только заказчик — остальных
+            должен его видеть. По умолчанию отмечен только администратор объекта — остальных
             можно добавить позже в карточке объекта.
           </Typography>
 
@@ -1578,7 +1578,7 @@ onBack: () => navigate('/objects'),
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         {member.role === 'CUSTOMER'
-                          ? '👑 Заказчик'
+                          ? '👑 Администратор объекта'
                           : member.role === 'FOREMAN'
                             ? '👷 Прораб'
                             : '👁 Наблюдатель'}

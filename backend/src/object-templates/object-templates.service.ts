@@ -208,7 +208,6 @@ export class ObjectTemplatesService {
         startDate: dto.startDate,
         endDate: dto.endDate,
         note: dto.note ?? template.note ?? undefined,
-        ...(dto.role ? { role: dto.role } : {}),
       } as any,
       userId,
     );

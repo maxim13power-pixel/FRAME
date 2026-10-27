@@ -139,10 +139,6 @@ const Objects: React.FC = () => {
   const [noteModalOpen, setNoteModalOpen] = useState(false);
   const [editingNoteObject, setEditingNoteObject] = useState<ObjectData | null>(null);
   const [editNote, setEditNote] = useState('');
-  // ⭐ Роль создателя объекта (по умолчанию — Заказчик)
-  const [createRole, setCreateRole] = useState<'CUSTOMER' | 'FOREMAN'>('CUSTOMER');
-// ⭐ Модалка-предупреждение при создании в роли Прораба
-const [foremanConfirmOpen, setForemanConfirmOpen] = useState(false);
 // ⭐ Модалка управления доступом (участники)
 const [accessModalOpen, setAccessModalOpen] = useState(false);
 const [accessObject, setAccessObject] = useState<ObjectData | null>(null);
@@ -181,7 +177,6 @@ const [fromTplName, setFromTplName] = useState('');
 const [fromTplAddress, setFromTplAddress] = useState('');
 const [fromTplStart, setFromTplStart] = useState('');
 const [fromTplEnd, setFromTplEnd] = useState('');
-const [fromTplRole, setFromTplRole] = useState<'CUSTOMER' | 'FOREMAN'>('CUSTOMER');
 const [fromTplSaving, setFromTplSaving] = useState(false);
 
   // Загрузка объектов при монтировании
@@ -274,11 +269,8 @@ const filteredAndSortedObjects = useMemo(() => {
     setNewAddress('');
     setNewStartDate('');
     setNewEndDate('');
-    setCreateRole('CUSTOMER');      // ⭐ сброс роли
-    setForemanConfirmOpen(false);
   };
-  // ⭐ Реальное создание (вызывается напрямую для Заказчика
-  //    или после подтверждения в модалке для Прораба)
+  // ⭐ №181: создатель объекта всегда администратор объекта — роль не выбирается
   const doCreateObject = async () => {
     if (!token) return;
     try {
@@ -287,17 +279,15 @@ const filteredAndSortedObjects = useMemo(() => {
         address: newAddress,
         startDate: newStartDate,
         endDate: newEndDate,
-        role: createRole, // ⭐ передаём роль на бэкенд
       });
       setObjects(prev => [created, ...prev]);
-      setForemanConfirmOpen(false);
       handleCloseAddModal();
     } catch (err: unknown) {
       notifyError('Ошибка при создании объекта: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
   };
 
-  // ⭐ Точка входа: Прораб → сначала предупреждение, Заказчик → сразу создаём
+  // ⭐ Точка входа: создаём сразу — создатель всегда администратор объекта (№181)
   const handleCreateObject = async () => {
     if (!token || !newName || !newAddress || !newStartDate || !newEndDate) {
       notify('Заполните все поля', 'warning');
@@ -309,10 +299,6 @@ const filteredAndSortedObjects = useMemo(() => {
       return;
     }
     // ↑↑↑ КОНЕЦ ВАЛИДАЦИИ ↑↑↑
-    if (createRole === 'FOREMAN') {
-      setForemanConfirmOpen(true); // Прораб создаёт для заказчика → предупреждаем (ТЗ 3.4)
-      return;
-    }
     await doCreateObject();
   };
   
@@ -410,7 +396,7 @@ const handleRestoreObject = async (obj: ObjectData) => {
 };
 
 
-// ⭐ №168: право управлять командой (заказчик или прораб-менеджер) — с бэка
+// ⭐ №168: право управлять командой (администратор объекта или прораб-менеджер) — с бэка
 const canManage = accessObject?.canManage === true;
 // ⭐ Текущая роль пользователя на объекте (для UI-подсказок в модалке)
 const myRole = accessObject?.role;
@@ -562,7 +548,6 @@ const handleOpenFromTemplate = (tpl: ObjectTemplateData) => {
   setFromTplAddress('');
   setFromTplStart(iso(today));
   setFromTplEnd(iso(inSixMonths));
-  setFromTplRole('CUSTOMER');
 };
 
 const handleCreateFromTemplate = async () => {
@@ -578,7 +563,6 @@ const handleCreateFromTemplate = async () => {
       address: fromTplAddress.trim(),
       startDate: fromTplStart,
       endDate: fromTplEnd,
-      role: fromTplRole,
     });
     setObjects((prev) => [created, ...prev]);
     notify(`Объект «${created.name}» создан из шаблона`);
@@ -673,7 +657,7 @@ const handleInvite = async () => {
   }
 };
 
-// ⭐ Сменить роль участника (только Заказчик)
+// ⭐ Сменить роль участника (только Администратор объекта)
 const handleChangeRole = async (accessId: number, newRole: AccessRole) => {
   if (!token || !accessObject) return;
   setAccessError('');
@@ -743,7 +727,7 @@ const handlePurgeAccess = async (member: AccessMember) => {
   }
 };
 
-// ⭐ №168: «управляет командой» — флаг прораба, выдаёт заказчик
+// ⭐ №168: «управляет командой» — флаг прораба, выдаёт администратор объекта
 const handleToggleManager = async (accessId: number, isManager: boolean) => {
   if (!token || !accessObject) return;
   setAccessError('');
@@ -840,7 +824,7 @@ const handleRevokeLink = async (linkId: number) => {
 // ⭐ Подписи и цвета для ролей
 const roleLabel = (role: AccessRole) => {
   switch (role) {
-    case 'CUSTOMER': return '👑 Заказчик';
+    case 'CUSTOMER': return '👑 Администратор объекта';
     case 'FOREMAN': return '👷 Прораб';
     case 'VIEWER': return '👁 Наблюдатель';
     default: return role;
@@ -1363,25 +1347,6 @@ trailing: headerTrailing,
            required
          />
 
-         {/* ⭐ В какой роли создаёшь объект? (ТЗ 3.4) */}
-         <FormControl fullWidth>
-           <InputLabel id="create-role-label">В какой роли создаёшь?</InputLabel>
-           <Select
-             labelId="create-role-label"
-             value={createRole}
-             label="В какой роли создаёшь?"
-             onChange={(e) => setCreateRole(e.target.value as 'CUSTOMER' | 'FOREMAN')}
-           >
-             <MenuItem value="CUSTOMER">👑 Я Заказчик (хозяин объекта)</MenuItem>
-             <MenuItem value="FOREMAN">👷 Я Прораб (работаю на заказчика)</MenuItem>
-           </Select>
-           <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-             {createRole === 'CUSTOMER'
-               ? 'Заказчик: платит, утверждает сметы, видит все цены. Объект будет принадлежать вам.'
-               : 'Прораб: ведёт работы и фиксирует объёмы. Вы создаёте объект для заказчика и пригласите его.'}
-           </Typography>
-         </FormControl>
-
          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
            <Button variant="outlined" onClick={handleCloseAddModal}>
              Отмена
@@ -1595,45 +1560,6 @@ trailing: headerTrailing,
     </Paper>
   </Modal>
 
-  {/* ⭐ Модалка-предупреждение: создание объекта в роли Прораба (ТЗ 3.4) */}
-  <Modal open={foremanConfirmOpen} onClose={() => setForemanConfirmOpen(false)}>
-    <Paper
-      sx={{
-        position: 'absolute',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: { xs: '90%', sm: 420 },
-        p: 3,
-        borderRadius: 2,
-        outline: 'none',
-      }}
-    >
-      <Typography variant="h6" gutterBottom>
-        👷 Создаёте объект в роли Прораб?
-      </Typography>
-      <Typography sx={{ mb: 2 }}>
-        Вы создаёте объект <b>для заказчика</b>. После создания:
-      </Typography>
-      <Box component="ul" sx={{ pl: 3, mb: 2, '& li': { mb: 0.5 } }}>
-        <li>Смета и цены будут видны приглашённому заказчику;</li>
-        <li>Ваши изменения потребуют его согласования;</li>
-        <li>Вы сможете пригласить заказчика на следующем шаге.</li>
-      </Box>
-      <Typography sx={{ mb: 3 }} color="text.secondary" variant="body2">
-        Если вы сами хозяин объекта — вернитесь и выберите роль «Заказчик».
-      </Typography>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-        <Button variant="outlined" onClick={() => setForemanConfirmOpen(false)}>
-          Назад
-        </Button>
-        <Button variant="contained" onClick={doCreateObject}>
-          Да, создаю как Прораб
-        </Button>
-      </Box>
-      </Paper>
-    </Modal>
-
     {/* ⭐ №175: шаблоны объектов — список */}
     <Modal open={templatesOpen} onClose={() => setTemplatesOpen(false)}>
       <Paper
@@ -1807,18 +1733,6 @@ trailing: headerTrailing,
             onChange={(e) => setFromTplEnd(e.target.value)}
             required
           />
-          <FormControl fullWidth>
-            <InputLabel id="from-tpl-role">Моя роль в объекте</InputLabel>
-            <Select
-              labelId="from-tpl-role"
-              value={fromTplRole}
-              label="Моя роль в объекте"
-              onChange={(e) => setFromTplRole(e.target.value as 'CUSTOMER' | 'FOREMAN')}
-            >
-              <MenuItem value="CUSTOMER">👑 Заказчик — вижу всё, утверждаю</MenuItem>
-              <MenuItem value="FOREMAN">👷 Прораб — веду работы</MenuItem>
-            </Select>
-          </FormControl>
         </Stack>
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
           <Button variant="outlined" onClick={() => setFromTemplate(null)}>
@@ -2013,7 +1927,7 @@ trailing: headerTrailing,
                       )}
                     </Box>
 
-                    {/* ⭐ №168: «управляет командой» — флаг прораба, выдаёт заказчик */}
+                    {/* ⭐ №168: «управляет командой» — флаг прораба, выдаёт администратор объекта */}
                     {canManage && member.role === 'FOREMAN' && myRole === 'CUSTOMER' && !member.revokedAt && (
                       <FormControlLabel
                         sx={{ mr: 0 }}
@@ -2035,7 +1949,7 @@ trailing: headerTrailing,
                         onChange={(e) => handleChangeRole(member.id, e.target.value as AccessRole)}
                         sx={{ minWidth: 130 }}
                       >
-                        <MenuItem value="CUSTOMER">👑 Заказчик</MenuItem>
+                        <MenuItem value="CUSTOMER">👑 Администратор объекта</MenuItem>
                         <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
                         <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
                       </Select>
@@ -2066,7 +1980,7 @@ trailing: headerTrailing,
 
             {/* Форма приглашения */}
             {!canManage ? (
-              <Alert severity="warning">Управлять участниками может заказчик или прораб-менеджер.</Alert>
+              <Alert severity="warning">Управлять участниками может администратор объекта или прораб-менеджер.</Alert>
             ) : (
               <>
                 <Typography variant="subtitle1" gutterBottom>➕ Пригласить участника</Typography>
@@ -2092,7 +2006,7 @@ trailing: headerTrailing,
                         label="Кого приглашаем"
                         onChange={(e) => setLinkRole(e.target.value as AccessRole)}
                       >
-                        <MenuItem value="CUSTOMER">👑 Заказчик</MenuItem>
+                        <MenuItem value="CUSTOMER">👑 Администратор объекта</MenuItem>
                         <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
                         <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
                       </Select>
@@ -2187,14 +2101,14 @@ trailing: headerTrailing,
                         label="Роль"
                         onChange={(e) => setInviteRole(e.target.value as AccessRole)}
                       >
-                        <MenuItem value="CUSTOMER">👑 Заказчик</MenuItem>
+                        <MenuItem value="CUSTOMER">👑 Администратор объекта</MenuItem>
                         <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
                         <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
                       </Select>
                     </FormControl>
                     <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-                      {inviteRole === 'CUSTOMER' && '👑 Заказчик: видит все цены, утверждает сметы и согласовывает изменения.'}
-                      {inviteRole === 'FOREMAN' && '👷 Прораб: ведёт работы и фиксирует объёмы. Его изменения ждут согласования заказчика.'}
+                      {inviteRole === 'CUSTOMER' && '👑 Администратор объекта: видит все цены, управляет командой и настройками.'}
+                      {inviteRole === 'FOREMAN' && '👷 Прораб: ведёт работы и фиксирует объёмы. Его изменения видны в смете и отчётах.'}
                       {inviteRole === 'VIEWER' && '👁 Наблюдатель: видит прогресс и объёмы, но без денег. Не может приглашать.'}
                     </Typography>
                     {/* ⭐ №163: область доступа — весь объект или только один проект */}

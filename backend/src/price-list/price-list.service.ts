@@ -198,7 +198,7 @@ export class PriceListService {
       objectId = object.id;
     }
 
-    // В справочник объекта/проекта пишут заказчик и прораб (решение 10.1(2))
+    // В справочник объекта/проекта пишут администратор объекта и прораб (решение 10.1(2))
     if (objectId) {
       // ⭐ №168: отозванный доступ и наблюдатель не пишут (canWrite = false)
       const grants = await loadAccessGrants(this.prisma, userId);
@@ -207,7 +207,7 @@ export class PriceListService {
         : resolveObjectRole(grants, objectId);
       if (!my.canWrite) {
         throw new ForbiddenException(
-          'Менять справочник объекта может только заказчик или прораб',
+          'Менять справочник объекта может только администратор объекта или прораб',
         );
       }
     }
@@ -289,7 +289,7 @@ export class PriceListService {
     return { ...created, itemsCount: items.length };
   }
 
-  // ⭐ №151/№164: переименовать справочник — владелец, ADMIN, заказчик/прораб объекта
+  // ⭐ №151/№164: переименовать справочник — владелец, ADMIN, администратор объекта/прораб объекта
   async updateCatalog(id: number, name: string, userId?: number) {
     const access = await loadCatalogAccess(this.prisma, id, userId);
     if (!access) throw new NotFoundException('Справочник не найден');
@@ -543,7 +543,7 @@ export class PriceListService {
 
     const catalog = await this.resolveCatalog(dto.catalogId, userId);
     // ⭐ №164: писать можно в свой, системный (ADMIN) и в справочник объекта/проекта
-    // (заказчик/прораб). Проверка — общая для всех входов.
+    // (администратор объекта/прораб). Проверка — общая для всех входов.
     const access = await loadCatalogAccess(this.prisma, catalog.id, userId);
     if (!access || !access.canRead) {
       throw new NotFoundException('Справочник не найден или нет доступа');
@@ -571,7 +571,7 @@ export class PriceListService {
   }
 
   // ⭐ №164: право менять расценку определяет справочник, в котором она лежит:
-  // системный — ADMIN, личный — владелец, объектный/проектный — заказчик/прораб.
+  // системный — ADMIN, личный — владелец, объектный/проектный — администратор объекта/прораб.
   private async assertCanEditItem(catalogId: number, userId?: number) {
     const access = await loadCatalogAccess(this.prisma, catalogId, userId);
     if (!access) throw new NotFoundException('Расценка не найдена или нет доступа');

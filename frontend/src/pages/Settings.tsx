@@ -41,10 +41,10 @@ const MIN_TABS = 3;
 
 // ⭐ Глобальная роль пользователя (Role из Prisma) → человекочитаемое название
 const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Администратор',
+  ADMIN: 'Суперадмин FRAME',
   STORE_MANAGER: 'Кладовщик',
   FOREMAN: 'Прораб',
-  CUSTOMER: 'Заказчик',
+  CUSTOMER: 'Администратор объекта',
   VIEWER: 'Наблюдатель', // ⭐ №168: роль доступа на объекте
 };
 
