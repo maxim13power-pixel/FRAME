@@ -40,6 +40,7 @@ import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import DescriptionIcon from '@mui/icons-material/Description';
 import EventIcon from '@mui/icons-material/Event';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
+import EditIcon from '@mui/icons-material/Edit';
 import SortIcon from '@mui/icons-material/Sort';
 import Select from '@mui/material/Select';
 import FormControl from '@mui/material/FormControl';
@@ -88,6 +89,8 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [editingProject, setEditingProject] = useState<ProjectData | null>(null);
   const [deletingProject, setDeletingProject] = useState<ProjectData | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  // ⭐ №188: меню действий с проектом (шестерёнка на карточке)
+  const [actionsProject, setActionsProject] = useState<ProjectData | null>(null);
   // ⭐ №163: после создания проекта предлагаем выдать доступ команде (по умолчанию — только администратор объекта)
   const [reminderOpen, setReminderOpen] = useState(false);
   const [reminderProject, setReminderProject] = useState<ProjectData | null>(null);
@@ -703,6 +706,13 @@ const updateProjectAction = async () => {
     notifyError('Ошибка обновления проекта');
   }
 };
+// ⭐ №188: меню действий проекта (как на «Объектах»)
+const handleOpenActions = (proj: ProjectData) => setActionsProject(proj);
+const handleCloseActions = () => setActionsProject(null);
+// Писать в проект можно, если есть права записи и доступ не отозван
+const canEditProject = (p: ProjectData | null) =>
+  !!p && p.canWrite === true && p.revoked !== true;
+
 // Обработчик открытия модалки заметки
 const handleOpenNoteModal = (proj: ProjectData) => {
   setEditingNoteProject(proj);
@@ -909,69 +919,64 @@ onBack: () => navigate('/objects'),
     },
   }}
 >
-{/* Верхняя строка: иконка, название, шестерёнка, процент */}
-<Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-  <DescriptionIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28 }} />
-<Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1, fontSize: { xs: '1.05rem', md: '1.15rem' } }}>
+{/* Верхняя строка: иконка, название (до 2 строк), меню действий */}
+<Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
+  <DescriptionIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28, mt: 0.25 }} />
+<Typography
+  variant="h6"
+  sx={{
+    fontWeight: 600,
+    flexGrow: 1,
+    minWidth: 0,
+    fontSize: { xs: '1.05rem', md: '1.15rem' },
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+  }}
+>
 {proj.name}
 </Typography>
+{/* ⭐ №188: все действия — в одной кнопке, как на «Объектах» */}
 <IconButton
-  size="small"
+  title="Действия с проектом"
+  aria-label="Действия с проектом"
   onClick={(e) => {
     e.stopPropagation();
-    handleOpenNoteModal(proj);
+    handleOpenActions(proj);
   }}
-  sx={{ mr: 1, color: proj.note ? '#1976d2' : 'inherit', bgcolor: 'action.hover' }}
+  sx={{ bgcolor: 'action.hover', width: 44, height: 44, ml: 0.5, mt: -0.5 }}
 >
-  <NoteAltIcon fontSize="small" />
+  <SettingsIcon />
 </IconButton>
-<IconButton
-  size="small"
-  title="Сохранить шаблон"
-  onClick={(e) => {
-    e.stopPropagation();
-    handleOpenSaveTemplate(proj);
-  }}
-  sx={{ mr: 1, color: '#7b1fa2', bgcolor: 'action.hover' }}
->
-  <SaveAltIcon fontSize="small" />
-</IconButton>
-<IconButton
-  size="small"
-  onClick={(e) => {
-    e.stopPropagation();
-    handleOpenEdit(proj);
-  }}
-  sx={{ mr: 1, bgcolor: 'action.hover' }}
->
-  <SettingsIcon fontSize="small" />
-</IconButton>
-  <Chip
-    label={`${proj.progressPercent ?? 0}%`}
-    size="small"
-    sx={{
-      bgcolor: (proj.progressPercent ?? 0) >= 100 ? '#4caf50' : '#1976d2',
-      color: 'white',
-      fontWeight: 'bold',
-    }}
-  />
 </Box>
 
-            {/* Прогресс-бар */}
-            <LinearProgress
-              variant="determinate"
-              value={Math.min(proj.progressPercent ?? 0, 100)}
-              sx={{
-                height: 10,
-                borderRadius: 5,
-                mb: 2,
-                bgcolor: '#e0e0e0',
-                '& .MuiLinearProgress-bar': {
-                  backgroundColor: (proj.progressPercent ?? 0) >= 100 ? '#4caf50' : '#1976d2',
+            {/* ⭐ №188: прогресс-бар + процент в одной строке */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <LinearProgress
+                variant="determinate"
+                value={Math.min(proj.progressPercent ?? 0, 100)}
+                sx={{
+                  flexGrow: 1,
+                  height: 10,
                   borderRadius: 5,
-                },
-              }}
-            />
+                  bgcolor: '#e0e0e0',
+                  '& .MuiLinearProgress-bar': {
+                    backgroundColor: (proj.progressPercent ?? 0) >= 100 ? '#4caf50' : '#1976d2',
+                    borderRadius: 5,
+                  },
+                }}
+              />
+              <Chip
+                label={`${proj.progressPercent ?? 0}%`}
+                size="small"
+                sx={{
+                  bgcolor: (proj.progressPercent ?? 0) >= 100 ? '#4caf50' : '#1976d2',
+                  color: 'white',
+                  fontWeight: 'bold',
+                }}
+              />
+            </Box>
 
 {/* Строка с датами и днями */}
 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1153,7 +1158,128 @@ onBack: () => navigate('/objects'),
     </Stack>
   </Paper>
 </Modal>
-      {/* Модалка сохранения шаблона (№129) */}
+      {/* ⭐ №188: действия с проектом — шит снизу на мобилке, крупные кнопки (как на «Объектах») */}
+    <Modal open={!!actionsProject} onClose={handleCloseActions}>
+      <Paper
+        sx={{
+          position: 'absolute',
+          left: '50%',
+          bottom: { xs: 0, sm: 'auto' },
+          top: { xs: 'auto', sm: '50%' },
+          transform: { xs: 'translateX(-50%)', sm: 'translate(-50%, -50%)' },
+          width: { xs: '100%', sm: 420 },
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          p: 3,
+          pb: { xs: 4, sm: 3 },
+          borderRadius: { xs: '16px 16px 0 0', sm: 3 },
+          outline: 'none',
+        }}
+      >
+        <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ mb: 0.5 }}>
+          {actionsProject?.name || 'Проект'}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+          Действия с проектом. Серые кнопки недоступны вашей роли.
+        </Typography>
+        {actionsProject && (
+          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 2 }}>
+            <Chip
+              size="small"
+              variant="outlined"
+              label={
+                actionsProject.canWrite === true
+                  ? '✍️ можно вносить данные'
+                  : '👁 только чтение'
+              }
+              sx={{ height: 22, fontSize: '0.72rem' }}
+            />
+            {actionsProject.revoked === true && (
+              <Chip
+                size="small"
+                variant="outlined"
+                color="error"
+                label="🔒 доступ отозван"
+                sx={{ height: 22, fontSize: '0.72rem' }}
+              />
+            )}
+          </Box>
+        )}
+
+        <Stack spacing={1}>
+          <Button
+            size="large"
+            fullWidth
+            variant="contained"
+            startIcon={<DescriptionIcon />}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) navigate(`/objects/${objectId}/projects/${p.id}/materials`);
+            }}
+          >
+            Открыть смету
+          </Button>
+
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<SaveAltIcon />}
+            disabled={!canEditProject(actionsProject)}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) handleOpenSaveTemplate(p);
+            }}
+          >
+            Сохранить шаблон сметы
+          </Button>
+
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<EditIcon />}
+            disabled={!canEditProject(actionsProject)}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) handleOpenEdit(p);
+            }}
+          >
+            Редактировать проект
+          </Button>
+
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<NoteAltIcon />}
+            disabled={!canEditProject(actionsProject)}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) handleOpenNoteModal(p);
+            }}
+          >
+            Заметка к проекту
+          </Button>
+
+          {!canEditProject(actionsProject) && (
+            <Typography variant="caption" color="text.secondary">
+              Изменения недоступны: нужны права записи (наблюдатель и отозванный доступ — только чтение).
+            </Typography>
+          )}
+
+          <Button size="large" fullWidth onClick={handleCloseActions} sx={{ mt: 1 }}>
+            Закрыть
+          </Button>
+        </Stack>
+      </Paper>
+    </Modal>
+
+    {/* Модалка сохранения шаблона (№129) */}
 <Modal open={saveTemplateModalOpen} onClose={handleCloseSaveTemplate} disableRestoreFocus={true}>
   <Paper sx={{
     position: 'absolute',

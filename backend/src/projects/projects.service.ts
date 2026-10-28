@@ -224,6 +224,10 @@ export class ProjectsService {
         effectiveCatalogId: p.catalog?.id ?? object.catalog?.id ?? null,
         effectiveCatalogName: p.catalog?.name ?? object.catalog?.name ?? null,
         catalogSource: p.catalog ? 'project' : object.catalog ? 'object' : null,
+        // ⭐ №188: права на проект — для серых кнопок в меню действий на фронте
+        canWrite: my.canWrite,
+        canManage: my.canManage,
+        revoked: my.revoked,
       };
     });
   }
