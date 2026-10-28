@@ -22,6 +22,7 @@ import { EstimateRecalcModule } from './estimate-recalc/estimate-recalc.module';
 import { AccessRequestModule } from './access-request/access-request.module'; // ⭐ №178
 import { ObjectTemplatesModule } from './object-templates/object-templates.module'; // ⭐ №175
 import { SnapshotsModule } from './snapshots/snapshots.module'; // ⭐ №194: снимок доступа
+import { ImportsModule } from './imports/imports.module'; // ⭐ №202: импорт сметы из Excel
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -48,6 +49,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module'; // ⭐ №194: �
     AccessRequestModule, // ⭐ №178: заявки на право создавать проекты
     ObjectTemplatesModule, // ⭐ №175: шаблоны объектов
     SnapshotsModule, // ⭐ №194: снимок доступа (только чтение)
+    ImportsModule, // ⭐ №202: импорт сметы из Excel
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -84,9 +84,11 @@ import { FAB_STYLE } from '../theme';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import PriceChangeIcon from '@mui/icons-material/PriceChange';
 // ⭐ №170: пересчёт сметы по справочнику цен (превью «было → станет» + откат)
 import { PriceRecalcModal } from '../components/PriceRecalcModal';
+import EstimateImportModal from '../components/EstimateImportModal'; // ⭐ №202: импорт сметы из Excel
 import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 
 // ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено».
@@ -453,6 +455,8 @@ const catalogLabel = (c: PriceCatalogData) => {
 // ⭐ Экспорт XLSX/PDF (клиентская генерация)
 const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
 const [exportModalOpen, setExportModalOpen] = useState(false);
+// ⭐ №202: импорт сметы из Excel
+const [importOpen, setImportOpen] = useState(false);
 // ⭐ Добавление позиций из шаблона сметы в текущий проект
 const [templateModalOpen, setTemplateModalOpen] = useState(false);
 const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
@@ -1217,6 +1221,13 @@ setSortAnchorEl(null);
   };
 
   // ⭐ Добавить позиции из шаблона сметы в текущую смету (кнопка в шапке и в мобильном меню)
+  // ⭐ №202: после импорта — перечитать смету и сказать, сколько создано
+  const handleImported = async (created: number, skipped: number) => {
+    if (projectId) setMaterials(await fetchMaterialsByProject(parseInt(projectId)));
+    if (created > 0) notify(`Импортировано позиций: ${created}${skipped ? `, пропущено: ${skipped}` : ''}`, 'success');
+    else notify('Ни одной строки не импортировано — проверьте предупреждения в файле', 'warning');
+  };
+
   const handleOpenTemplateModal = useCallback(async () => {
     setTemplateModalOpen(true);
     try {
@@ -1425,6 +1436,19 @@ setSortAnchorEl(null);
      считаются по факту. Фиксацию можно исправить 72 часа, остальное фиксируется навсегда.
    </SectionIntro>
 
+   {/* ⭐ №202: на мобилке импорт — кнопкой в контенте (шапку не трогаем) */}
+   {isMobile && !hidePrices && (
+     <Button
+       variant="outlined"
+       fullWidth
+       startIcon={<UploadFileIcon />}
+       onClick={() => setImportOpen(true)}
+       sx={{ mb: 1.5 }}
+     >
+       Импорт из Excel
+     </Button>
+   )}
+
    {/* Поиск и кнопка добавления (десктоп; мобилка — в хэдере) */}
    <Box sx={{ display: 'flex', gap: 1, mb: { xs: 0, md: 2 }, alignItems: 'center' }}>
         {!isMobile && (
@@ -1463,6 +1487,16 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
 </FormControl>
 )}
 
+{!isMobile && !hidePrices && (
+  <Button
+    variant="outlined"
+    startIcon={<UploadFileIcon />}
+    onClick={() => setImportOpen(true)}
+    sx={{ whiteSpace: 'nowrap' }}
+  >
+    Импорт Excel
+  </Button>
+)}
 {!isMobile && !hidePrices && (
   <Button
     variant="contained"
@@ -1511,6 +1545,16 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
   </Button>
 )}
       {/* ⭐ Модалка выбора формата экспорта */}
+      {/* ⭐ №202: импорт сметы из Excel */}
+      {projectId && (
+        <EstimateImportModal
+          open={importOpen}
+          projectId={parseInt(projectId)}
+          onClose={() => setImportOpen(false)}
+          onImported={(created, skipped) => void handleImported(created, skipped)}
+        />
+      )}
+
       <Modal open={exportModalOpen} onClose={() => setExportModalOpen(false)} disableRestoreFocus>
         <Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 320 }, p: 3, borderRadius: 2 }}>
           <Typography variant="h6" gutterBottom>Скачать</Typography>

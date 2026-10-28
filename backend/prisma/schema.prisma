@@ -84,6 +84,7 @@ model Project {
   warehouseTransactions WarehouseTransaction[] // ⭐ Складские списания на проект
   reports     Report[] // ⭐ Акты/сметы по проекту
   brigadeShifts BrigadeShift[] // ⭐ Выходы бригад на проекте
+  importBatches ImportBatch[] // ⭐ №202: партии импорта сметы из Excel
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   note        String?
@@ -149,7 +150,15 @@ model Material {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
+  // ⭐ №202 (RFC импорта): откуда строка пришла — партия, номер строки файла,
+  // ключ идемпотентности (повторный импорт того же файла не создаёт дубль)
+  importBatchId   Int?
+  importRowNumber Int?
+  externalKey     String? @db.VarChar(64)
+
+  @@unique([projectId, externalKey])
   @@index([projectId])
+  @@index([projectId, importBatchId])
   @@map("materials")
 }
 
@@ -377,6 +386,35 @@ model ObjectTemplateMaterial {
 // Создаётся в момент отзыва вместе с копиями-шаблонами.
 // Только чтение: ни один endpoint не меняет payload — это слепок «как было».
 // ============================================================
+// ============================================================
+// ИМПОРТ СМЕТЫ ИЗ EXCEL (№202, RFC docs/RFC-import-estimate.md)
+// Партия = журнал: предпросмотр хранится в preview (Json), commit пишет
+// строки сметы в одной транзакции, провенанс — в Material.importBatchId.
+// ============================================================
+model ImportBatch {
+  id              Int      @id @default(autoincrement())
+  projectId       Int
+  importedById    Int // метка автора (без FK: при удалении аккаунта не рушим журнал)
+  fileName        String?
+  fileHash        String?
+  templateVersion Int?
+  status          String   @default("PREVIEW") // PREVIEW|COMMITTING|COMMITTED|FAILED|CANCELLED
+  rowsTotal       Int      @default(0)
+  createdCount    Int      @default(0)
+  updatedCount    Int      @default(0)
+  skippedCount    Int      @default(0)
+  pricesCreated   Int      @default(0)
+  preview         Json?
+  report          Json?
+  createdAt       DateTime @default(now())
+  committedAt     DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@map("import_batches")
+}
+
 model AccessSnapshot {
   id          Int      @id @default(autoincrement())
   userId      Int // кому отозвали доступ (владелец снимка)
