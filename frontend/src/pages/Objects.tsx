@@ -1183,43 +1183,67 @@ trailing: headerTrailing,
                   />
                 </Box>
 
-                {/* ⭐ №185: все действия — в одной кнопке под процентом, справа.
-                    Недоступные действия не прячем, а показываем серыми в модалке. */}
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
+                {/* ⭐ №186: прогресс-бар сразу под названием, шестерёнка действий — справа в той же
+                    строке (крупная тап-зона 44×44). Недоступные действия не прячем — они серые в модалке. */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <LinearProgress
+                    variant="determinate"
+                    value={Math.min(progress, 100)}
+                    sx={{
+                      flexGrow: 1,
+                      height: 10,
+                      borderRadius: 5,
+                      bgcolor: '#e0e0e0',
+                      '& .MuiLinearProgress-bar': {
+                        backgroundColor: progress >= 100 ? '#4caf50' : '#1976d2',
+                        borderRadius: 5,
+                      },
+                    }}
+                  />
                   <IconButton
-                    size="small"
                     title="Действия с объектом"
                     aria-label="Действия с объектом"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleOpenActions(obj);
                     }}
-                    sx={{ bgcolor: 'action.hover' }}
+                    sx={{ bgcolor: 'action.hover', width: 44, height: 44, ml: 0.5 }}
                   >
-                    <SettingsIcon fontSize="small" />
+                    <SettingsIcon />
                   </IconButton>
                 </Box>
 
-                {/* Адрес */}
-                <Typography variant="body2" color="text.secondary" sx={{ mb: isMobile ? 1 : 2 }}>
-                  {obj.address}
-                </Typography>
-
-                {/* Прогресс-бар */}
-<LinearProgress
-  variant="determinate"
-  value={Math.min(progress, 100)}
-  sx={{
-    height: 10,
-    borderRadius: 5,
-    mb: isMobile ? 1.7 : 2,
-    bgcolor: '#e0e0e0',
-    '& .MuiLinearProgress-bar': {
-      backgroundColor: progress >= 100 ? '#4caf50' : '#1976d2',
-      borderRadius: 5,
-    },
-  }}
-/>
+                {/* Адрес + ⭐ №186: чип заметки (иконку убрали — без чипа заметку не видно) */}
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    flexWrap: 'wrap',
+                    mb: isMobile ? 1 : 2,
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ flexGrow: 1, minWidth: 0 }}
+                  >
+                    {obj.address}
+                  </Typography>
+                  {obj.note && (
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      color="primary"
+                      label="📝 заметка"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenNoteModal(obj);
+                      }}
+                      sx={{ height: 22, fontSize: '0.72rem' }}
+                    />
+                  )}
+                </Box>
 
 {/* Строка с датами и днями */}
 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1573,9 +1597,35 @@ trailing: headerTrailing,
         <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ mb: 0.5 }}>
           {actionsObject?.name || 'Объект'}
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
           Действия с объектом. Серые кнопки недоступны вашей роли.
         </Typography>
+        {/* ⭐ №186: сразу видно, почему часть кнопок серая */}
+        {act && (
+          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 2 }}>
+            <Chip
+              size="small"
+              variant="outlined"
+              label={`Вы: ${roleLabel(act.role as AccessRole)}`}
+              sx={{ height: 22, fontSize: '0.72rem' }}
+            />
+            <Chip
+              size="small"
+              variant="outlined"
+              label={act.hasObjectAccess === false ? '📁 только проект' : '🏗 весь объект'}
+              sx={{ height: 22, fontSize: '0.72rem' }}
+            />
+            {act.note && (
+              <Chip
+                size="small"
+                variant="outlined"
+                color="primary"
+                label="📝 есть заметка"
+                sx={{ height: 22, fontSize: '0.72rem' }}
+              />
+            )}
+          </Box>
+        )}
 
         <Stack spacing={1}>
           <Button
