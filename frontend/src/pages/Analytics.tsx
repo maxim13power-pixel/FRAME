@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import {
@@ -176,6 +177,11 @@ const Analytics: React.FC = () => {
           <MenuItem key={o.id} onClick={() => { setObjectFilter(o.id); setFilterAnchorEl(null); }}>{o.name}</MenuItem>
         ))}
       </Menu>
+      {/* ⭐ №197: одноразовая подсказка раздела */}
+      <SectionIntro id="analytics" version={1}>
+        Считается по объектам, где у вас есть доступ. «Бюджет» — смета, «Факт» — фиксации.
+        Демо-объект искажает цифры — его лучше убрать в архив.
+      </SectionIntro>
       <Stack spacing={2}>
         {error && <Alert severity="error">{error}</Alert>}
 

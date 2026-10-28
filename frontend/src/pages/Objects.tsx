@@ -36,6 +36,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { useNavigate } from 'react-router-dom';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import SettingsIcon from '@mui/icons-material/Settings';
 import PeopleIcon from '@mui/icons-material/People';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -154,6 +155,8 @@ const [inviteRole, setInviteRole] = useState<AccessRole>('FOREMAN');
 // ⭐ №163: область доступа — '' = весь объект, иначе конкретный проект
 const [inviteProjectId, setInviteProjectId] = useState<number | ''>('');
 const [accessProjects, setAccessProjects] = useState<ProjectData[]>([]);
+// ⭐ №197: «Команда проекта» — фильтр участников по области доступа
+const [memberScopeFilter, setMemberScopeFilter] = useState<'all' | 'object' | number>('all');
 // ⭐ Приглашение по ссылке (как в Google Docs)
 const [inviteTab, setInviteTab] = useState<'link' | 'direct'>('link');
 const [linkRole, setLinkRole] = useState<AccessRole>('FOREMAN');
@@ -413,6 +416,22 @@ const actCanArchive = !!act && act.accessId != null && act.hiddenForMe !== true;
 // ⭐ Текущая роль пользователя на объекте (для UI-подсказок в модалке)
 const myRole = accessObject?.role;
 
+// ⭐ №197: «Команда проекта» — отдельные участники проекта vs участники всего объекта.
+// Участник всего объекта видит все проекты, поэтому в команду проекта он входит неявно.
+const objectWideMembers = accessMembers.filter((m) => m.projectId == null);
+const scopedAccessMembers =
+  memberScopeFilter === 'all'
+    ? accessMembers
+    : memberScopeFilter === 'object'
+      ? objectWideMembers
+      : accessMembers.filter((m) => m.projectId === memberScopeFilter);
+const scopedProject =
+  typeof memberScopeFilter === 'number'
+    ? accessProjects.find((p) => p.id === memberScopeFilter) ?? null
+    : null;
+const projectMemberCount = (projectId: number) =>
+  accessMembers.filter((m) => m.projectId === projectId).length;
+
 // ⭐ Загрузить список участников
 const loadAccessMembers = async (objectId: number) => {
   if (!token) return;
@@ -638,6 +657,7 @@ const handleCloseAccess = () => {
   setInviteRole('FOREMAN');
   setInviteProjectId(''); // ⭐ №163
   setAccessProjects([]);
+  setMemberScopeFilter('all'); // ⭐ №197
   setInviteTab('link');
   setLinkRole('FOREMAN');
   setInviteHidePrices(false);
@@ -996,6 +1016,13 @@ trailing: headerTrailing,
 )}
 
   {/* ⭐ Переключатель Активные / Архив убран: архив теперь в шапке (иконка), Активные — вид по умолчанию */}
+
+  {/* ⭐ №197: одноразовая подсказка раздела (закрывается крестиком) */}
+  <SectionIntro id="objects" version={1}>
+    <b>Объект</b> — ваша стройка. Внутри — проекты со сметами. Нажмите на карточку, чтобы открыть
+    проекты; шестерёнка ⚙ — команда, шаблон, архив и правка. «Архив» справа в шапке — личный,
+    остальные участники его не видят.
+  </SectionIntro>
 
   {/* Панель поиска и добавления (десктоп) */}
   {!isMobile && (
@@ -2028,7 +2055,57 @@ trailing: headerTrailing,
               <Alert severity="info" sx={{ mb: 2 }}>Пока нет участников. Пригласите первого!</Alert>
             ) : (
               <Box sx={{ mb: 2 }}>
-                {accessMembers.map((member) => (
+                {/* ⭐ №197: «Команда проекта» — фильтр по области доступа.
+                    Клик по проекту сразу подставляет его в форму приглашения. */}
+                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1.5 }}>
+                  <Chip
+                    size="small"
+                    label={`Все: ${accessMembers.length}`}
+                    variant={memberScopeFilter === 'all' ? 'filled' : 'outlined'}
+                    color={memberScopeFilter === 'all' ? 'primary' : 'default'}
+                    onClick={() => setMemberScopeFilter('all')}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                  <Chip
+                    size="small"
+                    label={`🏗 Весь объект: ${objectWideMembers.length}`}
+                    variant={memberScopeFilter === 'object' ? 'filled' : 'outlined'}
+                    color={memberScopeFilter === 'object' ? 'primary' : 'default'}
+                    onClick={() => {
+                      setMemberScopeFilter('object');
+                      setInviteProjectId('');
+                    }}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                  {accessProjects.map((project) => (
+                    <Chip
+                      key={project.id}
+                      size="small"
+                      label={`📁 ${project.name}: ${projectMemberCount(project.id)}`}
+                      variant={memberScopeFilter === project.id ? 'filled' : 'outlined'}
+                      color={memberScopeFilter === project.id ? 'primary' : 'default'}
+                      onClick={() => {
+                        setMemberScopeFilter(project.id);
+                        setInviteProjectId(project.id);
+                      }}
+                      sx={{ cursor: 'pointer' }}
+                    />
+                  ))}
+                </Box>
+
+                {scopedProject && (
+                  <Alert severity="info" icon={false} sx={{ mb: 1.5 }}>
+                    Команда проекта «{scopedProject.name}». Участники всего объекта
+                    ({objectWideMembers.length}) тоже видят этот проект — они в разделе «Весь объект».
+                  </Alert>
+                )}
+                {scopedAccessMembers.length === 0 && (
+                  <Alert severity="info" sx={{ mb: 1.5 }}>
+                    Отдельных участников у проекта нет — доступ есть у участников всего объекта.
+                  </Alert>
+                )}
+
+                {scopedAccessMembers.map((member) => (
                   <Box
                     key={member.id}
                     sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5, mb: 1, bgcolor: '#f5f7fa', borderRadius: 2 }}

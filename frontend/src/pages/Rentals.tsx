@@ -39,6 +39,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { FAB_STYLE } from '../theme';
 import ConfirmDialog from '../components/ConfirmDialog';
+import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import { getApiErrorMessage } from '../utils/errors';
 import { parseDecimal } from '../utils/decimal'; // 🔒 P1-3: Decimal с бэкенда — строка
 
@@ -411,6 +412,12 @@ const Rentals: React.FC = () => {
         <MenuItem onClick={() => { setSortBy('name'); setSortAnchorEl(null); }}>По названию А-Я</MenuItem>
         <MenuItem onClick={() => { setSortBy('price'); setSortAnchorEl(null); }}>По сумме (сначала больше)</MenuItem>
       </Menu>
+
+      {/* ⭐ №197: одноразовая подсказка раздела */}
+      <SectionIntro id="rentals" version={1}>
+        <b>Аренда</b> — личный учёт оборудования: срок, сумма, кому и зачем. Видно только вам.
+        Ближайшие окончания — сверху, если выбрать такую сортировку.
+      </SectionIntro>
 
       {/* Заголовок для десктопа + кнопка «в главное меню» */}
       {!isMobile && (

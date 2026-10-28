@@ -59,6 +59,7 @@ import {
 } from '../services/priceListService';
 import type { PriceCategoryData, PriceCatalogData, PriceItemData } from '../services/priceListService';
 import PriceCatalogList from '../components/PriceCatalogList';
+import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import { getApiErrorText } from '../utils/errors';
 
 // Единицы измерения — точно как в Materials.tsx (единообразие)
@@ -544,6 +545,12 @@ const PriceListInner: React.FC = () => {
           <Tab icon={<Inventory2Icon />} iconPosition="start" label="Цены на материалы" value="MATERIAL" />
         </Tabs>
       )}
+
+      {/* ⭐ №197: одноразовая подсказка раздела */}
+      <SectionIntro id="price-items" version={1}>
+        Категории сворачиваются кликом по заголовку. Шестерёнка ⚙ у категории — переименовать
+        или удалить, у расценки — правка. На телефоне новая расценка добавляется кнопкой «$ +».
+      </SectionIntro>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 

@@ -15,6 +15,7 @@ import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import { FAB_STYLE } from '../theme';
 import {
   fetchWarehouseItems, fetchWarehouseItem, createWarehouseItem,
@@ -420,6 +421,11 @@ const Warehouse: React.FC = () => {
       ) : (
         <>
           <Stack spacing={2}>
+            {/* ⭐ №197: одноразовая подсказка раздела */}
+            <SectionIntro id="warehouse" version={1}>
+              <b>Склад</b> — позиции объекта и общий склад. Приход и списание меняют остаток,
+              каждая операция остаётся в истории. Шестерёнка ⚙ на карточке — все действия.
+            </SectionIntro>
             {!isMobile && (
               <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                 <TextField

@@ -53,6 +53,7 @@ import type { ObjectData } from '../services/objectService';
 import { fetchAccessList, addAccess } from '../services/accessService';
 import type { AccessMember } from '../services/accessService';
 import ConfirmDialog from '../components/ConfirmDialog';
+import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import { updateObjectEndDate } from '../services/objectService';
 // ⭐ №178: заявка на право создавать проекты в объекте
 import {
@@ -876,6 +877,12 @@ onBack: () => navigate('/objects'),
     <MenuItem onClick={() => { setSortBy('endDate'); setSortAnchorEl(null); }}>По сроку (ближайшие)</MenuItem>
     <MenuItem onClick={() => { setSortBy('progress'); setSortAnchorEl(null); }}>По проценту %</MenuItem>
   </Menu>
+
+      {/* ⭐ №197: одноразовая подсказка раздела */}
+      <SectionIntro id="projects" version={1}>
+        <b>Проект</b> — часть объекта со своей сметой. Нажмите на карточку, чтобы открыть материалы;
+        шестерёнка ⚙ собирает все действия — серые кнопки недоступны вашей роли.
+      </SectionIntro>
 
       {/* Десктоп: панель поиска, сортировки и кнопки добавления */}
       {!isMobile && (

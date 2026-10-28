@@ -21,6 +21,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import { FAB_STYLE } from '../theme';
 import {
   fetchBrigades, fetchBrigade, createBrigade, updateBrigade, deleteBrigade,
@@ -797,6 +798,11 @@ const Brigades: React.FC = () => {
       ) : (
         <>
           <Stack spacing={2}>
+            {/* ⭐ №197: одноразовая подсказка раздела */}
+            <SectionIntro id="brigades" version={1}>
+              <b>Бригада</b> — состав и выходы по датам. Внутри карточки можно отметить, кто выходил
+              и по сколько часов; шестерёнка ⚙ на карточке открывает действия.
+            </SectionIntro>
             {!isMobile && (
               <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                 <TextField

@@ -87,6 +87,7 @@ import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import PriceChangeIcon from '@mui/icons-material/PriceChange';
 // ⭐ №170: пересчёт сметы по справочнику цен (превью «было → станет» + откат)
 import { PriceRecalcModal } from '../components/PriceRecalcModal';
+import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 
 // ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено».
 const BOTTOM_NAV_HEIGHT = 56; // высота BottomNav (MUI BottomNavigation по умолчанию)
@@ -1416,6 +1417,12 @@ setSortAnchorEl(null);
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+   {/* ⭐ №197: одноразовая подсказка раздела */}
+   <SectionIntro id="materials" version={1}>
+     <b>Смета проекта</b>: «План» — спецификация, «Факт» — сумма фиксаций. Процент и стоимость
+     считаются по факту. Фиксацию можно исправить 72 часа, остальное фиксируется навсегда.
+   </SectionIntro>
 
    {/* Поиск и кнопка добавления (десктоп; мобилка — в хэдере) */}
    <Box sx={{ display: 'flex', gap: 1, mb: { xs: 0, md: 2 }, alignItems: 'center' }}>
