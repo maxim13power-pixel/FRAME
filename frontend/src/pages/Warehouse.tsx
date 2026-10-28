@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, TextField, InputAdornment, Button, Modal, Stack,
   Fab, useMediaQuery, useTheme, CircularProgress, Alert, Chip, IconButton,
-  Menu, MenuItem, Select, FormControl, InputLabel, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Tooltip, Divider,
+  Menu, MenuItem, Select, FormControl, InputLabel, Tooltip, Divider,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
@@ -60,6 +59,8 @@ const Warehouse: React.FC = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [editItem, setEditItem] = useState<WarehouseItemData | null>(null);
   const [deletingItem, setDeletingItem] = useState<WarehouseItemData | null>(null);
+  // ⭐ №196: шестерёнка на карточке — все действия в одном шите (как в «Объектах»)
+  const [actionsItem, setActionsItem] = useState<WarehouseItemData | null>(null);
   const [txMode, setTxMode] = useState<WarehouseTransactionType | null>(null);
   const [txItem, setTxItem] = useState<WarehouseItemData | null>(null);
   const [saving, setSaving] = useState(false);
@@ -476,56 +477,72 @@ const Warehouse: React.FC = () => {
                   Склад пуст. Нажмите + чтобы добавить первую позицию.
                 </Typography>
               </Paper>
-            ) : isMobile ? (
-              <Stack spacing={1}>
+            ) : (
+              // ⭐ №196: карточки как в «Объектах»/«Проектах» — на всех разрешениях
+              <Stack spacing={isMobile ? 1 : 2}>
                 {items.map((item) => (
-                  <Paper key={item.id} sx={{ p: 1.5, borderRadius: 2, cursor: 'pointer' }} onClick={() => openDetail(item)}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                      <InventoryIcon sx={{ color: '#1976d2', fontSize: 22 }} />
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>{item.name}</Typography>
-                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); openEdit(item); }} sx={{ bgcolor: 'action.hover' }}>
-                        <SettingsIcon fontSize="small" />
+                  <Paper
+                    key={item.id}
+                    elevation={2}
+                    sx={{
+                      p: isMobile ? 1.5 : 3,
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                      transition: 'box-shadow 0.3s, transform 0.3s',
+                      '&:hover': { boxShadow: 6, transform: 'scale(1.01)' },
+                    }}
+                    onClick={() => openDetail(item)}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
+                      <InventoryIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28, mt: 0.25 }} />
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          fontWeight: 600,
+                          flexGrow: 1,
+                          minWidth: 0,
+                          fontSize: { xs: '1.05rem', md: '1.15rem' },
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {item.name}
+                      </Typography>
+                      <IconButton
+                        title="Действия с позицией"
+                        aria-label="Действия с позицией"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActionsItem(item);
+                        }}
+                        sx={{ bgcolor: 'action.hover', width: 44, height: 44, ml: 0.5, mt: -0.5 }}
+                      >
+                        <SettingsIcon />
                       </IconButton>
                     </Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.5 }}>
+                      {item.category && (
+                        <Chip size="small" variant="outlined" label={item.category} />
+                      )}
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        color={item.object ? 'primary' : 'default'}
+                        label={item.object ? item.object.name : 'общий склад'}
+                      />
+                    </Box>
+                    <Typography variant="body2" color="text.secondary">
                       Остаток: {fmtQty(item.quantity)} {item.unit}
-                      {item.price != null ? ` • ${fmtMoney(item.price)} ₽` : ''}
-                      {item.object ? ` • ${item.object.name}` : ''}
+                      {item.price != null ? ` · ${fmtMoney(item.price)} ₽` : ''}
+                      {item.price != null
+                        ? ` · сумма ${fmtMoney(parseDecimal(item.price) * parseDecimal(item.quantity))} ₽`
+                        : ''}
                     </Typography>
                   </Paper>
                 ))}
               </Stack>
-            ) : (
-              <TableContainer component={Paper}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Название</TableCell>
-                      <TableCell>Категория</TableCell>
-                      <TableCell align="right">Остаток</TableCell>
-                      <TableCell align="right">Цена</TableCell>
-                      <TableCell align="right">Сумма</TableCell>
-                      <TableCell align="center"></TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {items.map((item) => (
-                      <TableRow key={item.id} hover onClick={() => openDetail(item)} sx={{ cursor: 'pointer' }}>
-                        <TableCell>{item.name}</TableCell>
-                        <TableCell>{item.category || '—'}</TableCell>
-                        <TableCell align="right">{fmtQty(item.quantity)} {item.unit}</TableCell>
-                        <TableCell align="right">{item.price != null ? `${fmtMoney(item.price)} ₽` : '—'}</TableCell>
-                        <TableCell align="right">{item.price != null ? `${fmtMoney(item.price * item.quantity)} ₽` : '—'}</TableCell>
-                        <TableCell align="center">
-                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); openEdit(item); }} sx={{ bgcolor: 'action.hover' }}>
-                            <SettingsIcon fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
             )}
 
             {items.length > 0 && (
@@ -536,6 +553,127 @@ const Warehouse: React.FC = () => {
           </Stack>
         </>
       )}
+
+      {/* ⭐ №196: действия с позицией — шит как в «Объектах»/«Проектах» */}
+      <Modal open={!!actionsItem} onClose={() => setActionsItem(null)}>
+        <Paper
+          sx={{
+            position: 'absolute',
+            left: '50%',
+            bottom: { xs: 0, sm: 'auto' },
+            top: { xs: 'auto', sm: '50%' },
+            transform: { xs: 'translateX(-50%)', sm: 'translate(-50%, -50%)' },
+            width: { xs: '100%', sm: 420 },
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            p: 3,
+            pb: { xs: 4, sm: 3 },
+            borderRadius: { xs: '16px 16px 0 0', sm: 3 },
+            outline: 'none',
+          }}
+        >
+          <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ mb: 0.5 }}>
+            {actionsItem?.name || 'Позиция'}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+            Действия со складской позицией. Операции меняют остаток.
+          </Typography>
+          {actionsItem && (
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 2 }}>
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`остаток: ${fmtQty(actionsItem.quantity)} ${actionsItem.unit}`}
+                sx={{ height: 22, fontSize: '0.72rem' }}
+              />
+              {actionsItem.category && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={actionsItem.category}
+                  sx={{ height: 22, fontSize: '0.72rem' }}
+                />
+              )}
+              <Chip
+                size="small"
+                variant="outlined"
+                color={actionsItem.object ? 'primary' : 'default'}
+                label={actionsItem.object ? actionsItem.object.name : 'общий склад'}
+                sx={{ height: 22, fontSize: '0.72rem' }}
+              />
+            </Box>
+          )}
+
+          <Stack spacing={1}>
+            <Button
+              size="large"
+              fullWidth
+              variant="outlined"
+              startIcon={<InventoryIcon />}
+              onClick={() => {
+                const it = actionsItem;
+                setActionsItem(null);
+                if (it) void openDetail(it);
+              }}
+            >
+              Открыть позицию
+            </Button>
+            <Button
+              size="large"
+              fullWidth
+              variant="outlined"
+              startIcon={<SettingsIcon />}
+              onClick={() => {
+                const it = actionsItem;
+                setActionsItem(null);
+                if (it) openEdit(it);
+              }}
+            >
+              Редактировать
+            </Button>
+            <Button
+              size="large"
+              fullWidth
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={() => {
+                const it = actionsItem;
+                setActionsItem(null);
+                if (it) void openTx('income', it);
+              }}
+            >
+              Приход
+            </Button>
+            <Button
+              size="large"
+              fullWidth
+              variant="outlined"
+              startIcon={<DeleteIcon />}
+              onClick={() => {
+                const it = actionsItem;
+                setActionsItem(null);
+                if (it) void openTx('expense', it);
+              }}
+            >
+              Списать на проект
+            </Button>
+            <Button
+              size="large"
+              fullWidth
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={() => {
+                const it = actionsItem;
+                setActionsItem(null);
+                if (it) setDeletingItem(it);
+              }}
+            >
+              Удалить позицию
+            </Button>
+          </Stack>
+        </Paper>
+      </Modal>
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)}>
         <Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 460 }, maxWidth: 460, p: 3, borderRadius: 2, outline: 'none', maxHeight: '90vh', overflowY: 'auto' }}>

@@ -87,6 +87,8 @@ const Brigades: React.FC = () => {
   const [bObjectId, setBObjectId] = useState<number | ''>('');
   const [bComment, setBComment] = useState('');
   const [deletingBrigade, setDeletingBrigade] = useState(false);
+  // ⭐ №196: шестерёнка на карточке — все действия в одном шите (как в «Объектах»)
+  const [actionsBrigade, setActionsBrigade] = useState<BrigadeData | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -831,59 +833,177 @@ const Brigades: React.FC = () => {
               <Paper sx={{ p: 4, textAlign: 'center' }}>
                 <Typography color="text.secondary">Бригад пока нет. Создайте первую бригаду.</Typography>
               </Paper>
-            ) : isMobile ? (
-              <Stack spacing={1}>
+            ) : (
+              // ⭐ №196: карточки как в «Объектах»/«Проектах» — на всех разрешениях
+              <Stack spacing={isMobile ? 1 : 2}>
                 {brigades.map((b) => (
-                  <Paper key={b.id} sx={{ p: 1.5, borderRadius: 2, cursor: 'pointer' }} onClick={() => openDetail(b)}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                      <GroupsIcon sx={{ color: '#1976d2', fontSize: 22 }} />
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>{b.name}</Typography>
-                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); openEdit(b); }} sx={{ bgcolor: 'action.hover' }}>
-                        <SettingsIcon fontSize="small" />
+                  <Paper
+                    key={b.id}
+                    elevation={2}
+                    sx={{
+                      p: isMobile ? 1.5 : 2.5,
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                      transition: 'box-shadow 0.3s, transform 0.3s',
+                      '&:hover': { boxShadow: 6, transform: 'scale(1.01)' },
+                    }}
+                    onClick={() => openDetail(b)}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
+                      <GroupsIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28, mt: 0.25 }} />
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          fontWeight: 600,
+                          flexGrow: 1,
+                          minWidth: 0,
+                          fontSize: { xs: '1.05rem', md: '1.15rem' },
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {b.name}
+                      </Typography>
+                      <IconButton
+                        title="Действия с бригадой"
+                        aria-label="Действия с бригадой"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActionsBrigade(b);
+                        }}
+                        sx={{ bgcolor: 'action.hover', width: 44, height: 44, ml: 0.5, mt: -0.5 }}
+                      >
+                        <SettingsIcon />
                       </IconButton>
                     </Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      {b.specialty || 'Без специализации'} • {b._count?.members ?? 0} чел.
-                      {b.shifts && b.shifts.length > 0 ? ` • Последний выход: ${b.shifts[0].date}` : ''}
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.5 }}>
+                      {b.specialty && (
+                        <Chip size="small" variant="outlined" color="primary" label={b.specialty} />
+                      )}
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={`${b._count?.members ?? 0} чел.`}
+                      />
+                      {b.foremanName && (
+                        <Chip size="small" variant="outlined" label={`бригадир: ${b.foremanName}`} />
+                      )}
+                    </Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {b.shifts && b.shifts.length > 0
+                        ? `Последний выход: ${b.shifts[0].date}`
+                        : 'Выходов ещё не было'}
                     </Typography>
                   </Paper>
                 ))}
               </Stack>
-            ) : (
-              <TableContainer component={Paper}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Название</TableCell>
-                      <TableCell>Специальность</TableCell>
-                      <TableCell>Бригадир</TableCell>
-                      <TableCell align="center">Чел.</TableCell>
-                      <TableCell>Последний выход</TableCell>
-                      <TableCell align="center"></TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {brigades.map((b) => (
-                      <TableRow key={b.id} hover onClick={() => openDetail(b)} sx={{ cursor: 'pointer' }}>
-                        <TableCell>{b.name}</TableCell>
-                        <TableCell>{b.specialty || '—'}</TableCell>
-                        <TableCell>{b.foremanName || '—'}</TableCell>
-                        <TableCell align="center">{b._count?.members ?? 0}</TableCell>
-                        <TableCell>{b.shifts && b.shifts.length > 0 ? b.shifts[0].date : '—'}</TableCell>
-                        <TableCell align="center">
-                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); openEdit(b); }} sx={{ bgcolor: 'action.hover' }}>
-                            <SettingsIcon fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
             )}
           </Stack>
         </>
       )}
+
+      {/* ⭐ №196: действия с бригадой — шит как в «Объектах»/«Проектах» */}
+      <Modal open={!!actionsBrigade} onClose={() => setActionsBrigade(null)}>
+        <Paper
+          sx={{
+            position: 'absolute',
+            left: '50%',
+            bottom: { xs: 0, sm: 'auto' },
+            top: { xs: 'auto', sm: '50%' },
+            transform: { xs: 'translateX(-50%)', sm: 'translate(-50%, -50%)' },
+            width: { xs: '100%', sm: 420 },
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            p: 3,
+            pb: { xs: 4, sm: 3 },
+            borderRadius: { xs: '16px 16px 0 0', sm: 3 },
+            outline: 'none',
+          }}
+        >
+          <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ mb: 0.5 }}>
+            {actionsBrigade?.name || 'Бригада'}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+            Действия с бригадой. Выходы и состав — внутри карточки бригады.
+          </Typography>
+          {actionsBrigade && (
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 2 }}>
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`${actionsBrigade._count?.members ?? 0} чел.`}
+                sx={{ height: 22, fontSize: '0.72rem' }}
+              />
+              {actionsBrigade.specialty && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  color="primary"
+                  label={actionsBrigade.specialty}
+                  sx={{ height: 22, fontSize: '0.72rem' }}
+                />
+              )}
+              {actionsBrigade.foremanName && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={`бригадир: ${actionsBrigade.foremanName}`}
+                  sx={{ height: 22, fontSize: '0.72rem' }}
+                />
+              )}
+            </Box>
+          )}
+
+          <Stack spacing={1}>
+            <Button
+              size="large"
+              fullWidth
+              variant="outlined"
+              startIcon={<GroupsIcon />}
+              onClick={() => {
+                const b = actionsBrigade;
+                setActionsBrigade(null);
+                if (b) void openDetail(b);
+              }}
+            >
+              Открыть бригаду
+            </Button>
+            <Button
+              size="large"
+              fullWidth
+              variant="outlined"
+              startIcon={<SettingsIcon />}
+              onClick={() => {
+                const b = actionsBrigade;
+                setActionsBrigade(null);
+                if (b) openEdit(b);
+              }}
+            >
+              Редактировать
+            </Button>
+            <Button
+              size="large"
+              fullWidth
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={() => {
+                const b = actionsBrigade;
+                setActionsBrigade(null);
+                if (b) {
+                  // подтверждение использует selectedBrigade — выставляем перед открытием
+                  setSelectedBrigade(b);
+                  setDeletingBrigade(true);
+                }
+              }}
+            >
+              Удалить бригаду
+            </Button>
+          </Stack>
+        </Paper>
+      </Modal>
 
       <Modal open={createOpen || editOpen} onClose={() => { setCreateOpen(false); setEditOpen(false); }}>
         <Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 460 }, maxWidth: 460, p: 3, borderRadius: 2, outline: 'none', maxHeight: '90vh', overflowY: 'auto' }}>
