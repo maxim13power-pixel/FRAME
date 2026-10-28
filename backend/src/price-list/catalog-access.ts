@@ -109,3 +109,21 @@ export async function loadCatalogAccess(
 
   return { catalog, canRead, canWrite, ...bindings };
 }
+
+/**
+ * ⭐ №191 (F6): расценка, которую пользователь имеет право ВИДЕТЬ.
+ * Возвращает null, если расценки нет ИЛИ её справочник пользователю недоступен —
+ * вызывающий отдаёт «не найдено» с тем же текстом, чтобы не подтверждать существование
+ * чужого id (иначе участник чужого проекта подставлял id закрытой расценки и получал цену).
+ */
+export async function findVisiblePriceItem(
+  prisma: PrismaService,
+  priceItemId: number,
+  userId: number,
+) {
+  const item = await prisma.priceItem.findUnique({ where: { id: priceItemId } });
+  if (!item) return null;
+  const access = await loadCatalogAccess(prisma, item.catalogId, userId);
+  if (!access?.canRead) return null;
+  return item;
+}

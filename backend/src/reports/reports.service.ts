@@ -9,6 +9,7 @@ import {
 import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
+import { findVisiblePriceItem } from '../price-list/catalog-access'; // ⭐ №191 (F6)
 import { CreateReportDto } from './dto/create-report.dto';
 import { UpdateReportDto } from './dto/update-report.dto';
 import { AddReportItemDto } from './dto/add-report-item.dto';
@@ -117,8 +118,10 @@ export class ReportsService {
     return { report, access };
   }
 
-  private async resolvePriceItem(materialId: number) {
-    const item = await this.prisma.priceItem.findUnique({ where: { id: materialId } });
+  private async resolvePriceItem(materialId: number, userId: number) {
+    // ⭐ №191 (F6): расценка должна быть из справочника, который пользователь видит.
+    // «Не найдено» — тот же ответ, что и для несуществующего id (не подтверждаем чужой id).
+    const item = await findVisiblePriceItem(this.prisma, materialId, userId);
     if (!item) {
       throw new BadRequestException('Позиция справочника цен не найдена');
     }
@@ -312,7 +315,7 @@ export class ReportsService {
     let price: number;
 
     if (dto.materialId != null) {
-      const pi = await this.resolvePriceItem(dto.materialId);
+      const pi = await this.resolvePriceItem(dto.materialId, userId);
       name = pi.name;
       unit = pi.unit;
       price = pi.price;
@@ -366,7 +369,7 @@ export class ReportsService {
       let price = Number(existing.price);
 
       if (dto.materialId != null) {
-        const pi = await this.resolvePriceItem(dto.materialId);
+        const pi = await this.resolvePriceItem(dto.materialId, userId);
         name = pi.name;
         unit = pi.unit;
         price = pi.price;

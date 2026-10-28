@@ -13,7 +13,7 @@ import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
-import { loadCatalogAccess } from '../price-list/catalog-access'; // ⭐ №164
+import { loadCatalogAccess, findVisiblePriceItem } from '../price-list/catalog-access'; // ⭐ №164, №191
 import {
   FIX_EDIT_WINDOW_MS,
   FIX_WINDOW_DAYS,
@@ -167,6 +167,21 @@ export class MaterialsService {
     });
   }
 
+  // ⭐ №191 (F6): id расценки приходит из body — проверяем, что её справочник доступен.
+  // Без этого участник чужого проекта подставлял id закрытой расценки и получал её цену
+  // в снапшоте материала (unitPrice / materialUnitPrice).
+  private async assertPriceItemsVisible(
+    userId: number | undefined,
+    ids: (number | undefined)[],
+  ) {
+    if (!userId) return; // внутренние вызовы без пользователя (seed/demo)
+    for (const id of ids) {
+      if (id == null) continue;
+      const item = await findVisiblePriceItem(this.prisma, id, userId);
+      if (!item) throw new NotFoundException('Расценка не найдена');
+    }
+  }
+
   // Создание материала (+ snapshot цен работы и материала)
   async create(dto: CreateMaterialDto, userId: number) {
     // ⭐ Проверяем доступ к проекту (заодно получаем запись доступа)
@@ -177,9 +192,12 @@ export class MaterialsService {
     }
     let unitPrice = 0;
     if (dto.priceItemId) {
-      const priceItem = await this.prisma.priceItem.findUnique({
-        where: { id: dto.priceItemId },
-      });
+      // ⭐ №191 (F6): расценка берётся только из справочника, который пользователь видит
+      const priceItem = await findVisiblePriceItem(
+        this.prisma,
+        dto.priceItemId,
+        userId,
+      );
       if (!priceItem) throw new NotFoundException('Расценка не найдена');
       if (!priceItem.isActive)
         throw new BadRequestException('Выбранная расценка неактивна');
@@ -187,9 +205,11 @@ export class MaterialsService {
     }
     let materialUnitPrice = 0;
     if (dto.materialItemId) {
-      const materialItem = await this.prisma.priceItem.findUnique({
-        where: { id: dto.materialItemId },
-      });
+      const materialItem = await findVisiblePriceItem(
+        this.prisma,
+        dto.materialItemId,
+        userId,
+      );
       if (!materialItem)
         throw new NotFoundException('Расценка материала не найдена');
       if (!materialItem.isActive)
@@ -535,6 +555,11 @@ export class MaterialsService {
           'Наблюдатель не может редактировать материалы',
         );
       }
+      // ⭐ №191 (F6): сменить расценку можно только на видимую в справочнике
+      await this.assertPriceItemsVisible(userId, [
+        dto.priceItemId === null ? undefined : dto.priceItemId,
+        dto.materialItemId === null ? undefined : dto.materialItemId,
+      ]);
     }
 
     // 🔒 P1-2 (гонки): вся логика внутри транзакции с SELECT ... FOR UPDATE на
