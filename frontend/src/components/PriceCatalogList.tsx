@@ -30,10 +30,11 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import UnarchiveIcon from '@mui/icons-material/Unarchive';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import LibraryAddIcon from '@mui/icons-material/LibraryAdd';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 import SearchIcon from '@mui/icons-material/Search';
+import SettingsIcon from '@mui/icons-material/Settings';
 import SortIcon from '@mui/icons-material/Sort';
 import SectionIntro from './SectionIntro'; // ⭐ №179: одноразовая подсказка раздела
 import { FAB_STYLE } from '../theme';
@@ -81,6 +82,8 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
   const [search, setSearch] = useState('');
   // ⭐ №179: архив справочников — как у объектов (кнопка «Архив» в шапке + возврат)
   const [showArchived, setShowArchived] = useState(false);
+  // ⭐ №195: шестерёнка на карточке — все действия в одном шите (как в «Объектах»)
+  const [actionsCatalog, setActionsCatalog] = useState<PriceCatalogData | null>(null);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   // ⭐ №179: сортировка списка (архив → сортировка → поиск, как в «Объектах»)
   const [sortBy, setSortBy] = useState<'name' | 'newest' | 'items'>('name');
@@ -368,7 +371,7 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
             placeholder="Поиск: справочник, объект или проект"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            sx={{ flexGrow: 1, bgcolor: '#fff', borderRadius: 1 }}
+            sx={{ flexGrow: 1 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -414,124 +417,89 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
 
       <Box sx={{ mb: 2 }}>
         {/* ⭐ №179: одноразовая подсказка раздела (закрывается крестиком, больше не мешает) */}
-        <SectionIntro id="price-catalogs" version={3}>
+        <SectionIntro id="price-catalogs" version={4}>
           <b>Справочник</b> — отдельный набор расценок под конкретный объект или тип работ
           («Квартиры/Коттеджи», «Склад X5»). Внутри — свои категории, работы и материалы.
-          Нажмите на справочник, чтобы открыть расценки. Архивировать можно кнопкой 🗄 на карточке —
-          вернуть потом через «Архив» в шапке.
+          Нажмите на справочник, чтобы открыть расценки. Все действия — в шестерёнке ⚙ на карточке;
+          архивные возвращаются через «Архив» в шапке.
         </SectionIntro>
       </Box>
 
-      <Stack spacing={1}>
+      <Stack spacing={isMobile ? 1 : 2}>
         {visibleCatalogs.map((catalog) => (
           <Paper
             key={catalog.id}
-            elevation={0}
+            elevation={2}
             sx={{
-              p: 2,
-              borderRadius: 2,
-              border: '1px solid #e0e0e0',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1.5,
+              p: isMobile ? 1.5 : 3,
+              borderRadius: 3,
               cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              '&:hover': {
-                borderColor: '#1976d2',
-                boxShadow: '0 6px 18px rgba(25,118,210,0.16)',
-                transform: 'translateY(-2px)',
-              },
-              '&:active': { transform: 'translateY(0) scale(0.995)' },
+              transition: 'box-shadow 0.3s, transform 0.3s',
+              '&:hover': { boxShadow: 6, transform: 'scale(1.01)' },
             }}
             onClick={() => navigate(`/price-list/${catalog.id}`)}
           >
-            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-              <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
-                <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#04164b' }} noWrap>
-                  {catalog.name}
-                </Typography>
-                {catalog.isSystem && (
-                  <Chip label="системный" size="small" sx={{ bgcolor: '#e3f2fd', color: '#1565c0' }} />
-                )}
-                {catalog.scope === 'object' && (
-                  <Chip
-                    label={`объект: ${catalog.objectName ?? '—'}`}
-                    size="small"
-                    sx={{ bgcolor: '#e8f5e9', color: '#2e7d32' }}
-                  />
-                )}
-                {catalog.scope === 'project' && (
-                  <Chip
-                    label={`проект: ${catalog.projectName ?? '—'}`}
-                    size="small"
-                    sx={{ bgcolor: '#fff3e0', color: '#ef6c00' }}
-                  />
-                )}
-                {catalog.scope === 'personal' && (
-                  <Chip label="личный" size="small" sx={{ bgcolor: '#eceff1', color: '#455a64' }} />
-                )}
-                {catalog.canWrite === false && (
-                  <Chip label="только чтение" size="small" variant="outlined" />
-                )}
-              </Stack>
-              <Typography variant="caption" color="text.secondary">
-                расценок: {catalog.itemsCount} · проектов: {catalog.projectsCount}
-                {catalog.scope === 'object' ? ' · справочник объекта' : ''}
+            {/* ⭐ №195: схема как на «Объектах»: иконка, название, шестерёнка действий */}
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
+              <MenuBookIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28, mt: 0.25 }} />
+              <Typography
+                variant="h6"
+                sx={{
+                  fontWeight: 600,
+                  flexGrow: 1,
+                  minWidth: 0,
+                  fontSize: { xs: '1.05rem', md: '1.15rem' },
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {catalog.name}
               </Typography>
-            </Box>
-
-            {catalog.isArchived ? (
-              // ⭐ №179: архивный справочник — только «Вернуть», без правок и копирования
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<UnarchiveIcon />}
-                disabled={catalog.canWrite === false}
+              <IconButton
+                title="Действия со справочником"
+                aria-label="Действия со справочником"
                 onClick={(e) => {
                   e.stopPropagation();
-                  void handleRestore(catalog);
+                  setActionsCatalog(catalog);
                 }}
-                sx={{ whiteSpace: 'nowrap' }}
+                sx={{ bgcolor: 'action.hover', width: 44, height: 44, ml: 0.5, mt: -0.5 }}
               >
-                Вернуть
-              </Button>
-            ) : (
-              <>
-                <IconButton
+                <SettingsIcon />
+              </IconButton>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.5 }}>
+              {catalog.isSystem && (
+                <Chip label="системный" size="small" variant="outlined" color="primary" />
+              )}
+              {catalog.scope === 'object' && (
+                <Chip
+                  label={`объект: ${catalog.objectName ?? '—'}`}
                   size="small"
-                  title="Скопировать расценки в справочник объекта или проекта"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void handleOpenCopy(catalog);
-                  }}
-                >
-                  <ContentCopyIcon fontSize="small" />
-                </IconButton>
-                <IconButton
+                  variant="outlined"
+                  color="success"
+                />
+              )}
+              {catalog.scope === 'project' && (
+                <Chip
+                  label={`проект: ${catalog.projectName ?? '—'}`}
                   size="small"
-                  title={catalog.canWrite === false ? 'Только чтение' : 'Переименовать'}
-                  disabled={catalog.canWrite === false}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenRename(catalog);
-                  }}
-                >
-                  <EditIcon fontSize="small" />
-                </IconButton>
-                <IconButton
-                  size="small"
-                  title={catalog.canWrite === false ? 'Только чтение' : 'Архивировать'}
-                  disabled={catalog.canWrite === false}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void handleArchive(catalog);
-                  }}
-                >
-                  <ArchiveIcon fontSize="small" />
-                </IconButton>
-                <ChevronRightIcon sx={{ color: '#90a4ae' }} />
-              </>
-            )}
+                  variant="outlined"
+                  color="warning"
+                />
+              )}
+              {catalog.scope === 'personal' && (
+                <Chip label="личный" size="small" variant="outlined" />
+              )}
+              {catalog.canWrite === false && (
+                <Chip label="только чтение" size="small" variant="outlined" />
+              )}
+            </Box>
+            <Typography variant="caption" color="text.secondary">
+              расценок: {catalog.itemsCount} · проектов: {catalog.projectsCount}
+              {catalog.scope === 'object' ? ' · справочник объекта' : ''}
+            </Typography>
           </Paper>
         ))}
 
@@ -540,7 +508,7 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
             {search.trim()
               ? `По запросу «${search.trim()}» ничего не найдено.`
               : showArchived
-                ? 'В архиве пусто — сюда попадают справочники, убранные кнопкой 🗄.'
+                ? 'В архиве пусто — сюда попадают справочники, убранные через шестерёнку ⚙.'
                 : 'Справочников пока нет — создайте первый.'}
           </Typography>
         )}
@@ -552,6 +520,164 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
           <LibraryAddIcon />
         </Fab>
       )}
+
+      {/* ⭐ №195: действия со справочником — один шит, как в «Объектах»/«Проектах».
+          Недоступное не прячем: кнопка серая + подпись, что нужно для доступа. */}
+      <Modal open={!!actionsCatalog} onClose={() => setActionsCatalog(null)}>
+        <Paper
+          sx={{
+            position: 'absolute',
+            left: '50%',
+            bottom: { xs: 0, sm: 'auto' },
+            top: { xs: 'auto', sm: '50%' },
+            transform: { xs: 'translateX(-50%)', sm: 'translate(-50%, -50%)' },
+            width: { xs: '100%', sm: 420 },
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            p: 3,
+            pb: { xs: 4, sm: 3 },
+            borderRadius: { xs: '16px 16px 0 0', sm: 3 },
+            outline: 'none',
+          }}
+        >
+          <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ mb: 0.5 }}>
+            {actionsCatalog?.name || 'Справочник'}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+            Действия со справочником. Серые кнопки недоступны вашей роли.
+          </Typography>
+          {actionsCatalog && (
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 2 }}>
+              {actionsCatalog.isSystem && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  color="primary"
+                  label="системный"
+                  sx={{ height: 22, fontSize: '0.72rem' }}
+                />
+              )}
+              {actionsCatalog.scope === 'object' && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  color="success"
+                  label={`объект: ${actionsCatalog.objectName ?? '—'}`}
+                  sx={{ height: 22, fontSize: '0.72rem' }}
+                />
+              )}
+              {actionsCatalog.scope === 'project' && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  color="warning"
+                  label={`проект: ${actionsCatalog.projectName ?? '—'}`}
+                  sx={{ height: 22, fontSize: '0.72rem' }}
+                />
+              )}
+              {actionsCatalog.scope === 'personal' && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label="личный"
+                  sx={{ height: 22, fontSize: '0.72rem' }}
+                />
+              )}
+              <Chip
+                size="small"
+                variant="outlined"
+                label={actionsCatalog.isArchived ? '🗄 в архиве' : `${actionsCatalog.itemsCount} расценок`}
+                sx={{ height: 22, fontSize: '0.72rem' }}
+              />
+            </Box>
+          )}
+
+          <Stack spacing={1}>
+            <Button
+              size="large"
+              fullWidth
+              variant="outlined"
+              startIcon={<MenuBookIcon />}
+              onClick={() => {
+                const c = actionsCatalog;
+                setActionsCatalog(null);
+                if (c) navigate(`/price-list/${c.id}`);
+              }}
+            >
+              Открыть расценки
+            </Button>
+
+            <Button
+              size="large"
+              fullWidth
+              variant="outlined"
+              startIcon={<EditIcon />}
+              disabled={!actionsCatalog || actionsCatalog.canWrite === false || actionsCatalog.isArchived}
+              onClick={() => {
+                const c = actionsCatalog;
+                setActionsCatalog(null);
+                if (c) handleOpenRename(c);
+              }}
+            >
+              Переименовать
+            </Button>
+            {actionsCatalog && (actionsCatalog.canWrite === false || actionsCatalog.isArchived) && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
+                {actionsCatalog.isArchived
+                  ? 'Справочник в архиве — сначала верните его.'
+                  : 'Переименовать может автор справочника или администратор объекта.'}
+              </Typography>
+            )}
+
+            <Button
+              size="large"
+              fullWidth
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              disabled={!actionsCatalog || actionsCatalog.isArchived}
+              onClick={() => {
+                const c = actionsCatalog;
+                setActionsCatalog(null);
+                if (c) void handleOpenCopy(c);
+              }}
+            >
+              Скопировать в объект или проект
+            </Button>
+
+            {actionsCatalog?.isArchived ? (
+              <Button
+                size="large"
+                fullWidth
+                variant="outlined"
+                startIcon={<UnarchiveIcon />}
+                disabled={actionsCatalog.canWrite === false}
+                onClick={() => {
+                  const c = actionsCatalog;
+                  setActionsCatalog(null);
+                  if (c) void handleRestore(c);
+                }}
+              >
+                Вернуть из архива
+              </Button>
+            ) : (
+              <Button
+                size="large"
+                fullWidth
+                variant="outlined"
+                startIcon={<ArchiveIcon />}
+                disabled={!actionsCatalog || actionsCatalog.canWrite === false}
+                onClick={() => {
+                  const c = actionsCatalog;
+                  setActionsCatalog(null);
+                  if (c) void handleArchive(c);
+                }}
+              >
+                Архивировать
+              </Button>
+            )}
+          </Stack>
+        </Paper>
+      </Modal>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} disableRestoreFocus>
         <Paper
