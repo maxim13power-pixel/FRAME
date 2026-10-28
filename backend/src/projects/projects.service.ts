@@ -9,7 +9,13 @@ import { AccessRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service'; // ⭐ №168: журнал удалений
 import { CreateProjectDto } from './dto/create-project.dto';
-import { loadAccessGrants, resolveObjectRole } from '../auth/access-scope'; // ⭐ №163
+import {
+  assertAccessActive,
+  findLiveAccess,
+  findProjectAccess,
+  loadAccessGrants,
+  resolveObjectRole,
+} from '../auth/access-scope'; // ⭐ №163, №193
 
 @Injectable()
 export class ProjectsService {
@@ -36,12 +42,15 @@ export class ProjectsService {
   // ⭐ Хелпер: проверяет доступ к объекту. Кидает 403 если доступа нет.
   // Детерминированный резолв: объектный контекст требует общую запись (projectId: null).
   private async checkObjectAccess(objectId: number, userId: number) {
-    const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId, projectId: null },
+    const access = await findLiveAccess(this.prisma, {
+      userId,
+      objectId,
+      projectId: null,
     });
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
+    assertAccessActive(access); // ⭐ №193 (A₂ F1): отозванный доступ живых данных не читает
     return access;
   }
 
@@ -55,16 +64,16 @@ export class ProjectsService {
     if (!project) {
       throw new NotFoundException('Проект не найден');
     }
-    const access =
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId },
-      })) ??
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId: null },
-      }));
+    const access = await findProjectAccess(
+      this.prisma,
+      userId,
+      project.objectId,
+      projectId,
+    );
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
+    assertAccessActive(access); // ⭐ №193 (A₂ F1)
     return access;
   }
 
@@ -224,6 +233,9 @@ export class ProjectsService {
         effectiveCatalogId: p.catalog?.id ?? object.catalog?.id ?? null,
         effectiveCatalogName: p.catalog?.name ?? object.catalog?.name ?? null,
         catalogSource: p.catalog ? 'project' : object.catalog ? 'object' : null,
+        // ⭐ №188: права на проект — для серых кнопок в меню действий на фронте
+        canWrite: my.canWrite,
+        canManage: my.canManage,
       };
     });
   }
@@ -320,15 +332,13 @@ export class ProjectsService {
       this.assertWritable(access, 'удалять проекты');
     }
 
-    const [materials, changeRequests, reports, transactions, shifts] =
-      await Promise.all([
-        this.prisma.material.count({ where: { projectId: id } }),
-        this.prisma.changeRequest.count({ where: { projectId: id } }),
-        this.prisma.report.count({ where: { projectId: id } }),
-        this.prisma.warehouseTransaction.count({ where: { projectId: id } }),
-        this.prisma.brigadeShift.count({ where: { projectId: id } }),
-      ]);
-    if (materials + changeRequests + reports + transactions + shifts > 0) {
+    const [materials, reports, transactions, shifts] = await Promise.all([
+      this.prisma.material.count({ where: { projectId: id } }),
+      this.prisma.report.count({ where: { projectId: id } }),
+      this.prisma.warehouseTransaction.count({ where: { projectId: id } }),
+      this.prisma.brigadeShift.count({ where: { projectId: id } }),
+    ]);
+    if (materials + reports + transactions + shifts > 0) {
       throw new BadRequestException(
         `Проект не пуст: ${materials} материалов, ${reports} отчётов, ${transactions} складских операций. ` +
           'Удаление запрещено — данные принадлежат всем участникам. Уберите проект в личный архив.',

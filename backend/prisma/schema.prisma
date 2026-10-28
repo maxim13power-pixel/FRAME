@@ -27,13 +27,18 @@ model User {
 
   // Новые связи вместо Organization
   objectAccesses    ObjectAccess[]
-  proposedChanges   ChangeRequest[]  @relation("ProposedChanges")
-  reviewedChanges   ChangeRequest[]  @relation("ReviewedChanges")
   ownedPriceItems   PriceItem[]
   priceCatalogs     PriceCatalog[] @relation("CatalogOwner") // ⭐ №151: личные справочники цен
   createdInvites    InviteToken[]  @relation("CreatedInvites")
   passwordResetTokens PasswordResetToken[]  // ⭐ P0-4
   rentals           Rental[]  // ⭐ личные аренды оборудования пользователя
+  // ⭐ №178: заявки на право создавать проекты в объекте
+  accessRequestsMade     AccessRequest[] @relation("AccessRequestsMade")
+  accessRequestsReviewed AccessRequest[] @relation("AccessRequestsReviewed")
+  // ⭐ №175: шаблоны объектов
+  objectTemplates        ObjectTemplate[] @relation("ObjectTemplates")
+  // ⭐ №194 (F1 шаг 2): неизменяемые снимки доступа (создаются при отзыве)
+  accessSnapshots        AccessSnapshot[] @relation("AccessSnapshots")
 }
 
 model Object {
@@ -61,6 +66,7 @@ model Object {
   warehouseItems  WarehouseItem[] // ⭐ Складские позиции, привязанные к объекту
   reports         Report[]        // ⭐ Акты/сметы по объекту
   brigades        Brigade[]       // ⭐ Бригады, привязанные к объекту
+  accessRequests  AccessRequest[] // ⭐ №178: заявки на право создавать проекты
 
   @@index([catalogId])
 }
@@ -75,10 +81,10 @@ model Project {
   catalogId   Int?     // ⭐ №151: справочник цен проекта (по умолчанию — для подстановки в смете)
   catalog     PriceCatalog? @relation(fields: [catalogId], references: [id], onDelete: SetNull)
   materials   Material[]
-  changeRequests ChangeRequest[] // Согласования на уровне проекта
   warehouseTransactions WarehouseTransaction[] // ⭐ Складские списания на проект
   reports     Report[] // ⭐ Акты/сметы по проекту
   brigadeShifts BrigadeShift[] // ⭐ Выходы бригад на проекте
+  importBatches ImportBatch[] // ⭐ №202: партии импорта сметы из Excel
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   note        String?
@@ -141,11 +147,18 @@ model Material {
   projectId       Int
   project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   fixes           MaterialFix[]  // история всех фиксаций
-  changeRequests  ChangeRequest[] // Согласования по конкретному материалу
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
+  // ⭐ №202 (RFC импорта): откуда строка пришла — партия, номер строки файла,
+  // ключ идемпотентности (повторный импорт того же файла не создаёт дубль)
+  importBatchId   Int?
+  importRowNumber Int?
+  externalKey     String? @db.VarChar(64)
+
+  @@unique([projectId, externalKey])
   @@index([projectId])
+  @@index([projectId, importBatchId])
   @@map("materials")
 }
 
@@ -263,31 +276,163 @@ model ObjectAccess {
   @@map("object_access")
 }
 
-enum ChangeStatus {
-  PENDING  // Ждет согласования (розовая идея)
-  APPROVED // Утверждено (входит в сумму)
-  REJECTED // Отклонено (не входит в сумму, но строка видна прорабу)
+// ============================================================
+// ⭐ №178: ЗАЯВКИ НА ПРАВО СОЗДАВАТЬ ПРОЕКТЫ В ОБЪЕКТЕ
+// ============================================================
+// Зачем: участник, приглашённый ТОЛЬКО в один проект, не может создать новый
+// проект в объекте (checkObjectAccess требует запись доступа с projectId = null).
+// Он подаёт заявку, а админ или менеджер объекта одобряет её → появляется
+// объектная запись FOREMAN + isManager, и он может создавать проекты.
+
+enum AccessRequestStatus {
+  PENDING   // ждёт решения
+  APPROVED  // одобрено — право выдано
+  REJECTED  // отклонено (с причиной)
+  CANCELLED // заявитель отменил сам
 }
 
-model ChangeRequest {
-  id          Int          @id @default(autoincrement())
-  projectId   Int
-  materialId  Int?
-  type        String       // ADD_ROW / CHANGE_QTY / CHANGE_PRICE
-  payload     Json         // Контекст изменения
-  status      ChangeStatus @default(PENDING)
-  proposedBy  Int          // прораб
-  reviewedBy  Int?         // заказчик
-  reviewComment String?    // ⭐ P0-6: комментарий ревьюера (причина отклонения)
-  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  material    Material?    @relation(fields: [materialId], references: [id], onDelete: SetNull)
-  proposer    User         @relation("ProposedChanges", fields: [proposedBy], references: [id], onDelete: Cascade)
-  reviewer    User?        @relation("ReviewedChanges", fields: [reviewedBy], references: [id], onDelete: SetNull)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+enum AccessRequestKind {
+  CREATE_PROJECTS // право создавать проекты в объекте (пока единственный вид)
+}
+
+model AccessRequest {
+  id            Int                 @id @default(autoincrement())
+  objectId      Int
+  requesterId   Int
+  kind          AccessRequestKind   @default(CREATE_PROJECTS)
+  comment       String?
+  status        AccessRequestStatus @default(PENDING)
+  reviewedBy    Int?
+  reviewComment String?
+  reviewedAt    DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  object    Object @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  requester User   @relation("AccessRequestsMade", fields: [requesterId], references: [id], onDelete: Cascade)
+  reviewer  User?  @relation("AccessRequestsReviewed", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([objectId, status])
+  @@index([requesterId, status])
+  @@map("access_requests")
+}
+
+// ============================================================
+// ⭐ №175: ШАБЛОНЫ ОБЪЕКТОВ
+// ============================================================
+// Отдельная сущность: снимок структуры объекта (проекты + позиции смет).
+// sourceObjectId — только подпись «создан из объекта X», без FK и без каскадов:
+// удаление объекта-образца шаблон не трогает.
+// Публикация: автор сам делает шаблон общим; правит/удаляет автор или админ.
+// Автосинхронизации нет — создание объекта из шаблона это разовая копия.
+
+model ObjectTemplate {
+  id               Int      @id @default(autoincrement())
+  name             String
+  note             String?
+  authorId         Int
+  isPublic         Boolean  @default(false)
+  sourceObjectId   Int? // только метка, без relation
+  sourceObjectName String? // чтобы подпись жила, даже если объект удалён
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  author   User                    @relation("ObjectTemplates", fields: [authorId], references: [id], onDelete: Cascade)
+  projects ObjectTemplateProject[]
+
+  @@index([authorId])
+  @@index([isPublic])
+  @@map("object_templates")
+}
+
+model ObjectTemplateProject {
+  id         Int    @id @default(autoincrement())
+  templateId Int
+  name       String
+  note       String?
+  sortOrder  Int    @default(0)
+
+  template  ObjectTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  materials ObjectTemplateMaterial[]
+
+  @@index([templateId])
+  @@map("object_template_projects")
+}
+
+model ObjectTemplateMaterial {
+  id       Int     @id @default(autoincrement())
+  projectId Int
+  name     String
+  article  String?
+  unit     Unit    @default(PIECE)
+  // объём по спецификации (план) — фиксации не переносим
+  specQuantity Decimal @default(0) @db.Decimal(12, 3)
+  note     String?
+  // ссылки на расценки: при создании объекта переносим, если позиция ещё жива
+  priceItemId    Int?
+  materialItemId Int?
+  // снимок цен на момент сохранения шаблона (не зависит от справочника)
+  unitPrice         Decimal? @db.Decimal(12, 2)
+  materialUnitPrice Decimal? @db.Decimal(12, 2)
+
+  project ObjectTemplateProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("object_template_materials")
+}
+
+// ============================================================
+// СНИМОК ДОСТУПА (№194, F1 шаг 2)
+// Создаётся в момент отзыва вместе с копиями-шаблонами.
+// Только чтение: ни один endpoint не меняет payload — это слепок «как было».
+// ============================================================
+// ============================================================
+// ИМПОРТ СМЕТЫ ИЗ EXCEL (№202, RFC docs/RFC-import-estimate.md)
+// Партия = журнал: предпросмотр хранится в preview (Json), commit пишет
+// строки сметы в одной транзакции, провенанс — в Material.importBatchId.
+// ============================================================
+model ImportBatch {
+  id              Int      @id @default(autoincrement())
+  projectId       Int
+  importedById    Int // метка автора (без FK: при удалении аккаунта не рушим журнал)
+  fileName        String?
+  fileHash        String?
+  templateVersion Int?
+  status          String   @default("PREVIEW") // PREVIEW|COMMITTING|COMMITTED|FAILED|CANCELLED
+  rowsTotal       Int      @default(0)
+  createdCount    Int      @default(0)
+  updatedCount    Int      @default(0)
+  skippedCount    Int      @default(0)
+  pricesCreated   Int      @default(0)
+  preview         Json?
+  report          Json?
+  createdAt       DateTime @default(now())
+  committedAt     DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, createdAt])
-  @@map("change_requests")
+  @@map("import_batches")
+}
+
+model AccessSnapshot {
+  id          Int      @id @default(autoincrement())
+  userId      Int // кому отозвали доступ (владелец снимка)
+  objectId    Int // метка без relation: снимок должен жить дольше объектов
+  accessId    Int? // запись доступа, по которой снят снимок (её могут удалить)
+  objectName  String
+  projectId   Int? // если доступ был только к одному проекту
+  projectName String?
+  role        String // роль на момент отзыва (CUSTOMER/FOREMAN/VIEWER)
+  hidePrices  Boolean  @default(false) // снимали снимок без денег?
+  takenAt     DateTime @default(now()) // момент отзыва
+  revokedBy   Int? // кто отозвал (обезличивается при удалении аккаунта)
+  summary     Json // { projects, materials, reports, warehouseItems, ... }
+  payload     Json // сам слепок
+  user        User     @relation("AccessSnapshots", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, takenAt])
+  @@map("access_snapshots")
 }
 
 // ============================================================

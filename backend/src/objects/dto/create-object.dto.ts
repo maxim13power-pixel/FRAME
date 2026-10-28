@@ -4,7 +4,6 @@ import {
   IsDateString,
   IsOptional,
   MaxLength,
-  IsIn,
   IsInt,
 } from 'class-validator';
 export class CreateObjectDto {
@@ -33,12 +32,7 @@ export class CreateObjectDto {
   @MaxLength(1000, { message: 'Заметка не более 1000 символов' })
   note?: string;
 
-  // ⭐ Роль создателя объекта: Заказчик или Прораб (ТЗ 3.4)
-  @IsOptional()
-  @IsIn(['CUSTOMER', 'FOREMAN'], {
-    message: 'Роль должна быть CUSTOMER или FOREMAN',
-  })
-  role?: 'CUSTOMER' | 'FOREMAN';
+  // ⭐ №181: роли создателя больше нет — создатель объекта всегда администратор объекта.
 
   // ⭐ №164: справочник цен объекта (null — отвязать)
   @IsOptional()

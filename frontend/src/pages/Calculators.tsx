@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import SectionIntro from '../components/SectionIntro'; // ⭐ №199: подсказка раздела
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import FoundationIcon from '@mui/icons-material/Foundation';
@@ -174,6 +175,15 @@ const Calculators: React.FC = () => {
       .filter((section) => section.calculators.length > 0);
   }, [searchQuery, categoryFilter]);
 
+  // ⭐ №199: подсказка раздела. На десктопе — между заголовком и поиском,
+  // на мобилке заголовок и поиск в шапке, поэтому подсказка идёт первой.
+  const calculatorsIntro = (
+    <SectionIntro id="calculators" version={1}>
+      Быстрые расчёты без таблиц: бетон, кирпич, плитка, краска и другие. Выберите калькулятор —
+      введите размеры, результат считается сразу. Ничего не сохраняется: это прикидка, а не смета.
+    </SectionIntro>
+  );
+
   return (
     <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
       {!isMobile && (
@@ -184,6 +194,7 @@ const Calculators: React.FC = () => {
             </IconButton>
             <Typography variant="h4" sx={{ flexGrow: 1 }}>Калькуляторы</Typography>
           </Box>
+          {calculatorsIntro}
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
             <TextField
               value={searchQuery}
@@ -211,6 +222,8 @@ const Calculators: React.FC = () => {
           <MenuItem key={s.title} onClick={() => { setCategoryFilter(s.title); setFilterAnchorEl(null); }}>{s.title}</MenuItem>
         ))}
       </Menu>
+
+      {isMobile && calculatorsIntro}
 
       {filteredSections.length > 0 ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 3, md: 4 } }}>

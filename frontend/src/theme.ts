@@ -103,6 +103,10 @@ const theme = createTheme({
     // ⭐ №174: на мобилке поля ввода были высокими (56px) — форма «Добавить позицию»
     // не помещалась в модалку. Уменьшаем высоту полей на ~12% (≈56 → 49px)
     // и кегль на 5% только на узких экранах; десктоп не меняется.
+    // ⭐ №176: у многострочных полей вертикальный padding живёт на root, а у самой
+    // textarea он должен оставаться нулевым — иначе MUI считает высоту через скрытую
+    // textarea (TextareaAutosize) и складывает padding дважды: бокс вырастал до 3–4
+    // строк, а текст начинался со второй строки. Перебиваем padding только на root.
     MuiOutlinedInput: {
       styleOverrides: {
         input: {
@@ -110,12 +114,26 @@ const theme = createTheme({
             paddingTop: 13.5,
             paddingBottom: 13.5,
             fontSize: '0.95rem',
+            // ⭐ №176: у самой textarea вертикальный padding = 0 (см. root ниже)
+            '&.MuiInputBase-inputMultiline, &.MuiOutlinedInput-inputMultiline': {
+              paddingTop: 0,
+              paddingBottom: 0,
+            },
           },
         },
-        inputMultiline: {
+        root: {
           '@media (max-width: 599.95px)': {
-            paddingTop: 13.5,
-            paddingBottom: 13.5,
+            // ⭐ №176: вертикальный padding многострочного поля живёт на root —
+            // ТОЛЬКО здесь, иначе высота считается дважды
+            '&.MuiInputBase-multiline, &.MuiOutlinedInput-multiline': {
+              padding: '13.5px 14px',
+            },
+          },
+        },
+        // на случай нестандартной сборки классов — дублируем через слот multiline
+        multiline: {
+          '@media (max-width: 599.95px)': {
+            padding: '13.5px 14px',
           },
         },
       },

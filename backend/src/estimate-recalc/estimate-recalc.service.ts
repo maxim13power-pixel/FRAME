@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { AccessRole, PriceKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertAccessActive, findProjectAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import { loadCatalogAccess } from '../price-list/catalog-access';
 import {
   buildRecalcPlan,
@@ -62,14 +63,15 @@ export class EstimateRecalcService {
       select: { objectId: true },
     });
     if (!project) throw new NotFoundException('Проект не найден');
-    const access =
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId },
-      })) ??
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId: null },
-      }));
+    // ⭐ №193 (A₂ F1): активная запись приоритетнее отозванной, отозванная — 403.
+    const access = await findProjectAccess(
+      this.prisma,
+      userId,
+      project.objectId,
+      projectId,
+    );
     if (!access) throw new ForbiddenException('Нет доступа к этому проекту');
+    assertAccessActive(access);
     return access;
   }
 
@@ -105,7 +107,7 @@ export class EstimateRecalcService {
     }
     if (access.hidePrices) {
       throw new ForbiddenException(
-        'Вам скрыты цены — пересчёт недоступен. Попросите заказчика открыть цены.',
+        'Вам скрыты цены — пересчёт недоступен. Попросите администратора объекта открыть цены.',
       );
     }
   }
@@ -246,7 +248,7 @@ export class EstimateRecalcService {
     const ctx = await this.loadPlan(projectId, userId, catalogId);
     if (this.mustHidePrices(ctx.access)) {
       throw new ForbiddenException(
-        'Вам скрыты цены — пересчёт недоступен. Попросите заказчика открыть цены.',
+        'Вам скрыты цены — пересчёт недоступен. Попросите администратора объекта открыть цены.',
       );
     }
     return this.present(ctx);

@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import {
@@ -60,8 +61,8 @@ const Analytics: React.FC = () => {
 
   const loadObjects = useCallback(async () => {
     try {
-      // ⭐ №169: архивные (глобально) и лично скрытые объекты в фильтр не попадают
-      setObjects((await fetchObjects()).filter(o => !o.isArchived && !o.hiddenForMe));
+      // ⭐ №176: fetchObjects по умолчанию уже без архивных и лично скрытых объектов
+      setObjects(await fetchObjects());
     } catch {
       /* объекты не критичны */
     }
@@ -129,22 +130,6 @@ const Analytics: React.FC = () => {
 
   return (
     <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
-      {/* ⭐ №169: демо-объект в расчётах → цифры неточные, клик ведёт в «Объекты» */}
-      {(summary?.demoObjects ?? 0) > 0 && (
-        <Alert
-          severity="warning"
-          onClick={() => navigate('/objects')}
-          sx={{ mb: 1, borderRadius: 2, cursor: 'pointer', alignItems: 'flex-start' }}
-        >
-          <Typography variant="body2" fontWeight={600}>
-            В расчёты входит демо-объект{(summary?.demoObjects ?? 0) > 1 ? `ы (${summary?.demoObjects})` : ''}
-          </Typography>
-          <Typography variant="caption">
-            Аналитика считается вместе с демо-данными. Для точных цифр перенесите демо-объект
-            в архив или удалите — нажмите, чтобы открыть «Объекты».
-          </Typography>
-        </Alert>
-      )}
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <IconButton
@@ -176,6 +161,28 @@ const Analytics: React.FC = () => {
           <MenuItem key={o.id} onClick={() => { setObjectFilter(o.id); setFilterAnchorEl(null); }}>{o.name}</MenuItem>
         ))}
       </Menu>
+      {/* ⭐ №197: одноразовая подсказка раздела */}
+      <SectionIntro id="analytics" version={1}>
+        Считается по объектам, где у вас есть доступ. «Бюджет» — смета, «Факт» — фиксации.
+        Демо-объект искажает цифры — его лучше убрать в архив.
+      </SectionIntro>
+      {/* ⭐ №198: стикер про демо-объект — ПОД подсказкой раздела (её можно скрыть крестиком),
+          а не над заголовком. Клик ведёт в «Объекты». */}
+      {(summary?.demoObjects ?? 0) > 0 && (
+        <Alert
+          severity="warning"
+          onClick={() => navigate('/objects')}
+          sx={{ mb: 2, borderRadius: 2, cursor: 'pointer', alignItems: 'flex-start' }}
+        >
+          <Typography variant="body2" fontWeight={600}>
+            В расчёты входит демо-объект{(summary?.demoObjects ?? 0) > 1 ? `ы (${summary?.demoObjects})` : ''}
+          </Typography>
+          <Typography variant="caption">
+            Аналитика считается вместе с демо-данными. Для точных цифр перенесите демо-объект
+            в архив или удалите — нажмите, чтобы открыть «Объекты».
+          </Typography>
+        </Alert>
+      )}
       <Stack spacing={2}>
         {error && <Alert severity="error">{error}</Alert>}
 

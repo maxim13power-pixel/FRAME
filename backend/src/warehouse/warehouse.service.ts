@@ -8,8 +8,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  assertAccessActive,
+  findLiveAccess,
+  findProjectAccess,
+} from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import { CreateWarehouseItemDto } from './dto/create-warehouse-item.dto';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateWarehouseItemDto } from './dto/update-warehouse-item.dto';
@@ -26,12 +31,15 @@ export class WarehouseService {
 
   // ─── Доступ к ОБЪЕКТУ (object-уровень, projectId = null — как в access.service) ───
   private async checkObjectAccess(objectId: number, userId: number) {
-    const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId, projectId: null },
+    const access = await findLiveAccess(this.prisma, {
+      userId,
+      objectId,
+      projectId: null,
     });
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
+    assertAccessActive(access); // ⭐ №193 (A₂ F1): отозванный доступ живых данных не читает
     return access;
   }
 
@@ -44,16 +52,16 @@ export class WarehouseService {
     if (!project) {
       throw new NotFoundException('Проект не найден');
     }
-    const access =
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId },
-      })) ??
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId: null },
-      }));
+    const access = await findProjectAccess(
+      this.prisma,
+      userId,
+      project.objectId,
+      projectId,
+    );
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому проекту');
     }
+    assertAccessActive(access); // ⭐ №193 (A₂ F1)
     return access;
   }
 
@@ -71,6 +79,52 @@ export class WarehouseService {
     return item;
   }
 
+  // ─── ⭐ №180: наблюдатель и отозванный доступ — только чтение ───
+  // Та же логика, что в projects/brigades: без неё VIEWER и отозванный
+  // создавали/правили/удаляли складские позиции и проводили списания.
+  private assertWritable(
+    access: { role?: AccessRole | string; revokedAt?: Date | null },
+    action: string,
+  ) {
+    if (access.revokedAt) {
+      throw new ForbiddenException(
+        `Доступ отозван: ${action} недоступно. Склад открыт только на чтение.`,
+      );
+    }
+    if (access.role === AccessRole.VIEWER) {
+      throw new ForbiddenException(`Наблюдатель не может ${action}`);
+    }
+  }
+
+  // «Общая» позиция (objectId = null) не имеет записи доступа: писать может тот,
+  // у кого есть хотя бы один активный объектный доступ с правами записи.
+  private async assertAnyWritable(userId: number, action: string) {
+    const grants = await this.prisma.objectAccess.findMany({
+      where: { userId, projectId: null, revokedAt: null },
+      select: { role: true },
+    });
+    if (!grants.some((g) => g.role !== AccessRole.VIEWER)) {
+      throw new ForbiddenException(
+        `Наблюдатель не может ${action}: нужен доступ к объекту с правами записи`,
+      );
+    }
+  }
+
+  private async assertItemWritable(
+    item: { objectId: number | null },
+    userId: number,
+    action: string,
+  ) {
+    if (item.objectId == null) {
+      await this.assertAnyWritable(userId, action);
+      return;
+    }
+    this.assertWritable(
+      await this.checkObjectAccess(item.objectId, userId),
+      action,
+    );
+  }
+
   // ─── Список позиций (фильтр ?objectId=X, ?search=Y) ───
   async list(userId: number, objectId?: number, search?: string) {
     const where: Prisma.WarehouseItemWhereInput = {};
@@ -79,8 +133,9 @@ export class WarehouseService {
       await this.checkObjectAccess(objectId, userId);
       where.objectId = objectId;
     } else {
+      // ⭐ №193 (A₂ F1): отозванные объекты в склад не попадают.
       const accesses = await this.prisma.objectAccess.findMany({
-        where: { userId, projectId: null },
+        where: { userId, projectId: null, revokedAt: null },
         select: { objectId: true },
       });
       const ids = accesses.map((a) => a.objectId);
@@ -113,7 +168,12 @@ export class WarehouseService {
   // ─── Создать позицию ───
   async create(userId: number, dto: CreateWarehouseItemDto) {
     if (dto.objectId != null) {
-      await this.checkObjectAccess(dto.objectId, userId);
+      this.assertWritable(
+        await this.checkObjectAccess(dto.objectId, userId),
+        'создавать позицию склада',
+      );
+    } else {
+      await this.assertAnyWritable(userId, 'создавать общую позицию склада');
     }
     return this.prisma.warehouseItem.create({
       data: {
@@ -131,7 +191,8 @@ export class WarehouseService {
 
   // ─── Редактировать (name/unit/category/comment; quantity — только операциями) ───
   async update(userId: number, id: number, dto: UpdateWarehouseItemDto) {
-    await this.checkItemAccess(id, userId);
+    const item = await this.checkItemAccess(id, userId);
+    await this.assertItemWritable(item, userId, 'изменять позицию склада');
     return this.prisma.warehouseItem.update({
       where: { id },
       data: {
@@ -148,7 +209,8 @@ export class WarehouseService {
 
   // ─── Удалить позицию (реально; операции каскадно onDelete: Cascade) ───
   async remove(userId: number, id: number) {
-    await this.checkItemAccess(id, userId);
+    const item = await this.checkItemAccess(id, userId);
+    await this.assertItemWritable(item, userId, 'удалять позицию склада');
     await this.prisma.warehouseItem.delete({ where: { id } });
     return { success: true };
   }
@@ -171,9 +233,13 @@ export class WarehouseService {
     }
 
     // Проверка доступа к позиции и (для списания) к проекту
-    await this.checkItemAccess(dto.warehouseItemId, userId);
+    const item = await this.checkItemAccess(dto.warehouseItemId, userId);
+    await this.assertItemWritable(item, userId, 'проводить операции по складу');
     if (isOutcome) {
-      await this.checkProjectAccess(dto.projectId as number, userId);
+      this.assertWritable(
+        await this.checkProjectAccess(dto.projectId as number, userId),
+        'списывать материалы',
+      );
     }
 
     // ⭐ $transaction: атомарное изменение остатка (гонка исключена).
@@ -228,8 +294,9 @@ export class WarehouseService {
       await this.checkItemAccess(itemId, userId);
       where.warehouseItemId = itemId;
     } else {
+      // ⭐ №193 (A₂ F1): история операций — только по активным объектам.
       const accesses = await this.prisma.objectAccess.findMany({
-        where: { userId, projectId: null },
+        where: { userId, projectId: null, revokedAt: null },
         select: { objectId: true },
       });
       const ids = accesses.map((a) => a.objectId);

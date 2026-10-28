@@ -13,7 +13,8 @@ import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
-import { loadCatalogAccess } from '../price-list/catalog-access'; // ⭐ №164
+import { loadCatalogAccess, findVisiblePriceItem } from '../price-list/catalog-access'; // ⭐ №164, №191
+import { assertAccessActive, findProjectAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import {
   FIX_EDIT_WINDOW_MS,
   FIX_WINDOW_DAYS,
@@ -95,17 +96,17 @@ export class MaterialsService {
     if (!project) {
       throw new NotFoundException('Проект не найден');
     }
-    // ⭐ Детерминированный резолв: проектная запись → общая на объект.
-    const access =
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId },
-      })) ??
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId: null },
-      }));
+    // ⭐ №193 (A₂ F1): активная запись приоритетнее отозванной, отозванная — 403.
+    const access = await findProjectAccess(
+      this.prisma,
+      userId,
+      project.objectId,
+      projectId,
+    );
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому проекту');
     }
+    assertAccessActive(access);
     return access;
   }
 
@@ -121,21 +122,17 @@ export class MaterialsService {
     if (!material) {
       throw new NotFoundException('Материал не найден');
     }
-    // ⭐ Детерминированный резолв: проектная запись → общая на объект.
-    const access =
-      (await this.prisma.objectAccess.findFirst({
-        where: {
-          userId,
-          objectId: material.project.objectId,
-          projectId: material.projectId,
-        },
-      })) ??
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: material.project.objectId, projectId: null },
-      }));
+    // ⭐ №193 (A₂ F1): тот же резолв, что у проекта, — с приоритетом активной записи.
+    const access = await findProjectAccess(
+      this.prisma,
+      userId,
+      material.project.objectId,
+      material.projectId,
+    );
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому материалу');
     }
+    assertAccessActive(access);
     return access;
   }
 
@@ -167,6 +164,21 @@ export class MaterialsService {
     });
   }
 
+  // ⭐ №191 (F6): id расценки приходит из body — проверяем, что её справочник доступен.
+  // Без этого участник чужого проекта подставлял id закрытой расценки и получал её цену
+  // в снапшоте материала (unitPrice / materialUnitPrice).
+  private async assertPriceItemsVisible(
+    userId: number | undefined,
+    ids: (number | undefined)[],
+  ) {
+    if (!userId) return; // внутренние вызовы без пользователя (seed/demo)
+    for (const id of ids) {
+      if (id == null) continue;
+      const item = await findVisiblePriceItem(this.prisma, id, userId);
+      if (!item) throw new NotFoundException('Расценка не найдена');
+    }
+  }
+
   // Создание материала (+ snapshot цен работы и материала)
   async create(dto: CreateMaterialDto, userId: number) {
     // ⭐ Проверяем доступ к проекту (заодно получаем запись доступа)
@@ -177,9 +189,12 @@ export class MaterialsService {
     }
     let unitPrice = 0;
     if (dto.priceItemId) {
-      const priceItem = await this.prisma.priceItem.findUnique({
-        where: { id: dto.priceItemId },
-      });
+      // ⭐ №191 (F6): расценка берётся только из справочника, который пользователь видит
+      const priceItem = await findVisiblePriceItem(
+        this.prisma,
+        dto.priceItemId,
+        userId,
+      );
       if (!priceItem) throw new NotFoundException('Расценка не найдена');
       if (!priceItem.isActive)
         throw new BadRequestException('Выбранная расценка неактивна');
@@ -187,9 +202,11 @@ export class MaterialsService {
     }
     let materialUnitPrice = 0;
     if (dto.materialItemId) {
-      const materialItem = await this.prisma.priceItem.findUnique({
-        where: { id: dto.materialItemId },
-      });
+      const materialItem = await findVisiblePriceItem(
+        this.prisma,
+        dto.materialItemId,
+        userId,
+      );
       if (!materialItem)
         throw new NotFoundException('Расценка материала не найдена');
       if (!materialItem.isActive)
@@ -419,10 +436,12 @@ export class MaterialsService {
       }
     }
 
-    // Фиксация, которую пользователь видит в форме «править»
+    // ⭐ №176: целью правки считаем Последнюю ВНЕСЁННУЮ фиксацию (createdAt),
+    // а не с самой поздней датой работ: фиксация задним числом, внесённая только что,
+    // раньше не попадала под правку («прошло 8 дней» считалось по fixedAt старой строки).
     const expectedLastFix = await this.prisma.materialFix.findFirst({
       where: { materialId: id },
-      orderBy: { fixedAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
     if (!expectedLastFix)
       throw new BadRequestException('У материала ещё нет фиксаций');
@@ -453,9 +472,10 @@ export class MaterialsService {
       if (!material) throw new NotFoundException('Материал не найден');
 
       // 2) Перепроверяем «последность» уже под блокировкой
+      // ⭐ №176: «последняя» = последняя внесённая (createdAt), как и при выборе цели
       const lastFix = await tx.materialFix.findFirst({
         where: { materialId: id },
-        orderBy: { fixedAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       });
       if (!lastFix)
         throw new BadRequestException('У материала ещё нет фиксаций');
@@ -481,15 +501,22 @@ export class MaterialsService {
         },
       });
 
+      // ⭐ №176: правкой теперь может быть фиксация задним числом, поэтому
+      // «последнее поступление» на карточке берём из самой поздней ПО ДАТЕ РАБОТ
+      // фиксации, а не из только что отредактированной.
+      const newestByDate = await tx.materialFix.findFirst({
+        where: { materialId: id },
+        orderBy: [{ fixedAt: 'desc' }, { id: 'desc' }],
+      });
+
       return tx.material.update({
         where: { id },
         data: {
           totalUsed: newTotal,
-          lastEntry: dto.amount,
-          // 🔒 P1-2: правка последней фиксации должна обновлять и «когда последняя
+          lastEntry: newestByDate ? Number(newestByDate.amount) : dto.amount,
+          // 🔒 P1-2: правка фиксации должна обновлять и «когда последняя
           // фиксация» — раньше lastEntry/lastEntryDate оставались от старого значения.
-          // Берём дату самой фиксации (fixedAt при правке не меняется), а не new Date().
-          lastEntryDate: lastFix.fixedAt,
+          lastEntryDate: newestByDate?.fixedAt ?? lastFix.fixedAt,
           progressPercent: progress,
           totalCost: newTotal * Number(material.unitPrice),
           materialTotalCost: newTotal * Number(material.materialUnitPrice),
@@ -525,6 +552,11 @@ export class MaterialsService {
           'Наблюдатель не может редактировать материалы',
         );
       }
+      // ⭐ №191 (F6): сменить расценку можно только на видимую в справочнике
+      await this.assertPriceItemsVisible(userId, [
+        dto.priceItemId === null ? undefined : dto.priceItemId,
+        dto.materialItemId === null ? undefined : dto.materialItemId,
+      ]);
     }
 
     // 🔒 P1-2 (гонки): вся логика внутри транзакции с SELECT ... FOR UPDATE на
@@ -635,7 +667,7 @@ export class MaterialsService {
 
   // ⭐ №159/№164: справочник для новой расценки — доступный пользователю
   // (системный, свой, объектный/проектный) и не архивный; писать можно только туда,
-  // где есть права (заказчик/прораб объекта, владелец, ADMIN).
+  // где есть права (администратор объекта/прораб объекта, владелец, ADMIN).
   private async resolvePriceCatalog(catalogId: number, userId?: number) {
     const access = await loadCatalogAccess(this.prisma, catalogId, userId);
     if (!access || !access.canRead) {

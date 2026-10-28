@@ -17,6 +17,8 @@ export interface AccessMember {
   // ⭐ №168: управление командой / личный архив / мягкий отзыв
   isManager: boolean;
   isHidden: boolean;
+  // ⭐ №182: участнику скрыты цены
+  hidePrices: boolean;
   revokedAt: string | null;
   revokedById: number | null;
   user: {
@@ -50,12 +52,14 @@ export interface AddAccessPayload {
   role: AccessRole;
   projectId?: number | null; // null = весь объект
   isManager?: boolean;
+  hidePrices?: boolean; // ⭐ №182
 }
 
-// ⭐ Payload для смены роли / прав менеджера
+// ⭐ Payload для смены роли / прав менеджера / видимости цен
 export interface UpdateAccessPayload {
   role?: AccessRole;
   isManager?: boolean;
+  hidePrices?: boolean; // ⭐ №182
 }
 
 // ⭐ №168: что вернул отзыв (для сообщения «копия сохранена в шаблонах»)

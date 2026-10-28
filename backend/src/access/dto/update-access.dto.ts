@@ -9,8 +9,13 @@ export class UpdateAccessDto {
   })
   role?: 'CUSTOMER' | 'FOREMAN' | 'VIEWER';
 
-  // ⭐ №168: «управляет командой» — только для FOREMAN, выдаёт заказчик
+  // ⭐ №168: «управляет командой» — только для FOREMAN, выдаёт администратор объекта
   @IsOptional()
   @IsBoolean()
   isManager?: boolean;
+
+  // ⭐ №182: показать/скрыть цены участнику
+  @IsOptional()
+  @IsBoolean()
+  hidePrices?: boolean;
 }

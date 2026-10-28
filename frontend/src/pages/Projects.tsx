@@ -31,6 +31,7 @@ import type { PriceCatalogData } from '../services/priceListService';
 import type { ProjectData } from '../services/projectService';
 import { fetchEstimateTemplates, createEstimateTemplate, applyEstimateTemplate } from '../services/estimateTemplateService';
 import type { EstimateTemplate } from '../services/estimateTemplateService';
+import { createObjectTemplate } from '../services/objectTemplateService'; // ⭐ №192
 import NoteAddIcon from '@mui/icons-material/NoteAdd';
 import SearchIcon from '@mui/icons-material/Search';
 import IconButton from '@mui/material/IconButton';
@@ -40,6 +41,8 @@ import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import DescriptionIcon from '@mui/icons-material/Description';
 import EventIcon from '@mui/icons-material/Event';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
+import EditIcon from '@mui/icons-material/Edit';
+import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd'; // ⭐ №192
 import SortIcon from '@mui/icons-material/Sort';
 import Select from '@mui/material/Select';
 import FormControl from '@mui/material/FormControl';
@@ -50,9 +53,18 @@ import type { ObjectData } from '../services/objectService';
 import { fetchAccessList, addAccess } from '../services/accessService';
 import type { AccessMember } from '../services/accessService';
 import ConfirmDialog from '../components/ConfirmDialog';
+import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import { updateObjectEndDate } from '../services/objectService';
+// ⭐ №178: заявка на право создавать проекты в объекте
+import {
+  cancelAccessRequest,
+  createAccessRequest,
+  fetchMyAccessRequests,
+} from '../services/accessRequestService';
+import type { AccessRequestData } from '../services/accessRequestService';
 import { getApiErrorText } from '../utils/errors';
 import DeleteIcon from '@mui/icons-material/Delete';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { FAB_STYLE } from '../theme';
 
 // ⭐ №158: значение селекта справочника — id, «не выбран» или «создать новый»
@@ -80,7 +92,14 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [editingProject, setEditingProject] = useState<ProjectData | null>(null);
   const [deletingProject, setDeletingProject] = useState<ProjectData | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  // ⭐ №163: после создания проекта предлагаем выдать доступ команде (по умолчанию — только заказчик)
+  // ⭐ №188: меню действий с проектом (шестерёнка на карточке)
+  const [actionsProject, setActionsProject] = useState<ProjectData | null>(null);
+  // ⭐ №192: сохранение ПРОЕКТА как шаблона объекта
+  const [objTplProject, setObjTplProject] = useState<ProjectData | null>(null);
+  const [objTplName, setObjTplName] = useState('');
+  const [objTplPublic, setObjTplPublic] = useState(false);
+  const [objTplSaving, setObjTplSaving] = useState(false);
+  // ⭐ №163: после создания проекта предлагаем выдать доступ команде (по умолчанию — только администратор объекта)
   const [reminderOpen, setReminderOpen] = useState(false);
   const [reminderProject, setReminderProject] = useState<ProjectData | null>(null);
   const [reminderMembers, setReminderMembers] = useState<AccessMember[]>([]);
@@ -129,6 +148,20 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [catalogModalTarget, setCatalogModalTarget] = useState<'create' | 'edit'>('create');
   const [newCatalogName, setNewCatalogName] = useState('');
   const [savingCatalog, setSavingCatalog] = useState(false);
+
+  // ⭐ №178: участник с доступом только к проекту не может создать новый проект —
+  // он подаёт заявку, её одобряет админ или менеджер объекта
+  const [myAccessRequest, setMyAccessRequest] = useState<AccessRequestData | null>(null);
+  const [requestModalOpen, setRequestModalOpen] = useState(false);
+  const [requestComment, setRequestComment] = useState('');
+  const [requestSaving, setRequestSaving] = useState(false);
+  // Может ли пользователь создавать проекты в этом объекте.
+  // ⭐ №179: строгая проверка — только объектный доступ (projectId=null). Участнику,
+  // приглашённому в один проект, показываем «Запросить право», а не тупиковый 403.
+  const canCreateProjects =
+    !!currentObject &&
+    currentObject.hasObjectAccess === true &&
+    currentObject.role !== 'VIEWER';
 
   // ⭐ №158: кому скрыты цены (VIEWER/hidePrices) — блок справочника не показываем
   const hideFinance = currentObject?.hidePrices === true;
@@ -212,6 +245,50 @@ useEffect(() => {
   };
   loadObject();
 }, [token, objectId]);
+
+// ⭐ №178: есть ли уже отправленная заявка на право создавать проекты
+useEffect(() => {
+  if (!token || !objectId || !currentObject || canCreateProjects) return;
+  fetchMyAccessRequests()
+    .then((rows) => {
+      const pending = rows.find(
+        (r) => r.objectId === parseInt(objectId) && r.status === 'PENDING',
+      );
+      setMyAccessRequest(pending ?? null);
+    })
+    .catch(() => setMyAccessRequest(null));
+}, [token, objectId, canCreateProjects, currentObject]);
+
+// ⭐ №178: отправить заявку на право создавать проекты
+const handleSubmitAccessRequest = async () => {
+  if (!objectId) return;
+  setRequestSaving(true);
+  try {
+    const created = await createAccessRequest(parseInt(objectId), {
+      comment: requestComment.trim() || undefined,
+    });
+    setMyAccessRequest(created);
+    setRequestModalOpen(false);
+    setRequestComment('');
+    notify('Заявка отправлена. Админ или менеджер объекта её рассмотрит.', 'success');
+  } catch (err) {
+    notifyError(getApiErrorText(err, 'Не удалось отправить заявку'));
+  } finally {
+    setRequestSaving(false);
+  }
+};
+
+// ⭐ №178: отменить свою заявку
+const handleCancelAccessRequest = async () => {
+  if (!myAccessRequest) return;
+  try {
+    await cancelAccessRequest(myAccessRequest.id);
+    setMyAccessRequest(null);
+    notify('Заявка отменена');
+  } catch (err) {
+    notifyError(getApiErrorText(err, 'Не удалось отменить заявку'));
+  }
+};
 
   // ⭐ №129: загрузить свои шаблоны (для селекта «Из шаблона»)
   const loadTemplates = async () => {
@@ -426,14 +503,22 @@ const createProjectAction = async (projectData?: {
     setPendingProject(null); // очищаем
     // ⭐ №163: сразу предлагаем выдать доступ к новому проекту
     void openAccessReminder(created);
-  } catch {
-    notifyError('Ошибка при создании проекта');
+  } catch (err) {
+    const text = getApiErrorText(err, 'неизвестная ошибка');
+    // ⭐ №179: 403 «нет доступа к объекту» больше не тупик — сразу предлагаем заявку
+    if (/нет доступа/i.test(text) && currentObject && currentObject.hasObjectAccess === false) {
+      notify('Создавать проекты может участник объекта — отправьте заявку', 'warning');
+      setRequestModalOpen(true);
+      return;
+    }
+    // ⭐ №176: раньше текст ошибки терялся («Ошибка при создании проекта» без причины)
+    notifyError('Не удалось создать проект: ' + text);
   }
 };
 
 // ⭐ №163: напоминание о доступе. Показываем участников объекта, у которых ещё
 // нет доступа к новому проекту (объектные записи и участники этого проекта исключены).
-// По умолчанию отмечен только заказчик — решение владельца 10.1(1).
+// По умолчанию отмечен только администратор объекта — решение владельца 10.1(1).
 const openAccessReminder = async (project: ProjectData) => {
   if (!objectId) return;
   setReminderProject(project);
@@ -628,6 +713,48 @@ const updateProjectAction = async () => {
     notifyError('Ошибка обновления проекта');
   }
 };
+// ⭐ №188: меню действий проекта (как на «Объектах»)
+const handleOpenActions = (proj: ProjectData) => setActionsProject(proj);
+const handleCloseActions = () => setActionsProject(null);
+// Писать в проект можно, если есть права записи
+// (отозванный доступ проект не получает вовсе — №193)
+const canEditProject = (p: ProjectData | null) => !!p && p.canWrite === true;
+
+// ⭐ №192: сохранить проект как шаблон объекта (структура + позиции сметы)
+const handleOpenObjectTemplate = (p: ProjectData) => {
+  setObjTplProject(p);
+  setObjTplName(currentObject ? `${currentObject.name} → ${p.name}` : p.name);
+  setObjTplPublic(false);
+};
+
+const handleCloseObjectTemplate = () => {
+  setObjTplProject(null);
+  setObjTplName('');
+  setObjTplPublic(false);
+};
+
+const handleSaveObjectTemplate = async () => {
+  if (!objTplProject || !objectId) return;
+  setObjTplSaving(true);
+  try {
+    const saved = await createObjectTemplate({
+      objectId: Number(objectId),
+      projectId: objTplProject.id,
+      name: objTplName.trim() || undefined,
+      isPublic: objTplPublic,
+    });
+    notify(
+      `Шаблон «${saved.name}» сохранён: позиций ${saved.projects?.[0]?.materials?.length ?? 0}. ` +
+        'Создать из него объект можно в разделе «Объекты» → «Из шаблона».',
+    );
+    handleCloseObjectTemplate();
+  } catch (err: unknown) {
+    notifyError(getApiErrorText(err, 'Не удалось сохранить шаблон'));
+  } finally {
+    setObjTplSaving(false);
+  }
+};
+
 // Обработчик открытия модалки заметки
 const handleOpenNoteModal = (proj: ProjectData) => {
   setEditingNoteProject(proj);
@@ -751,6 +878,12 @@ onBack: () => navigate('/objects'),
     <MenuItem onClick={() => { setSortBy('progress'); setSortAnchorEl(null); }}>По проценту %</MenuItem>
   </Menu>
 
+      {/* ⭐ №197: одноразовая подсказка раздела */}
+      <SectionIntro id="projects" version={1}>
+        <b>Проект</b> — часть объекта со своей сметой. Нажмите на карточку, чтобы открыть материалы;
+        шестерёнка ⚙ собирает все действия — серые кнопки недоступны вашей роли.
+      </SectionIntro>
+
       {/* Десктоп: панель поиска, сортировки и кнопки добавления */}
       {!isMobile && (
         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
@@ -777,21 +910,38 @@ onBack: () => navigate('/objects'),
               <MenuItem value="progress">По проценту %</MenuItem>
             </Select>
           </FormControl>
-          <Button
-            variant="contained"
-            startIcon={<NoteAddIcon />}
-            onClick={handleOpenAddModal}
-            sx={{
-              bgcolor: '#4caf50',
-              border: '2px solid #388e3c',
-              minWidth: '200px',
-              '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
-              transition: 'all 0.3s ease',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Добавить проект
-          </Button>
+          {/* ⭐ №178: если доступ только к проекту — вместо создания проекта подаём заявку */}
+          {!currentObject ? (
+            <Button variant="contained" startIcon={<NoteAddIcon />} disabled sx={{ minWidth: '200px' }}>
+              Добавить проект
+            </Button>
+          ) : canCreateProjects ? (
+            <Button
+              variant="contained"
+              startIcon={<NoteAddIcon />}
+              onClick={handleOpenAddModal}
+              sx={{
+                bgcolor: '#4caf50',
+                border: '2px solid #388e3c',
+                minWidth: '200px',
+                '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
+                transition: 'all 0.3s ease',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Добавить проект
+            </Button>
+          ) : (
+            <Button
+              variant="outlined"
+              color="inherit"
+              startIcon={<LockOutlinedIcon />}
+              onClick={() => setRequestModalOpen(true)}
+              sx={{ minWidth: '200px', whiteSpace: 'nowrap' }}
+            >
+              {myAccessRequest ? 'Заявка отправлена' : 'Запросить право'}
+            </Button>
+          )}
         </Box>
       )}
 
@@ -817,69 +967,64 @@ onBack: () => navigate('/objects'),
     },
   }}
 >
-{/* Верхняя строка: иконка, название, шестерёнка, процент */}
-<Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-  <DescriptionIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28 }} />
-<Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1, fontSize: { xs: '1.05rem', md: '1.15rem' } }}>
+{/* Верхняя строка: иконка, название (до 2 строк), меню действий */}
+<Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
+  <DescriptionIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28, mt: 0.25 }} />
+<Typography
+  variant="h6"
+  sx={{
+    fontWeight: 600,
+    flexGrow: 1,
+    minWidth: 0,
+    fontSize: { xs: '1.05rem', md: '1.15rem' },
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+  }}
+>
 {proj.name}
 </Typography>
+{/* ⭐ №188: все действия — в одной кнопке, как на «Объектах» */}
 <IconButton
-  size="small"
+  title="Действия с проектом"
+  aria-label="Действия с проектом"
   onClick={(e) => {
     e.stopPropagation();
-    handleOpenNoteModal(proj);
+    handleOpenActions(proj);
   }}
-  sx={{ mr: 1, color: proj.note ? '#1976d2' : 'inherit', bgcolor: 'action.hover' }}
+  sx={{ bgcolor: 'action.hover', width: 44, height: 44, ml: 0.5, mt: -0.5 }}
 >
-  <NoteAltIcon fontSize="small" />
+  <SettingsIcon />
 </IconButton>
-<IconButton
-  size="small"
-  title="Сохранить шаблон"
-  onClick={(e) => {
-    e.stopPropagation();
-    handleOpenSaveTemplate(proj);
-  }}
-  sx={{ mr: 1, color: '#7b1fa2', bgcolor: 'action.hover' }}
->
-  <SaveAltIcon fontSize="small" />
-</IconButton>
-<IconButton
-  size="small"
-  onClick={(e) => {
-    e.stopPropagation();
-    handleOpenEdit(proj);
-  }}
-  sx={{ mr: 1, bgcolor: 'action.hover' }}
->
-  <SettingsIcon fontSize="small" />
-</IconButton>
-  <Chip
-    label={`${proj.progressPercent ?? 0}%`}
-    size="small"
-    sx={{
-      bgcolor: (proj.progressPercent ?? 0) >= 100 ? '#4caf50' : '#1976d2',
-      color: 'white',
-      fontWeight: 'bold',
-    }}
-  />
 </Box>
 
-            {/* Прогресс-бар */}
-            <LinearProgress
-              variant="determinate"
-              value={Math.min(proj.progressPercent ?? 0, 100)}
-              sx={{
-                height: 10,
-                borderRadius: 5,
-                mb: 2,
-                bgcolor: '#e0e0e0',
-                '& .MuiLinearProgress-bar': {
-                  backgroundColor: (proj.progressPercent ?? 0) >= 100 ? '#4caf50' : '#1976d2',
+            {/* ⭐ №188: прогресс-бар + процент в одной строке */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <LinearProgress
+                variant="determinate"
+                value={Math.min(proj.progressPercent ?? 0, 100)}
+                sx={{
+                  flexGrow: 1,
+                  height: 10,
                   borderRadius: 5,
-                },
-              }}
-            />
+                  bgcolor: '#e0e0e0',
+                  '& .MuiLinearProgress-bar': {
+                    backgroundColor: (proj.progressPercent ?? 0) >= 100 ? '#4caf50' : '#1976d2',
+                    borderRadius: 5,
+                  },
+                }}
+              />
+              <Chip
+                label={`${proj.progressPercent ?? 0}%`}
+                size="small"
+                sx={{
+                  bgcolor: (proj.progressPercent ?? 0) >= 100 ? '#4caf50' : '#1976d2',
+                  color: 'white',
+                  fontWeight: 'bold',
+                }}
+              />
+            </Box>
 
 {/* Строка с датами и днями */}
 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1061,7 +1206,188 @@ onBack: () => navigate('/objects'),
     </Stack>
   </Paper>
 </Modal>
-      {/* Модалка сохранения шаблона (№129) */}
+      {/* ⭐ №188: действия с проектом — шит снизу на мобилке, крупные кнопки (как на «Объектах») */}
+    <Modal open={!!actionsProject} onClose={handleCloseActions}>
+      <Paper
+        sx={{
+          position: 'absolute',
+          left: '50%',
+          bottom: { xs: 0, sm: 'auto' },
+          top: { xs: 'auto', sm: '50%' },
+          transform: { xs: 'translateX(-50%)', sm: 'translate(-50%, -50%)' },
+          width: { xs: '100%', sm: 420 },
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          p: 3,
+          pb: { xs: 4, sm: 3 },
+          borderRadius: { xs: '16px 16px 0 0', sm: 3 },
+          outline: 'none',
+        }}
+      >
+        <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ mb: 0.5 }}>
+          {actionsProject?.name || 'Проект'}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+          Действия с проектом. Серые кнопки недоступны вашей роли.
+        </Typography>
+        {actionsProject && (
+          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 2 }}>
+            <Chip
+              size="small"
+              variant="outlined"
+              label={
+                actionsProject.canWrite === true
+                  ? '✍️ можно вносить данные'
+                  : '👁 только чтение'
+              }
+              sx={{ height: 22, fontSize: '0.72rem' }}
+            />
+          </Box>
+        )}
+
+        <Stack spacing={1}>
+          <Button
+            size="large"
+            fullWidth
+            variant="contained"
+            startIcon={<DescriptionIcon />}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) navigate(`/objects/${objectId}/projects/${p.id}/materials`);
+            }}
+          >
+            Открыть смету
+          </Button>
+
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<SaveAltIcon />}
+            disabled={!canEditProject(actionsProject)}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) handleOpenSaveTemplate(p);
+            }}
+          >
+            Сохранить шаблон сметы
+          </Button>
+
+          {/* ⭐ №192: шаблон проекта (структура + позиции) — создаёт объект из одного проекта */}
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<BookmarkAddIcon />}
+            disabled={!canEditProject(actionsProject)}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) handleOpenObjectTemplate(p);
+            }}
+          >
+            Сохранить проект как шаблон
+          </Button>
+
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<EditIcon />}
+            disabled={!canEditProject(actionsProject)}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) handleOpenEdit(p);
+            }}
+          >
+            Редактировать проект
+          </Button>
+
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<NoteAltIcon />}
+            disabled={!canEditProject(actionsProject)}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) handleOpenNoteModal(p);
+            }}
+          >
+            Заметка к проекту
+          </Button>
+
+          {!canEditProject(actionsProject) && (
+            <Typography variant="caption" color="text.secondary">
+              Изменения недоступны: нужны права записи (наблюдатель и отозванный доступ — только чтение).
+            </Typography>
+          )}
+
+          <Button size="large" fullWidth onClick={handleCloseActions} sx={{ mt: 1 }}>
+            Закрыть
+          </Button>
+        </Stack>
+      </Paper>
+    </Modal>
+
+    {/* ⭐ №192: сохранить проект как шаблон объекта */}
+    <Modal open={!!objTplProject} onClose={handleCloseObjectTemplate}>
+      <Paper
+        sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '94%', sm: 440 },
+          p: 3,
+          borderRadius: 3,
+          outline: 'none',
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          Сохранить как шаблон
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Проект «{objTplProject?.name}» сохранится как шаблон: название и позиции сметы
+          (цены — снимком на дату). Создать из него объект можно в «Объектах» → «Из шаблона».
+        </Typography>
+        <TextField
+          fullWidth
+          size="small"
+          label="Название шаблона"
+          value={objTplName}
+          onChange={(e) => setObjTplName(e.target.value)}
+          sx={{ mb: 2 }}
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={objTplPublic}
+              onChange={(e) => setObjTplPublic(e.target.checked)}
+            />
+          }
+          label="Общий шаблон (виден другим пользователям)"
+        />
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
+          <Button variant="outlined" onClick={handleCloseObjectTemplate}>
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => void handleSaveObjectTemplate()}
+            disabled={objTplSaving}
+          >
+            {objTplSaving ? 'Сохраняем…' : 'Сохранить'}
+          </Button>
+        </Box>
+      </Paper>
+    </Modal>
+
+    {/* Модалка сохранения шаблона (№129) */}
 <Modal open={saveTemplateModalOpen} onClose={handleCloseSaveTemplate} disableRestoreFocus={true}>
   <Paper sx={{
     position: 'absolute',
@@ -1258,6 +1584,81 @@ onBack: () => navigate('/objects'),
         </Paper>
       </Modal>
 
+      {/* ⭐ №178: заявка на право создавать проекты в объекте */}
+      <Modal open={requestModalOpen} onClose={() => setRequestModalOpen(false)} disableRestoreFocus>
+        <Paper
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '92%', sm: 460 },
+            p: 3,
+            borderRadius: 3,
+            outline: 'none',
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            🔓 Право создавать проекты
+          </Typography>
+          {myAccessRequest ? (
+            <>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Заявка отправлена {new Date(myAccessRequest.createdAt).toLocaleString('ru-RU')} и
+                ждёт решения админа или менеджера объекта
+                {myAccessRequest.object?.name ? ` «${myAccessRequest.object.name}»` : ''}.
+              </Alert>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Как только заявку одобрят, у вас появится доступ ко всему объекту и кнопка
+                «Добавить проект».
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+                <Button variant="text" color="error" onClick={() => void handleCancelAccessRequest()}>
+                  Отменить заявку
+                </Button>
+                <Button variant="outlined" onClick={() => setRequestModalOpen(false)}>
+                  Закрыть
+                </Button>
+              </Box>
+            </>
+          ) : (
+            <>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                У вас доступ только к проекту этого объекта. Создавать новые проекты может
+                участник объекта — отправьте заявку, её рассмотрит админ или менеджер объекта.
+              </Alert>
+              <TextField
+                fullWidth
+                multiline
+                rows={2}
+                label="Комментарий (необязательно)"
+                placeholder="Например: нужно добавить проект по ЭОМ"
+                value={requestComment}
+                onChange={(e) => setRequestComment(e.target.value)}
+                sx={{ mb: 2 }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                Одобрение откроет вам доступ ко всему объекту (роль «Прораб» с управлением
+                командой) — иначе созданный проект был бы виден только частично.
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+                <Button variant="outlined" onClick={() => setRequestModalOpen(false)}>
+                  Отмена
+                </Button>
+                <Button
+                  variant="contained"
+                  disabled={requestSaving}
+                  onClick={() => void handleSubmitAccessRequest()}
+                >
+                  Отправить заявку
+                </Button>
+              </Box>
+            </>
+          )}
+        </Paper>
+      </Modal>
+
+
       {/* Модалка подтверждения удаления */}
       <Modal
         open={deleteConfirmOpen}
@@ -1374,7 +1775,7 @@ onBack: () => navigate('/objects'),
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Проект «{reminderProject?.name}» создан. Отметьте, кто из команды объекта
-            должен его видеть. По умолчанию отмечен только заказчик — остальных
+            должен его видеть. По умолчанию отмечен только администратор объекта — остальных
             можно добавить позже в карточке объекта.
           </Typography>
 
@@ -1411,7 +1812,7 @@ onBack: () => navigate('/objects'),
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         {member.role === 'CUSTOMER'
-                          ? '👑 Заказчик'
+                          ? '👑 Администратор объекта'
                           : member.role === 'FOREMAN'
                             ? '👷 Прораб'
                             : '👁 Наблюдатель'}

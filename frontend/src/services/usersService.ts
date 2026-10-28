@@ -16,13 +16,15 @@ export interface TeamMember {
   createdAt: string;
 }
 
-// ⭐ Объект с участниками (сводная карточка на странице «Участники»)
+// ⭐ Объект с участниками (сводная карточка на странице «Моя команда»)
 export interface TeamObject {
   id: number;
   name: string;
   address: string;
   isArchived: boolean;
   myRole: AccessRole;
+  // ⭐ №184: область моего доступа — «Весь объект» или названия проектов
+  scopes: string[];
   members: TeamMember[];
 }
 

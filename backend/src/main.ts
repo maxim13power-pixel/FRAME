@@ -1,9 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // ⭐ №202 (RFC §8.7): JSON-предпросмотр импорта сметы шлёт до 500 строк —
+  // дефолтные 100 КБ не проходят. Файл (multipart) ограничен отдельно в контроллере (2 МБ).
+  app.useBodyParser('json', { limit: '2mb' });
 
   // ⭐ Глобальный ValidationPipe: отсекает лишнее + авто-преобразование типов
   app.useGlobalPipes(

@@ -10,7 +10,6 @@ import { PriceListModule } from './price-list/price-list.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AccessModule } from './access/access.module';
 import { InviteModule } from './invite/invite.module';
-import { ChangeModule } from './change/change.module'; // ⭐ P0-6
 import { RentalsModule } from './rentals/rentals.module'; // ⭐ Аренда
 import { UsersModule } from './users/users.module'; // ⭐ Участники (сводный список)
 import { WarehouseModule } from './warehouse/warehouse.module'; // ⭐ Склад
@@ -20,6 +19,10 @@ import { BrigadesModule } from './brigades/brigades.module'; // ⭐ Срез 4: 
 import { EstimateTemplatesModule } from './estimate-templates/estimate-templates.module'; // ⭐ №129
 import { AuditModule } from './audit/audit.module'; // ⭐ №131
 import { EstimateRecalcModule } from './estimate-recalc/estimate-recalc.module'; // ⭐ №170
+import { AccessRequestModule } from './access-request/access-request.module'; // ⭐ №178
+import { ObjectTemplatesModule } from './object-templates/object-templates.module'; // ⭐ №175
+import { SnapshotsModule } from './snapshots/snapshots.module'; // ⭐ №194: снимок доступа
+import { ImportsModule } from './imports/imports.module'; // ⭐ №202: импорт сметы из Excel
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -34,7 +37,6 @@ import { EstimateRecalcModule } from './estimate-recalc/estimate-recalc.module';
     DashboardModule,
     AccessModule,
     InviteModule,
-    ChangeModule, // ⭐ P0-6
     RentalsModule, // ⭐ Аренда
     UsersModule, // ⭐ Участники (сводный список)
     WarehouseModule, // ⭐ Склад
@@ -44,6 +46,10 @@ import { EstimateRecalcModule } from './estimate-recalc/estimate-recalc.module';
     EstimateTemplatesModule, // ⭐ №129: шаблоны смет
     AuditModule, // ⭐ №131: аудит-лог (global)
     EstimateRecalcModule, // ⭐ №170: пересчёт сметы по справочнику
+    AccessRequestModule, // ⭐ №178: заявки на право создавать проекты
+    ObjectTemplatesModule, // ⭐ №175: шаблоны объектов
+    SnapshotsModule, // ⭐ №194: снимок доступа (только чтение)
+    ImportsModule, // ⭐ №202: импорт сметы из Excel
   ],
   controllers: [AppController],
   providers: [AppService],

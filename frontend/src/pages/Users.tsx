@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Paper, Avatar, Chip, Stack, Divider,
-  CircularProgress, Alert, Button,
+  CircularProgress, Alert, Button, IconButton, useMediaQuery, useTheme,
 } from '@mui/material';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate } from 'react-router-dom';
+import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import SectionIntro from '../components/SectionIntro';
 import { fetchTeam } from '../services/usersService';
 import type { TeamObject, TeamMember } from '../services/usersService';
 import type { AccessRole } from '../services/accessService';
@@ -13,7 +16,7 @@ import { getApiErrorMessage } from '../utils/errors';
 // ⭐ Подпись роли (как на странице принятия приглашения)
 const roleLabel = (role: AccessRole) => {
   switch (role) {
-    case 'CUSTOMER': return '👑 Заказчик';
+    case 'CUSTOMER': return '👑 Администратор объекта';
     case 'FOREMAN': return '👷 Прораб';
     case 'VIEWER': return '👁 Наблюдатель';
     default: return role;
@@ -30,9 +33,18 @@ const displayName = (m: TeamMember) => m.fullName || m.email || m.phone || 'Бе
 
 const Users: React.FC = () => {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [team, setTeam] = useState<TeamObject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // ⭐ №190: мобильная шапка с кнопкой «назад» (как в остальных разделах),
+  // свой h4 на мобилке не рисуем — иначе заголовок дублируется.
+  useMobileHeader({
+    title: 'Моя команда',
+    onBack: () => navigate('/settings'),
+  });
 
   const load = async () => {
     setLoading(true);
@@ -52,11 +64,30 @@ const Users: React.FC = () => {
   }, []);
 
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom>Участники</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Кто работает со мной на объектах. Приглашать и менять роли — в карточке объекта.
-      </Typography>
+    <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
+      {/* Заголовок с «назад» — только на десктопе (на мобилке это делает шапка) */}
+      {!isMobile && (
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <IconButton
+            onClick={() => navigate('/settings')}
+            aria-label="Назад в настройки"
+            sx={{
+              mr: 1,
+              bgcolor: 'rgba(0,0,0,0.06)',
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' },
+            }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h4" sx={{ flexGrow: 1 }}>Моя команда</Typography>
+        </Box>
+      )}
+
+      {/* ⭐ №190: пояснение — через SectionIntro (закрывается крестиком, факт в localStorage) */}
+      <SectionIntro id="my-team" version={1}>
+        Кто работает со мной на объектах. Приглашать и менять роли — в карточке объекта
+        (шестерёнка → «Пригласить участника»).
+      </SectionIntro>
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
@@ -85,6 +116,19 @@ const Users: React.FC = () => {
                 <Typography variant="h6" sx={{ flexGrow: 1 }}>{obj.name}</Typography>
                 {/* ⚠️ №168: глобального архива объектов больше нет — бейдж «архив» убран */}
                 <Chip label={`Вы: ${roleLabel(obj.myRole)}`} size="small" variant="outlined" />
+              </Box>
+              {/* ⭐ №184: область доступа — весь объект или конкретные проекты */}
+              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.5 }}>
+                {obj.scopes.map((scope) => (
+                  <Chip
+                    key={scope}
+                    size="small"
+                    variant={scope === 'Весь объект' ? 'outlined' : 'filled'}
+                    color={scope === 'Весь объект' ? 'default' : 'primary'}
+                    label={scope === 'Весь объект' ? '🏗 весь объект' : `📁 ${scope}`}
+                    sx={{ height: 20, fontSize: '0.7rem' }}
+                  />
+                ))}
               </Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                 {obj.address}

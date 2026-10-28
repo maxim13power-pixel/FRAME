@@ -1,12 +1,13 @@
 // backend/src/reports/reports.service.spec.ts
 // ⭐ №126: unit-тесты скрытия цен в детали отчёта (Блок B).
+import { ForbiddenException } from '@nestjs/common';
 import { ReportsService } from './reports.service';
 
 describe('ReportsService', () => {
   const prisma = {
-    report: { findUnique: jest.fn() },
+    report: { findUnique: jest.fn(), findMany: jest.fn(), delete: jest.fn() },
     project: { findUnique: jest.fn() },
-    objectAccess: { findFirst: jest.fn() },
+    objectAccess: { findFirst: jest.fn(), findMany: jest.fn() },
     reportItem: { findMany: jest.fn() },
   };
 
@@ -50,7 +51,10 @@ describe('ReportsService', () => {
   });
 
   const givenAccess = (role: string, hidePrices: boolean) => {
-    prisma.objectAccess.findFirst.mockResolvedValue({ id: 1, role, hidePrices });
+    // ⭐ №193: checkProjectAccess читает записи одним findMany (проект + объект)
+    prisma.objectAccess.findMany.mockResolvedValue([
+      { id: 1, objectId: 2, projectId: 1, role, hidePrices, revokedAt: null },
+    ]);
   };
 
   describe('detail — скрытие цен (Блок B)', () => {
@@ -85,6 +89,42 @@ describe('ReportsService', () => {
       expect(result.items[0].price).toBe(100);
       expect(result.items[0].total).toBe(200);
       expect(result.items[0].material.price).toBe(300);
+    });
+  });
+
+  // ⭐ №180: в списке отчётов суммы игнорировали hidePrices/VIEWER.
+  describe('№180: список отчётов уважает hidePrices', () => {
+    const grant = (hidePrices: boolean) => ({
+      objectId: 2,
+      projectId: null as number | null,
+      role: 'FOREMAN',
+      hidePrices,
+      revokedAt: null as Date | null,
+    });
+
+    it('hidePrices=true ⇒ totalAmount в списке обнуляется', async () => {
+      prisma.objectAccess.findMany.mockResolvedValue([grant(true)]);
+      prisma.report.findMany.mockResolvedValue([report]);
+
+      const result: any = await service.list(7, {});
+
+      expect(result[0].totalAmount).toBe(0);
+    });
+
+    it('hidePrices=false ⇒ суммы остаются', async () => {
+      prisma.objectAccess.findMany.mockResolvedValue([grant(false)]);
+      prisma.report.findMany.mockResolvedValue([report]);
+
+      const result: any = await service.list(7, {});
+
+      expect(result[0].totalAmount).toBe(1500);
+    });
+
+    it('VIEWER не может удалить отчёт ⇒ ForbiddenException', async () => {
+      givenAccess('VIEWER', false);
+
+      await expect(service.remove(7, 1)).rejects.toThrow(ForbiddenException);
+      expect(prisma.report.delete).not.toHaveBeenCalled();
     });
   });
 });

@@ -150,13 +150,15 @@ const SIDEBAR_HEADER_H = 64;
               </ListItem>
             ))}
     </List>
-    {/* ⭐ Шаг 67: профиль внизу раскрытого меню (иконка + имя, как в rail — гармония) */}
-    <Box sx={{ mt: 'auto' }}>
-      <Divider />
-      <ListItemButton
-        onClick={() => navigate('/users')}
-        sx={{ py: 1.5, px: 2, gap: 1.5, '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.08)' } }}
-      >
+      {/* ⭐ Шаг 67 / №184: профиль внизу раскрытого меню ведёт в «Настройки» (это «я»),
+          а не в «Участники» — управление командой живёт в карточке объекта и в «Моей команде». */}
+      <Box sx={{ mt: 'auto' }}>
+        <Divider />
+        <ListItemButton
+          onClick={() => navigate('/settings')}
+          aria-label="Профиль и настройки"
+          sx={{ py: 1.5, px: 2, gap: 1.5, '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.08)' } }}
+        >
         <ListItemIcon sx={{ minWidth: 40 }}>
           <Avatar sx={{ width: 36, height: 36, bgcolor: '#1976d2', fontSize: '1rem', fontWeight: 700 }}>
             {user?.name?.[0]?.toUpperCase() || <PersonIcon />}
@@ -232,11 +234,11 @@ const SIDEBAR_HEADER_H = 64;
           );
         })}
             </Box>
-            {/* ⭐ Шаг 66: иконка пользователя внизу свёрнутого rail (Z-паттерн:
-                глаз спускается по меню и упирается в профиль — клик ведёт на «Пользователи» /users) */}
+            {/* ⭐ Шаг 66 / №184: иконка пользователя внизу свёрнутого rail ведёт в «Настройки»
+                (профиль = «я»), а «Моя команда» — ссылкой из настроек. */}
             <Divider sx={{ width: '70%', my: 1 }} />
             <Tooltip title={user?.name || 'Профиль и настройки'} placement="right" arrow>
-              <IconButton onClick={() => navigate('/users')} aria-label="Моя страница">
+              <IconButton onClick={() => navigate('/settings')} aria-label="Профиль и настройки">
                 <Avatar sx={{ width: 32, height: 32, bgcolor: '#1976d2', fontSize: '0.9rem', fontWeight: 700 }}>
                   {user?.name?.[0]?.toUpperCase() || <PersonIcon />}
                 </Avatar>

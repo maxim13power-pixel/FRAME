@@ -11,55 +11,123 @@ export class UsersService {
   // ⭐ Сводный список участников по всем объектам, к которым у юзера есть доступ.
   // Управление (приглашение/роли/отзыв) — в access.service.ts (модалка объекта),
   // здесь только чтение для страницы «Участники».
+  // ⭐ №184: «Моя команда» — ВСЕ объекты, где у меня есть активный доступ,
+  // включая доступ «только проект» (раньше фильтр projectId=null прятал такие объекты:
+  // прораб, приглашённый на один проект, видел пустую страницу).
   async getTeam(userId: number) {
-    // 1. Мои записи доступа (объектный уровень) — это и есть «мои» объекты.
+    // 1. Мои активные записи доступа — объектные и проектные.
     const myAccesses = await this.prisma.objectAccess.findMany({
-      where: { userId, projectId: null },
+      where: { userId, revokedAt: null },
       include: {
         object: {
-          select: { id: true, name: true, address: true, isArchived: true, createdAt: true },
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            isArchived: true,
+            createdAt: true,
+          },
         },
       },
     });
+    if (myAccesses.length === 0) return [];
 
-    const objectIds = myAccesses.map((a) => a.objectId);
-    if (objectIds.length === 0) return [];
+    const objectIds = [...new Set(myAccesses.map((a) => a.objectId))];
+    // Объекты, где доступ выдан на весь объект
+    const fullObjectIds = [
+      ...new Set(
+        myAccesses.filter((a) => a.projectId == null).map((a) => a.objectId),
+      ),
+    ];
+    // Проекты, куда меня пригласили точечно
+    const myProjectIds = [
+      ...new Set(
+        myAccesses
+          .filter((a) => a.projectId != null)
+          .map((a) => a.projectId as number),
+      ),
+    ];
 
-    // 2. Все участники этих объектов (объектный уровень).
+    // 2. Участники: для «полного» объекта — все, для проектного доступа — только мои
+    //    проекты (контакты чужой команды не показываем).
     const members = await this.prisma.objectAccess.findMany({
-      where: { objectId: { in: objectIds }, projectId: null },
+      where: {
+        revokedAt: null,
+        OR: [
+          { objectId: { in: fullObjectIds } },
+          { projectId: { in: myProjectIds } },
+        ],
+      },
       include: {
-        user: { select: { id: true, fullName: true, email: true, phone: true } },
+        user: {
+          select: { id: true, fullName: true, email: true, phone: true },
+        },
       },
       orderBy: { createdAt: 'asc' },
     });
 
-    // 3. Группируем по объекту (новые объекты сверху).
-    return myAccesses
+    // 3. Названия моих проектов — для подписи области доступа.
+    const projects = myProjectIds.length
+      ? await this.prisma.project.findMany({
+          where: { id: { in: myProjectIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const projectName = new Map(projects.map((p) => [p.id, p.name]));
+
+    const ROLE_PRIORITY: Record<string, number> = {
+      CUSTOMER: 3,
+      FOREMAN: 2,
+      VIEWER: 1,
+    };
+
+    // 4. Группируем по объекту (новые объекты сверху).
+    return objectIds
+      .map((objectId) => {
+        const mine = myAccesses.filter((a) => a.objectId === objectId);
+        const full = mine.find((a) => a.projectId == null);
+        const source =
+          full ??
+          mine.reduce((a, b) =>
+            ROLE_PRIORITY[b.role] > ROLE_PRIORITY[a.role] ? b : a,
+          );
+        const scopes = full
+          ? ['Весь объект']
+          : [
+              ...new Set(
+                mine.map(
+                  (a) => projectName.get(a.projectId as number) ?? 'Проект',
+                ),
+              ),
+            ];
+        const obj = mine[0].object;
+        return {
+          id: obj.id,
+          name: obj.name,
+          address: obj.address,
+          isArchived: obj.isArchived,
+          myRole: source.role,
+          scopes,
+          members: members
+            .filter((m) => m.objectId === objectId)
+            .map((m) => ({
+              id: m.id,
+              userId: m.userId,
+              fullName: m.user.fullName,
+              email: m.user.email,
+              phone: m.user.phone,
+              role: m.role,
+              hidePrices: m.hidePrices,
+              invitedBy: m.invitedBy,
+              createdAt: m.createdAt,
+            })),
+          createdAt: obj.createdAt,
+        };
+      })
       .sort(
-        (a, b) =>
-          (b.object.createdAt?.getTime() ?? 0) - (a.object.createdAt?.getTime() ?? 0),
+        (a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0),
       )
-      .map((my) => ({
-        id: my.object.id,
-        name: my.object.name,
-        address: my.object.address,
-        isArchived: my.object.isArchived,
-        myRole: my.role,
-        members: members
-          .filter((m) => m.objectId === my.objectId)
-          .map((m) => ({
-            id: m.id,
-            userId: m.userId,
-            fullName: m.user.fullName,
-            email: m.user.email,
-            phone: m.user.phone,
-            role: m.role,
-            hidePrices: m.hidePrices,
-            invitedBy: m.invitedBy,
-            createdAt: m.createdAt,
-          })),
-      }));
+      .map(({ createdAt: _createdAt, ...rest }) => rest);
   }
 
   // ⭐ №130 (152-ФЗ): выгрузка персональных данных текущего пользователя.
@@ -75,8 +143,10 @@ export class UsersService {
     const objectAccesses = await this.prisma.objectAccess.findMany({
       where: { userId },
     });
+    // ⭐ №193 (A₂ F1): данные объектов выгружаем только по АКТИВНЫМ доступам —
+    // отозванный доступ живых данных не отдаёт (сами записи об отзыве остаются).
     const objectIds = objectAccesses
-      .filter((a) => a.projectId === null)
+      .filter((a) => a.projectId === null && !a.revokedAt)
       .map((a) => a.objectId);
 
     const objects = objectIds.length
@@ -171,7 +241,7 @@ export class UsersService {
       });
 
       // 5. Профиль: персональные данные стираем, запись оставляем
-      //    (на неё ссылаются ChangeRequest.proposedBy/MaterialFix.userId и т.п.).
+      //    (на неё ссылаются MaterialFix.userId, AuditLog.actorId и т.п.).
       await tx.user.update({
         where: { id: userId },
         data: {

@@ -17,7 +17,7 @@ describe('WarehouseService', () => {
 
   // Мок PrismaService (внешний клиент).
   const prisma = {
-    warehouseItem: { findUnique: jest.fn() },
+    warehouseItem: { findUnique: jest.fn(), delete: jest.fn() },
     project: { findUnique: jest.fn() },
     objectAccess: { findFirst: jest.fn(), findMany: jest.fn() },
     warehouseTransaction: { create: jest.fn(), findMany: jest.fn() },
@@ -45,6 +45,8 @@ describe('WarehouseService', () => {
         role: 'FOREMAN',
         hidePrices: false,
       });
+      // ⭐ №180: общая позиция (objectId=null) требует хотя бы один объект с правами записи
+      prisma.objectAccess.findMany.mockResolvedValue([{ role: 'FOREMAN' }]);
       // Внутри транзакции позиция существует.
       tx.warehouseItem.findUnique.mockResolvedValue({ id: 1 });
     });
@@ -138,6 +140,91 @@ describe('WarehouseService', () => {
       const promise = service.list(7, 999);
       await expect(promise).rejects.toThrow(ForbiddenException);
       await expect(promise).rejects.toThrow('Нет доступа к этому объекту');
+    });
+  });
+
+  // ⭐ №180: склад был одной из двух дыр, где VIEWER и отозванный доступ писали.
+  describe('№180: наблюдатель и отозванный доступ — только чтение', () => {
+    const userId = 7;
+
+    it('VIEWER не может провести приход ⇒ ForbiddenException', async () => {
+      prisma.warehouseItem.findUnique.mockResolvedValue({
+        id: 1,
+        objectId: null,
+      });
+      prisma.objectAccess.findMany.mockResolvedValue([{ role: 'VIEWER' }]);
+      prisma.objectAccess.findFirst.mockResolvedValue({
+        id: 1,
+        role: 'VIEWER',
+        revokedAt: null,
+      });
+
+      const dto = {
+        warehouseItemId: 1,
+        type: 'income',
+        quantity: 3,
+      } as CreateTransactionDto;
+
+      await expect(service.createTransaction(userId, dto)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(tx.warehouseTransaction.create).not.toHaveBeenCalled();
+    });
+
+    it('отозванный доступ не может списать материал ⇒ «Доступ отозван»', async () => {
+      prisma.warehouseItem.findUnique.mockResolvedValue({
+        id: 1,
+        objectId: null,
+      });
+      prisma.project.findUnique.mockResolvedValue({ objectId: 2 });
+      // ⭐ №193: доступ к проекту читается одним findMany, отозванная запись — 403
+      prisma.objectAccess.findMany.mockResolvedValue([
+        {
+          id: 1,
+          objectId: 2,
+          projectId: 10,
+          role: 'FOREMAN',
+          revokedAt: new Date('2026-10-01'),
+        },
+      ]);
+
+      const dto = {
+        warehouseItemId: 1,
+        type: 'expense',
+        quantity: 5,
+        projectId: 10,
+      } as CreateTransactionDto;
+
+      await expect(service.createTransaction(userId, dto)).rejects.toThrow(
+        /Доступ отозван/,
+      );
+      expect(tx.warehouseItem.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('VIEWER не может удалить позицию своего объекта ⇒ ForbiddenException', async () => {
+      prisma.warehouseItem.findUnique.mockResolvedValue({ id: 5, objectId: 2 });
+      prisma.objectAccess.findFirst.mockResolvedValue({
+        id: 1,
+        role: 'VIEWER',
+        revokedAt: null,
+      });
+
+      await expect(service.remove(userId, 5)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('FOREMAN без отзыва по-прежнему удаляет позицию', async () => {
+      prisma.warehouseItem.findUnique.mockResolvedValue({ id: 5, objectId: 2 });
+      prisma.objectAccess.findFirst.mockResolvedValue({
+        id: 1,
+        role: 'FOREMAN',
+        revokedAt: null,
+      });
+
+      await expect(service.remove(userId, 5)).resolves.toEqual({
+        success: true,
+      });
     });
   });
 });

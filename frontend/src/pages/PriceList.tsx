@@ -44,6 +44,7 @@ import CategoryIcon from '@mui/icons-material/Category';
 import PriceCheckIcon from '@mui/icons-material/PriceCheck';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import { useAuth } from '../contexts/AuthContext';
+import { FAB_STYLE } from '../theme';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import {
@@ -58,6 +59,7 @@ import {
 } from '../services/priceListService';
 import type { PriceCategoryData, PriceCatalogData, PriceItemData } from '../services/priceListService';
 import PriceCatalogList from '../components/PriceCatalogList';
+import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import { getApiErrorText } from '../utils/errors';
 
 // Единицы измерения — точно как в Materials.tsx (единообразие)
@@ -77,7 +79,7 @@ const UNIT_OPTIONS = [
 // ⭐ Служебное значение для селекта: "создать новую категорию прямо отсюда"
 const NEW_CATEGORY_VALUE = '__new__';
 
-const PriceList: React.FC = () => {
+const PriceListInner: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -458,14 +460,8 @@ const PriceList: React.FC = () => {
     );
   }
 
-  // ⭐ №151: справочник не выбран → показываем список справочников (как «Объекты → Проекты»)
-  if (!catalogId) {
-    return (
-      <Box sx={{ minHeight: '100vh', bgcolor: '#f0f4fa' }}>
-        <PriceCatalogList />
-      </Box>
-    );
-  }
+  // ⭐ №179: ветку «список справочников» вынес в обёртку ниже — списку нужна СВОЯ мобильная
+  // шапка (архив + поиск), иначе шапка PriceList дублировала поиск и показывала нерабочую сортировку.
 
 
   return (
@@ -481,7 +477,6 @@ const PriceList: React.FC = () => {
           }}
           variant="fullWidth"
           sx={{
-            mt: -3,
             mb: 1,
             '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 13, minHeight: 44 },
           }}
@@ -518,13 +513,13 @@ const PriceList: React.FC = () => {
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
           <IconButton
-            onClick={() => navigate('/')}
+            onClick={() => navigate(catalogId ? '/price-list' : '/')}
             sx={{
               mr: 1,
               bgcolor: 'rgba(0,0,0,0.06)',
               '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' },
             }}
-            aria-label="В главное меню"
+            aria-label={catalogId ? 'К списку справочников' : 'В главное меню'}
           >
             <ArrowBackIcon />
           </IconButton>
@@ -533,6 +528,12 @@ const PriceList: React.FC = () => {
           </Typography>
         </Box>
       )}
+      {/* ⭐ №199: подсказка — под заголовком, до вкладок и поиска */}
+      <SectionIntro id="price-items" version={1}>
+        Категории сворачиваются кликом по заголовку. Шестерёнка ⚙ у категории — переименовать
+        или удалить, у расценки — правка. На телефоне новая расценка добавляется кнопкой «$ +».
+      </SectionIntro>
+
       {/* Десктоп: вкладки */}
       {!isMobile && (
         <Tabs
@@ -543,8 +544,6 @@ const PriceList: React.FC = () => {
           }}
           sx={{
             mb: 1,
-            borderBottom: 1,
-            borderColor: 'divider',
             '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 15, minHeight: 48 },
           }}
         >
@@ -648,9 +647,9 @@ const PriceList: React.FC = () => {
                 gap: 1,
                 px: 2,
                 py: 1.5,
-                bgcolor: '#f5f5f5',
+                bgcolor: 'rgba(25, 118, 210, 0.06)',
                 cursor: 'pointer',
-                '&:hover': { bgcolor: '#eeeeee' },
+                '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.10)' },
               }}
             >
               <CategoryIcon sx={{ color: '#1976d2' }} />
@@ -791,7 +790,7 @@ const PriceList: React.FC = () => {
       {isMobile && (
         <Fab
           color="primary"
-          sx={{ position: 'fixed', bottom: 80, right: 16, zIndex: 1000 }}
+          sx={{ ...FAB_STYLE, bottom: 80 }}
           onClick={() => handleOpenAddItem()}
         >
            <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -1042,6 +1041,18 @@ const PriceList: React.FC = () => {
       </Modal>
     </Box>
   );
+};
+
+// ⭐ №179: если справочник не выбран — показываем СПИСОК справочников как отдельную страницу
+// (свой заголовок, архив в шапке и поиск по справочникам, а не по расценкам).
+const PriceList: React.FC = () => {
+  const { catalogId } = useParams<{ catalogId?: string }>();
+  if (!catalogId) {
+    // ⭐ №195: свою оболочку (minHeight 100vh + фон) не рисуем — её даёт Dashboard,
+    // иначе страница «Справочники цен» выбивалась из остальных разделов.
+    return <PriceCatalogList />;
+  }
+  return <PriceListInner />;
 };
 
 export default PriceList;

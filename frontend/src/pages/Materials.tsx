@@ -32,8 +32,11 @@ import {
   LinearProgress,
   Divider,
   Snackbar,
+  Drawer,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import CheckIcon from '@mui/icons-material/Check';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import SearchIcon from '@mui/icons-material/Search';
@@ -69,8 +72,8 @@ import type { ProjectData } from '../services/projectService';
 import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
 import { searchPriceItems } from '../services/priceListService';
-import type { PriceItemData } from '../services/priceListService';
-import { fetchCategoriesWithItems } from '../services/priceListService';
+import type { PriceCatalogData, PriceCategoryData, PriceItemData } from '../services/priceListService';
+import { fetchCategoriesWithItems, fetchPriceCatalogs } from '../services/priceListService';
 import { getApiErrorText } from '../utils/errors';
 import { applyEstimateTemplate, fetchEstimateTemplates } from '../services/estimateTemplateService';
 import type { EstimateTemplate } from '../services/estimateTemplateService';
@@ -81,14 +84,20 @@ import { FAB_STYLE } from '../theme';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import PriceChangeIcon from '@mui/icons-material/PriceChange';
 // ⭐ №170: пересчёт сметы по справочнику цен (превью «было → станет» + откат)
 import { PriceRecalcModal } from '../components/PriceRecalcModal';
+import EstimateImportModal from '../components/EstimateImportModal'; // ⭐ №202: импорт сметы из Excel
+import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 
 // ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено».
 const BOTTOM_NAV_HEIGHT = 56; // высота BottomNav (MUI BottomNavigation по умолчанию)
 const SUMMARY_BAR_BOTTOM = BOTTOM_NAV_HEIGHT + 8; // плашка над меню с зазором 8px
 const SUMMARY_LIST_CLEARANCE_PX = 64; // доп. отступ списка, чтобы кнопка «Зафиксировать объём» не пряталась под плашку
+
+// ⭐ №177: запоминаем последний выбранный справочник цен (в модалке «Добавить позицию»)
+const PRICE_CATALOG_MEMO_KEY = 'frame:priceCatalogChoice';
 
 const UNIT_OPTIONS = [
   { value: 'PIECE', label: 'шт' },
@@ -102,6 +111,187 @@ const UNIT_OPTIONS = [
   { value: 'PACKAGE', label: 'упак' },
   { value: 'SET', label: 'компл' },
 ];
+
+// ⭐ №177: ступени 1–2 выбора расценки — «Справочник → Категория».
+// Используется дважды: для цены работ и для цены материала (выбор независимый).
+interface PriceStepSelectsProps {
+  catalogChoice: number | '';
+  categoryChoice: number | '';
+  catalogs: PriceCatalogData[];
+  categories: PriceCategoryData[];
+  /** действующий справочник проекта (для подписи пункта «по умолчанию») */
+  projectCatalogId?: number;
+  projectCatalogName: string | null;
+  catalogLabel: (c: PriceCatalogData) => string;
+  onCatalogChange: (value: number | '') => void;
+  onCategoryChange: (value: number | '') => void;
+}
+
+// ⭐ №179: вместо двух селектов — компактные чипсы «Справочник ▾ · Категория ▾».
+// Тап открывает выбор: на телефоне — боттомшит, на десктопе — меню. Логика ступеней та же.
+const PriceStepSelects: React.FC<PriceStepSelectsProps> = ({
+  catalogChoice,
+  categoryChoice,
+  catalogs,
+  categories,
+  projectCatalogId,
+  projectCatalogName,
+  catalogLabel,
+  onCatalogChange,
+  onCategoryChange,
+}) => {
+  const isPhone = useMediaQuery('(max-width: 599.95px)');
+  const [openStep, setOpenStep] = useState<'catalog' | 'category' | null>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+
+  const closeStep = () => {
+    setOpenStep(null);
+    setAnchorEl(null);
+  };
+
+  const openStepWith = (step: 'catalog' | 'category', event: React.MouseEvent<HTMLElement>) => {
+    setOpenStep(step);
+    setAnchorEl(event.currentTarget);
+  };
+
+  const chosenCatalog = catalogs.find((c) => c.id === catalogChoice);
+  const catalogCaption =
+    catalogChoice === ''
+      ? projectCatalogId
+        ? projectCatalogName ?? 'справочник проекта'
+        : 'все доступные'
+      : chosenCatalog
+        ? chosenCatalog.name
+        : 'справочник';
+  const categoryCaption =
+    categoryChoice === ''
+      ? 'все'
+      : categories.find((c) => c.id === categoryChoice)?.name ?? 'категория';
+
+  const chipSx = {
+    maxWidth: { xs: '100%', sm: 260 },
+    bgcolor: '#fff',
+    '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' },
+  } as const;
+
+  const stepItems =
+    openStep === 'catalog'
+      ? [
+          <MenuItem
+            key="all"
+            value=""
+            selected={catalogChoice === ''}
+            onClick={() => {
+              onCatalogChange('');
+              closeStep();
+            }}
+          >
+            {projectCatalogId
+              ? `По проекту: ${projectCatalogName ?? 'справочник проекта'}`
+              : 'Все доступные'}
+            {catalogChoice === '' && <CheckIcon fontSize="small" sx={{ ml: 'auto', color: '#1976d2' }} />}
+          </MenuItem>,
+          ...catalogs.map((c) => (
+            <MenuItem
+              key={c.id}
+              value={c.id}
+              selected={catalogChoice === c.id}
+              onClick={() => {
+                onCatalogChange(c.id);
+                closeStep();
+              }}
+            >
+              {catalogLabel(c)}
+              {catalogChoice === c.id && <CheckIcon fontSize="small" sx={{ ml: 'auto', color: '#1976d2' }} />}
+            </MenuItem>
+          )),
+        ]
+      : [
+          <MenuItem
+            key="all"
+            value=""
+            selected={categoryChoice === ''}
+            onClick={() => {
+              onCategoryChange('');
+              closeStep();
+            }}
+          >
+            Все категории
+            {categoryChoice === '' && <CheckIcon fontSize="small" sx={{ ml: 'auto', color: '#1976d2' }} />}
+          </MenuItem>,
+          ...categories.map((c) => (
+            <MenuItem
+              key={c.id}
+              value={c.id}
+              selected={categoryChoice === c.id}
+              onClick={() => {
+                onCategoryChange(c.id);
+                closeStep();
+              }}
+            >
+              {c.name} ({c.items?.length ?? 0})
+              {categoryChoice === c.id && <CheckIcon fontSize="small" sx={{ ml: 'auto', color: '#1976d2' }} />}
+            </MenuItem>
+          )),
+        ];
+
+  return (
+    <>
+      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
+        <Chip
+          size="small"
+          variant="outlined"
+          onClick={(e) => openStepWith('catalog', e)}
+          icon={<ArrowDropDownIcon />}
+          label={`Справочник: ${catalogCaption}`}
+          sx={chipSx}
+        />
+        <Chip
+          size="small"
+          variant="outlined"
+          onClick={(e) => openStepWith('category', e)}
+          icon={<ArrowDropDownIcon />}
+          label={`Категория: ${categoryCaption}`}
+          sx={chipSx}
+        />
+      </Stack>
+
+      {isPhone ? (
+        <Drawer
+          anchor="bottom"
+          open={openStep !== null}
+          onClose={closeStep}
+          // ⭐ №179: модалка «Добавить позицию» тоже Modal — поднимаем шит выше, иначе уедет под неё
+          ModalProps={{ sx: { zIndex: 1500 } }}
+          PaperProps={{
+            sx: {
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+              maxHeight: '70vh',
+              pb: 1,
+            },
+          }}
+        >
+          <Box sx={{ p: 2, pb: 0 }}>
+            <Typography variant="subtitle1" fontWeight={700}>
+              {openStep === 'catalog' ? 'Справочник' : 'Категория'}
+            </Typography>
+          </Box>
+          <Box sx={{ overflowY: 'auto', py: 1 }}>{stepItems}</Box>
+        </Drawer>
+      ) : (
+        <Menu
+          anchorEl={anchorEl}
+          open={openStep !== null}
+          onClose={closeStep}
+          PaperProps={{ sx: { maxHeight: 380, minWidth: 280 } }}
+        >
+          {stepItems}
+        </Menu>
+      )}
+    </>
+  );
+};
 
 const Materials: React.FC = () => {
   const { objectId, projectId } = useParams<{ objectId: string; projectId: string }>();
@@ -221,6 +411,16 @@ const [newPriceCategoryName, setNewPriceCategoryName] = useState('');
 const [newPriceUnit, setNewPriceUnit] = useState('PIECE');
 const [newPricePrice, setNewPricePrice] = useState('');
 const [allCategories, setAllCategories] = useState<{ id: number; name: string }[]>([]);
+// ⭐ №177: трёхступенчатый выбор «справочник → категория → расценка».
+// Работы и материалы выбираются независимо: цена работы может быть из одного
+// справочника, цена материала — из другого.
+const [catalogOptions, setCatalogOptions] = useState<PriceCatalogData[]>([]);
+const [workCatalogChoice, setWorkCatalogChoice] = useState<number | ''>('');
+const [workCategoryChoice, setWorkCategoryChoice] = useState<number | ''>('');
+const [workCatalogCategories, setWorkCatalogCategories] = useState<PriceCategoryData[]>([]);
+const [matCatalogChoice, setMatCatalogChoice] = useState<number | ''>('');
+const [matCategoryChoice, setMatCategoryChoice] = useState<number | ''>('');
+const [matCatalogCategories, setMatCatalogCategories] = useState<PriceCategoryData[]>([]);
 // ⭐ Определяем нужно ли скрывать цены (VIEWER или hidePrices=true)
 const hidePrices = currentObject?.hidePrices === true || currentObject?.role === 'VIEWER';
   // №159: смета работает в справочнике проекта — поиск и новые расценки идут в него.
@@ -232,9 +432,31 @@ const hidePrices = currentObject?.hidePrices === true || currentObject?.role ===
     currentProject?.effectiveCatalogName ?? currentProject?.catalog?.name ?? null;
   const priceCatalogFromObject = currentProject?.catalogSource === 'object';
 
+// ⭐ №177: действующий справочник ступени 1 ('' = справочник проекта / все доступные)
+const workEffectiveCatalogId = workCatalogChoice === '' ? priceCatalogId : Number(workCatalogChoice);
+const matEffectiveCatalogId = matCatalogChoice === '' ? priceCatalogId : Number(matCatalogChoice);
+// Ступень 2: показываем только категории, в которых в этом справочнике есть расценки
+const workCategoryOptions = useMemo(
+  () => workCatalogCategories.filter(c => (c.items?.length ?? 0) > 0),
+  [workCatalogCategories],
+);
+const matCategoryOptions = useMemo(
+  () => matCatalogCategories.filter(c => (c.items?.length ?? 0) > 0),
+  [matCatalogCategories],
+);
+/** Подпись справочника в селекте: имя + к чему привязан */
+const catalogLabel = (c: PriceCatalogData) => {
+  if (c.scope === 'object' && c.objectName) return `${c.name} · объект «${c.objectName}»`;
+  if (c.scope === 'project' && c.projectName) return `${c.name} · проект «${c.projectName}»`;
+  if (c.scope === 'personal') return `${c.name} · мой`;
+  return c.name;
+};
+
 // ⭐ Экспорт XLSX/PDF (клиентская генерация)
 const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
 const [exportModalOpen, setExportModalOpen] = useState(false);
+// ⭐ №202: импорт сметы из Excel
+const [importOpen, setImportOpen] = useState(false);
 // ⭐ Добавление позиций из шаблона сметы в текущий проект
 const [templateModalOpen, setTemplateModalOpen] = useState(false);
 const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
@@ -325,6 +547,35 @@ useEffect(() => {
   loadCategories();
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [token]);
+
+// ⭐ №177: ступень 1 — список доступных справочников (системные + свои + объектные/проектные)
+useEffect(() => {
+  if (!token) return;
+  fetchPriceCatalogs()
+    .then(setCatalogOptions)
+    .catch(() => setCatalogOptions([]));
+}, [token]);
+
+// ⭐ №177: ступень 2 — категории перезагружаются при смене справочника
+// (в ответе приходят ВСЕ категории вида, но с расценками только из этого справочника;
+//  для селекта оставляем те, где есть хотя бы одна расценка)
+useEffect(() => {
+  if (!token || !addModalOpen) return;
+  let cancelled = false;
+  fetchCategoriesWithItems('WORK', workEffectiveCatalogId)
+    .then(cats => { if (!cancelled) setWorkCatalogCategories(cats); })
+    .catch(() => { if (!cancelled) setWorkCatalogCategories([]); });
+  return () => { cancelled = true; };
+}, [token, addModalOpen, workEffectiveCatalogId]);
+
+useEffect(() => {
+  if (!token || !addModalOpen) return;
+  let cancelled = false;
+  fetchCategoriesWithItems('MATERIAL', matEffectiveCatalogId)
+    .then(cats => { if (!cancelled) setMatCatalogCategories(cats); })
+    .catch(() => { if (!cancelled) setMatCatalogCategories([]); });
+  return () => { cancelled = true; };
+}, [token, addModalOpen, matEffectiveCatalogId]);
 
 // Поиск + фильтр по категории (двойная фильтрация)
   const filteredMaterials = materials.filter(m =>
@@ -440,6 +691,16 @@ const handleOpenAddModal = () => {
   setAddPriceCategoryName('');
   setAddPriceUnit('PIECE');
   setAddPricePrice('');
+  // ⭐ №177: помним последний выбранный справочник — обычно он один и тот же
+  const remembered = Number(localStorage.getItem(PRICE_CATALOG_MEMO_KEY) || '');
+  const initialCatalog: number | '' =
+    Number.isFinite(remembered) && remembered > 0 ? remembered : '';
+  setWorkCatalogChoice(initialCatalog);
+  setMatCatalogChoice(initialCatalog);
+  setWorkCategoryChoice('');
+  setMatCategoryChoice('');
+  setPriceOptions([]);
+  setMaterialOptions([]);
   // Подгружаем категории для создания новой расценки
   if (token) {
     fetchCategoriesWithItems()
@@ -460,14 +721,22 @@ setAddCreatingNew(false);
 setSelectedMaterialItem(null);
 setMaterialOptions([]);
 setAddMatCreatingNew(false);
+setWorkCategoryChoice('');
+setMatCategoryChoice('');
 };
 
 // ⭐ Поиск расценок из справочника для Autocomplete
+// ⭐ №177: ищем внутри выбранного справочника и выбранной категории (ступени 1–2)
 const handlePriceSearch = async (value: string) => {
 if (!token) return;
 try {
 setPriceLoading(true);
-const data = await searchPriceItems(value || undefined, undefined, 'WORK', priceCatalogId);
+const data = await searchPriceItems(
+  value || undefined,
+  workCategoryChoice === '' ? undefined : Number(workCategoryChoice),
+  'WORK',
+  workEffectiveCatalogId,
+);
 setPriceOptions(data);
 } catch (err) {
 console.error('Ошибка поиска расценок:', err);
@@ -512,7 +781,7 @@ setPriceLoading(false);
           },
           isNewCat ? addPriceCategoryName.trim() : undefined,
           undefined,
-          priceCatalogId
+          workEffectiveCatalogId
         );
         priceItemId = createdPrice.id;
       }
@@ -547,7 +816,7 @@ setPriceLoading(false);
           },
           isNewMatCat ? addMatPriceCategoryName.trim() : undefined,
           'MATERIAL',
-          priceCatalogId
+          matEffectiveCatalogId
         );
         materialItemId = createdMatPrice.id;
       }
@@ -689,11 +958,18 @@ const handleOpenEditFix = async () => {
       setInfoModal({ open: true, text: 'У материала ещё нет фиксаций' });
       return;
     }
-    const last = fixes[0]; // отсортированы по fixedAt desc
+    // ⭐ №176: правим последнюю ВНЕСЁННУЮ фиксацию (createdAt), а не с самой поздней
+    // датой работ — иначе фиксация задним числом не редактировалась вообще.
+    const last = [...fixes].sort((a, b) => {
+      const byCreated =
+        new Date(b.createdAt ?? b.fixedAt).getTime() -
+        new Date(a.createdAt ?? a.fixedAt).getTime();
+      return byCreated !== 0 ? byCreated : b.id - a.id;
+    })[0];
     // ⭐ №174: 72 часа считаем от момента ВНЕСЕНИЯ (createdAt), а не от даты работы
     const fixCreatedAt = new Date(last.createdAt ?? last.fixedAt).getTime();
     if (Date.now() - fixCreatedAt > 72 * 60 * 60 * 1000) {
-      setInfoModal({ open: true, text: 'Исправить можно только фиксацию, внесённую не позже 72 часов назад' });
+      setInfoModal({ open: true, text: 'Исправить можно только последнюю внесённую фиксацию, если с момента внесения прошло не больше 72 часов' });
       return;
     }
     setEditFixAmount(String(last.amount));
@@ -777,7 +1053,13 @@ const handleMaterialPriceSearch = async (value: string) => {
   if (!token) return;
   try {
     setMaterialLoading(true);
-    const data = await searchPriceItems(value || undefined, undefined, 'MATERIAL', priceCatalogId);
+    // ⭐ №177: поиск внутри выбранного справочника материала и его категории
+    const data = await searchPriceItems(
+      value || undefined,
+      matCategoryChoice === '' ? undefined : Number(matCategoryChoice),
+      'MATERIAL',
+      matEffectiveCatalogId,
+    );
     setMaterialOptions(data);
   } catch (err) {
     console.error('Ошибка поиска расценок материалов:', err);
@@ -939,6 +1221,13 @@ setSortAnchorEl(null);
   };
 
   // ⭐ Добавить позиции из шаблона сметы в текущую смету (кнопка в шапке и в мобильном меню)
+  // ⭐ №202: после импорта — перечитать смету и сказать, сколько создано
+  const handleImported = async (created: number, skipped: number) => {
+    if (projectId) setMaterials(await fetchMaterialsByProject(parseInt(projectId)));
+    if (created > 0) notify(`Импортировано позиций: ${created}${skipped ? `, пропущено: ${skipped}` : ''}`, 'success');
+    else notify('Ни одной строки не импортировано — проверьте предупреждения в файле', 'warning');
+  };
+
   const handleOpenTemplateModal = useCallback(async () => {
     setTemplateModalOpen(true);
     try {
@@ -979,19 +1268,27 @@ setSortAnchorEl(null);
   }, [projectId]);
 
   // ⭐ Мобильный хэдер v2: trailing в useMemo — стабильная ссылка, нет бесконечного цикла
+  // ⭐ №201: порядок кнопок задан владельцем: архив/экспорт · «из шаблона» · воронка · сортировка
+  // (поиск рисует AppHeader последним — он остаётся крайним справа).
   const headerTrailing = useMemo(() => isMobile ? (
     <>
       <IconButton
-        onClick={(e) => setSortAnchorEl(e.currentTarget)}
-        sx={{
-          bgcolor: sortBy ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
-          color: sortBy ? '#1976d2' : '#424242',
-          '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
-        }}
+        onClick={() => setExportModalOpen(true)}
+        disabled={exporting !== null}
+        aria-label="Экспорт и архив"
+        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
       >
-        <SortIcon />
+        {exporting ? <CircularProgress size={18} /> : <FileDownloadIcon />}
       </IconButton>
-              {projectCategories.length > 0 && (
+      <IconButton
+        onClick={() => { void handleOpenTemplateModal(); }}
+        disabled={applyingTemplate}
+        aria-label="Добавить из шаблона"
+        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
+      >
+        {applyingTemplate ? <CircularProgress size={18} /> : <PlaylistAddIcon />}
+      </IconButton>
+      {projectCategories.length > 0 && (
         <IconButton
           onClick={(e) => setFilterAnchorEl(e.currentTarget)}
           sx={{
@@ -1004,21 +1301,14 @@ setSortAnchorEl(null);
         </IconButton>
       )}
       <IconButton
-        onClick={() => setExportModalOpen(true)}
-        disabled={exporting !== null}
-        aria-label="Экспорт"
-        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
+        onClick={(e) => setSortAnchorEl(e.currentTarget)}
+        sx={{
+          bgcolor: sortBy ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
+          color: sortBy ? '#1976d2' : '#424242',
+          '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+        }}
       >
-        {exporting ? <CircularProgress size={18} /> : <FileDownloadIcon />}
-      </IconButton>
-      {/* ⭐ Добавить позиции из шаблона сметы */}
-      <IconButton
-        onClick={() => { void handleOpenTemplateModal(); }}
-        disabled={applyingTemplate}
-        aria-label="Добавить из шаблона"
-        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
-      >
-        {applyingTemplate ? <CircularProgress size={18} /> : <PlaylistAddIcon />}
+        <SortIcon />
       </IconButton>
     </>
     ) : undefined, [isMobile, sortBy, categoryFilter, projectCategories.length, exporting, applyingTemplate, handleOpenTemplateModal]);
@@ -1140,6 +1430,25 @@ setSortAnchorEl(null);
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
+   {/* ⭐ №197: одноразовая подсказка раздела */}
+   <SectionIntro id="materials" version={1}>
+     <b>Смета проекта</b>: «План» — спецификация, «Факт» — сумма фиксаций. Процент и стоимость
+     считаются по факту. Фиксацию можно исправить 72 часа, остальное фиксируется навсегда.
+   </SectionIntro>
+
+   {/* ⭐ №202: на мобилке импорт — кнопкой в контенте (шапку не трогаем) */}
+   {isMobile && !hidePrices && (
+     <Button
+       variant="outlined"
+       fullWidth
+       startIcon={<UploadFileIcon />}
+       onClick={() => setImportOpen(true)}
+       sx={{ mb: 1.5 }}
+     >
+       Импорт из Excel
+     </Button>
+   )}
+
    {/* Поиск и кнопка добавления (десктоп; мобилка — в хэдере) */}
    <Box sx={{ display: 'flex', gap: 1, mb: { xs: 0, md: 2 }, alignItems: 'center' }}>
         {!isMobile && (
@@ -1178,6 +1487,16 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
 </FormControl>
 )}
 
+{!isMobile && !hidePrices && (
+  <Button
+    variant="outlined"
+    startIcon={<UploadFileIcon />}
+    onClick={() => setImportOpen(true)}
+    sx={{ whiteSpace: 'nowrap' }}
+  >
+    Импорт Excel
+  </Button>
+)}
 {!isMobile && !hidePrices && (
   <Button
     variant="contained"
@@ -1226,6 +1545,16 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
   </Button>
 )}
       {/* ⭐ Модалка выбора формата экспорта */}
+      {/* ⭐ №202: импорт сметы из Excel */}
+      {projectId && (
+        <EstimateImportModal
+          open={importOpen}
+          projectId={parseInt(projectId)}
+          onClose={() => setImportOpen(false)}
+          onImported={(created, skipped) => void handleImported(created, skipped)}
+        />
+      )}
+
       <Modal open={exportModalOpen} onClose={() => setExportModalOpen(false)} disableRestoreFocus>
         <Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '90%', sm: 320 }, p: 3, borderRadius: 2 }}>
           <Typography variant="h6" gutterBottom>Скачать</Typography>
@@ -1692,6 +2021,28 @@ onClose={() => setFilterAnchorEl(null)}
           onChange={e => setNewNote(e.target.value)}
         />
         <Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена работ</Typography></Divider>
+        {/* ⭐ №177: ступени 1–2 — справочник и категория (ступень 3 — расценка ниже) */}
+        <PriceStepSelects
+          catalogChoice={workCatalogChoice}
+          categoryChoice={workCategoryChoice}
+          catalogs={catalogOptions}
+          categories={workCategoryOptions}
+          projectCatalogId={priceCatalogId}
+          projectCatalogName={priceCatalogName}
+          catalogLabel={catalogLabel}
+          onCatalogChange={(v) => {
+            setWorkCatalogChoice(v);
+            setWorkCategoryChoice('');
+            setSelectedPriceItem(null);
+            setPriceOptions([]);
+            if (v !== '') localStorage.setItem(PRICE_CATALOG_MEMO_KEY, String(v));
+          }}
+          onCategoryChange={(v) => {
+            setWorkCategoryChoice(v);
+            setSelectedPriceItem(null);
+            setPriceOptions([]);
+          }}
+        />
         {!addCreatingNew ? (
             <>
             <Autocomplete
@@ -1713,8 +2064,10 @@ onClose={() => setFilterAnchorEl(null)}
             }
 noOptionsText="Ничего не найдено. Начни вводить название..."
 onOpen={() => { if (priceOptions.length === 0) handlePriceSearch(''); }}
+// ⭐ №179: доверяем серверному поиску (он ищет и по цене) — клиентский фильтр по подписи мешал
+filterOptions={(opts) => opts}
 renderInput={(params) => (
-<TextField {...params} label="Работы из справочника (необязательно)" placeholder="Выбери или начни вводить..." />
+<TextField {...params} label="Стоимость работ" placeholder="Название или цена..." />
 )}
 />
             {selectedPriceItem && (
@@ -1768,6 +2121,28 @@ renderInput={(params) => (
             )}
             
     <Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена материала</Typography></Divider>
+    {/* ⭐ №177: у материала свой справочник и своя категория — можно взять из другого справочника */}
+    <PriceStepSelects
+      catalogChoice={matCatalogChoice}
+      categoryChoice={matCategoryChoice}
+      catalogs={catalogOptions}
+      categories={matCategoryOptions}
+      projectCatalogId={priceCatalogId}
+      projectCatalogName={priceCatalogName}
+      catalogLabel={catalogLabel}
+      onCatalogChange={(v) => {
+        setMatCatalogChoice(v);
+        setMatCategoryChoice('');
+        setSelectedMaterialItem(null);
+        setMaterialOptions([]);
+        if (v !== '') localStorage.setItem(PRICE_CATALOG_MEMO_KEY, String(v));
+      }}
+      onCategoryChange={(v) => {
+        setMatCategoryChoice(v);
+        setSelectedMaterialItem(null);
+        setMaterialOptions([]);
+      }}
+    />
     {!addMatCreatingNew ? (
     <>
     <Autocomplete
@@ -1780,8 +2155,10 @@ renderInput={(params) => (
     getOptionLabel={(o) => `${o.name} — ${o.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`}
     noOptionsText="Ничего не найдено"
     onOpen={() => { if (materialOptions.length === 0) handleMaterialPriceSearch(''); }}
+    // ⭐ №179: доверяем серверному поиску (он ищет и по цене)
+    filterOptions={(opts) => opts}
     renderInput={(params) => (
-    <TextField {...params} label="Материал из справочника (необязательно)" placeholder="Выбери или начни вводить..." />
+    <TextField {...params} label="Стоимость материала" placeholder="Название или цена..." />
     )}
     />
     {selectedMaterialItem && (
@@ -2084,8 +2461,10 @@ textAlign: 'center',
         return `${o.name} — ${o.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`;
       }}
       noOptionsText="Ничего не найдено"
+      // ⭐ №179: серверный поиск ищет и по цене — клиентский фильтр не должен его портить
+      filterOptions={(opts) => opts}
       renderInput={(params) => (
-        <TextField {...params} label="Работы из справочника" placeholder="Начни вводить..." />
+        <TextField {...params} label="Работы из справочника" placeholder="Название или цена..." />
       )}
       onOpen={() => { if (editPriceOptions.length === 0) handleEditPriceSearch(''); }}
     />
@@ -2162,8 +2541,9 @@ onInputChange={(_e, value) => handleEditMaterialPriceSearch(value)}
 getOptionLabel={(o) => `${o.name} — ${o.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`}
 noOptionsText="Ничего не найдено"
 onOpen={() => { if (editMaterialOptions.length === 0) handleEditMaterialPriceSearch(''); }}
+filterOptions={(opts) => opts}
 renderInput={(params) => (
-<TextField {...params} label="Материал из справочника" placeholder="Выбери или начни вводить..." />
+<TextField {...params} label="Материал из справочника" placeholder="Название или цена..." />
 )}
 />
 {editSelectedMaterialItem && (

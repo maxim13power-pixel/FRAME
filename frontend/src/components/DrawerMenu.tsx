@@ -44,10 +44,10 @@ const menuItems = [
 const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) => {
   const { user } = useAuth();
 
-  // ⭐ Шаг 67: клик по профилю → страница «Пользователи» (там аккаунт и выход)
+  // ⭐ №184/№189: клик по профилю ведёт в «Настройки» (это «я»), а не в «Мою команду»
   const handleGoProfile = () => {
     onClose();
-    onNavigate('/users');
+    onNavigate('/settings');
   };
 
   return (

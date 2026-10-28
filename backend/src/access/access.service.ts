@@ -1,4 +1,4 @@
-﻿// backend/src/access/access.service.ts
+// backend/src/access/access.service.ts
 import {
   BadRequestException,
   ConflictException,
@@ -8,9 +8,11 @@ import {
 } from '@nestjs/common';
 import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertAccessActive, findLiveAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { AddAccessDto } from './dto/add-access.dto';
 import { UpdateAccessDto } from './dto/update-access.dto';
+import { buildSnapshotPayload } from '../snapshots/snapshot-payload'; // ⭐ №194 (F1 шаг 2)
 
 @Injectable()
 export class AccessService {
@@ -21,34 +23,46 @@ export class AccessService {
 
   // ⭐ Хелпер: получить запись доступа юзера к объекту (или кинуть 403)
   // Детерминированный резолв: объектный контекст → только общая запись (projectId: null).
+  // ⭐ №193 (A₂ F1): отозванный доступ живых данных не читает — ни участников, ни объект.
   private async getMyAccess(objectId: number, userId: number) {
-    const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId, projectId: null },
+    const access = await findLiveAccess(this.prisma, {
+      userId,
+      objectId,
+      projectId: null,
     });
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
+    assertAccessActive(access);
     return access;
   }
 
-  // ⭐ №168: управлять командой может заказчик или прораб-менеджер (isManager).
-  // Отозванный участник не управляет ничем — он в режиме чтения.
+  // ⭐ №168: управлять командой может администратор объекта или прораб-менеджер (isManager).
+  // Отозванный участник сюда не доходит — отзыв режется в getMyAccess (№193).
   private async assertManager(objectId: number, userId: number) {
     const my = await this.getMyAccess(objectId, userId);
-    if (my.revokedAt) {
-      throw new ForbiddenException(
-        'Доступ отозван: управление участниками недоступно',
-      );
-    }
     const canManage =
       my.role === AccessRole.CUSTOMER ||
       (my.role === AccessRole.FOREMAN && my.isManager);
     if (!canManage) {
       throw new ForbiddenException(
-        'Управлять участниками может заказчик или прораб-менеджер',
+        'Управлять участниками может администратор объекта или прораб-менеджер',
       );
     }
     return my;
+  }
+
+  // ⭐ №182: делегировать можно только то, что есть у тебя.
+  // Если цены скрыты у самого актора — он не может «открыть» их другому.
+  private assertCanDelegatePrices(
+    my: { hidePrices?: boolean },
+    hidePrices?: boolean,
+  ) {
+    if (hidePrices === false && my.hidePrices) {
+      throw new ForbiddenException(
+        'У вас скрыты цены — вы не можете открыть их другому участнику',
+      );
+    }
   }
 
   // ⭐ Хелпер: найти приглашаемого юзера (по userId / email / телефону)
@@ -99,15 +113,18 @@ export class AccessService {
   async addAccess(objectId: number, dto: AddAccessDto, actorUserId: number) {
     const myAccess = await this.assertManager(objectId, actorUserId);
 
-    // Только заказчик может выдать роль заказчика или права менеджера.
+    // Только администратор объекта может выдать роль администратора или права менеджера.
     if (
       (dto.role === AccessRole.CUSTOMER || dto.isManager) &&
       myAccess.role !== AccessRole.CUSTOMER
     ) {
       throw new ForbiddenException(
-        'Только заказчик может выдать роль заказчика или права менеджера',
+        'Только администратор объекта может выдать роль администратора или права менеджера',
       );
     }
+
+    // ⭐ №182: нельзя открыть другому цены, которые скрыты у тебя самого
+    this.assertCanDelegatePrices(myAccess, dto.hidePrices);
 
     // Найти приглашаемого юзера
     const invitedUser = await this.resolveUser(dto);
@@ -138,6 +155,7 @@ export class AccessService {
           isHidden: false,
           role: dto.role,
           isManager: dto.role === AccessRole.FOREMAN && !!dto.isManager,
+          hidePrices: dto.hidePrices ?? existing.hidePrices,
           invitedBy: actorUserId,
         },
         include: {
@@ -152,7 +170,12 @@ export class AccessService {
         objectId,
         'restore',
         { userId: invitedUser.id, revokedAt: existing.revokedAt },
-        { userId: invitedUser.id, role: dto.role },
+        {
+          userId: invitedUser.id,
+          role: dto.role,
+          isManager: restored.isManager,
+          hidePrices: restored.hidePrices,
+        },
       );
       return restored;
     }
@@ -164,6 +187,7 @@ export class AccessService {
         projectId, // null = весь объект
         role: dto.role,
         isManager: dto.role === AccessRole.FOREMAN && !!dto.isManager,
+        hidePrices: dto.hidePrices ?? false,
         invitedBy: actorUserId,
       },
       include: {
@@ -179,7 +203,7 @@ export class AccessService {
       objectId,
       'create',
       undefined,
-      { userId: invitedUser.id, role: dto.role, isManager: created.isManager },
+      { userId: invitedUser.id, role: dto.role, isManager: created.isManager, hidePrices: created.hidePrices },
     );
     return created;
   }
@@ -207,32 +231,47 @@ export class AccessService {
       );
     }
 
-    // Прораб-менеджер не трогает заказчиков и не повышает никого до заказчика.
+    // Прораб-менеджер не трогает администраторов объекта и не повышает никого до администратора объекта.
     if (myAccess.role !== AccessRole.CUSTOMER) {
       if (
         target.role === AccessRole.CUSTOMER ||
         dto.role === AccessRole.CUSTOMER
       ) {
         throw new ForbiddenException(
-          'Только заказчик может менять роль заказчика',
+          'Только администратор объекта может менять роль администратора',
         );
       }
       if (dto.isManager) {
         throw new ForbiddenException(
-          'Только заказчик может назначать прорабов-менеджеров',
+          'Только администратор объекта может назначать прорабов-менеджеров',
         );
       }
     }
 
     const nextRole = dto.role ?? target.role;
     const nextManager = dto.isManager ?? target.isManager;
+    const nextHidePrices = dto.hidePrices ?? target.hidePrices;
+
+    // ⭐ №182: открыть цены другому может только тот, у кого они не скрыты
+    this.assertCanDelegatePrices(myAccess, dto.hidePrices);
+
+    // ⭐ №181: последнего администратора объекта нельзя понизить (инвариант «≥1 администратор»).
+    // Раньше проверка стояла только на отзыве и удалении доступа — понижение роли её обходило.
+    if (target.role === AccessRole.CUSTOMER && nextRole !== AccessRole.CUSTOMER) {
+      await this.assertNotLastCustomer(objectId, target);
+    }
+
     if (nextManager && nextRole !== AccessRole.FOREMAN) {
       throw new BadRequestException('Права менеджера доступны только прорабу');
     }
 
     const updated = await this.prisma.objectAccess.update({
       where: { id: accessId },
-      data: { role: nextRole, isManager: nextManager },
+      data: {
+        role: nextRole,
+        isManager: nextManager,
+        hidePrices: nextHidePrices,
+      },
       include: {
         user: {
           select: { id: true, fullName: true, email: true, phone: true },
@@ -245,14 +284,24 @@ export class AccessService {
       'object_access',
       objectId,
       'update',
-      { userId: target.userId, role: target.role, isManager: target.isManager },
-      { userId: target.userId, role: nextRole, isManager: nextManager },
+      {
+        userId: target.userId,
+        role: target.role,
+        isManager: target.isManager,
+        hidePrices: target.hidePrices,
+      },
+      {
+        userId: target.userId,
+        role: nextRole,
+        isManager: nextManager,
+        hidePrices: nextHidePrices,
+      },
     );
     return updated;
   }
 
-  // 4. Отозвать доступ — МЯГКО: read-only + снимок в личных шаблонах.
-  // Данные не удаляются: акты/склад/авторство остаются, человек видит «как было».
+  // 4. Отозвать доступ — доступ закрывается, данные остаются в личных копиях:
+  // шаблоны смет (+копия справочника цен) и неизменяемый «Снимок доступа» (№194).
   async revokeAccess(objectId: number, accessId: number, actorUserId: number) {
     const myAccess = await this.assertManager(objectId, actorUserId);
 
@@ -272,19 +321,50 @@ export class AccessService {
       myAccess.role === AccessRole.FOREMAN &&
       target.role === AccessRole.CUSTOMER
     ) {
-      throw new ForbiddenException('Прораб не может отозвать доступ заказчика');
+      throw new ForbiddenException('Прораб не может отозвать доступ администратора объекта');
     }
     await this.assertNotLastCustomer(objectId, target);
 
     const now = new Date();
     // Снимок и отзыв — в одной транзакции: либо есть копия, либо доступ остаётся.
-    const snapshot = await this.prisma.$transaction(async (tx) => {
-      const created = await this.createSnapshot(tx, target, now);
+    const result = await this.prisma.$transaction(async (tx) => {
+      const copies = await this.createSnapshot(tx, target, now);
+      // ⭐ №194 (F1 шаг 2): неизменяемый слепок «как было» — не только смета,
+      // но и акты, склад, бригады с выходами. Живёт в личном пространстве
+      // участника, поэтому переживает и удаление записи доступа.
+      const hidePrices = target.hidePrices || target.role === AccessRole.VIEWER;
+      const blind = await buildSnapshotPayload(tx, {
+        objectId: target.objectId,
+        projectId: target.projectId,
+        hidePrices,
+        takenAt: now,
+      });
+      let snapshotId: number | null = null;
+      if (blind) {
+        const saved = await tx.accessSnapshot.create({
+          data: {
+            userId: target.userId,
+            objectId: target.objectId,
+            accessId: target.id,
+            objectName: blind.objectName,
+            projectId: target.projectId,
+            projectName: blind.projectName,
+            role: target.role,
+            hidePrices,
+            takenAt: now,
+            revokedBy: actorUserId,
+            summary: blind.summary as unknown as Prisma.InputJsonValue,
+            payload: blind.payload,
+          },
+          select: { id: true },
+        });
+        snapshotId = saved.id;
+      }
       await tx.objectAccess.update({
         where: { id: accessId },
         data: { revokedAt: now, revokedById: actorUserId },
       });
-      return created;
+      return { ...copies, snapshotId };
     });
 
     // ⭐ №131: журнал отзыва доступа
@@ -294,9 +374,9 @@ export class AccessService {
       objectId,
       'revoke',
       { userId: target.userId, role: target.role },
-      { userId: target.userId, revokedAt: now, ...snapshot },
+      { userId: target.userId, revokedAt: now, ...result },
     );
-    return { success: true, revokedAt: now, ...snapshot };
+    return { success: true, revokedAt: now, ...result };
   }
 
   // 5. Вернуть доступ одним кликом (без повторного приглашения)
@@ -317,7 +397,7 @@ export class AccessService {
       target.role === AccessRole.CUSTOMER
     ) {
       throw new ForbiddenException(
-        'Прораб не может вернуть доступ заказчику — это делает заказчик',
+        'Прораб не может вернуть доступ администратору объекта — это делает администратор объекта',
       );
     }
 
@@ -358,7 +438,7 @@ export class AccessService {
       myAccess.role === AccessRole.FOREMAN &&
       target.role === AccessRole.CUSTOMER
     ) {
-      throw new ForbiddenException('Прораб не может удалить доступ заказчика');
+      throw new ForbiddenException('Прораб не может удалить доступ администратора объекта');
     }
     await this.assertNotLastCustomer(objectId, target);
 
@@ -371,7 +451,7 @@ export class AccessService {
     return { success: true };
   }
 
-  // ⭐ №168: нельзя остаться без заказчика (инвариант И1)
+  // ⭐ №168: нельзя остаться без администратора объекта (инвариант И1)
   private async assertNotLastCustomer(
     objectId: number,
     target: { userId: number; role: AccessRole; projectId: number | null },
@@ -388,7 +468,7 @@ export class AccessService {
     });
     if (others === 0) {
       throw new BadRequestException(
-        'Это последний заказчик объекта — сначала назначьте другого заказчика',
+        'Это последний администратор объекта — сначала назначьте другого администратора',
       );
     }
   }
