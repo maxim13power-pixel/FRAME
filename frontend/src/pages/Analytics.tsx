@@ -130,22 +130,6 @@ const Analytics: React.FC = () => {
 
   return (
     <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
-      {/* ⭐ №169: демо-объект в расчётах → цифры неточные, клик ведёт в «Объекты» */}
-      {(summary?.demoObjects ?? 0) > 0 && (
-        <Alert
-          severity="warning"
-          onClick={() => navigate('/objects')}
-          sx={{ mb: 1, borderRadius: 2, cursor: 'pointer', alignItems: 'flex-start' }}
-        >
-          <Typography variant="body2" fontWeight={600}>
-            В расчёты входит демо-объект{(summary?.demoObjects ?? 0) > 1 ? `ы (${summary?.demoObjects})` : ''}
-          </Typography>
-          <Typography variant="caption">
-            Аналитика считается вместе с демо-данными. Для точных цифр перенесите демо-объект
-            в архив или удалите — нажмите, чтобы открыть «Объекты».
-          </Typography>
-        </Alert>
-      )}
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <IconButton
@@ -182,6 +166,23 @@ const Analytics: React.FC = () => {
         Считается по объектам, где у вас есть доступ. «Бюджет» — смета, «Факт» — фиксации.
         Демо-объект искажает цифры — его лучше убрать в архив.
       </SectionIntro>
+      {/* ⭐ №198: стикер про демо-объект — ПОД подсказкой раздела (её можно скрыть крестиком),
+          а не над заголовком. Клик ведёт в «Объекты». */}
+      {(summary?.demoObjects ?? 0) > 0 && (
+        <Alert
+          severity="warning"
+          onClick={() => navigate('/objects')}
+          sx={{ mb: 2, borderRadius: 2, cursor: 'pointer', alignItems: 'flex-start' }}
+        >
+          <Typography variant="body2" fontWeight={600}>
+            В расчёты входит демо-объект{(summary?.demoObjects ?? 0) > 1 ? `ы (${summary?.demoObjects})` : ''}
+          </Typography>
+          <Typography variant="caption">
+            Аналитика считается вместе с демо-данными. Для точных цифр перенесите демо-объект
+            в архив или удалите — нажмите, чтобы открыть «Объекты».
+          </Typography>
+        </Alert>
+      )}
       <Stack spacing={2}>
         {error && <Alert severity="error">{error}</Alert>}
 
