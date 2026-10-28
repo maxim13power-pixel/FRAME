@@ -10,12 +10,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service'; // ⭐ №168: журнал удалений
 import { CreateProjectDto } from './dto/create-project.dto';
 import {
+  REVOKED_ACCESS_MESSAGE,
   assertAccessActive,
   findLiveAccess,
   findProjectAccess,
   loadAccessGrants,
   resolveObjectRole,
-} from '../auth/access-scope'; // ⭐ №163, №193
+} from '../auth/access-scope'; // ⭐ №163, №193, №204
 
 @Injectable()
 export class ProjectsService {
@@ -236,6 +237,10 @@ export class ProjectsService {
         // ⭐ №188: права на проект — для серых кнопок в меню действий на фронте
         canWrite: my.canWrite,
         canManage: my.canManage,
+        // ⭐ №204 (A#10): карточку проекта правит/удаляет только участник ВСЕГО объекта.
+        // Участник одного проекта работает со сметой, но не с карточкой проекта.
+        canEditCard: my.hasObjectAccess && my.canWrite,
+        canDeleteCard: my.canManage,
       };
     });
   }
@@ -264,6 +269,11 @@ export class ProjectsService {
       },
     });
     if (!project) return null;
+
+    // ⭐ №204 (A#10): права на САМ ОБЪЕКТ — от них зависит, можно ли менять карточку проекта
+    const objectRole = userId
+      ? resolveObjectRole(await loadAccessGrants(this.prisma, userId), project.objectId)
+      : null;
 
     const sumSpec = project.materials.reduce(
       (a, m) => a + Number(m.specQuantity || 0),
@@ -294,13 +304,41 @@ export class ProjectsService {
         : object.catalog
           ? 'object'
           : null,
+      // ⭐ №204 (A#10): карточку проекта правит/удаляет только участник всего объекта
+      canEditCard: objectRole ? objectRole.hasObjectAccess && objectRole.canWrite : false,
+      canDeleteCard: objectRole ? objectRole.canManage : false,
     };
+  }
+
+  // ⭐ №204 (A#10): карточка проекта — объектное право, а не проектное.
+  // «Гость» одного проекта работает со сметой, но не переименовывает проект и не меняет даты.
+  private async assertObjectCardAccess(
+    projectId: number,
+    userId: number,
+    mode: 'write' | 'manage',
+  ) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { objectId: true },
+    });
+    if (!project) throw new NotFoundException('Проект не найден');
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const my = resolveObjectRole(grants, project.objectId);
+    if (!my.role) throw new ForbiddenException('Нет доступа к этому объекту');
+    if (my.revoked) throw new ForbiddenException(REVOKED_ACCESS_MESSAGE);
+    const allowed = mode === 'write' ? my.hasObjectAccess && my.canWrite : my.canManage;
+    if (!allowed) {
+      throw new ForbiddenException(
+        mode === 'write'
+          ? 'Карточку проекта меняет участник всего объекта с правом записи'
+          : 'Удалить проект может администратор объекта',
+      );
+    }
   }
 
   async update(id: number, dto: Partial<CreateProjectDto>, userId?: number) {
     if (userId) {
-      const access = await this.checkProjectAccess(id, userId);
-      this.assertWritable(access, 'редактировать проекты');
+      await this.assertObjectCardAccess(id, userId, 'write');
     }
     // ⭐ №158: смена справочника проекта (undefined = не трогаем, null = отвязать)
     const nextCatalogId =
@@ -328,8 +366,7 @@ export class ProjectsService {
   // поэтому проект с данными удалить нельзя: его просто убирают из своего архива.
   async remove(id: number, userId?: number) {
     if (userId) {
-      const access = await this.checkProjectAccess(id, userId);
-      this.assertWritable(access, 'удалять проекты');
+      await this.assertObjectCardAccess(id, userId, 'manage');
     }
 
     const [materials, reports, transactions, shifts] = await Promise.all([

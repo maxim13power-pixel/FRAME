@@ -1,4 +1,4 @@
-// backend/src/warehouse/warehouse.service.spec.ts
+﻿// backend/src/warehouse/warehouse.service.spec.ts
 // ⭐ №126: unit-тесты складской атомарности (Блок A) и доступа к чужому объекту (Блок C).
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { WarehouseService } from './warehouse.service';
@@ -17,10 +17,12 @@ describe('WarehouseService', () => {
 
   // Мок PrismaService (внешний клиент).
   const prisma = {
-    warehouseItem: { findUnique: jest.fn(), delete: jest.fn() },
+    warehouseItem: { findUnique: jest.fn(), findMany: jest.fn(), delete: jest.fn() },
     project: { findUnique: jest.fn() },
     objectAccess: { findFirst: jest.fn(), findMany: jest.fn() },
     warehouseTransaction: { create: jest.fn(), findMany: jest.fn() },
+    // ⭐ №204 (A#2): проверка «это суперадмин?» для «общих» позиций
+    user: { findUnique: jest.fn() },
     $transaction: jest.fn(),
   };
 
@@ -29,6 +31,7 @@ describe('WarehouseService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.$transaction.mockImplementation((cb: any) => cb(tx));
+    prisma.user.findUnique.mockResolvedValue({ role: 'FOREMAN' });
     service = new WarehouseService(prisma as any);
   });
 
@@ -227,4 +230,56 @@ describe('WarehouseService', () => {
       });
     });
   });
+
+  // ⭐ №204 (A#2): «общие» позиции — владелец = создатель, чужое не читаем и не правим
+  describe('№204: владелец «общей» позиции склада', () => {
+    const userId = 7;
+
+    it('чужую общую позицию нельзя открыть/изменить ⇒ ForbiddenException', async () => {
+      prisma.warehouseItem.findUnique.mockResolvedValue({
+        id: 5,
+        objectId: null,
+        createdBy: 99,
+      });
+
+      await expect(service.detail(userId, 5)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('свою общую позицию открываем', async () => {
+      prisma.warehouseItem.findUnique.mockResolvedValue({
+        id: 5,
+        objectId: null,
+        createdBy: userId,
+      });
+      prisma.warehouseTransaction.findMany.mockResolvedValue([]);
+
+      await expect(service.detail(userId, 5)).resolves.toMatchObject({ id: 5 });
+    });
+
+    it('легаси-позиция без владельца (createdBy=null) остаётся общей', async () => {
+      prisma.warehouseItem.findUnique.mockResolvedValue({
+        id: 5,
+        objectId: null,
+        createdBy: null,
+      });
+      prisma.warehouseTransaction.findMany.mockResolvedValue([]);
+
+      await expect(service.detail(userId, 5)).resolves.toMatchObject({ id: 5 });
+    });
+
+    it('в списке общие позиции фильтруются по владельцу', async () => {
+      prisma.objectAccess.findMany.mockResolvedValue([{ objectId: 2 }]);
+      prisma.warehouseItem.findMany.mockResolvedValue([]);
+
+      await service.list(userId);
+
+      const where = prisma.warehouseItem.findMany.mock.calls[0][0].where;
+      expect(where.OR[0]).toEqual({
+        objectId: null,
+        OR: [{ createdBy: null }, { createdBy: userId }],
+      });
+    });
+  });
+
 });
+

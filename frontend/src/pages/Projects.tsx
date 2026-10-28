@@ -719,6 +719,10 @@ const handleCloseActions = () => setActionsProject(null);
 // Писать в проект можно, если есть права записи
 // (отозванный доступ проект не получает вовсе — №193)
 const canEditProject = (p: ProjectData | null) => !!p && p.canWrite === true;
+// ⭐ №204 (A#10): карточка проекта — объектное право. «Гость» проекта смету ведёт,
+// но переименовать проект/сменить даты/удалить его не может.
+const canEditProjectCard = (p: ProjectData | null) => !!p && p.canEditCard === true;
+const canDeleteProjectCard = (p: ProjectData | null) => !!p && p.canDeleteCard === true;
 
 // ⭐ №192: сохранить проект как шаблон объекта (структура + позиции сметы)
 const handleOpenObjectTemplate = (p: ProjectData) => {
@@ -1296,7 +1300,7 @@ onBack: () => navigate('/objects'),
             fullWidth
             variant="outlined"
             startIcon={<EditIcon />}
-            disabled={!canEditProject(actionsProject)}
+            disabled={!canEditProjectCard(actionsProject)}
             onClick={() => {
               const p = actionsProject;
               handleCloseActions();
@@ -1311,7 +1315,7 @@ onBack: () => navigate('/objects'),
             fullWidth
             variant="outlined"
             startIcon={<NoteAltIcon />}
-            disabled={!canEditProject(actionsProject)}
+            disabled={!canEditProjectCard(actionsProject)}
             onClick={() => {
               const p = actionsProject;
               handleCloseActions();
@@ -1321,7 +1325,13 @@ onBack: () => navigate('/objects'),
             Заметка к проекту
           </Button>
 
-          {!canEditProject(actionsProject) && (
+          {!canEditProjectCard(actionsProject) && (
+            <Typography variant="caption" color="text.secondary">
+              Карточку проекта меняет участник всего объекта с правом записи.
+              Участник одного проекта работает в смете, но не в карточке.
+            </Typography>
+          )}
+          {canEditProjectCard(actionsProject) && !canEditProject(actionsProject) && (
             <Typography variant="caption" color="text.secondary">
               Изменения недоступны: нужны права записи (наблюдатель и отозванный доступ — только чтение).
             </Typography>
@@ -1532,6 +1542,8 @@ onBack: () => navigate('/objects'),
               <IconButton
                 color="error"
                 aria-label="Удалить проект"
+                // ⭐ №204 (A#10): удаление карточки — право администратора объекта
+                disabled={!canDeleteProjectCard(editingProject)}
                 onClick={() => {
                   setDeletingProject(editingProject);
                   handleCloseEdit();

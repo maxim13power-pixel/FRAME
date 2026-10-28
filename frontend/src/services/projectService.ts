@@ -26,6 +26,10 @@ export interface ProjectData {
   // (флаг revoked убран в №193: отозванный доступ проект не получает вовсе)
   canWrite?: boolean;
   canManage?: boolean;
+  // ⭐ №204 (A#10): карточка проекта (переименование/даты/заметка) и удаление —
+  // это права на ВЕСЬ объект, участнику одного проекта они не выдаются
+  canEditCard?: boolean;
+  canDeleteCard?: boolean;
 }
 
 // ⭐ №172: opts.includeHidden — вернуть проекты объекта, даже если он в личном

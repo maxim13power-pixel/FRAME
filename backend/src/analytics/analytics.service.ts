@@ -90,7 +90,9 @@ export class AnalyticsService {
       this.prisma.$queryRaw<WarehouseValueRow[]>`
         SELECT COALESCE(SUM(wi."quantity" * COALESCE(wi."price", 0)), 0)::float AS value
         FROM warehouse_items wi
-        WHERE wi."objectId" IS NULL
+        -- ⭐ №204 (A#2): «общие» позиции (objectId IS NULL) — только свои и легаси (createdBy IS NULL),
+        -- иначе стоимость чужого склада попадала в сумму каждого пользователя
+        WHERE (wi."objectId" IS NULL AND (wi."createdBy" IS NULL OR wi."createdBy" = ${userId}))
           OR EXISTS (
             SELECT 1 FROM object_access oa
             WHERE oa."objectId" = wi."objectId"
