@@ -21,6 +21,7 @@ import { AuditModule } from './audit/audit.module'; // ⭐ №131
 import { EstimateRecalcModule } from './estimate-recalc/estimate-recalc.module'; // ⭐ №170
 import { AccessRequestModule } from './access-request/access-request.module'; // ⭐ №178
 import { ObjectTemplatesModule } from './object-templates/object-templates.module'; // ⭐ №175
+import { SnapshotsModule } from './snapshots/snapshots.module'; // ⭐ №194: снимок доступа
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -46,6 +47,7 @@ import { ObjectTemplatesModule } from './object-templates/object-templates.modul
     EstimateRecalcModule, // ⭐ №170: пересчёт сметы по справочнику
     AccessRequestModule, // ⭐ №178: заявки на право создавать проекты
     ObjectTemplatesModule, // ⭐ №175: шаблоны объектов
+    SnapshotsModule, // ⭐ №194: снимок доступа (только чтение)
   ],
   controllers: [AppController],
   providers: [AppService],

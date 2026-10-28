@@ -336,7 +336,8 @@ const Settings: React.FC = () => {
               return (
                 <Box
                   key={group.objectId}
-                  onClick={() => navigate('/objects')}
+                  // ⭐ №194: у отозванного объекта живого доступа нет — ведём в снимок
+                  onClick={() => navigate(revoked ? '/snapshots' : '/objects')}
                   sx={{
                     p: 1.25,
                     borderRadius: 2,

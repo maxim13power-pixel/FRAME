@@ -12,6 +12,7 @@ import { assertAccessActive, findLiveAccess } from '../auth/access-scope'; // �
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { AddAccessDto } from './dto/add-access.dto';
 import { UpdateAccessDto } from './dto/update-access.dto';
+import { buildSnapshotPayload } from '../snapshots/snapshot-payload'; // ⭐ №194 (F1 шаг 2)
 
 @Injectable()
 export class AccessService {
@@ -299,8 +300,8 @@ export class AccessService {
     return updated;
   }
 
-  // 4. Отозвать доступ — МЯГКО: read-only + снимок в личных шаблонах.
-  // Данные не удаляются: акты/склад/авторство остаются, человек видит «как было».
+  // 4. Отозвать доступ — доступ закрывается, данные остаются в личных копиях:
+  // шаблоны смет (+копия справочника цен) и неизменяемый «Снимок доступа» (№194).
   async revokeAccess(objectId: number, accessId: number, actorUserId: number) {
     const myAccess = await this.assertManager(objectId, actorUserId);
 
@@ -326,13 +327,44 @@ export class AccessService {
 
     const now = new Date();
     // Снимок и отзыв — в одной транзакции: либо есть копия, либо доступ остаётся.
-    const snapshot = await this.prisma.$transaction(async (tx) => {
-      const created = await this.createSnapshot(tx, target, now);
+    const result = await this.prisma.$transaction(async (tx) => {
+      const copies = await this.createSnapshot(tx, target, now);
+      // ⭐ №194 (F1 шаг 2): неизменяемый слепок «как было» — не только смета,
+      // но и акты, склад, бригады с выходами. Живёт в личном пространстве
+      // участника, поэтому переживает и удаление записи доступа.
+      const hidePrices = target.hidePrices || target.role === AccessRole.VIEWER;
+      const blind = await buildSnapshotPayload(tx, {
+        objectId: target.objectId,
+        projectId: target.projectId,
+        hidePrices,
+        takenAt: now,
+      });
+      let snapshotId: number | null = null;
+      if (blind) {
+        const saved = await tx.accessSnapshot.create({
+          data: {
+            userId: target.userId,
+            objectId: target.objectId,
+            accessId: target.id,
+            objectName: blind.objectName,
+            projectId: target.projectId,
+            projectName: blind.projectName,
+            role: target.role,
+            hidePrices,
+            takenAt: now,
+            revokedBy: actorUserId,
+            summary: blind.summary as unknown as Prisma.InputJsonValue,
+            payload: blind.payload,
+          },
+          select: { id: true },
+        });
+        snapshotId = saved.id;
+      }
       await tx.objectAccess.update({
         where: { id: accessId },
         data: { revokedAt: now, revokedById: actorUserId },
       });
-      return created;
+      return { ...copies, snapshotId };
     });
 
     // ⭐ №131: журнал отзыва доступа
@@ -342,9 +374,9 @@ export class AccessService {
       objectId,
       'revoke',
       { userId: target.userId, role: target.role },
-      { userId: target.userId, revokedAt: now, ...snapshot },
+      { userId: target.userId, revokedAt: now, ...result },
     );
-    return { success: true, revokedAt: now, ...snapshot };
+    return { success: true, revokedAt: now, ...result };
   }
 
   // 5. Вернуть доступ одним кликом (без повторного приглашения)

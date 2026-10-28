@@ -36,6 +36,7 @@ const Analytics = lazy(() => import('./pages/Analytics'));
 // const Reports = lazy(() => import('./pages/Reports'));
 const Users = lazy(() => import('./pages/Users'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Snapshots = lazy(() => import('./pages/Snapshots')); // ⭐ №194: снимки доступа
 
 //  Фолбэк Suspense: пока чанк страницы едет по сети — крутилка по центру
 const PageLoader = () => (
@@ -110,6 +111,8 @@ const AppRoutes = () => {
         {/* ⭐ Отчёты временно скрыты: <Route path="reports" element={<Reports />} /> */}
         <Route path="users" element={<Users />} />
         <Route path="settings" element={<Settings />} />
+        {/* ⭐ №194: личные снимки доступа (только чтение) */}
+        <Route path="snapshots" element={<Snapshots />} />
       </Route>
 
       {/*  Публичная страница приглашения (доступна без логина) */}

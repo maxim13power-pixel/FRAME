@@ -37,6 +37,8 @@ model User {
   accessRequestsReviewed AccessRequest[] @relation("AccessRequestsReviewed")
   // ⭐ №175: шаблоны объектов
   objectTemplates        ObjectTemplate[] @relation("ObjectTemplates")
+  // ⭐ №194 (F1 шаг 2): неизменяемые снимки доступа (создаются при отзыве)
+  accessSnapshots        AccessSnapshot[] @relation("AccessSnapshots")
 }
 
 model Object {
@@ -368,6 +370,31 @@ model ObjectTemplateMaterial {
 
   @@index([projectId])
   @@map("object_template_materials")
+}
+
+// ============================================================
+// СНИМОК ДОСТУПА (№194, F1 шаг 2)
+// Создаётся в момент отзыва вместе с копиями-шаблонами.
+// Только чтение: ни один endpoint не меняет payload — это слепок «как было».
+// ============================================================
+model AccessSnapshot {
+  id          Int      @id @default(autoincrement())
+  userId      Int // кому отозвали доступ (владелец снимка)
+  objectId    Int // метка без relation: снимок должен жить дольше объектов
+  accessId    Int? // запись доступа, по которой снят снимок (её могут удалить)
+  objectName  String
+  projectId   Int? // если доступ был только к одному проекту
+  projectName String?
+  role        String // роль на момент отзыва (CUSTOMER/FOREMAN/VIEWER)
+  hidePrices  Boolean  @default(false) // снимали снимок без денег?
+  takenAt     DateTime @default(now()) // момент отзыва
+  revokedBy   Int? // кто отозвал (обезличивается при удалении аккаунта)
+  summary     Json // { projects, materials, reports, warehouseItems, ... }
+  payload     Json // сам слепок
+  user        User     @relation("AccessSnapshots", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, takenAt])
+  @@map("access_snapshots")
 }
 
 // ============================================================
