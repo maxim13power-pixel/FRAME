@@ -18,8 +18,9 @@ import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import { FAB_STYLE } from '../theme';
 import {
-  fetchWarehouseItems, fetchWarehouseItem, createWarehouseItem,
-  updateWarehouseItem, deleteWarehouseItem, createWarehouseTransaction,
+  fetchWarehouseItems, fetchWarehouseItem, fetchWarehousePermissions,
+  createWarehouseItem, updateWarehouseItem, deleteWarehouseItem,
+  createWarehouseTransaction,
 } from '../services/warehouseService';
 import type { WarehouseItemData, WarehouseTransactionType } from '../services/warehouseService';
 import { fetchObjects } from '../services/objectService';
@@ -58,6 +59,8 @@ const Warehouse: React.FC = () => {
   }, [view]);
 
   const [createOpen, setCreateOpen] = useState(false);
+  // ⭐ №205: права записи в склад (наблюдатель — только чтение)
+  const [canWrite, setCanWrite] = useState(true);
   const [editItem, setEditItem] = useState<WarehouseItemData | null>(null);
   const [deletingItem, setDeletingItem] = useState<WarehouseItemData | null>(null);
   // ⭐ №196: шестерёнка на карточке — все действия в одном шите (как в «Объектах»)
@@ -114,6 +117,14 @@ const Warehouse: React.FC = () => {
     loadItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadItems]);
+
+  // ⭐ №205: наблюдатель видит склад, но писать не может — кнопки гаснут заранее
+  useEffect(() => {
+    if (!token) return;
+    fetchWarehousePermissions()
+      .then((p) => setCanWrite(p.canWrite !== false))
+      .catch(() => setCanWrite(false));
+  }, [token]);
 
   const loadTxProjects = async (objectId: number) => {
     try {
@@ -382,10 +393,11 @@ const Warehouse: React.FC = () => {
             </Paper>
 
             <Stack direction="row" spacing={1}>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={() => openTx('income', selectedItem)}>
+              {/* ⭐ №205: наблюдателю доступно только чтение */}
+              <Button variant="contained" startIcon={<AddIcon />} disabled={!canWrite} onClick={() => openTx('income', selectedItem)}>
                 Приход
               </Button>
-              <Button variant="outlined" onClick={() => openTx('expense', selectedItem)}>
+              <Button variant="outlined" disabled={!canWrite} onClick={() => openTx('expense', selectedItem)}>
                 Списать на проект
               </Button>
             </Stack>
@@ -458,7 +470,7 @@ const Warehouse: React.FC = () => {
                     </Select>
                   </FormControl>
                 )}
-                <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} sx={{ bgcolor: '#4caf50', border: '2px solid #388e3c', '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' }, transition: 'all 0.3s ease', whiteSpace: 'nowrap' }}>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} disabled={!canWrite} sx={{ bgcolor: '#4caf50', border: '2px solid #388e3c', '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' }, transition: 'all 0.3s ease', whiteSpace: 'nowrap' }}>
                   Добавить
                 </Button>
                 <Tooltip title="Excel">
@@ -476,6 +488,13 @@ const Warehouse: React.FC = () => {
             )}
 
             {error && <Alert severity="error">{error}</Alert>}
+
+            {/* ⭐ №205: наблюдатель — только чтение (кнопки погашены, причина видна) */}
+            {!canWrite && (
+              <Alert severity="info" icon={false}>
+                👁 Изменения недоступны: у вас роль наблюдателя. Склад можно смотреть, но не менять.
+              </Alert>
+            )}
 
             {items.length === 0 ? (
               <Paper sx={{ p: 4, textAlign: 'center' }}>
@@ -629,6 +648,7 @@ const Warehouse: React.FC = () => {
               fullWidth
               variant="outlined"
               startIcon={<SettingsIcon />}
+              disabled={!canWrite}
               onClick={() => {
                 const it = actionsItem;
                 setActionsItem(null);
@@ -642,6 +662,7 @@ const Warehouse: React.FC = () => {
               fullWidth
               variant="outlined"
               startIcon={<AddIcon />}
+              disabled={!canWrite}
               onClick={() => {
                 const it = actionsItem;
                 setActionsItem(null);
@@ -655,6 +676,7 @@ const Warehouse: React.FC = () => {
               fullWidth
               variant="outlined"
               startIcon={<DeleteIcon />}
+              disabled={!canWrite}
               onClick={() => {
                 const it = actionsItem;
                 setActionsItem(null);
@@ -669,6 +691,7 @@ const Warehouse: React.FC = () => {
               variant="outlined"
               color="error"
               startIcon={<DeleteIcon />}
+              disabled={!canWrite}
               onClick={() => {
                 const it = actionsItem;
                 setActionsItem(null);
@@ -677,6 +700,11 @@ const Warehouse: React.FC = () => {
             >
               Удалить позицию
             </Button>
+            {!canWrite && (
+              <Typography variant="caption" color="text.secondary">
+                Наблюдатель видит склад, но не может менять остатки и позиции.
+              </Typography>
+            )}
           </Stack>
         </Paper>
       </Modal>
@@ -814,7 +842,7 @@ const Warehouse: React.FC = () => {
         </Paper>
       </Modal>
 
-      {isMobile && (
+      {isMobile && canWrite && (
         <Fab color="primary" sx={{ ...FAB_STYLE, bottom: 80 }} onClick={openCreate}>
           <AddIcon />
         </Fab>

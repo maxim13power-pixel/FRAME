@@ -56,6 +56,12 @@ export const fetchWarehouseItems = async (params?: {
   return response.data.map(normalizeItem);
 };
 
+// ⭐ №205: права на запись в склад — наблюдателю кнопки не показываем активными
+export const fetchWarehousePermissions = async (): Promise<{ canWrite: boolean }> => {
+  const response = await api.get('/warehouse/permissions');
+  return response.data;
+};
+
 // Детальная позиция + последние операции
 export const fetchWarehouseItem = async (id: number): Promise<WarehouseItemData> => {
   const response = await api.get(`/warehouse/items/${id}`);

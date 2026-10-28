@@ -161,6 +161,16 @@ export class WarehouseService {
     );
   }
 
+  // ⭐ №205: может ли пользователь писать в склад (та же логика, что assertAnyWritable)
+  async permissions(userId: number) {
+    const grants = await this.prisma.objectAccess.findMany({
+      where: { userId, projectId: null, revokedAt: null },
+      select: { role: true },
+    });
+    const canWrite = grants.some((g) => g.role !== AccessRole.VIEWER);
+    return { canWrite };
+  }
+
   // ─── Список позиций (фильтр ?objectId=X, ?search=Y) ───
   async list(userId: number, objectId?: number, search?: string) {
     const where: Prisma.WarehouseItemWhereInput = {};

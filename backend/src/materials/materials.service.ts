@@ -198,6 +198,11 @@ export class MaterialsService {
       if (!priceItem) throw new NotFoundException('Расценка не найдена');
       if (!priceItem.isActive)
         throw new BadRequestException('Выбранная расценка неактивна');
+      // ⭐ №205: работа и материал не взаимозаменяемы — сверяем PriceKind
+      if (priceItem.kind !== 'WORK')
+        throw new BadRequestException(
+          'В поле «работа» выбрана расценка материала — выберите работу',
+        );
       unitPrice = Number(priceItem.price);
     }
     let materialUnitPrice = 0;
@@ -211,6 +216,11 @@ export class MaterialsService {
         throw new NotFoundException('Расценка материала не найдена');
       if (!materialItem.isActive)
         throw new BadRequestException('Расценка материала неактивна');
+      // ⭐ №205: в поле материала должна быть расценка материала
+      if (materialItem.kind !== 'MATERIAL')
+        throw new BadRequestException(
+          'В поле «материал» выбрана расценка работы — выберите материал',
+        );
       materialUnitPrice = Number(materialItem.price);
     }
     const created = await this.prisma.material.create({
@@ -608,6 +618,11 @@ export class MaterialsService {
           if (!priceItem) throw new NotFoundException('Расценка не найдена');
           if (!priceItem.isActive)
             throw new BadRequestException('Расценка неактивна');
+          // ⭐ №205: сверяем PriceKind и при правке строки
+          if (priceItem.kind !== 'WORK')
+            throw new BadRequestException(
+              'В поле «работа» выбрана расценка материала — выберите работу',
+            );
           unitPrice = Number(priceItem.price);
           priceItemId = priceItem.id;
         }
@@ -631,6 +646,11 @@ export class MaterialsService {
             throw new NotFoundException('Расценка материала не найдена');
           if (!materialItem.isActive)
             throw new BadRequestException('Расценка материала неактивна');
+          // ⭐ №205: в поле материала — только материал
+          if (materialItem.kind !== 'MATERIAL')
+            throw new BadRequestException(
+              'В поле «материал» выбрана расценка работы — выберите материал',
+            );
           materialUnitPrice = Number(materialItem.price);
           materialItemId = materialItem.id;
         }

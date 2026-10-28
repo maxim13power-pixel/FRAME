@@ -281,5 +281,23 @@ describe('WarehouseService', () => {
     });
   });
 
+  
+  // ⭐ №205: права записи в склад для UI-гейтинга
+  describe('№205: permissions()', () => {
+    it('наблюдатель ⇒ canWrite=false', async () => {
+      prisma.objectAccess.findMany.mockResolvedValue([{ role: 'VIEWER' }]);
+      await expect(service.permissions(7)).resolves.toEqual({ canWrite: false });
+    });
+
+    it('прораб с объектным доступом ⇒ canWrite=true', async () => {
+      prisma.objectAccess.findMany.mockResolvedValue([{ role: 'FOREMAN' }]);
+      await expect(service.permissions(7)).resolves.toEqual({ canWrite: true });
+    });
+
+    it('нет объектных доступов ⇒ canWrite=false', async () => {
+      prisma.objectAccess.findMany.mockResolvedValue([]);
+      await expect(service.permissions(7)).resolves.toEqual({ canWrite: false });
+    });
+  });
 });
 

@@ -25,6 +25,12 @@ import { UpdateWarehouseItemDto } from './dto/update-warehouse-item.dto';
 export class WarehouseController {
   constructor(private readonly warehouseService: WarehouseService) {}
 
+  // ⭐ №205: права на запись в склад — чтобы UI не показывал активные кнопки наблюдателю
+  @Get('permissions')
+  permissions(@Req() req) {
+    return this.warehouseService.permissions(req.user.userId);
+  }
+
   @Get('items')
   list(
     @Req() req,
