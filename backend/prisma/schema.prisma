@@ -509,11 +509,15 @@ model WarehouseItem {
   comment     String?
   objectId    Int?      // привязка к объекту (опционально)
   object      Object?   @relation(fields: [objectId], references: [id], onDelete: SetNull)
+  // ⭐ №204 (A#2): владелец «общей» позиции (objectId = null). NULL — легаси-строки
+  // до миграции, они остаются общими для всех (демо-данные не ломаем).
+  createdBy   Int?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   transactions WarehouseTransaction[]
 
   @@index([objectId])
+  @@index([createdBy])
   @@map("warehouse_items")
 }
 
@@ -605,12 +609,15 @@ model Brigade {
   objectId    Int?      // привязка к объекту (опционально — мобильная бригада)
   object      Object?   @relation(fields: [objectId], references: [id], onDelete: SetNull)
   comment     String?
+  // ⭐ №204 (A#2): владелец «мобильной» бригады (objectId = null). NULL — легаси-строки.
+  createdBy   Int?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   members     BrigadeMember[]
   shifts      BrigadeShift[]
 
   @@index([objectId])
+  @@index([createdBy])
   @@map("brigades")
 }
 

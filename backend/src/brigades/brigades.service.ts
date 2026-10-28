@@ -161,6 +161,29 @@ export class BrigadesService {
     return my;
   }
 
+  // ⭐ №204 (A#2): владелец «мобильной» бригады (objectId = null) — создатель;
+  // глобальный ADMIN FRAME может всё; легаси-строки (createdBy = null) остаются общими.
+  private async isAdmin(userId: number): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    return user?.role === 'ADMIN';
+  }
+
+  private async assertBrigadeOwner(
+    brigade: { objectId: number | null; createdBy: number | null },
+    userId: number,
+    action: string,
+  ) {
+    if (brigade.objectId != null) return;
+    if (brigade.createdBy == null || brigade.createdBy === userId) return;
+    if (await this.isAdmin(userId)) return;
+    throw new ForbiddenException(
+      `«Мобильная» бригада принадлежит другому пользователю — ${action} нельзя`,
+    );
+  }
+
   private async checkBrigadeAccess(brigadeId: number, userId: number, action?: string) {
     const brigade = await this.prisma.brigade.findUnique({
       where: { id: brigadeId },
@@ -170,6 +193,8 @@ export class BrigadesService {
     }
     if (brigade.objectId != null) {
       await this.checkObjectAccess(brigade.objectId, userId, action);
+    } else {
+      await this.assertBrigadeOwner(brigade, userId, action ?? 'открывать её');
     }
     return brigade;
   }
@@ -185,7 +210,11 @@ export class BrigadesService {
       // (раньше — только общая запись объекта, поэтому прораб с проектом не видел бригад)
       const grants = await loadAccessGrants(this.prisma, userId);
       const ids = buildAccessScope(grants).objectIds;
-      where.OR = [{ objectId: null }, { objectId: { in: ids } }];
+      // ⭐ №204 (A#2): «мобильные» бригады — только свои и легаси, чужие не показываем
+      const general = (await this.isAdmin(userId))
+        ? { objectId: null }
+        : { objectId: null, OR: [{ createdBy: null }, { createdBy: userId }] };
+      where.OR = [{ ...general }, { objectId: { in: ids } }];
     }
 
     if (search && search.trim()) {
@@ -234,6 +263,7 @@ export class BrigadesService {
         phone: dto.phone?.trim() || null,
         comment: dto.comment?.trim() || null,
         objectId: dto.objectId ?? null,
+        createdBy: userId, // ⭐ №204 (A#2): владелец «мобильной» бригады
       },
       include: BRIGADE_INCLUDE,
     });

@@ -75,8 +75,20 @@ export class WarehouseService {
     }
     if (item.objectId != null) {
       await this.checkObjectAccess(item.objectId, userId);
+    } else {
+      // ⭐ №204 (A#2): чужую «общую» позицию не показываем и не читаем.
+      await this.assertGeneralOwner(item, userId, 'открывать её');
     }
     return item;
+  }
+
+  /** ⭐ №204: «общие» позиции — только свои и легаси (createdBy = null); ADMIN видит все. */
+  private async generalItemsWhere(userId: number): Promise<Prisma.WarehouseItemWhereInput> {
+    if (await this.isAdmin(userId)) return { objectId: null };
+    return {
+      objectId: null,
+      OR: [{ createdBy: null }, { createdBy: userId }],
+    };
   }
 
   // ─── ⭐ №180: наблюдатель и отозванный доступ — только чтение ───
@@ -110,12 +122,36 @@ export class WarehouseService {
     }
   }
 
+  // ⭐ №204 (A#2): владелец «общей» позиции — создатель. Глобальный ADMIN FRAME
+  // может всё (суперадмин). Легаси-строки (createdBy = null) остаются общими.
+  private async isAdmin(userId: number): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    return user?.role === 'ADMIN';
+  }
+
+  private async assertGeneralOwner(
+    item: { objectId: number | null; createdBy: number | null },
+    userId: number,
+    action: string,
+  ) {
+    if (item.objectId != null) return;
+    if (item.createdBy == null || item.createdBy === userId) return;
+    if (await this.isAdmin(userId)) return;
+    throw new ForbiddenException(
+      `«Общая» позиция принадлежит другому пользователю — ${action} нельзя`,
+    );
+  }
+
   private async assertItemWritable(
-    item: { objectId: number | null },
+    item: { objectId: number | null; createdBy: number | null },
     userId: number,
     action: string,
   ) {
     if (item.objectId == null) {
+      await this.assertGeneralOwner(item, userId, action);
       await this.assertAnyWritable(userId, action);
       return;
     }
@@ -139,7 +175,8 @@ export class WarehouseService {
         select: { objectId: true },
       });
       const ids = accesses.map((a) => a.objectId);
-      where.OR = [{ objectId: null }, { objectId: { in: ids } }];
+      // ⭐ №204 (A#2): «общие» позиции — только свои и легаси, чужие не показываем
+      where.OR = [{ ...(await this.generalItemsWhere(userId)) }, { objectId: { in: ids } }];
     }
 
     if (search && search.trim()) {
@@ -184,6 +221,7 @@ export class WarehouseService {
         price: dto.price ?? null,
         comment: dto.comment?.trim() || null,
         objectId: dto.objectId ?? null,
+        createdBy: userId, // ⭐ №204 (A#2): владелец «общей» позиции
       },
       include: ITEM_INCLUDE,
     });
@@ -301,7 +339,10 @@ export class WarehouseService {
       });
       const ids = accesses.map((a) => a.objectId);
       const items = await this.prisma.warehouseItem.findMany({
-        where: { OR: [{ objectId: null }, { objectId: { in: ids } }] },
+        where: {
+          // ⭐ №204 (A#2): история — только по своим/легаси «общим» и доступным объектам
+          OR: [{ ...(await this.generalItemsWhere(userId)) }, { objectId: { in: ids } }],
+        },
         select: { id: true },
       });
       where.warehouseItemId = { in: items.map((i) => i.id) };
