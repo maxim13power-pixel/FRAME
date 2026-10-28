@@ -52,7 +52,7 @@ const Users: React.FC = () => {
   }, []);
 
   return (
-    <Box>
+    <Box sx={{ mt: -1.5, maxWidth: 1000, mx: 'auto', width: '100%' }}>
       <Typography variant="h4" gutterBottom>Моя команда</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Кто работает со мной на объектах. Приглашать и менять роли — в карточке объекта.
