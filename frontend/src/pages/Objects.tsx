@@ -406,10 +406,9 @@ const canManage = accessObject?.canManage === true;
 // ⭐ №185: права для модалки действий. Кнопки не прячем — показываем серыми с пояснением.
 const act = actionsObject;
 const actHasObject = act ? act.hasObjectAccess !== false : false;
-const actNotRevoked = act ? act.revoked !== true : false;
-const actCanInvite = !!act && actHasObject && actNotRevoked && act.canManage === true;
-const actCanTemplate = !!act && actHasObject && actNotRevoked;
-const actCanEdit = !!act && actHasObject && actNotRevoked && act.canWrite === true;
+const actCanInvite = !!act && actHasObject && act.canManage === true;
+const actCanTemplate = !!act && actHasObject;
+const actCanEdit = !!act && actHasObject && act.canWrite === true;
 const actCanArchive = !!act && act.accessId != null && act.hiddenForMe !== true;
 // ⭐ Текущая роль пользователя на объекте (для UI-подсказок в модалке)
 const myRole = accessObject?.role;
@@ -688,14 +687,14 @@ const handleChangeRole = async (accessId: number, newRole: AccessRole) => {
   }
 };
 
-// ⭐ №168: отзыв доступа — МЯГКИЙ. Человек сохраняет доступ на чтение,
-// а его смета автоматически сохраняется в личные шаблоны (снимок на дату).
+// ⭐ №168/№193: отзыв доступа закрывает ЖИВОЙ доступ целиком (не «только чтение»),
+// смета и справочник цен сохраняются в личных шаблонах человека (снимок на дату).
 const handleRevokeAccess = async (member: AccessMember) => {
   if (!token || !accessObject) return;
   const who = member.user.fullName || member.user.email || member.user.phone || 'участника';
   const ok = await confirm({
     title: 'Отозвать доступ?',
-    text: `Доступ для ${who} станет только для чтения. Смета проекта сохранится в его личных шаблонах, данные объекта останутся на месте.`,
+    text: `Доступ для ${who} закроется: объект станет недоступен. Смета и справочник цен сохранятся в его личных шаблонах (снимок на дату отзыва), данные объекта останутся на месте.`,
     confirmText: 'Отозвать',
     danger: true,
   });
@@ -1128,16 +1127,6 @@ trailing: headerTrailing,
                     }
                   >
                     Объект в вашем архиве — виден только вам.
-                  </Alert>
-                )}
-                {obj.revoked && (
-                  <Alert
-                    severity="error"
-                    onClick={(e) => e.stopPropagation()}
-                    sx={{ mb: 1, borderRadius: 2 }}
-                  >
-                    🔒 Доступ отозван — только чтение. Копия сметы сохранена в ваших
-                    шаблонах.
                   </Alert>
                 )}
                 {/* Верхняя строка: иконка, название (до 2 строк), кнопка действий */}
@@ -2063,7 +2052,7 @@ trailing: headerTrailing,
                         }
                         sx={{ mt: 0.5, height: 20, fontSize: '0.7rem' }}
                       />
-                      {/* ⭐ №168: отозванный доступ остаётся в списке, но только для чтения */}
+                      {/* ⭐ №168: отозванный участник виден в команде, живой доступ закрыт (№193) */}
                       {member.revokedAt && (
                         <Chip
                           size="small"

@@ -10,6 +10,11 @@ import {
 } from '@nestjs/common';
 import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  assertAccessActive,
+  findLiveAccess,
+  findProjectAccess,
+} from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import { CreateWarehouseItemDto } from './dto/create-warehouse-item.dto';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateWarehouseItemDto } from './dto/update-warehouse-item.dto';
@@ -26,12 +31,15 @@ export class WarehouseService {
 
   // ─── Доступ к ОБЪЕКТУ (object-уровень, projectId = null — как в access.service) ───
   private async checkObjectAccess(objectId: number, userId: number) {
-    const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId, projectId: null },
+    const access = await findLiveAccess(this.prisma, {
+      userId,
+      objectId,
+      projectId: null,
     });
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
+    assertAccessActive(access); // ⭐ №193 (A₂ F1): отозванный доступ живых данных не читает
     return access;
   }
 
@@ -44,16 +52,16 @@ export class WarehouseService {
     if (!project) {
       throw new NotFoundException('Проект не найден');
     }
-    const access =
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId },
-      })) ??
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId: null },
-      }));
+    const access = await findProjectAccess(
+      this.prisma,
+      userId,
+      project.objectId,
+      projectId,
+    );
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому проекту');
     }
+    assertAccessActive(access); // ⭐ №193 (A₂ F1)
     return access;
   }
 
@@ -125,8 +133,9 @@ export class WarehouseService {
       await this.checkObjectAccess(objectId, userId);
       where.objectId = objectId;
     } else {
+      // ⭐ №193 (A₂ F1): отозванные объекты в склад не попадают.
       const accesses = await this.prisma.objectAccess.findMany({
-        where: { userId, projectId: null },
+        where: { userId, projectId: null, revokedAt: null },
         select: { objectId: true },
       });
       const ids = accesses.map((a) => a.objectId);
@@ -285,8 +294,9 @@ export class WarehouseService {
       await this.checkItemAccess(itemId, userId);
       where.warehouseItemId = itemId;
     } else {
+      // ⭐ №193 (A₂ F1): история операций — только по активным объектам.
       const accesses = await this.prisma.objectAccess.findMany({
-        where: { userId, projectId: null },
+        where: { userId, projectId: null, revokedAt: null },
         select: { objectId: true },
       });
       const ids = accesses.map((a) => a.objectId);

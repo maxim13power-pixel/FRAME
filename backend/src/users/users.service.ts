@@ -143,8 +143,10 @@ export class UsersService {
     const objectAccesses = await this.prisma.objectAccess.findMany({
       where: { userId },
     });
+    // ⭐ №193 (A₂ F1): данные объектов выгружаем только по АКТИВНЫМ доступам —
+    // отозванный доступ живых данных не отдаёт (сами записи об отзыве остаются).
     const objectIds = objectAccesses
-      .filter((a) => a.projectId === null)
+      .filter((a) => a.projectId === null && !a.revokedAt)
       .map((a) => a.objectId);
 
     const objects = objectIds.length

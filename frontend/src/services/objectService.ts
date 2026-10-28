@@ -21,10 +21,10 @@ export interface ObjectData {
   catalog?: { id: number; name: string } | null;
   isDemo?: boolean; // ⭐ №127: демо-объект онбординга
   isArchived?: boolean; // ⚠️ №168: легаси, глобального архива больше нет
-  // ⭐ №168: личный архив / отзыв доступа / управление командой
+  // ⭐ №168: личный архив / управление командой
+  // (флаг revoked убран в №193: отозванный доступ объект не получает вовсе)
   accessId?: number | null;
   hiddenForMe?: boolean;
-  revoked?: boolean;
   isManager?: boolean;
   canWrite?: boolean;
   canManage?: boolean;

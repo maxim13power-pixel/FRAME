@@ -11,6 +11,11 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  assertAccessActive,
+  findLiveAccess,
+  findProjectAccess,
+} from './access-scope';
 
 @Injectable()
 export class ObjectAccessGuard implements CanActivate {
@@ -97,35 +102,23 @@ export class ObjectAccessGuard implements CanActivate {
     // ⭐ №163: для объектных маршрутов (/projects/object/:objectId, /objects/:id)
     // пускаем любого участника объекта, включая приглашённого только в проект —
     // фильтрацию проектов делает сервис. Для проектных маршрутов доступ строгий.
+    // ⭐ №193 (A₂ F1 + A#7): активная запись приоритетнее отозванной —
+    // иначе при двух записях барьер брал случайную и давал ложный 403.
     const access =
       projectId == null
-        ? await this.prisma.objectAccess.findFirst({
-            where: { userId, objectId },
-          })
-        : ((await this.prisma.objectAccess.findFirst({
-            where: { userId, objectId, projectId },
-          })) ??
-          (await this.prisma.objectAccess.findFirst({
-            where: { userId, objectId, projectId: null },
-          })));
+        ? await findLiveAccess(this.prisma, { userId, objectId })
+        : await findProjectAccess(this.prisma, userId, objectId, projectId);
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
 
-    // ⭐ №168: отозванный доступ = read-only. Читать «как на момент отзыва»
-    // можно (и сохранить копию в шаблоны), любые изменения — 403.
-    const method = String(request.method || 'GET').toUpperCase();
-    const isRead = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
-    if (access.revokedAt && !isRead) {
-      throw new ForbiddenException(
-        'Доступ отозван: изменения недоступны. Снимок данных сохранён в ваших шаблонах.',
-      );
-    }
+    // ⭐ №193 (A₂ F1): отозванный доступ = НИЧЕГО живого, включая чтение.
+    // Снимок «как на момент отзыва» лежит в личных шаблонах пользователя.
+    assertAccessActive(access);
 
     // Кладём в request для использования в контроллерах/сервисах
     request.accessRole = access.role;
     request.accessObjectId = objectId;
-    request.accessRevoked = !!access.revokedAt;
     return true;
   }
 }

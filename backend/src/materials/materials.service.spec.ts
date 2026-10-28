@@ -172,7 +172,7 @@ describe('MaterialsService — копирование строки (№162)', ()
     isSpecLocked: true,
   };
   const prisma = {
-    objectAccess: { findFirst: jest.fn() },
+    objectAccess: { findMany: jest.fn() },
     material: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
@@ -184,10 +184,17 @@ describe('MaterialsService — копирование строки (№162)', ()
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma.objectAccess.findFirst.mockResolvedValue({
-      role: 'CUSTOMER',
-      hidePrices: false,
-    });
+    // ⭐ №193: checkMaterialAccess читает записи доступа одним findMany
+    prisma.objectAccess.findMany.mockResolvedValue([
+      {
+        id: 1,
+        objectId: 1,
+        projectId: 3,
+        role: 'CUSTOMER',
+        hidePrices: false,
+        revokedAt: null,
+      },
+    ]);
     prisma.material.findUnique.mockResolvedValue({
       ...source,
       project: { objectId: 1 },
@@ -272,10 +279,16 @@ describe('MaterialsService — копирование строки (№162)', ()
   });
 
   it('VIEWER не может копировать (403)', async () => {
-    prisma.objectAccess.findFirst.mockResolvedValue({
-      role: 'VIEWER',
-      hidePrices: true,
-    });
+    prisma.objectAccess.findMany.mockResolvedValue([
+      {
+        id: 1,
+        objectId: 1,
+        projectId: 3,
+        role: 'VIEWER',
+        hidePrices: true,
+        revokedAt: null,
+      },
+    ]);
 
     await expect(service.duplicate(10, 7)).rejects.toThrow(ForbiddenException);
     expect(prisma.material.create).not.toHaveBeenCalled();

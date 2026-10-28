@@ -8,8 +8,9 @@ import {
   accessibleProjectWhere,
   buildAccessScope,
   loadAccessGrants,
+  REVOKED_ACCESS_MESSAGE,
   resolveObjectRole,
-} from '../auth/access-scope'; // ⭐ №163
+} from '../auth/access-scope'; // ⭐ №163, №193
 
 @Injectable()
 export class ObjectsService {
@@ -17,7 +18,7 @@ export class ObjectsService {
 
   // ⭐ №164: менять сам объект может только участник с объектным доступом
   // и не наблюдатель (раньше хватало любой записи projectId=null).
-  // ⭐ №168: отозванный доступ — только чтение.
+  // ⭐ №193 (A₂ F1): отозванный доступ не даёт живых данных вообще.
   private async assertCanEdit(objectId: number, userId: number) {
     const grants = await loadAccessGrants(this.prisma, userId);
     const my = resolveObjectRole(grants, objectId);
@@ -25,9 +26,7 @@ export class ObjectsService {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
     if (my.revoked) {
-      throw new ForbiddenException(
-        'Доступ отозван: объект доступен только для чтения. Копия данных — в ваших шаблонах.',
-      );
+      throw new ForbiddenException(REVOKED_ACCESS_MESSAGE);
     }
     if (!my.canWrite) {
       throw new ForbiddenException('Наблюдатель не может менять объект');
@@ -156,7 +155,6 @@ export class ObjectsService {
           grants.find((g) => g.objectId === o.id && !g.revokedAt)?.id ??
           null,
         hiddenForMe: grants.some((g) => g.objectId === o.id && g.isHidden),
-        revoked: my.revoked,
         isManager: my.isManager,
         canWrite: my.canWrite,
         canManage: my.canManage,
@@ -218,7 +216,6 @@ export class ObjectsService {
         grants.find((g) => g.objectId === id && !g.revokedAt)?.id ??
         null,
       hiddenForMe: grants.some((g) => g.objectId === id && g.isHidden),
-      revoked: my.revoked,
       isManager: my.isManager,
       canWrite: my.canWrite,
       canManage: my.canManage,

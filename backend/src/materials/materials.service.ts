@@ -14,6 +14,7 @@ import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
 import { loadCatalogAccess, findVisiblePriceItem } from '../price-list/catalog-access'; // ⭐ №164, №191
+import { assertAccessActive, findProjectAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import {
   FIX_EDIT_WINDOW_MS,
   FIX_WINDOW_DAYS,
@@ -95,17 +96,17 @@ export class MaterialsService {
     if (!project) {
       throw new NotFoundException('Проект не найден');
     }
-    // ⭐ Детерминированный резолв: проектная запись → общая на объект.
-    const access =
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId },
-      })) ??
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId: null },
-      }));
+    // ⭐ №193 (A₂ F1): активная запись приоритетнее отозванной, отозванная — 403.
+    const access = await findProjectAccess(
+      this.prisma,
+      userId,
+      project.objectId,
+      projectId,
+    );
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому проекту');
     }
+    assertAccessActive(access);
     return access;
   }
 
@@ -121,21 +122,17 @@ export class MaterialsService {
     if (!material) {
       throw new NotFoundException('Материал не найден');
     }
-    // ⭐ Детерминированный резолв: проектная запись → общая на объект.
-    const access =
-      (await this.prisma.objectAccess.findFirst({
-        where: {
-          userId,
-          objectId: material.project.objectId,
-          projectId: material.projectId,
-        },
-      })) ??
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: material.project.objectId, projectId: null },
-      }));
+    // ⭐ №193 (A₂ F1): тот же резолв, что у проекта, — с приоритетом активной записи.
+    const access = await findProjectAccess(
+      this.prisma,
+      userId,
+      material.project.objectId,
+      material.projectId,
+    );
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому материалу');
     }
+    assertAccessActive(access);
     return access;
   }
 

@@ -5,6 +5,7 @@
 //   projectId = X    → доступ только к проекту X (остальные проекты объекта не видны).
 // Все списки/дашборд/аналитика строят where через эти хелперы, чтобы правила
 // доступа не расползались по сервисам.
+import { ForbiddenException } from '@nestjs/common';
 import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -67,11 +68,18 @@ export async function loadAccessGrants(
   });
 }
 
+/**
+ * ⭐ №193 (A₂ F1): в скоуп попадают только АКТИВНЫЕ записи доступа.
+ * Отозванный доступ живых данных не открывает: снимок «как на момент отзыва»
+ * лежит в личных шаблонах (его отдаёт /estimate-templates), поэтому объект
+ * исчезает из списков, а не показывается «на чтение».
+ */
 export function buildAccessScope(grants: AccessGrant[]): AccessScope {
   const full = new Set<number>();
   const projects = new Set<number>();
   const objects = new Set<number>();
   for (const g of grants) {
+    if (g.revokedAt) continue;
     objects.add(g.objectId);
     if (g.projectId == null) full.add(g.objectId);
     else projects.add(g.projectId);
@@ -83,28 +91,81 @@ export function buildAccessScope(grants: AccessGrant[]): AccessScope {
   };
 }
 
-/** Только те записи, где пользователь видит цены (не VIEWER, hidePrices=false, доступ активен) */
+/** Только те записи, где пользователь видит цены (не VIEWER, hidePrices=false).
+ * Отозванные записи отсекает buildAccessScope (№193). */
 export function buildMoneyScope(grants: AccessGrant[]): AccessScope {
   return buildAccessScope(
     grants.filter(
       // ⭐ №169: объект из личного архива в деньгах/KPI не участвует
-      (g) =>
-        !g.revokedAt &&
-        !g.isHidden &&
-        g.role !== AccessRole.VIEWER &&
-        !g.hidePrices,
+      (g) => !g.isHidden && g.role !== AccessRole.VIEWER && !g.hidePrices,
     ),
   );
 }
 
 /**
- * ⭐ №168: скоуп «рабочих» объектов — отозванные доступы не считаются.
- * Списки читают через buildAccessScope (замороженный объект остаётся видимым),
- * а KPI/аналитика — через этот хелпер: отозванный участник в цифрах не участвует.
- * ⭐ №169: личный архив тоже исключается — «убрал в архив» = убрал из расчётов.
+ * ⭐ №168/№169: скоуп «рабочих» объектов — личный архив не считается.
+ * KPI/аналитика/деньги строят where через этот хелпер, чтобы «убрал в архив» =
+ * «убрал из расчётов». Отозванные записи выкидывает сам buildAccessScope (№193).
  */
 export function buildWorkScope(grants: AccessGrant[]): AccessScope {
-  return buildAccessScope(grants.filter((g) => !g.revokedAt && !g.isHidden));
+  return buildAccessScope(grants.filter((g) => !g.isHidden));
+}
+
+/** ⭐ №193 (A₂ F1): единый текст 403 для отозванного доступа.
+ * Фронт (services/api.ts) ловит подстроку «Доступ отозван» и показывает модалку. */
+export const REVOKED_ACCESS_MESSAGE =
+  'Доступ отозван: живые данные закрыты. Копия сметы и справочника цен сохранена в ваших шаблонах.';
+
+/** ⭐ №193: кидает 403, если запись доступа отозвана (живого чтения больше нет). */
+export function assertAccessActive(
+  access: { revokedAt?: Date | null } | null | undefined,
+): void {
+  if (access?.revokedAt) {
+    throw new ForbiddenException(REVOKED_ACCESS_MESSAGE);
+  }
+}
+
+/**
+ * ⭐ №193 (A₂ F1 + A#7): запись доступа с приоритетом АКТИВНОЙ.
+ * Раньше findFirst без orderBy мог вернуть отозванную запись при наличии
+ * действующей (ложный 403 или «доступ отозван» у живого участника).
+ * Возвращает активную запись, если она есть, иначе отозванную — чтобы
+ * вызывающий отдал точный 403, а не «нет доступа».
+ */
+export async function findLiveAccess(
+  prisma: PrismaService,
+  where: Prisma.ObjectAccessWhereInput,
+) {
+  const active = await prisma.objectAccess.findFirst({
+    where: { ...where, revokedAt: null },
+    orderBy: { id: 'asc' },
+  });
+  if (active) return active;
+  return prisma.objectAccess.findFirst({ where, orderBy: { id: 'asc' } });
+}
+
+/**
+ * ⭐ №193: доступ к проекту — проектная запись приоритетнее объектной,
+ * активная приоритетнее отозванной. Один запрос на оба уровня.
+ */
+export async function findProjectAccess(
+  prisma: PrismaService,
+  userId: number,
+  objectId: number,
+  projectId: number,
+) {
+  const rows = await prisma.objectAccess.findMany({
+    where: { userId, objectId, OR: [{ projectId }, { projectId: null }] },
+    orderBy: { id: 'asc' },
+  });
+  const live = rows.filter((r) => !r.revokedAt);
+  return (
+    live.find((r) => r.projectId === projectId) ??
+    live.find((r) => r.projectId === null) ??
+    rows.find((r) => r.projectId === projectId) ??
+    rows[0] ??
+    null
+  );
 }
 
 export function isScopeEmpty(scope: AccessScope): boolean {
@@ -228,17 +289,19 @@ export function resolveProjectAccess(
       (g.projectId == null || g.projectId === projectId),
   );
   if (own.length === 0) return NO_ACCESS;
-  const full = own.find((g) => g.projectId == null);
+  // ⭐ №193 (A₂ F1): активная запись важнее отозванной — иначе отозванная
+  // объектная закрывала бы живой доступ к проекту (ложный 403).
+  const full = own.find((g) => g.projectId == null && !g.revokedAt);
   if (full) {
-    return makeResolution(full, own, true, !!full.revokedAt);
+    return makeResolution(full, own, true, false);
   }
-  const source = strongest(own);
-  return makeResolution(
-    source,
-    own,
-    false,
-    own.every((g) => !!g.revokedAt),
-  );
+  const live = own.filter((g) => !g.revokedAt);
+  if (live.length > 0) {
+    return makeResolution(strongest(live), own, false, false);
+  }
+  // живых записей нет — доступ отозван целиком
+  const fullRevoked = own.some((g) => g.projectId == null);
+  return makeResolution(strongest(own), own, fullRevoked, true);
 }
 
 /**
@@ -252,18 +315,18 @@ export function resolveObjectRole(
 ): RoleResolution {
   const own = grants.filter((g) => g.objectId === objectId);
   if (own.length === 0) return NO_ACCESS;
-  const full = own.find((g) => g.projectId == null);
+  // ⭐ №193 (A₂ F1): активная запись важнее отозванной (см. resolveProjectAccess).
+  const full = own.find((g) => g.projectId == null && !g.revokedAt);
   if (full) {
-    return makeResolution(full, own, true, !!full.revokedAt);
+    return makeResolution(full, own, true, false);
   }
-  // Только проектные записи: берём самую сильную роль, цены скрываем,
+  // Только проектные активные записи: берём самую сильную роль, цены скрываем,
   // если их прячет любая из записей.
-  const source = strongest(own);
-  return makeResolution(
-    source,
-    own,
-    false,
-    own.every((g) => !!g.revokedAt),
-  );
+  const live = own.filter((g) => !g.revokedAt);
+  if (live.length > 0) {
+    return makeResolution(strongest(live), own, false, false);
+  }
+  const fullRevoked = own.some((g) => g.projectId == null);
+  return makeResolution(strongest(own), own, fullRevoked, true);
 }
 

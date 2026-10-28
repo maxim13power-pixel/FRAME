@@ -160,7 +160,6 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const canCreateProjects =
     !!currentObject &&
     currentObject.hasObjectAccess === true &&
-    currentObject.revoked !== true &&
     currentObject.role !== 'VIEWER';
 
   // ⭐ №158: кому скрыты цены (VIEWER/hidePrices) — блок справочника не показываем
@@ -716,9 +715,9 @@ const updateProjectAction = async () => {
 // ⭐ №188: меню действий проекта (как на «Объектах»)
 const handleOpenActions = (proj: ProjectData) => setActionsProject(proj);
 const handleCloseActions = () => setActionsProject(null);
-// Писать в проект можно, если есть права записи и доступ не отозван
-const canEditProject = (p: ProjectData | null) =>
-  !!p && p.canWrite === true && p.revoked !== true;
+// Писать в проект можно, если есть права записи
+// (отозванный доступ проект не получает вовсе — №193)
+const canEditProject = (p: ProjectData | null) => !!p && p.canWrite === true;
 
 // ⭐ №192: сохранить проект как шаблон объекта (структура + позиции сметы)
 const handleOpenObjectTemplate = (p: ProjectData) => {
@@ -1236,15 +1235,6 @@ onBack: () => navigate('/objects'),
               }
               sx={{ height: 22, fontSize: '0.72rem' }}
             />
-            {actionsProject.revoked === true && (
-              <Chip
-                size="small"
-                variant="outlined"
-                color="error"
-                label="🔒 доступ отозван"
-                sx={{ height: 22, fontSize: '0.72rem' }}
-              />
-            )}
           </Box>
         )}
 

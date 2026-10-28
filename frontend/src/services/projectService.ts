@@ -23,9 +23,9 @@ export interface ProjectData {
   // ⭐ №158: сколько строк уже в смете (нужно для предупреждения при смене справочника)
   materialsCount?: number;
   // ⭐ №188: права на проект — для серых кнопок в меню действий
+  // (флаг revoked убран в №193: отозванный доступ проект не получает вовсе)
   canWrite?: boolean;
   canManage?: boolean;
-  revoked?: boolean;
 }
 
 // ⭐ №172: opts.includeHidden — вернуть проекты объекта, даже если он в личном

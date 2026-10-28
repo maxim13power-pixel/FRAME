@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertAccessActive, findLiveAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { AddAccessDto } from './dto/add-access.dto';
 import { UpdateAccessDto } from './dto/update-access.dto';
@@ -21,25 +22,24 @@ export class AccessService {
 
   // ⭐ Хелпер: получить запись доступа юзера к объекту (или кинуть 403)
   // Детерминированный резолв: объектный контекст → только общая запись (projectId: null).
+  // ⭐ №193 (A₂ F1): отозванный доступ живых данных не читает — ни участников, ни объект.
   private async getMyAccess(objectId: number, userId: number) {
-    const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId, projectId: null },
+    const access = await findLiveAccess(this.prisma, {
+      userId,
+      objectId,
+      projectId: null,
     });
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
+    assertAccessActive(access);
     return access;
   }
 
   // ⭐ №168: управлять командой может администратор объекта или прораб-менеджер (isManager).
-  // Отозванный участник не управляет ничем — он в режиме чтения.
+  // Отозванный участник сюда не доходит — отзыв режется в getMyAccess (№193).
   private async assertManager(objectId: number, userId: number) {
     const my = await this.getMyAccess(objectId, userId);
-    if (my.revokedAt) {
-      throw new ForbiddenException(
-        'Доступ отозван: управление участниками недоступно',
-      );
-    }
     const canManage =
       my.role === AccessRole.CUSTOMER ||
       (my.role === AccessRole.FOREMAN && my.isManager);

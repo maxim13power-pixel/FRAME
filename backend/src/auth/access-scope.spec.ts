@@ -5,10 +5,12 @@ import {
   AccessGrant,
   accessibleObjectWhere,
   accessibleProjectWhere,
+  assertAccessActive,
   buildAccessScope,
   buildMoneyScope,
   buildWorkScope,
   isScopeEmpty,
+  REVOKED_ACCESS_MESSAGE,
   resolveObjectRole,
   resolveProjectAccess,
   resolveProjectRole,
@@ -54,6 +56,17 @@ describe('access-scope (№163)', () => {
       expect(scope.fullObjectIds).toEqual([]);
       expect(scope.projectIds).toEqual([]);
       expect(isScopeEmpty(scope)).toBe(true);
+    });
+
+    // ⭐ №193 (A₂ F1): отозванный доступ живых данных не открывает
+    it('отозванные записи в скоуп не попадают', () => {
+      const scope = buildAccessScope([
+        grant(1, null, AccessRole.CUSTOMER, false, { revokedAt: new Date() }),
+        grant(2, 20),
+      ]);
+      expect(scope.fullObjectIds).toEqual([]);
+      expect(scope.projectIds).toEqual([20]);
+      expect(scope.objectIds).toEqual([2]);
     });
   });
 
@@ -163,6 +176,21 @@ describe('access-scope (№163)', () => {
       expect(my.hasObjectAccess).toBe(true);
     });
 
+    // ⭐ №193: отозванная ОБЪЕКТНАЯ запись не перекрывает живую ПРОЕКТНУЮ
+    it('активная проектная запись важнее отозванной объектной', () => {
+      const my = resolveObjectRole(
+        [
+          grant(1, null, AccessRole.CUSTOMER, false, { revokedAt: new Date() }),
+          grant(1, 10, AccessRole.FOREMAN),
+        ],
+        1,
+      );
+      expect(my.revoked).toBe(false);
+      expect(my.role).toBe('FOREMAN');
+      expect(my.hasObjectAccess).toBe(false);
+      expect(my.canWrite).toBe(true);
+    });
+
     // ⭐ №168: управлять командой может администратор объекта и прораб-менеджер
     it('прораб с isManager управляет командой, обычный — нет', () => {
       const manager = resolveObjectRole(
@@ -197,7 +225,7 @@ describe('access-scope (№163)', () => {
       );
     });
 
-    it('отозванный участник может читать проект, но не писать', () => {
+    it('отозванная запись проекта: revoked, без права записи (№193)', () => {
       const my = resolveProjectAccess(
         [grant(1, 10, AccessRole.FOREMAN, false, { revokedAt: new Date() })],
         1,
@@ -206,6 +234,31 @@ describe('access-scope (№163)', () => {
       expect(my.role).toBe('FOREMAN');
       expect(my.revoked).toBe(true);
       expect(my.canWrite).toBe(false);
+    });
+
+    // ⭐ №193 (A₂ F1): отозванная объектная не должна гасить живой проектный доступ
+    it('проектная запись активна, объектная отозвана → доступ жив', () => {
+      const my = resolveProjectAccess(
+        [
+          grant(1, null, AccessRole.CUSTOMER, false, { revokedAt: new Date() }),
+          grant(1, 10, AccessRole.FOREMAN),
+        ],
+        1,
+        10,
+      );
+      expect(my.revoked).toBe(false);
+      expect(my.role).toBe('FOREMAN');
+      expect(my.canWrite).toBe(true);
+      expect(my.hasObjectAccess).toBe(false);
+    });
+
+    // ⭐ №193 (A₂ F1): 403 отозванному — единый текст для guard и сервисов
+    it('assertAccessActive кидает 403 на отозванную запись и молчит на активную', () => {
+      expect(() => assertAccessActive({ revokedAt: new Date() })).toThrow(
+        REVOKED_ACCESS_MESSAGE,
+      );
+      expect(() => assertAccessActive({ revokedAt: null })).not.toThrow();
+      expect(() => assertAccessActive(null)).not.toThrow();
     });
 
     it('наблюдатель может сохранить копию, но не применить её в проект', () => {
@@ -219,14 +272,14 @@ describe('access-scope (№163)', () => {
     });
   });
 
-  // ⭐ №168: отозванные доступы не участвуют в KPI/деньгах
+  // ⭐ №168/№193: отозванные доступы выпадают из списков и из KPI
   describe('buildWorkScope', () => {
-    it('выкидывает отозванные записи, но списки остаются полными', () => {
+    it('выкидывает отозванные записи вместе со списками (№193)', () => {
       const grants = [
         grant(1, null, AccessRole.CUSTOMER, false, { revokedAt: new Date() }),
         grant(2, 20, AccessRole.FOREMAN),
       ];
-      expect(buildAccessScope(grants).objectIds.sort()).toEqual([1, 2]);
+      expect(buildAccessScope(grants).objectIds).toEqual([2]);
       expect(buildWorkScope(grants).objectIds).toEqual([2]);
       expect(buildMoneyScope(grants).projectIds).toEqual([20]);
     });

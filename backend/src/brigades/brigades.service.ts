@@ -9,7 +9,8 @@ import { PrismaService } from '../prisma/prisma.service';
 // ⭐ №172: доступ к бригадам считается по тем же правилам, что и к проектам
 // (№163): общая запись объекта ИЛИ запись на конкретный проект.
 import {
-  buildAccessScope, loadAccessGrants, resolveObjectRole, resolveProjectAccess,
+  buildAccessScope, loadAccessGrants, REVOKED_ACCESS_MESSAGE,
+  resolveObjectRole, resolveProjectAccess,
   type RoleResolution,
 } from '../auth/access-scope';
 import { CreateBrigadeDto } from './dto/create-brigade.dto';
@@ -109,15 +110,10 @@ export class BrigadesService {
   }
 
   /**
-   * ⭐ №172: отозванный доступ и наблюдатель пишут только на чтение —
-   * та же логика, что в проектах (№168).
+   * ⭐ №172: наблюдатель пишет только на чтение — та же логика, что в проектах.
+   * Отозванный доступ сюда не доходит: его режет checkObjectAccess/checkProjectAccess (№193).
    */
   private assertWritable(my: RoleResolution, action: string) {
-    if (my.revoked) {
-      throw new ForbiddenException(
-        `Доступ отозван: ${action} недоступно. Данные доступны только на чтение.`,
-      );
-    }
     if (!my.canWrite) {
       throw new ForbiddenException(`Наблюдатель не может ${action}`);
     }
@@ -136,6 +132,10 @@ export class BrigadesService {
     if (!my.role) {
       throw new ForbiddenException('Нет доступа к этому объекту');
     }
+    // ⭐ №193 (A₂ F1): отозванный доступ живых данных не читает (в т.ч. выходы).
+    if (my.revoked) {
+      throw new ForbiddenException(REVOKED_ACCESS_MESSAGE);
+    }
     if (action) this.assertWritable(my, action);
     return my;
   }
@@ -153,6 +153,9 @@ export class BrigadesService {
     const my = resolveProjectAccess(grants, project.objectId, projectId);
     if (!my.role) {
       throw new ForbiddenException('Нет доступа к этому проекту');
+    }
+    if (my.revoked) {
+      throw new ForbiddenException(REVOKED_ACCESS_MESSAGE); // ⭐ №193 (A₂ F1)
     }
     if (action) this.assertWritable(my, action);
     return my;

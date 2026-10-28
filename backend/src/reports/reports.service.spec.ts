@@ -51,7 +51,10 @@ describe('ReportsService', () => {
   });
 
   const givenAccess = (role: string, hidePrices: boolean) => {
-    prisma.objectAccess.findFirst.mockResolvedValue({ id: 1, role, hidePrices });
+    // ⭐ №193: checkProjectAccess читает записи одним findMany (проект + объект)
+    prisma.objectAccess.findMany.mockResolvedValue([
+      { id: 1, objectId: 2, projectId: 1, role, hidePrices, revokedAt: null },
+    ]);
   };
 
   describe('detail — скрытие цен (Блок B)', () => {

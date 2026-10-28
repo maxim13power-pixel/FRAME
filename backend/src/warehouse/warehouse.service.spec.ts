@@ -177,12 +177,16 @@ describe('WarehouseService', () => {
         objectId: null,
       });
       prisma.project.findUnique.mockResolvedValue({ objectId: 2 });
-      prisma.objectAccess.findMany.mockResolvedValue([{ role: 'FOREMAN' }]);
-      prisma.objectAccess.findFirst.mockResolvedValue({
-        id: 1,
-        role: 'FOREMAN',
-        revokedAt: new Date('2026-10-01'),
-      });
+      // ⭐ №193: доступ к проекту читается одним findMany, отозванная запись — 403
+      prisma.objectAccess.findMany.mockResolvedValue([
+        {
+          id: 1,
+          objectId: 2,
+          projectId: 10,
+          role: 'FOREMAN',
+          revokedAt: new Date('2026-10-01'),
+        },
+      ]);
 
       const dto = {
         warehouseItemId: 1,

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertAccessActive, findLiveAccess, findProjectAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { findVisiblePriceItem } from '../price-list/catalog-access'; // ⭐ №191 (F6)
 import { CreateReportDto } from './dto/create-report.dto';
@@ -95,16 +96,16 @@ export class ReportsService {
     if (!project) {
       throw new NotFoundException('Проект не найден');
     }
-    const access =
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId },
-      })) ??
-      (await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: project.objectId, projectId: null },
-      }));
+    const access = await findProjectAccess(
+      this.prisma,
+      userId,
+      project.objectId,
+      projectId,
+    );
     if (!access) {
       throw new ForbiddenException('Нет доступа к этому проекту');
     }
+    assertAccessActive(access); // ⭐ №193 (A₂ F1): отозванный доступ живых данных не читает
     return access;
   }
 
@@ -153,23 +154,27 @@ export class ReportsService {
       );
       where.projectId = filters.projectId;
     } else if (filters.objectId != null && !Number.isNaN(filters.objectId)) {
-      const acc = await this.prisma.objectAccess.findFirst({
-        where: { userId, objectId: filters.objectId, projectId: null },
+      // ⭐ №193 (A₂ F1): отозванный доступ отчёты объекта не читает.
+      const acc = await findLiveAccess(this.prisma, {
+        userId,
+        objectId: filters.objectId,
+        projectId: null,
       });
       if (!acc) {
         throw new ForbiddenException('Нет доступа к этому объекту');
       }
+      assertAccessActive(acc);
       hideAll = this.mustHidePrices(acc);
       where.objectId = filters.objectId;
     } else {
+      // ⭐ №193 (A₂ F1): отозванные записи в выборку не попадают.
       grants = await this.prisma.objectAccess.findMany({
-        where: { userId },
+        where: { userId, revokedAt: null },
         select: {
           objectId: true,
           projectId: true,
           role: true,
           hidePrices: true,
-          revokedAt: true,
         },
       });
       const objectLevelIds = grants
