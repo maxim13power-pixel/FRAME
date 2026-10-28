@@ -45,6 +45,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
+import EditIcon from '@mui/icons-material/Edit';
 import { fetchAccessList, addAccess, updateAccess, revokeAccess, restoreAccess, purgeAccess, setMyAccessHidden } from '../services/accessService';
 import { APP_URL } from '../config';
 import type { AccessMember, AccessRole } from '../services/accessService';
@@ -140,6 +141,8 @@ const Objects: React.FC = () => {
   const [editingNoteObject, setEditingNoteObject] = useState<ObjectData | null>(null);
   const [editNote, setEditNote] = useState('');
 // ⭐ Модалка управления доступом (участники)
+// ⭐ №185: все действия с объектом — в одной кнопке (мобилка: легче попасть пальцем)
+const [actionsObject, setActionsObject] = useState<ObjectData | null>(null);
 const [accessModalOpen, setAccessModalOpen] = useState(false);
 const [accessObject, setAccessObject] = useState<ObjectData | null>(null);
 const [accessMembers, setAccessMembers] = useState<AccessMember[]>([]);
@@ -399,6 +402,15 @@ const handleRestoreObject = async (obj: ObjectData) => {
 
 // ⭐ №168: право управлять командой (администратор объекта или прораб-менеджер) — с бэка
 const canManage = accessObject?.canManage === true;
+
+// ⭐ №185: права для модалки действий. Кнопки не прячем — показываем серыми с пояснением.
+const act = actionsObject;
+const actHasObject = act ? act.hasObjectAccess !== false : false;
+const actNotRevoked = act ? act.revoked !== true : false;
+const actCanInvite = !!act && actHasObject && actNotRevoked && act.canManage === true;
+const actCanTemplate = !!act && actHasObject && actNotRevoked;
+const actCanEdit = !!act && actHasObject && actNotRevoked && act.canWrite === true;
+const actCanArchive = !!act && act.accessId != null && act.hiddenForMe !== true;
 // ⭐ Текущая роль пользователя на объекте (для UI-подсказок в модалке)
 const myRole = accessObject?.role;
 
@@ -493,6 +505,10 @@ const handleRejectAccessRequest = async (request: AccessRequestData) => {
     setAccessRequestBusy(null);
   }
 };
+
+// ⭐ №185: одна кнопка действий с объектом (модалка со крупными кнопками)
+const handleOpenActions = (obj: ObjectData) => setActionsObject(obj);
+const handleCloseActions = () => setActionsObject(null);
 
 // ⭐ №175: шаблоны объектов — список, сохранение, создание объекта из шаблона
 const loadTemplates = async (scope: 'mine' | 'all') => {
@@ -1124,10 +1140,22 @@ trailing: headerTrailing,
                     шаблонах.
                   </Alert>
                 )}
-                {/* Верхняя строка: иконка, название, процент */}
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: isMobile ? 0.5 : 1 }}>
-                  <PlaceIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1, fontSize: { xs: '1.05rem', md: '1.15rem' } }}>
+                {/* Верхняя строка: иконка, название (до 2 строк), процент */}
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
+                  <PlaceIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28, mt: 0.25 }} />
+              <Typography
+                variant="h6"
+                sx={{
+                  fontWeight: 600,
+                  flexGrow: 1,
+                  minWidth: 0,
+                  fontSize: { xs: '1.05rem', md: '1.15rem' },
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
                 {obj.name}
               </Typography>
               {/* ⭐ №178: есть заявка на право создавать проекты */}
@@ -1140,88 +1168,36 @@ trailing: headerTrailing,
                     e.stopPropagation();
                     handleOpenAccess(obj);
                   }}
-                  sx={{ mr: 1, height: 22, fontSize: '0.72rem' }}
+                  sx={{ ml: 0.5, height: 22, fontSize: '0.72rem' }}
                 />
               )}
-<IconButton
-  size="small"
-  onClick={(e) => {
-    e.stopPropagation();
-    handleOpenNoteModal(obj);
-  }}
-  sx={{
-    mr: 1,
-    color: obj.note ? '#1976d2' : 'inherit',
-    bgcolor: 'action.hover',
-    // ⭐ №163: заметка объекта редактируется только при доступе на весь объект
-    display: obj.hasObjectAccess === false ? 'none' : 'inline-flex',
-  }}
->
-  <NoteAltIcon fontSize="small" />
-</IconButton>
-                {/* ⭐ №163: участник отдельного проекта не управляет объектом и командой */}
-                {obj.hasObjectAccess !== false && (
-                  <>
-<IconButton
-  size="small"
-  onClick={(e) => {
-    e.stopPropagation();
-    handleOpenAccess(obj);
-  }}
-  sx={{ mr: 1, color: '#7b1fa2', bgcolor: 'action.hover' }}
->
-  <PeopleIcon fontSize="small" />
-</IconButton>
-<IconButton
-  size="small"
-  onClick={(e) => {
-    e.stopPropagation();
-    handleOpenEdit(obj);
-  }}
-  sx={{ mr: 1, bgcolor: 'action.hover' }}
->
-  <SettingsIcon fontSize="small" />
-</IconButton>
-{/* ⭐ №175: сохранить объект как шаблон (для новых объектов) */}
-<IconButton
-  size="small"
-  title="Сохранить как шаблон"
-  onClick={(e) => {
-    e.stopPropagation();
-    handleOpenSaveTemplate(obj);
-  }}
-  sx={{ mr: 1, bgcolor: 'action.hover' }}
->
-  <BookmarkAddIcon fontSize="small" />
-</IconButton>
-                  </>
-                )}
-                {/* ⭐ №179: участник с доступом только на проект не мог убрать объект в архив —
-                    действие было спрятано вместе с «настройками объекта». Теперь отдельная кнопка. */}
-                {obj.hasObjectAccess === false && !obj.hiddenForMe && obj.accessId && (
-                  <IconButton
-                    size="small"
-                    title="Убрать в архив (видно только вам)"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeletingObject(obj);
-                      setDeleteConfirmOpen(true);
-                    }}
-                    sx={{ mr: 1, bgcolor: 'action.hover' }}
-                  >
-                    <ArchiveIcon fontSize="small" />
-                  </IconButton>
-                )}
-                  
                   <Chip
                     label={`${progress}%`}
                     size="small"
                     sx={{
+                      ml: 0.5,
                       bgcolor: progress >= 100 ? '#4caf50' : '#1976d2',
                       color: 'white',
                       fontWeight: 'bold',
                     }}
                   />
+                </Box>
+
+                {/* ⭐ №185: все действия — в одной кнопке под процентом, справа.
+                    Недоступные действия не прячем, а показываем серыми в модалке. */}
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
+                  <IconButton
+                    size="small"
+                    title="Действия с объектом"
+                    aria-label="Действия с объектом"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenActions(obj);
+                    }}
+                    sx={{ bgcolor: 'action.hover' }}
+                  >
+                    <SettingsIcon fontSize="small" />
+                  </IconButton>
                 </Box>
 
                 {/* Адрес */}
@@ -1574,6 +1550,139 @@ trailing: headerTrailing,
       </Box>
     </Paper>
   </Modal>
+
+    {/* ⭐ №185: действия с объектом — крупные кнопки (мобилка: шит снизу).
+        Недоступные не прячем: показываем серыми, чтобы было видно, что функционал есть. */}
+    <Modal open={!!actionsObject} onClose={handleCloseActions}>
+      <Paper
+        sx={{
+          position: 'absolute',
+          left: '50%',
+          bottom: { xs: 0, sm: 'auto' },
+          top: { xs: 'auto', sm: '50%' },
+          transform: { xs: 'translateX(-50%)', sm: 'translate(-50%, -50%)' },
+          width: { xs: '100%', sm: 420 },
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          p: 3,
+          pb: { xs: 4, sm: 3 },
+          borderRadius: { xs: '16px 16px 0 0', sm: 3 },
+          outline: 'none',
+        }}
+      >
+        <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ mb: 0.5 }}>
+          {actionsObject?.name || 'Объект'}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+          Действия с объектом. Серые кнопки недоступны вашей роли.
+        </Typography>
+
+        <Stack spacing={1}>
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<PeopleIcon />}
+            disabled={!actCanInvite}
+            onClick={() => {
+              const o = actionsObject;
+              handleCloseActions();
+              if (o) handleOpenAccess(o);
+            }}
+          >
+            Пригласить участника
+          </Button>
+          {!actCanInvite && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
+              Нужны права на управление командой: администратор объекта или прораб-менеджер.
+            </Typography>
+          )}
+
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<BookmarkAddIcon />}
+            disabled={!actCanTemplate}
+            onClick={() => {
+              const o = actionsObject;
+              handleCloseActions();
+              if (o) handleOpenSaveTemplate(o);
+            }}
+          >
+            Сохранить как шаблон
+          </Button>
+          {!actCanTemplate && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
+              Доступно только участнику всего объекта (не наблюдателю и не отозванному).
+            </Typography>
+          )}
+
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<EditIcon />}
+            disabled={!actCanEdit}
+            onClick={() => {
+              const o = actionsObject;
+              handleCloseActions();
+              if (o) handleOpenEdit(o);
+            }}
+          >
+            Редактировать объект
+          </Button>
+          {!actCanEdit && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
+              Нужны права на запись и доступ на весь объект.
+            </Typography>
+          )}
+
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<NoteAltIcon />}
+            disabled={!actCanEdit}
+            onClick={() => {
+              const o = actionsObject;
+              handleCloseActions();
+              if (o) handleOpenNoteModal(o);
+            }}
+          >
+            Заметка к объекту
+          </Button>
+
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            color="warning"
+            startIcon={<ArchiveIcon />}
+            disabled={!actCanArchive}
+            onClick={() => {
+              const o = actionsObject;
+              handleCloseActions();
+              if (o) {
+                setDeletingObject(o);
+                setDeleteConfirmOpen(true);
+              }
+            }}
+          >
+            Убрать в архив
+          </Button>
+          {!actCanArchive && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
+              Объект уже в архиве — верните его кнопкой «Вернуть» на карточке.
+            </Typography>
+          )}
+
+          <Button size="large" fullWidth onClick={handleCloseActions} sx={{ mt: 1 }}>
+            Закрыть
+          </Button>
+        </Stack>
+      </Paper>
+    </Modal>
 
     {/* ⭐ №175: шаблоны объектов — список */}
     <Modal open={templatesOpen} onClose={() => setTemplatesOpen(false)}>
