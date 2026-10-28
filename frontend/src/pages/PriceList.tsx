@@ -528,6 +528,12 @@ const PriceListInner: React.FC = () => {
           </Typography>
         </Box>
       )}
+      {/* ⭐ №199: подсказка — под заголовком, до вкладок и поиска */}
+      <SectionIntro id="price-items" version={1}>
+        Категории сворачиваются кликом по заголовку. Шестерёнка ⚙ у категории — переименовать
+        или удалить, у расценки — правка. На телефоне новая расценка добавляется кнопкой «$ +».
+      </SectionIntro>
+
       {/* Десктоп: вкладки */}
       {!isMobile && (
         <Tabs
@@ -545,12 +551,6 @@ const PriceListInner: React.FC = () => {
           <Tab icon={<Inventory2Icon />} iconPosition="start" label="Цены на материалы" value="MATERIAL" />
         </Tabs>
       )}
-
-      {/* ⭐ №197: одноразовая подсказка раздела */}
-      <SectionIntro id="price-items" version={1}>
-        Категории сворачиваются кликом по заголовку. Шестерёнка ⚙ у категории — переименовать
-        или удалить, у расценки — правка. На телефоне новая расценка добавляется кнопкой «$ +».
-      </SectionIntro>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
