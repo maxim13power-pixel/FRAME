@@ -158,6 +158,7 @@ export class DashboardService {
         INNER JOIN "Project" p ON p.id = m."projectId"
         INNER JOIN "Object" o ON o.id = p."objectId"
         WHERE o."isArchived" = false
+          -- ⭐ №203 (F12): правило денег единое — canSeeMoney() в auth/access-scope.ts
           AND EXISTS (
             SELECT 1 FROM object_access oa
             WHERE oa."objectId" = o.id

@@ -233,6 +233,18 @@ function strongest(grants: AccessGrant[]): AccessGrant {
   );
 }
 
+/** ⭐ №203 (F12): видит ли пользователь деньги по набору грантов.
+ * ПРАВИЛО (единое для JS и SQL): грамоты аддитивны — если в наборе есть хотя бы один
+ * активный грант без hidePrices и не VIEWER, деньги видны. Скрывает только полное
+ * отсутствие «видимого» гранта (все гранты скрывают цены, либо все отозваны).
+ * SQL в analytics/dashboard использует EXISTS(... hidePrices=false AND role<>'VIEWER'),
+ * т.е. ровно это же условие. */
+export function canSeeMoney(grants: AccessGrant[]): boolean {
+  return grants.some(
+    (g) => !g.revokedAt && !g.hidePrices && g.role !== AccessRole.VIEWER,
+  );
+}
+
 /** ⭐ №168: собрать итоговые права из записи-источника и всего набора */
 function makeResolution(
   source: AccessGrant,
@@ -243,13 +255,10 @@ function makeResolution(
   const role = source.role;
   return {
     role,
-    // Отозванный доступ = «снимок»: живые цены нигде не показываем,
-    // цифры он видит в собственных шаблонах-копиях.
-    hidePrices:
-      revoked ||
-      role === AccessRole.VIEWER ||
-      source.hidePrices ||
-      own.some((g) => g.hidePrices),
+    // ⭐ №193/№203 (F12): отозванный доступ и отсутствие «видимого» гранта скрывают цены.
+    // Раньше здесь было «любой hidePrices скрывает всё», а SQL считал наоборот —
+    // один и тот же пользователь получал 0 в списке и сумму в аналитике.
+    hidePrices: revoked || !canSeeMoney(own),
     hasObjectAccess,
     isManager: !!source.isManager,
     revoked,

@@ -1,12 +1,14 @@
 // backend/src/access/access.service.spec.ts
 // ⭐ №181: последнего администратора объекта нельзя понизить (инвариант «≥1 администратор»).
-import { BadRequestException } from '@nestjs/common';
+// ⭐ №203 (F11): список участников с контактами — только тем, кто управляет командой.
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AccessService } from './access.service';
 
 describe('AccessService — понижение последнего администратора (№181)', () => {
   const prisma = {
     objectAccess: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
       count: jest.fn(),
       update: jest.fn(),
     },
@@ -26,6 +28,12 @@ describe('AccessService — понижение последнего админи
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // ⭐ Важно: mockClear не чистит очередь mockResolvedValueOnce — сбрасываем явно,
+    // иначе «неиспользованные» ответы одного теста утекают в следующий.
+    prisma.objectAccess.findFirst.mockReset();
+    prisma.objectAccess.findMany.mockReset();
+    prisma.objectAccess.count.mockReset();
+    prisma.objectAccess.update.mockReset();
     service = new AccessService(prisma as any, audit as any);
     // 1-й findFirst — мой доступ (actor 7, администратор), 2-й — цель (userId 9)
     prisma.objectAccess.findFirst
@@ -41,6 +49,39 @@ describe('AccessService — понижение последнего админи
       service.updateAccess(3, 2, { role: 'FOREMAN' } as any, 7),
     ).rejects.toThrow(BadRequestException);
     expect(prisma.objectAccess.update).not.toHaveBeenCalled();
+  });
+
+  // ⭐ №203 (F11): контакты участников (e-mail/телефон) — только управляющим
+  it('наблюдатель не получает список участников ⇒ ForbiddenException', async () => {
+    prisma.objectAccess.findFirst.mockReset();
+    prisma.objectAccess.findFirst.mockResolvedValue({
+      ...adminGrant,
+      role: 'VIEWER',
+      isManager: false,
+    });
+
+    await expect(service.getAccessList(3, 7)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('прораб без isManager не получает список участников ⇒ ForbiddenException', async () => {
+    prisma.objectAccess.findFirst.mockReset();
+    prisma.objectAccess.findFirst.mockResolvedValue({
+      ...adminGrant,
+      role: 'FOREMAN',
+      isManager: false,
+    });
+
+    await expect(service.getAccessList(3, 7)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('прораб-менеджер получает список участников', async () => {
+    prisma.objectAccess.findFirst.mockReset();
+    prisma.objectAccess.findFirst
+      .mockResolvedValueOnce({ ...adminGrant, role: 'FOREMAN', isManager: true })
+      .mockResolvedValueOnce({ ...adminGrant, role: 'FOREMAN', isManager: true });
+    prisma.objectAccess.findMany.mockResolvedValue([{ id: 1 }]);
+
+    await expect(service.getAccessList(3, 7)).resolves.toEqual([{ id: 1 }]);
   });
 
   it('понижение при наличии другого администратора ⇒ проходит', async () => {
