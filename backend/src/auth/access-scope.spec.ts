@@ -145,12 +145,23 @@ describe('access-scope (№163)', () => {
       expect(my.hasObjectAccess).toBe(false);
     });
 
-    it('цены скрыты, если их прячет любая проектная запись', () => {
+    // ⭐ №203 (F12): правило аддитивное — деньги видны, если есть ХОТЯ БЫ ОДИН видимый грант.
+    // Это же условие считает SQL аналитики/дашборда (EXISTS ... hidePrices=false AND role<>VIEWER).
+    it('цены видны, если хотя бы один грант не скрывает их (аддитивное правило)', () => {
       const my = resolveObjectRole(
         [grant(1, 10, AccessRole.FOREMAN), grant(1, 11, AccessRole.FOREMAN, true)],
         1,
       );
-      expect(my.hidePrices).toBe(true);
+      expect(my.hidePrices).toBe(false);
+    });
+
+    it('цены скрыты, если ВСЕ гранты скрывают их или это наблюдатель', () => {
+      expect(
+        resolveObjectRole([grant(1, 10, AccessRole.FOREMAN, true)], 1).hidePrices,
+      ).toBe(true);
+      expect(
+        resolveObjectRole([grant(1, 11, AccessRole.VIEWER, false)], 1).hidePrices,
+      ).toBe(true);
     });
 
     it('нет доступа к объекту → role=null', () => {
@@ -234,6 +245,19 @@ describe('access-scope (№163)', () => {
       expect(my.role).toBe('FOREMAN');
       expect(my.revoked).toBe(true);
       expect(my.canWrite).toBe(false);
+    });
+
+    // ⭐ №203 (F12): скрытый объектный грант не гасит видимый проектный (аддитивное правило)
+    it('F12: объектный грант с hidePrices + видимый проектный ⇒ деньги по проекту видны', () => {
+      const my = resolveProjectAccess(
+        [
+          grant(1, null, AccessRole.CUSTOMER, true),
+          grant(1, 10, AccessRole.FOREMAN, false),
+        ],
+        1,
+        10,
+      );
+      expect(my.hidePrices).toBe(false);
     });
 
     // ⭐ №193 (A₂ F1): отозванная объектная не должна гасить живой проектный доступ

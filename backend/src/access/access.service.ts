@@ -95,7 +95,18 @@ export class AccessService {
 
   // 1. Список участников объекта (для модалки «Управление доступом»)
   async getAccessList(objectId: number, userId: number) {
-    await this.getMyAccess(objectId, userId); // проверка доступа
+    const my = await this.getMyAccess(objectId, userId); // проверка доступа (и отзыва — №193)
+    // ⭐ №203 (F11): список содержит e-mail и телефоны участников — отдаём его только тем,
+    // кто управляет командой. Наблюдатель и обычный прораб получают 403
+    // (в UI модалка участников и так открывается только при canManage).
+    const canManage =
+      my.role === AccessRole.CUSTOMER ||
+      (my.role === AccessRole.FOREMAN && my.isManager);
+    if (!canManage) {
+      throw new ForbiddenException(
+        'Список участников доступен администратору объекта или прораб-менеджеру',
+      );
+    }
     return this.prisma.objectAccess.findMany({
       where: { objectId },
       include: {

@@ -45,6 +45,8 @@ export class AnalyticsService {
       INNER JOIN "Project" p ON p.id = m."projectId"
       INNER JOIN "Object" o ON o.id = p."objectId"
       WHERE o."isArchived" = false
+        -- ⭐ №203 (F12): единое правило денег — как canSeeMoney() в auth/access-scope.ts:
+        -- деньги видны, если есть хотя бы один активный грант без hidePrices и не VIEWER.
         AND EXISTS (
           SELECT 1 FROM object_access oa
           WHERE oa."objectId" = o.id
@@ -72,6 +74,7 @@ export class AnalyticsService {
         INNER JOIN "Project" p ON p.id = m."projectId"
         INNER JOIN "Object" o ON o.id = p."objectId"
         WHERE o."isArchived" = false
+          -- ⭐ №203 (F12): правило денег такое же, как canSeeMoney() (см. budgetRows выше)
           AND EXISTS (
             SELECT 1 FROM object_access oa
             WHERE oa."objectId" = o.id
