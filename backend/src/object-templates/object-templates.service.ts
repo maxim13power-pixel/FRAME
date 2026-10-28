@@ -12,6 +12,10 @@ import { AccessRole, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ObjectsService } from '../objects/objects.service';
+import {
+  loadAccessGrants,
+  resolveProjectAccess,
+} from '../auth/access-scope'; // ⭐ №192
 import { CreateObjectTemplateDto } from './dto/create-object-template.dto';
 import { UpdateObjectTemplateDto } from './dto/update-object-template.dto';
 import { CreateObjectFromTemplateDto } from './dto/create-object-from-template.dto';
@@ -46,41 +50,70 @@ export class ObjectTemplatesService {
     return user?.role === Role.ADMIN;
   }
 
-  // ─── Сохранить объект как шаблон ───
+  // ─── Сохранить объект (или один проект) как шаблон ───
   async createFromObject(
     objectId: number,
     dto: CreateObjectTemplateDto,
     userId: number,
   ) {
-    const access = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId, projectId: null },
-    });
-    if (!access) {
-      throw new ForbiddenException(
-        'Сохранить шаблон может участник объекта (доступ на весь объект)',
-      );
-    }
-    if (access.revokedAt) {
-      throw new ForbiddenException('Доступ отозван: шаблон сохранить нельзя');
-    }
-    if (access.role === AccessRole.VIEWER) {
-      throw new ForbiddenException('Наблюдатель не может сохранять шаблоны');
+    const projectId = dto.projectId ?? null;
+
+    if (projectId == null) {
+      // Шаблон ВСЕГО объекта — нужен доступ на весь объект
+      const access = await this.prisma.objectAccess.findFirst({
+        where: { userId, objectId, projectId: null },
+      });
+      if (!access) {
+        throw new ForbiddenException(
+          'Сохранить шаблон может участник объекта (доступ на весь объект)',
+        );
+      }
+      if (access.revokedAt) {
+        throw new ForbiddenException('Доступ отозван: шаблон сохранить нельзя');
+      }
+      if (access.role === AccessRole.VIEWER) {
+        throw new ForbiddenException('Наблюдатель не может сохранять шаблоны');
+      }
+    } else {
+      // ⭐ №192: шаблон ОДНОГО проекта — достаточно доступа к этому проекту
+      // (участник всего объекта подходит: он и так видит все проекты объекта).
+      const grants = await loadAccessGrants(this.prisma, userId);
+      const my = resolveProjectAccess(grants, objectId, projectId);
+      if (!my.role) {
+        throw new ForbiddenException('Нет доступа к этому проекту');
+      }
+      if (my.revoked) {
+        throw new ForbiddenException('Доступ отозван: шаблон сохранить нельзя');
+      }
+      if (my.role === AccessRole.VIEWER) {
+        throw new ForbiddenException('Наблюдатель не может сохранять шаблоны');
+      }
     }
 
     const object = await this.prisma.object.findUnique({
       where: { id: objectId },
       include: {
         projects: {
+          where: projectId != null ? { id: projectId } : undefined,
           orderBy: { createdAt: 'asc' },
           include: { materials: { orderBy: { createdAt: 'asc' } } },
         },
       },
     });
     if (!object) throw new NotFoundException('Объект не найден');
+    if (projectId != null && object.projects.length === 0) {
+      throw new NotFoundException('Проект не найден в этом объекте');
+    }
+
+    // Название по умолчанию: «Объект» для объекта, «Объект → Проект» для проекта
+    const defaultName =
+      projectId != null
+        ? `${object.name} → ${object.projects[0].name}`
+        : object.name;
 
     return this.prisma.objectTemplate.create({
       data: {
-        name: dto.name?.trim() || object.name,
+        name: dto.name?.trim() || defaultName,
         note: dto.note ?? object.note ?? null,
         authorId: userId,
         isPublic: dto.isPublic ?? false,

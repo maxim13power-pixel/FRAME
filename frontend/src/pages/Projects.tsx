@@ -31,6 +31,7 @@ import type { PriceCatalogData } from '../services/priceListService';
 import type { ProjectData } from '../services/projectService';
 import { fetchEstimateTemplates, createEstimateTemplate, applyEstimateTemplate } from '../services/estimateTemplateService';
 import type { EstimateTemplate } from '../services/estimateTemplateService';
+import { createObjectTemplate } from '../services/objectTemplateService'; // ⭐ №192
 import NoteAddIcon from '@mui/icons-material/NoteAdd';
 import SearchIcon from '@mui/icons-material/Search';
 import IconButton from '@mui/material/IconButton';
@@ -41,6 +42,7 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import EventIcon from '@mui/icons-material/Event';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import EditIcon from '@mui/icons-material/Edit';
+import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd'; // ⭐ №192
 import SortIcon from '@mui/icons-material/Sort';
 import Select from '@mui/material/Select';
 import FormControl from '@mui/material/FormControl';
@@ -91,6 +93,11 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   // ⭐ №188: меню действий с проектом (шестерёнка на карточке)
   const [actionsProject, setActionsProject] = useState<ProjectData | null>(null);
+  // ⭐ №192: сохранение ПРОЕКТА как шаблона объекта
+  const [objTplProject, setObjTplProject] = useState<ProjectData | null>(null);
+  const [objTplName, setObjTplName] = useState('');
+  const [objTplPublic, setObjTplPublic] = useState(false);
+  const [objTplSaving, setObjTplSaving] = useState(false);
   // ⭐ №163: после создания проекта предлагаем выдать доступ команде (по умолчанию — только администратор объекта)
   const [reminderOpen, setReminderOpen] = useState(false);
   const [reminderProject, setReminderProject] = useState<ProjectData | null>(null);
@@ -713,6 +720,41 @@ const handleCloseActions = () => setActionsProject(null);
 const canEditProject = (p: ProjectData | null) =>
   !!p && p.canWrite === true && p.revoked !== true;
 
+// ⭐ №192: сохранить проект как шаблон объекта (структура + позиции сметы)
+const handleOpenObjectTemplate = (p: ProjectData) => {
+  setObjTplProject(p);
+  setObjTplName(currentObject ? `${currentObject.name} → ${p.name}` : p.name);
+  setObjTplPublic(false);
+};
+
+const handleCloseObjectTemplate = () => {
+  setObjTplProject(null);
+  setObjTplName('');
+  setObjTplPublic(false);
+};
+
+const handleSaveObjectTemplate = async () => {
+  if (!objTplProject || !objectId) return;
+  setObjTplSaving(true);
+  try {
+    const saved = await createObjectTemplate({
+      objectId: Number(objectId),
+      projectId: objTplProject.id,
+      name: objTplName.trim() || undefined,
+      isPublic: objTplPublic,
+    });
+    notify(
+      `Шаблон «${saved.name}» сохранён: позиций ${saved.projects?.[0]?.materials?.length ?? 0}. ` +
+        'Создать из него объект можно в разделе «Объекты» → «Из шаблона».',
+    );
+    handleCloseObjectTemplate();
+  } catch (err: unknown) {
+    notifyError(getApiErrorText(err, 'Не удалось сохранить шаблон'));
+  } finally {
+    setObjTplSaving(false);
+  }
+};
+
 // Обработчик открытия модалки заметки
 const handleOpenNoteModal = (proj: ProjectData) => {
   setEditingNoteProject(proj);
@@ -1236,6 +1278,22 @@ onBack: () => navigate('/objects'),
             Сохранить шаблон сметы
           </Button>
 
+          {/* ⭐ №192: шаблон проекта (структура + позиции) — создаёт объект из одного проекта */}
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<BookmarkAddIcon />}
+            disabled={!canEditProject(actionsProject)}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) handleOpenObjectTemplate(p);
+            }}
+          >
+            Сохранить проект как шаблон
+          </Button>
+
           <Button
             size="large"
             fullWidth
@@ -1276,6 +1334,59 @@ onBack: () => navigate('/objects'),
             Закрыть
           </Button>
         </Stack>
+      </Paper>
+    </Modal>
+
+    {/* ⭐ №192: сохранить проект как шаблон объекта */}
+    <Modal open={!!objTplProject} onClose={handleCloseObjectTemplate}>
+      <Paper
+        sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '94%', sm: 440 },
+          p: 3,
+          borderRadius: 3,
+          outline: 'none',
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          Сохранить как шаблон
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Проект «{objTplProject?.name}» сохранится как шаблон: название и позиции сметы
+          (цены — снимком на дату). Создать из него объект можно в «Объектах» → «Из шаблона».
+        </Typography>
+        <TextField
+          fullWidth
+          size="small"
+          label="Название шаблона"
+          value={objTplName}
+          onChange={(e) => setObjTplName(e.target.value)}
+          sx={{ mb: 2 }}
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={objTplPublic}
+              onChange={(e) => setObjTplPublic(e.target.checked)}
+            />
+          }
+          label="Общий шаблон (виден другим пользователям)"
+        />
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
+          <Button variant="outlined" onClick={handleCloseObjectTemplate}>
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => void handleSaveObjectTemplate()}
+            disabled={objTplSaving}
+          >
+            {objTplSaving ? 'Сохраняем…' : 'Сохранить'}
+          </Button>
+        </Box>
       </Paper>
     </Modal>
 

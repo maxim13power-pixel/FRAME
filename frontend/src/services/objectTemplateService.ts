@@ -53,12 +53,14 @@ const normalizeTemplate = (t: ObjectTemplateData): ObjectTemplateData => ({
   })),
 });
 
-/** Сохранить объект как шаблон */
+/** Сохранить объект как шаблон (или один проект — если передан projectId) */
 export const createObjectTemplate = async (data: {
   objectId: number;
   name?: string;
   note?: string;
   isPublic?: boolean;
+  // ⭐ №192: шаблон проекта
+  projectId?: number;
 }): Promise<ObjectTemplateData> => {
   const response = await api.post('/object-templates', data);
   return normalizeTemplate(response.data);
