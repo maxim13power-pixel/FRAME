@@ -311,6 +311,16 @@ const Settings: React.FC = () => {
           (кнопка «Архив» в шапке) — здесь только статус. Архив личный: у остальных
           участников объект остаётся на месте, данные не удаляются.
         </Typography>
+        {/* ⭐ №184: «Моя команда» — кто работает со мной (включая доступ «только проект») */}
+        <Button
+          variant="outlined"
+          startIcon={<PeopleIcon />}
+          endIcon={<ChevronRightIcon />}
+          onClick={() => navigate('/users')}
+          sx={{ mb: 2 }}
+        >
+          Моя команда
+        </Button>
         {accessLoading ? (
           <Typography variant="body2" color="text.secondary">Загрузка…</Typography>
         ) : myAccessGroups.length === 0 ? (

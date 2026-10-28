@@ -53,7 +53,7 @@ const Users: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>Участники</Typography>
+      <Typography variant="h4" gutterBottom>Моя команда</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Кто работает со мной на объектах. Приглашать и менять роли — в карточке объекта.
       </Typography>
@@ -85,6 +85,19 @@ const Users: React.FC = () => {
                 <Typography variant="h6" sx={{ flexGrow: 1 }}>{obj.name}</Typography>
                 {/* ⚠️ №168: глобального архива объектов больше нет — бейдж «архив» убран */}
                 <Chip label={`Вы: ${roleLabel(obj.myRole)}`} size="small" variant="outlined" />
+              </Box>
+              {/* ⭐ №184: область доступа — весь объект или конкретные проекты */}
+              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.5 }}>
+                {obj.scopes.map((scope) => (
+                  <Chip
+                    key={scope}
+                    size="small"
+                    variant={scope === 'Весь объект' ? 'outlined' : 'filled'}
+                    color={scope === 'Весь объект' ? 'default' : 'primary'}
+                    label={scope === 'Весь объект' ? '🏗 весь объект' : `📁 ${scope}`}
+                    sx={{ height: 20, fontSize: '0.7rem' }}
+                  />
+                ))}
               </Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                 {obj.address}
