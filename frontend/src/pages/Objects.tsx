@@ -1140,7 +1140,7 @@ trailing: headerTrailing,
                     шаблонах.
                   </Alert>
                 )}
-                {/* Верхняя строка: иконка, название (до 2 строк), процент */}
+                {/* Верхняя строка: иконка, название (до 2 строк), кнопка действий */}
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
                   <PlaceIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28, mt: 0.25 }} />
               <Typography
@@ -1171,20 +1171,22 @@ trailing: headerTrailing,
                   sx={{ ml: 0.5, height: 22, fontSize: '0.72rem' }}
                 />
               )}
-                  <Chip
-                    label={`${progress}%`}
-                    size="small"
-                    sx={{
-                      ml: 0.5,
-                      bgcolor: progress >= 100 ? '#4caf50' : '#1976d2',
-                      color: 'white',
-                      fontWeight: 'bold',
+                  {/* ⭐ №187: шестерёнка действий — в первой строке (на месте процента),
+                      процент переехал к прогресс-бару */}
+                  <IconButton
+                    title="Действия с объектом"
+                    aria-label="Действия с объектом"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenActions(obj);
                     }}
-                  />
+                    sx={{ bgcolor: 'action.hover', width: 44, height: 44, ml: 0.5, mt: -0.5 }}
+                  >
+                    <SettingsIcon />
+                  </IconButton>
                 </Box>
 
-                {/* ⭐ №186: прогресс-бар сразу под названием, шестерёнка действий — справа в той же
-                    строке (крупная тап-зона 44×44). Недоступные действия не прячем — они серые в модалке. */}
+                {/* ⭐ №187: прогресс-бар + процент в одной строке (шестерёнка ушла наверх) */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                   <LinearProgress
                     variant="determinate"
@@ -1200,50 +1202,21 @@ trailing: headerTrailing,
                       },
                     }}
                   />
-                  <IconButton
-                    title="Действия с объектом"
-                    aria-label="Действия с объектом"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenActions(obj);
+                  <Chip
+                    label={`${progress}%`}
+                    size="small"
+                    sx={{
+                      bgcolor: progress >= 100 ? '#4caf50' : '#1976d2',
+                      color: 'white',
+                      fontWeight: 'bold',
                     }}
-                    sx={{ bgcolor: 'action.hover', width: 44, height: 44, ml: 0.5 }}
-                  >
-                    <SettingsIcon />
-                  </IconButton>
+                  />
                 </Box>
 
-                {/* Адрес + ⭐ №186: чип заметки (иконку убрали — без чипа заметку не видно) */}
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                    flexWrap: 'wrap',
-                    mb: isMobile ? 1 : 2,
-                  }}
-                >
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ flexGrow: 1, minWidth: 0 }}
-                  >
-                    {obj.address}
-                  </Typography>
-                  {obj.note && (
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      color="primary"
-                      label="📝 заметка"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenNoteModal(obj);
-                      }}
-                      sx={{ height: 22, fontSize: '0.72rem' }}
-                    />
-                  )}
-                </Box>
+                {/* Адрес (⭐ №187: заметка теперь только в меню действий) */}
+                <Typography variant="body2" color="text.secondary" sx={{ mb: isMobile ? 1 : 2 }}>
+                  {obj.address}
+                </Typography>
 
 {/* Строка с датами и днями */}
 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
