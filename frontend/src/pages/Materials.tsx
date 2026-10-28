@@ -1257,19 +1257,27 @@ setSortAnchorEl(null);
   }, [projectId]);
 
   // ⭐ Мобильный хэдер v2: trailing в useMemo — стабильная ссылка, нет бесконечного цикла
+  // ⭐ №201: порядок кнопок задан владельцем: архив/экспорт · «из шаблона» · воронка · сортировка
+  // (поиск рисует AppHeader последним — он остаётся крайним справа).
   const headerTrailing = useMemo(() => isMobile ? (
     <>
       <IconButton
-        onClick={(e) => setSortAnchorEl(e.currentTarget)}
-        sx={{
-          bgcolor: sortBy ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
-          color: sortBy ? '#1976d2' : '#424242',
-          '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
-        }}
+        onClick={() => setExportModalOpen(true)}
+        disabled={exporting !== null}
+        aria-label="Экспорт и архив"
+        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
       >
-        <SortIcon />
+        {exporting ? <CircularProgress size={18} /> : <FileDownloadIcon />}
       </IconButton>
-              {projectCategories.length > 0 && (
+      <IconButton
+        onClick={() => { void handleOpenTemplateModal(); }}
+        disabled={applyingTemplate}
+        aria-label="Добавить из шаблона"
+        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
+      >
+        {applyingTemplate ? <CircularProgress size={18} /> : <PlaylistAddIcon />}
+      </IconButton>
+      {projectCategories.length > 0 && (
         <IconButton
           onClick={(e) => setFilterAnchorEl(e.currentTarget)}
           sx={{
@@ -1281,22 +1289,15 @@ setSortAnchorEl(null);
           <FilterAltIcon />
         </IconButton>
       )}
-      {/* ⭐ №200: порядок кнопок: сортировка · воронка · «из шаблона» · экспорт (поиск — в шапке) */}
       <IconButton
-        onClick={() => { void handleOpenTemplateModal(); }}
-        disabled={applyingTemplate}
-        aria-label="Добавить из шаблона"
-        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
+        onClick={(e) => setSortAnchorEl(e.currentTarget)}
+        sx={{
+          bgcolor: sortBy ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.06)',
+          color: sortBy ? '#1976d2' : '#424242',
+          '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+        }}
       >
-        {applyingTemplate ? <CircularProgress size={18} /> : <PlaylistAddIcon />}
-      </IconButton>
-      <IconButton
-        onClick={() => setExportModalOpen(true)}
-        disabled={exporting !== null}
-        aria-label="Экспорт"
-        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
-      >
-        {exporting ? <CircularProgress size={18} /> : <FileDownloadIcon />}
+        <SortIcon />
       </IconButton>
     </>
     ) : undefined, [isMobile, sortBy, categoryFilter, projectCategories.length, exporting, applyingTemplate, handleOpenTemplateModal]);
