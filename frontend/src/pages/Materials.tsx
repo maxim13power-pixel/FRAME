@@ -1281,15 +1281,7 @@ setSortAnchorEl(null);
           <FilterAltIcon />
         </IconButton>
       )}
-      <IconButton
-        onClick={() => setExportModalOpen(true)}
-        disabled={exporting !== null}
-        aria-label="Экспорт"
-        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
-      >
-        {exporting ? <CircularProgress size={18} /> : <FileDownloadIcon />}
-      </IconButton>
-      {/* ⭐ Добавить позиции из шаблона сметы */}
+      {/* ⭐ №200: порядок кнопок: сортировка · воронка · «из шаблона» · экспорт (поиск — в шапке) */}
       <IconButton
         onClick={() => { void handleOpenTemplateModal(); }}
         disabled={applyingTemplate}
@@ -1297,6 +1289,14 @@ setSortAnchorEl(null);
         sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
       >
         {applyingTemplate ? <CircularProgress size={18} /> : <PlaylistAddIcon />}
+      </IconButton>
+      <IconButton
+        onClick={() => setExportModalOpen(true)}
+        disabled={exporting !== null}
+        aria-label="Экспорт"
+        sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
+      >
+        {exporting ? <CircularProgress size={18} /> : <FileDownloadIcon />}
       </IconButton>
     </>
     ) : undefined, [isMobile, sortBy, categoryFilter, projectCategories.length, exporting, applyingTemplate, handleOpenTemplateModal]);
