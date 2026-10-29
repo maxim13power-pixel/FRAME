@@ -65,7 +65,10 @@ export class ObjectsService {
         ? await this.resolveCatalogId(dto.catalogId, userId)
         : null;
 
-    return this.prisma.object.create({
+    // ⭐ №207: создатель сразу получает полные права на объект. Возвращаем те же флаги,
+    // что и findOne, иначе самая свежая карточка в списке не знала бы, что можно
+    // управлять командой (кнопка «Участники» оставалась бы неактивной до перезагрузки).
+    const created = await this.prisma.object.create({
       data: {
         name: dto.name,
         address: dto.address,
@@ -89,6 +92,18 @@ export class ObjectsService {
       },
       include: { catalog: { select: { id: true, name: true } } },
     });
+    return {
+      ...created,
+      role: AccessRole.CUSTOMER,
+      hidePrices: false,
+      hasObjectAccess: true,
+      canWrite: true,
+      canManage: true,
+      canCreateProjects: true,
+      participantsCount: 1, // только создатель
+      hiddenForMe: false,
+      accessId: null,
+    };
   }
 
   // Все объекты, к которым у юзера есть доступ (включая архивные — фронт сам фильтрует).
