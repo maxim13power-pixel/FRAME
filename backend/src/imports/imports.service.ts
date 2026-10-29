@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import {
   REVOKED_ACCESS_MESSAGE,
+  canSeeMoney,
   loadAccessGrants,
   resolveProjectAccess,
 } from '../auth/access-scope';
@@ -60,7 +61,9 @@ export class ImportsService {
     private parser: EstimateParserService,
   ) {}
 
-  /** Импорт — операция записи: наблюдатель и отозванный доступ не могут. */
+  /** Импорт — операция записи: наблюдатель и отозванный доступ не могут.
+   * ⭐ №208: возвращаем и «видит ли пользователь цены» — тот, кому цены скрыты,
+   * не имеет права загружать файл с ценами (решение владельца). */
   private async assertCanImport(projectId: number, userId: number) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -72,7 +75,18 @@ export class ImportsService {
     if (!my.role) throw new ForbiddenException('Нет доступа к этому проекту');
     if (my.revoked) throw new ForbiddenException(REVOKED_ACCESS_MESSAGE);
     if (!my.canWrite) throw new ForbiddenException('Наблюдатель не может импортировать смету');
-    return project;
+    const moneyVisible = canSeeMoney(grants.filter((g) => g.objectId === project.objectId));
+    return { project, moneyVisible };
+  }
+
+  /** ⭐ №208: имя нового справочника, который соберём из цен файла */
+  private catalogName(fileName: string | null, at: Date): string {
+    const dd = String(at.getDate()).padStart(2, '0');
+    const mm = String(at.getMonth() + 1).padStart(2, '0');
+    const hh = String(at.getHours()).padStart(2, '0');
+    const mi = String(at.getMinutes()).padStart(2, '0');
+    const base = (fileName ?? 'файл').replace(/\.[^.]+$/, '').slice(0, 80);
+    return `Импорт «${base}» — ${dd}.${mm}.${at.getFullYear()} ${hh}:${mi}`;
   }
 
   /** Каталог для матчинга: системные + личные активные РАБОЧИЕ расценки (RFC §7.2). */
@@ -103,7 +117,7 @@ export class ImportsService {
 
   async preview(input: PreviewInput): Promise<{ batchId: number } & PreviewPayload> {
     const { projectId, userId } = input;
-    await this.assertCanImport(projectId, userId);
+    const { moneyVisible } = await this.assertCanImport(projectId, userId);
 
     let parsed: ParsedEstimate;
     if (input.buffer) {
@@ -113,9 +127,47 @@ export class ImportsService {
     } else {
       throw new BadRequestException('Нужен файл или строки таблицы');
     }
+    if (parsed.rows.length === 0) {
+      throw new BadRequestException(
+        'В файле не нашлось ни одной позиции. Проверьте, что под шапкой есть строки с наименованием.',
+      );
+    }
     if (parsed.rows.length > MAX_ROWS) {
       throw new BadRequestException(
         `В файле ${parsed.rows.length} строк — больше лимита ${MAX_ROWS}. Разделите смету на части.`,
+      );
+    }
+
+    const fileWarnings: string[] = [];
+    // ⭐ №208: цены из файла. Кто не видит цены — не загружает их (решение владельца).
+    const pricedRowsCount = parsed.rows.filter((r) => {
+      const p = parseNumberRu(r.priceRaw);
+      return p != null && p > 0;
+    }).length;
+    if (pricedRowsCount > 0 && !moneyVisible) {
+      throw new ForbiddenException(
+        'У вас скрыты цены — импортировать файл с ценами нельзя. Уберите колонку «Цена» из файла или попросите администратора объекта загрузить его.',
+      );
+    }
+    // ⭐ №208: наш файл узнаём по скрытому листу `_meta`
+    const meta = parsed.meta ?? null;
+    if (meta?.projectId != null && meta.projectId !== projectId) {
+      fileWarnings.push(
+        `Файл выгружен из другого проекта${meta.projectName ? ` («${meta.projectName}»)` : ''}${
+          meta.objectName ? ` объекта «${meta.objectName}»` : ''
+        }. Импорт разрешён — проверьте, что позиции относятся к этому проекту.`,
+      );
+    } else if (meta?.frameExport === 1 && meta.projectId == null) {
+      fileWarnings.push('Файл похож на выгрузку FRAME без привязки к проекту — проверьте состав.');
+    } else if (!meta) {
+      fileWarnings.push(
+        'Файл без служебного листа `_meta` — колонки определены автоматически, проверьте шапку.',
+      );
+    }
+    const catalogName = pricedRowsCount > 0 ? this.catalogName(input.fileName ?? null, new Date()) : null;
+    if (catalogName) {
+      fileWarnings.push(
+        `Цены из файла (${pricedRowsCount}) сохранятся в НОВЫЙ справочник «${catalogName}». Существующие справочники не изменяются.`,
       );
     }
 
@@ -150,7 +202,9 @@ export class ImportsService {
       if (deltaPct != null && Math.abs(deltaPct) >= 20) {
         warnings.push(`Цена в файле отличается от справочника на ${deltaPct}%`);
       }
-      if (duplicate) warnings.push('Позиция уже есть в смете — по умолчанию пропускаем');
+      if (duplicate) {
+        warnings.push('Такая позиция уже есть в смете — добавится ещё одна строка (не суммируется)');
+      }
 
       return {
         row: raw.row,
@@ -162,6 +216,8 @@ export class ImportsService {
         article: raw.article,
         work,
         filePrice,
+        // ⭐ №208: цена из файла → строка попадёт в новый справочник
+        hasPrice: filePrice != null && filePrice > 0,
         priceDeltaPct: deltaPct,
         duplicate: duplicate
           ? {
@@ -176,23 +232,15 @@ export class ImportsService {
     });
 
     const stats = {
-      // «Готово» — только точное совпадение: остальное человек подтверждает сам
-      ready: rows.filter((r) => r.errors.length === 0 && !r.duplicate && r.work.status === 'EXACT')
-        .length,
-      needsDecision: rows.filter(
-        (r) =>
-          r.errors.length === 0 &&
-          !r.duplicate &&
-          (r.work.status === 'FUZZY' ||
-            r.work.status === 'SUGGESTED' ||
-            r.work.status === 'NONE'),
-      ).length,
+      // ⭐ №208: «готово» = строку можно писать как есть (нет ошибок)
+      ready: rows.filter((r) => r.errors.length === 0).length,
+      needsDecision: rows.filter((r) => r.errors.length > 0).length,
       errors: rows.filter((r) => r.errors.length > 0).length,
       duplicates: rows.filter((r) => !!r.duplicate).length,
     };
     const plannedCost = rows.reduce(
       (sum, r) =>
-        sum + (r.errors.length === 0 && !r.duplicate ? (r.qty ?? 0) * (r.work.price ?? 0) : 0),
+        sum + (r.errors.length === 0 ? (r.qty ?? 0) * (r.filePrice ?? r.work.price ?? 0) : 0),
       0,
     );
 
@@ -203,10 +251,15 @@ export class ImportsService {
       sheets: parsed.sheets,
       columns: parsed.columns,
       rows,
+      meta,
+      warnings: fileWarnings,
+      prices: { rows: pricedRowsCount, catalogName },
       stats,
       totals: {
         plannedCost: Math.round(plannedCost * 100) / 100,
-        zeroPriceRows: rows.filter((r) => r.errors.length === 0 && r.work.price == null).length,
+        zeroPriceRows: rows.filter(
+          (r) => r.errors.length === 0 && !r.hasPrice && r.work.price == null,
+        ).length,
       },
     };
 
@@ -227,10 +280,12 @@ export class ImportsService {
     return { batchId: batch.id, ...payload };
   }
 
-  /** Детерминированный ключ строки: повторный импорт того же файла не создаст дубль. */
-  private externalKey(projectId: number, row: PreviewRow): string {
+  /** ⭐ №208: ключ строки уникален ВНУТРИ партии импорта.
+   * Повторный импорт того же файла сознательно создаёт новые строки (решение владельца:
+   * «задвоились, но не сложились») — поэтому batchId входит в ключ. */
+  private externalKey(batchId: number, row: PreviewRow): string {
     return createHash('sha1')
-      .update(`${projectId}|${row.row}|${normalizeText(row.name)}|${row.unit ?? ''}|${row.qty ?? ''}`)
+      .update(`${batchId}|${row.row}|${normalizeText(row.name)}|${row.unit ?? ''}|${row.qty ?? ''}`)
       .digest('hex')
       .slice(0, 64);
   }
@@ -238,7 +293,7 @@ export class ImportsService {
   async commit(input: CommitInput) {
     const batch = await this.prisma.importBatch.findUnique({ where: { id: input.batchId } });
     if (!batch) throw new NotFoundException('Партия импорта не найдена');
-    await this.assertCanImport(batch.projectId, input.userId);
+    const { moneyVisible } = await this.assertCanImport(batch.projectId, input.userId);
     if (batch.status !== 'PREVIEW') {
       throw new ConflictException('Партия уже обработана или отменена');
     }
@@ -259,14 +314,57 @@ export class ImportsService {
         throw new ConflictException('Партия уже обрабатывается или отменена');
       }
 
-      // Что пишем: явное решение IMPORT либо строки «готово» без решения
+      // Что пишем: явное решение IMPORT либо все строки без ошибок
+      // (⭐ №208: дубли больше не пропускаем — позиции из файла попадают в смету целиком)
       const toImport = preview.rows.filter((r) => {
         const res = resolutions.get(r.row);
         if (res) return res.action === 'IMPORT';
-        return r.errors.length === 0 && !r.duplicate && r.work.status === 'EXACT';
+        return r.errors.length === 0;
       });
 
-      const keys = toImport.map((r) => this.externalKey(batch.projectId, r));
+      // ⭐ №208: цены из файла → НОВЫЙ справочник. Существующие не меняем и не переключаем.
+      const priced = toImport.filter((r) => r.filePrice != null && (r.filePrice as number) > 0);
+      if (priced.length > 0 && !moneyVisible) {
+        throw new ForbiddenException(
+          'У вас скрыты цены — сохранять цены из файла нельзя. Попросите администратора объекта.',
+        );
+      }
+      let catalog: { id: number; name: string } | null = null;
+      const priceItemByRow = new Map<number, { id: number; price: number }>();
+      if (priced.length > 0) {
+        catalog = await tx.priceCatalog.create({
+          data: {
+            name: preview.prices?.catalogName ?? this.catalogName(batch.fileName, new Date()),
+            ownerId: input.userId,
+          },
+          select: { id: true, name: true },
+        });
+        // Позиция прайса живёт в категории — для импорта заводим служебную
+        const category = await tx.priceCategory.upsert({
+          where: { name_kind: { name: 'Импорт из Excel', kind: 'WORK' } },
+          create: { name: 'Импорт из Excel', kind: 'WORK', sortOrder: 999 },
+          update: {},
+          select: { id: true },
+        });
+        for (const r of priced) {
+          const item = await tx.priceItem.create({
+            data: {
+              name: r.name,
+              article: r.article,
+              unit: r.unit as never,
+              price: new Prisma.Decimal(r.filePrice as number),
+              kind: 'WORK',
+              ownerId: input.userId,
+              catalogId: catalog.id,
+              categoryId: category.id,
+            },
+            select: { id: true },
+          });
+          priceItemByRow.set(r.row, { id: item.id, price: r.filePrice as number });
+        }
+      }
+
+      const keys = toImport.map((r) => this.externalKey(batch.id, r));
       const existing = await tx.material.findMany({
         where: { projectId: batch.projectId, externalKey: { in: keys } },
         select: { externalKey: true },
@@ -281,30 +379,37 @@ export class ImportsService {
           skipped.push({ row: r.row, reason: 'Нет единицы или количества' });
           continue;
         }
-        const key = this.externalKey(batch.projectId, r);
+        const key = this.externalKey(batch.id, r);
         if (existingKeys.has(key)) {
-          skipped.push({ row: r.row, reason: 'Строка уже импортирована ранее' });
+          skipped.push({ row: r.row, reason: 'Строка уже импортирована в этой партии' });
           continue;
         }
 
-        // Цену берём ТОЛЬКО из БД (файл — предложение, не истина)
-        const priceItemId = resolutions.get(r.row)?.workPriceItemId ?? r.work.priceItemId ?? null;
+        // Цена: сначала из файла (новый справочник), иначе — из справочника FRAME
+        const fromFile = priceItemByRow.get(r.row);
+        let priceItemId: number | null = null;
         let unitPrice = 0;
-        if (priceItemId != null) {
-          const item = await tx.priceItem.findUnique({
-            where: { id: priceItemId },
-            select: { price: true, isActive: true, kind: true, ownerId: true },
-          });
-          if (
-            !item ||
-            !item.isActive ||
-            item.kind !== 'WORK' ||
-            (item.ownerId != null && item.ownerId !== input.userId)
-          ) {
-            skipped.push({ row: r.row, reason: 'Расценка недоступна или неактивна' });
-            continue;
+        if (fromFile) {
+          priceItemId = fromFile.id;
+          unitPrice = fromFile.price;
+        } else {
+          priceItemId = resolutions.get(r.row)?.workPriceItemId ?? r.work.priceItemId ?? null;
+          if (priceItemId != null) {
+            const item = await tx.priceItem.findUnique({
+              where: { id: priceItemId },
+              select: { price: true, isActive: true, kind: true, ownerId: true },
+            });
+            if (
+              !item ||
+              !item.isActive ||
+              item.kind !== 'WORK' ||
+              (item.ownerId != null && item.ownerId !== input.userId)
+            ) {
+              skipped.push({ row: r.row, reason: 'Расценка недоступна или неактивна' });
+              continue;
+            }
+            unitPrice = Number(item.price);
           }
-          unitPrice = Number(item.price);
         }
 
         await tx.material.create({
@@ -338,6 +443,8 @@ export class ImportsService {
         skipped: skippedCount,
         skippedDetails: skipped.slice(0, 200),
         rowsTotal: preview.rows.length,
+        // ⭐ №208: что за справочник создан — фронт покажет «цены прочитаны»
+        catalog: catalog ? { id: catalog.id, name: catalog.name, items: priced.length } : null,
       };
 
       await tx.importBatch.update({
@@ -346,6 +453,7 @@ export class ImportsService {
           status: 'COMMITTED',
           createdCount: created,
           skippedCount,
+          pricesCreated: priced.length,
           committedAt: new Date(),
           report: report as unknown as Prisma.InputJsonValue,
         },
@@ -358,6 +466,7 @@ export class ImportsService {
       projectId: batch.projectId,
       created: summary.created,
       skipped: summary.skipped,
+      catalog: summary.catalog,
     });
 
     return summary;

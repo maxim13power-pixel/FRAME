@@ -23,11 +23,22 @@ export interface DetectedColumns {
   confidence: number;
 }
 
+/** ⭐ №208: содержимое скрытого листа `_meta` нашей выгрузки/шаблона */
+export interface ImportMetaInfo {
+  frameExport?: number;
+  templateVersion?: number;
+  projectId?: number;
+  projectName?: string;
+  objectName?: string;
+  includePrices?: boolean;
+}
+
 export interface ParsedEstimate {
   sheet: string;
   sheets: string[];
   rows: ParsedRow[];
   columns: DetectedColumns;
+  meta?: ImportMetaInfo | null;
 }
 
 export type MatchStatus = 'EXACT' | 'FUZZY' | 'SUGGESTED' | 'NONE';
@@ -68,8 +79,10 @@ export interface PreviewRow {
   /** найденная расценка (работа) и её цена из справочника */
   work: RowMatch;
   filePrice: number | null;
+  /** ⭐ №208: в файле есть цена → строка пойдёт в новый справочник */
+  hasPrice: boolean;
   priceDeltaPct: number | null;
-  /** существующая строка сметы с таким же названием */
+  /** существующая строка сметы с таким же названием (импорт не блокирует — №208) */
   duplicate: { materialId: number; specQuantity: number; totalUsed: number } | null;
   warnings: string[];
   errors: string[];
@@ -82,6 +95,12 @@ export interface PreviewPayload {
   sheets: string[];
   columns: DetectedColumns;
   rows: PreviewRow[];
+  /** ⭐ №208: что было в скрытом листе `_meta` (наш файл/шаблон) */
+  meta?: ImportMetaInfo | null;
+  /** ⭐ №208: предупреждения по всему файлу (например, выгрузка другого проекта) */
+  warnings: string[];
+  /** ⭐ №208: цены из файла уйдут в новый справочник цен */
+  prices: { rows: number; catalogName: string | null };
   stats: {
     ready: number;
     needsDecision: number;

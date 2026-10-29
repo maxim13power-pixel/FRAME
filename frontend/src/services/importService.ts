@@ -19,6 +19,8 @@ export interface ImportPreviewRow {
   article: string | null;
   work: ImportPreviewMatch;
   filePrice: number | null;
+  /** ⭐ №208: цена из файла → строка попадёт в новый справочник */
+  hasPrice: boolean;
   priceDeltaPct: number | null;
   duplicate: { materialId: number; specQuantity: number; totalUsed: number } | null;
   warnings: string[];
@@ -40,6 +42,19 @@ export interface ImportPreview {
     confidence: number;
   };
   rows: ImportPreviewRow[];
+  /** ⭐ №208: служебный лист `_meta` нашего шаблона/выгрузки */
+  meta?: {
+    frameExport?: number;
+    templateVersion?: number;
+    projectId?: number;
+    projectName?: string;
+    objectName?: string;
+    includePrices?: boolean;
+  } | null;
+  /** ⭐ №208: предупреждения по файлу целиком */
+  warnings: string[];
+  /** ⭐ №208: сколько цен пришло из файла и как назовётся новый справочник */
+  prices: { rows: number; catalogName: string | null };
   stats: { ready: number; needsDecision: number; errors: number; duplicates: number };
   totals: { plannedCost: number; zeroPriceRows: number };
 }
@@ -51,6 +66,8 @@ export interface ImportCommitResult {
   skipped: number;
   skippedDetails: { row: number; reason: string }[];
   rowsTotal: number;
+  /** ⭐ №208: созданный из цен файла справочник */
+  catalog: { id: number; name: string; items: number } | null;
 }
 
 export const previewEstimateImport = async (

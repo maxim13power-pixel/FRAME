@@ -3,14 +3,38 @@
 // Принимаем ЧУЖОЙ файл: ищем шапку в первых строках по синонимам, а не требуем свой шаблон.
 import { BadRequestException, Injectable } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
-import type { DetectedColumns, ParsedEstimate, ParsedRow } from './imports.types';
+import type {
+  DetectedColumns,
+  ImportMetaInfo,
+  ParsedEstimate,
+  ParsedRow,
+} from './imports.types';
 
 const HEADER_SYNONYMS: Record<'name' | 'article' | 'unit' | 'qty' | 'price', string[]> = {
   name: ['наименование', 'название', 'позиция', 'описание', 'номенклатура', 'вид работ', 'работа', 'материал'],
   article: ['артикул', 'код', 'шифр'],
   unit: ['ед изм', 'единица', 'ед.', 'ед', 'изм'],
-  qty: ['кол во', 'количество', 'объем', 'объём', 'кол.'],
-  price: ['цена', 'стоимость', 'расценка', 'цена за ед'],
+  // ⭐ №208: «По спецификации» — колонка количества в НАШЕЙ выгрузке сметы.
+  // Без этого синонима собственный экспорт FRAME не читался обратно.
+  qty: [
+    'кол во',
+    'количество',
+    'объем',
+    'объём',
+    'кол.',
+    'по спецификации',
+    'спецификация',
+  ],
+  price: [
+    'цена',
+    'стоимость',
+    'расценка',
+    'цена за ед',
+    'цена за единицу',
+    'стоимость за ед',
+    'цена руб',
+    'цена, руб',
+  ],
 };
 
 const normCell = (v: unknown): string =>
@@ -44,12 +68,16 @@ export class EstimateParserService {
     }
 
     const sheets = workbook.worksheets.map((w) => w.name);
-    // Берём первый лист, где есть хоть одна непустая строка
-    const sheet = workbook.worksheets.find((w) => w.rowCount > 0) ?? workbook.worksheets[0];
+    // ⭐ №208: скрытый лист `_meta` — признак нашего файла (выгрузка сметы или шаблон).
+    const meta = readMeta(workbook);
+    // Берём первый лист, где есть хоть одна непустая строка (служебный `_meta` пропускаем)
+    const sheet =
+      workbook.worksheets.find((w) => w.name.trim().toLowerCase() !== '_meta' && w.rowCount > 0) ??
+      workbook.worksheets.find((w) => w.name.trim().toLowerCase() !== '_meta');
     if (!sheet) {
       throw new BadRequestException('В файле нет листов с данными.');
     }
-    return this.parseRows(sheetToMatrix(sheet), fileName, sheet.name, sheets);
+    return { ...this.parseRows(sheetToMatrix(sheet), fileName, sheet.name, sheets), meta };
   }
 
   /** Вставка из буфера обмена (TSV) или готовые строки из JSON */
@@ -63,10 +91,18 @@ export class EstimateParserService {
       throw new BadRequestException('Пустая таблица: нет строк для импорта.');
     }
     const { headerIndex, columns } = detectHeader(matrix);
+    // ⭐ №208: без колонки «Наименование» импорт бессмысленен — говорим об этом прямо,
+    // вместо того чтобы молча читать первую колонку.
+    const nameColumn = columns.name;
+    if (nameColumn == null) {
+      throw new BadRequestException(
+        'Не найдена строка заголовков: нужна колонка «Наименование» (и желательно «Ед. изм.», «Количество», «Цена»). Проверьте, что шапка есть в первых 12 строках листа.',
+      );
+    }
     const rows: ParsedRow[] = [];
     for (let i = headerIndex + 1; i < matrix.length; i += 1) {
       const line = matrix[i] ?? [];
-      const name = String(line[columns.name] ?? '').trim();
+      const name = String(line[nameColumn] ?? '').trim();
       const low = normCell(name);
       // Итоговые строки пропускаем: это не позиции сметы
       if (!name || low.startsWith('итого') || low.startsWith('всего') || low.startsWith('ндс')) continue;
@@ -88,16 +124,61 @@ export class EstimateParserService {
       sheet: sheetName,
       sheets,
       rows,
-      columns: { ...columns, headerRow: headerIndex + 1 },
+      columns: {
+        name: nameColumn,
+        article: columns.article,
+        unit: columns.unit,
+        qty: columns.qty,
+        price: columns.price,
+        headerRow: headerIndex + 1,
+        confidence: columns.confidence,
+      },
     };
   }
 }
 
 
+/** ⭐ №208: читаем скрытый лист `_meta` (пара «ключ — значение» в первых двух колонках) */
+const readMeta = (workbook: ExcelJS.Workbook): ImportMetaInfo | null => {
+  const sheet = workbook.worksheets.find((w) => w.name.trim().toLowerCase() === '_meta');
+  if (!sheet) return null;
+  const pairs = new Map<string, string>();
+  sheet.eachRow((row) => {
+    const key = String(row.getCell(1).value ?? '').trim();
+    if (!key) return;
+    pairs.set(key, String(row.getCell(2).value ?? '').trim());
+  });
+  if (pairs.size === 0) return null;
+  const num = (key: string): number | undefined => {
+    const raw = pairs.get(key);
+    if (raw == null || raw === '') return undefined;
+    const n = Number(raw.replace(',', '.'));
+    return Number.isFinite(n) ? n : undefined;
+  };
+  return {
+    frameExport: num('frameExport'),
+    templateVersion: num('columnsVersion') ?? num('templateVersion'),
+    projectId: num('projectId'),
+    projectName: pairs.get('projectName') || undefined,
+    objectName: pairs.get('objectName') || undefined,
+    includePrices: pairs.get('includePrices') === '1',
+  };
+};
+
 /** Шапка: ищем строку, где опознано максимум колонок (в первых 12 строках). */
 export const detectHeader = (
   matrix: unknown[][],
-): { headerIndex: number; columns: Omit<DetectedColumns, 'headerRow'> } => {
+): {
+  headerIndex: number;
+  columns: {
+    name: number | null;
+    article: number | null;
+    unit: number | null;
+    qty: number | null;
+    price: number | null;
+    confidence: number;
+  };
+} => {
   let best = { headerIndex: 0, columns: emptyColumns(), score: -1 };
   const limit = Math.min(matrix.length, 12);
 
@@ -119,15 +200,14 @@ export const detectHeader = (
   }
 
   const columns = best.columns;
-  // «Наименование» обязательно; если не нашли — берём первую колонку и предупреждаем
-  const nameIndex = columns.name ?? 0;
   const matched = [columns.name, columns.unit, columns.qty, columns.price].filter(
     (v) => v != null,
   ).length;
   return {
     headerIndex: best.headerIndex,
     columns: {
-      name: nameIndex,
+      // ⭐ №208: name остаётся null, если шапку не опознали — parseRows скажет об этом явно
+      name: columns.name,
       article: columns.article,
       unit: columns.unit,
       qty: columns.qty,

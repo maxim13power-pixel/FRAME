@@ -18,21 +18,21 @@ interface Props {
   projectId: number;
   onClose: () => void;
   /** После успешной записи — страница перечитывает смету */
-  onImported: (created: number, skipped: number) => void;
+  onImported: (created: number, skipped: number, catalogName?: string | null) => void;
 }
 
 const MAX_ROWS = 500;
-const rowUsable = (r: ImportPreviewRow) => r.errors.length === 0 && !r.duplicate;
+const rowUsable = (r: ImportPreviewRow) => r.errors.length === 0;
 
 const statusChip = (r: ImportPreviewRow) => {
   if (r.errors.length > 0) return <Chip size="small" color="error" label="ошибка" />;
-  if (r.duplicate) return <Chip size="small" label="уже в смете" />;
+  if (r.hasPrice) return <Chip size="small" color="success" variant="outlined" label="цена из файла" />;
   if (r.work.status === 'EXACT') return <Chip size="small" color="success" label="расценка найдена" />;
   if (r.work.status === 'FUZZY') return <Chip size="small" color="warning" label="проверьте расценку" />;
   if (r.work.status === 'SUGGESTED') {
     return <Chip size="small" color="warning" variant="outlined" label="выберите вручную" />;
   }
-  return <Chip size="small" variant="outlined" label="цены нет в справочнике" />;
+  return <Chip size="small" variant="outlined" label="без цены — пойдёт в 0" />;
 };
 
 const EstimateImportModal: React.FC<Props> = ({ open, projectId, onClose, onImported }) => {
@@ -68,9 +68,10 @@ const EstimateImportModal: React.FC<Props> = ({ open, projectId, onClose, onImpo
       const data = await previewEstimateImport(projectId, file);
       setPreview(data);
       const initial: Record<number, boolean> = {};
-      // По умолчанию — только надёжные строки; сомнительные человек отмечает сам
+      // ⭐ №208: по умолчанию берём ВСЕ строки без ошибок — в том числе без расценки
+      // (они пишутся с ценой из файла или с 0, чтобы не терять позиции)
       data.rows.forEach((r) => {
-        initial[r.row] = rowUsable(r) && r.work.status === 'EXACT';
+        initial[r.row] = rowUsable(r);
       });
       setSelected(initial);
     } catch (err: unknown) {
@@ -84,7 +85,10 @@ const EstimateImportModal: React.FC<Props> = ({ open, projectId, onClose, onImpo
     () => (preview ? preview.rows.filter((r) => selected[r.row]) : []),
     [preview, selected],
   );
-  const planned = toImport.reduce((sum, r) => sum + (r.qty ?? 0) * (r.work.price ?? 0), 0);
+  const planned = toImport.reduce(
+    (sum, r) => sum + (r.qty ?? 0) * (r.filePrice ?? r.work.price ?? 0),
+    0,
+  );
 
   const commit = async () => {
     if (!preview) return;
@@ -95,7 +99,7 @@ const EstimateImportModal: React.FC<Props> = ({ open, projectId, onClose, onImpo
         preview.batchId,
         toImport.map((r) => ({ row: r.row, action: 'IMPORT' as const, workPriceItemId: r.work.priceItemId })),
       );
-      onImported(result.created, result.skipped);
+      onImported(result.created, result.skipped, result.catalog?.name ?? null);
       reset();
       onClose();
     } catch (err: unknown) {
@@ -115,8 +119,8 @@ const EstimateImportModal: React.FC<Props> = ({ open, projectId, onClose, onImpo
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
               Подойдёт любой файл .xlsx или .csv: шапка и колонки определяются автоматически
-              («Наименование», «Ед.», «Кол-во», «Цена»). Цены из файла не записываются — стоимость
-              берётся из справочника цен, файл показываем только для сверки.
+              («Наименование», «Ед.», «Количество», «Цена»). Если в файле есть цены, FRAME сохранит
+              их в <b>новый справочник цен</b> — существующие справочники не изменяются.
             </Typography>
             <Dropzone
               loading={loading}
@@ -124,7 +128,8 @@ const EstimateImportModal: React.FC<Props> = ({ open, projectId, onClose, onImpo
               onFile={(file) => void handleFile(file)}
             />
             <Typography variant="caption" color="text.secondary">
-              До {MAX_ROWS} строк за раз. Повторная загрузка того же файла дублей не создаст.
+              До {MAX_ROWS} строк за раз. Повторная загрузка того же файла добавит позиции ещё раз
+              (дубли не суммируются) и создаст ещё один справочник.
             </Typography>
             <input
               ref={fileRef}
@@ -139,16 +144,38 @@ const EstimateImportModal: React.FC<Props> = ({ open, projectId, onClose, onImpo
           </Stack>
         ) : (
           <Stack spacing={1.5}>
+            {/* ⭐ №208: предупреждения по файлу (другой проект, новый справочник, чужой формат) */}
+            {preview.warnings.length > 0 && (
+              <Alert severity="info">
+                <Stack spacing={0.5}>
+                  {preview.warnings.map((w) => (
+                    <Typography key={w} variant="caption" display="block">
+                      • {w}
+                    </Typography>
+                  ))}
+                </Stack>
+              </Alert>
+            )}
             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
               <Chip size="small" color="success" label={`готово: ${preview.stats.ready}`} />
-              <Chip size="small" color="warning" label={`на проверку: ${preview.stats.needsDecision}`} />
-              <Chip size="small" color="error" label={`ошибок: ${preview.stats.errors}`} />
+              <Chip size="small" color="error" label={`с ошибками: ${preview.stats.errors}`} />
               <Chip size="small" label={`уже в смете: ${preview.stats.duplicates}`} />
+              {preview.prices.rows > 0 && (
+                <Chip
+                  size="small"
+                  color="success"
+                  variant="outlined"
+                  label={`цен из файла: ${preview.prices.rows}`}
+                />
+              )}
               <Chip size="small" variant="outlined" label={`строк: ${preview.rows.length}`} />
             </Box>
             <Typography variant="body2" color="text.secondary">
               Лист «{preview.sheet}», шапка в строке {preview.columns.headerRow}. Отмечено к импорту:{' '}
-              <b>{toImport.length}</b> на сумму <b>{money(planned)} ₽</b> (по справочнику).
+              <b>{toImport.length}</b> на сумму <b>{money(planned)} ₽</b>.
+              {preview.totals.zeroPriceRows > 0 && (
+                <> Без цены (пойдут с 0): <b>{preview.totals.zeroPriceRows}</b>.</>
+              )}
             </Typography>
 
             <TableContainer sx={{ maxHeight: 420 }}>
@@ -195,6 +222,11 @@ const EstimateImportModal: React.FC<Props> = ({ open, projectId, onClose, onImpo
                       <TableCell>
                         <Stack spacing={0.5}>
                           {statusChip(r)}
+                          {r.filePrice != null && r.filePrice > 0 && (
+                            <Typography variant="caption" color="success.main">
+                              {money(r.filePrice)} ₽ из файла
+                            </Typography>
+                          )}
                           {r.work.price != null && (
                             <Typography variant="caption" color="text.secondary">
                               {r.work.candidates[0]?.name ?? '—'} · {money(r.work.price)} ₽

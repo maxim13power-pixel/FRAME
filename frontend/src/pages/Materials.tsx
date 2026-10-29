@@ -85,6 +85,8 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
+import { downloadImportTemplate } from '../utils/importTemplate'; // ⭐ №208: пустой шаблон
 import PriceChangeIcon from '@mui/icons-material/PriceChange';
 // ⭐ №170: пересчёт сметы по справочнику цен (превью «было → станет» + откат)
 import { PriceRecalcModal } from '../components/PriceRecalcModal';
@@ -457,6 +459,8 @@ const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
 const [exportModalOpen, setExportModalOpen] = useState(false);
 // ⭐ №202: импорт сметы из Excel
 const [importOpen, setImportOpen] = useState(false);
+// ⭐ №208: одно меню «Из шаблона» вместо отдельных кнопок импорта и шаблона
+const [importMenuAnchor, setImportMenuAnchor] = useState<HTMLElement | null>(null);
 // ⭐ Добавление позиций из шаблона сметы в текущий проект
 const [templateModalOpen, setTemplateModalOpen] = useState(false);
 const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
@@ -1221,11 +1225,25 @@ setSortAnchorEl(null);
   };
 
   // ⭐ Добавить позиции из шаблона сметы в текущую смету (кнопка в шапке и в мобильном меню)
-  // ⭐ №202: после импорта — перечитать смету и сказать, сколько создано
-  const handleImported = async (created: number, skipped: number) => {
+  // ⭐ №202/№208: после импорта — перечитать смету и сказать, сколько создано
+  // и в какой новый справочник ушли цены из файла (напоминание владельца).
+  const handleImported = async (
+    created: number,
+    skipped: number,
+    catalogName?: string | null,
+  ) => {
     if (projectId) setMaterials(await fetchMaterialsByProject(parseInt(projectId)));
-    if (created > 0) notify(`Импортировано позиций: ${created}${skipped ? `, пропущено: ${skipped}` : ''}`, 'success');
-    else notify('Ни одной строки не импортировано — проверьте предупреждения в файле', 'warning');
+    if (created > 0) {
+      notify(
+        `Импортировано позиций: ${created}${skipped ? `, пропущено: ${skipped}` : ''}`,
+        'success',
+      );
+      if (catalogName) {
+        notify(`Цены из файла прочитаны — создан новый справочник «${catalogName}»`, 'success');
+      }
+    } else {
+      notify('Ни одной строки не импортировано — проверьте предупреждения в файле', 'warning');
+    }
   };
 
   const handleOpenTemplateModal = useCallback(async () => {
@@ -1281,9 +1299,8 @@ setSortAnchorEl(null);
         {exporting ? <CircularProgress size={18} /> : <FileDownloadIcon />}
       </IconButton>
       <IconButton
-        onClick={() => { void handleOpenTemplateModal(); }}
-        disabled={applyingTemplate}
-        aria-label="Добавить из шаблона"
+        onClick={(e) => setImportMenuAnchor(e.currentTarget)}
+        aria-label="Из шаблона: добавить, импорт, скачать шаблон"
         sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
       >
         {applyingTemplate ? <CircularProgress size={18} /> : <PlaylistAddIcon />}
@@ -1436,18 +1453,7 @@ setSortAnchorEl(null);
      считаются по факту. Фиксацию можно исправить 72 часа, остальное фиксируется навсегда.
    </SectionIntro>
 
-   {/* ⭐ №202: на мобилке импорт — кнопкой в контенте (шапку не трогаем) */}
-   {isMobile && !hidePrices && (
-     <Button
-       variant="outlined"
-       fullWidth
-       startIcon={<UploadFileIcon />}
-       onClick={() => setImportOpen(true)}
-       sx={{ mb: 1.5 }}
-     >
-       Импорт из Excel
-     </Button>
-   )}
+   {/* ⭐ №208: импорт/шаблон — в одном меню «Из шаблона» (мобилка: иконка в шапке) */}
 
    {/* Поиск и кнопка добавления (десктоп; мобилка — в хэдере) */}
    <Box sx={{ display: 'flex', gap: 1, mb: { xs: 0, md: 2 }, alignItems: 'center' }}>
@@ -1487,14 +1493,14 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
 </FormControl>
 )}
 
-{!isMobile && !hidePrices && (
+{!isMobile && (
   <Button
     variant="outlined"
-    startIcon={<UploadFileIcon />}
-    onClick={() => setImportOpen(true)}
+    startIcon={<PlaylistAddIcon />}
+    onClick={(e) => setImportMenuAnchor(e.currentTarget)}
     sx={{ whiteSpace: 'nowrap' }}
   >
-    Импорт Excel
+    Из шаблона
   </Button>
 )}
 {!isMobile && !hidePrices && (
@@ -1526,24 +1532,46 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     size="small"
     onClick={() => setExportModalOpen(true)}
     disabled={exporting !== null}
+    title="Скачать смету"
     sx={{ minWidth: 0, px: 1.5, py: 1, transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' } }}
   >
     {exporting ? <CircularProgress size={16} /> : <FileDownloadIcon fontSize="small" />}
   </Button>
 )}
-{!isMobile && (
-  <Button
-    variant="outlined"
-    color="primary"
-    size="small"
-    onClick={() => { void handleOpenTemplateModal(); }}
-    disabled={applyingTemplate}
-    title="Добавить позиции из шаблона сметы"
-    sx={{ minWidth: 0, px: 1.5, py: 1, transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' } }}
-  >
-    {applyingTemplate ? <CircularProgress size={16} /> : <PlaylistAddIcon fontSize="small" />}
-  </Button>
-)}
+      {/* ⭐ №208: меню «Из шаблона» */}
+      <Menu
+        anchorEl={importMenuAnchor}
+        open={!!importMenuAnchor}
+        onClose={() => setImportMenuAnchor(null)}
+      >
+        <MenuItem
+          onClick={() => {
+            setImportMenuAnchor(null);
+            void handleOpenTemplateModal();
+          }}
+        >
+          <PlaylistAddIcon fontSize="small" style={{ marginRight: 8 }} />
+          Добавить из шаблона
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setImportMenuAnchor(null);
+            setImportOpen(true);
+          }}
+        >
+          <UploadFileIcon fontSize="small" style={{ marginRight: 8 }} />
+          Импорт из Excel
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setImportMenuAnchor(null);
+            downloadImportTemplate();
+          }}
+        >
+          <FileDownloadOutlinedIcon fontSize="small" style={{ marginRight: 8 }} />
+          Скачать пустой шаблон
+        </MenuItem>
+      </Menu>
       {/* ⭐ Модалка выбора формата экспорта */}
       {/* ⭐ №202: импорт сметы из Excel */}
       {projectId && (
@@ -1551,7 +1579,7 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
           open={importOpen}
           projectId={parseInt(projectId)}
           onClose={() => setImportOpen(false)}
-          onImported={(created, skipped) => void handleImported(created, skipped)}
+          onImported={(created, skipped, catalogName) => void handleImported(created, skipped, catalogName)}
         />
       )}
 
