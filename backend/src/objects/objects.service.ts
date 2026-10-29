@@ -83,7 +83,7 @@ export class ObjectsService {
           create: {
             userId,
             role: AccessRole.CUSTOMER, // ⭐ №181: создатель — администратор объекта
-            isManager: false, // isManager относится только к прорабу
+            canCreateProjects: true, // ⭐ №207: админ объекта создаёт проекты
           },
         },
       },
@@ -118,6 +118,24 @@ export class ObjectsService {
         },
       },
     });
+
+    // ⭐ №207: счётчик участников для кнопки «Участники» — считаем одним запросом
+    // и только для объектов, где пользователь реально управляет командой.
+    const manageableIds = objects
+      .filter((o) => resolveObjectRole(grants, o.id).canManage)
+      .map((o) => o.id);
+    const participantRows = manageableIds.length
+      ? await this.prisma.objectAccess.findMany({
+          where: { objectId: { in: manageableIds }, revokedAt: null },
+          select: { objectId: true, userId: true },
+        })
+      : [];
+    const participantsByObject = new Map<number, Set<number>>();
+    for (const row of participantRows) {
+      const set = participantsByObject.get(row.objectId) ?? new Set<number>();
+      set.add(row.userId);
+      participantsByObject.set(row.objectId, set);
+    }
 
     // Честный % из материалов доступных проектов
     return objects.map((o) => {
@@ -155,9 +173,13 @@ export class ObjectsService {
           grants.find((g) => g.objectId === o.id && !g.revokedAt)?.id ??
           null,
         hiddenForMe: grants.some((g) => g.objectId === o.id && g.isHidden),
-        isManager: my.isManager,
         canWrite: my.canWrite,
         canManage: my.canManage,
+        // ⭐ №207: право создавать проекты + счётчик команды (только для админа объекта)
+        canCreateProjects: my.canCreateProjects,
+        participantsCount: my.canManage
+          ? (participantsByObject.get(o.id)?.size ?? 0)
+          : null,
       };
     });
   }
@@ -216,10 +238,23 @@ export class ObjectsService {
         grants.find((g) => g.objectId === id && !g.revokedAt)?.id ??
         null,
       hiddenForMe: grants.some((g) => g.objectId === id && g.isHidden),
-      isManager: my.isManager,
       canWrite: my.canWrite,
       canManage: my.canManage,
+      // ⭐ №207: право создавать проекты (для кнопки «Добавить проект» / заявки)
+      canCreateProjects: my.canCreateProjects,
+      participantsCount: my.canManage
+        ? await this.countParticipants(id)
+        : null,
     };
+  }
+
+  /** ⭐ №207: сколько людей в команде объекта (для подписи кнопки «Участники») */
+  private async countParticipants(objectId: number) {
+    const rows = await this.prisma.objectAccess.findMany({
+      where: { objectId, revokedAt: null },
+      select: { userId: true },
+    });
+    return new Set(rows.map((r) => r.userId)).size;
   }
 
   async updateEndDate(id: number, newEndDate: string, userId: number) {

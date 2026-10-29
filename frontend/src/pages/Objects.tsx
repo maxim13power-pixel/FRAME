@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -34,20 +34,18 @@ import { fetchProjectsByObject } from '../services/projectService'; // ⭐ №16
 import type { ProjectData } from '../services/projectService'; // ⭐ №163
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import SettingsIcon from '@mui/icons-material/Settings';
 import PeopleIcon from '@mui/icons-material/People';
 import DeleteIcon from '@mui/icons-material/Delete';
-import LockIcon from '@mui/icons-material/Lock';
-import RestoreIcon from '@mui/icons-material/Restore';
 import LinkIcon from '@mui/icons-material/Link';
 import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
 import EditIcon from '@mui/icons-material/Edit';
-import { fetchAccessList, addAccess, updateAccess, revokeAccess, restoreAccess, purgeAccess, setMyAccessHidden } from '../services/accessService';
+import { fetchAccessList, addAccess, updateAccess, removeAccess, setMyAccessHidden } from '../services/accessService';
 import { APP_URL } from '../config';
 import type { AccessMember, AccessRole } from '../services/accessService';
 import { createInviteLink, fetchInviteLinks, revokeInviteLink } from '../services/inviteService';
@@ -110,6 +108,12 @@ const Objects: React.FC = () => {
   const myUserId: number | undefined = user?.id;
   const { notify, error: notifyError, confirm } = useFeedback();
   const navigate = useNavigate();
+  const location = useLocation();
+  // ⭐ №207: переход «Участники объекта» из карточки проекта
+  const openAccessFromState = (
+    location.state as { openAccessObjectId?: number } | null
+  )?.openAccessObjectId;
+  const openAccessHandledRef = useRef<number | null>(null);
   const [objects, setObjects] = useState<ObjectData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -161,6 +165,8 @@ const [memberScopeFilter, setMemberScopeFilter] = useState<'all' | 'object' | nu
 const [inviteTab, setInviteTab] = useState<'link' | 'direct'>('link');
 const [linkRole, setLinkRole] = useState<AccessRole>('FOREMAN');
 const [inviteHidePrices, setInviteHidePrices] = useState(false); // ⭐ №182
+// ⭐ №207: право прораба создавать проекты (только для доступа на весь объект)
+const [inviteCanCreateProjects, setInviteCanCreateProjects] = useState(false);
 const [linkHidePrices, setLinkHidePrices] = useState(false);
 const [createdLinkUrl, setCreatedLinkUrl] = useState<string | null>(null);
 const [activeLinks, setActiveLinks] = useState<InviteLink[]>([]);
@@ -413,8 +419,6 @@ const actCanInvite = !!act && actHasObject && act.canManage === true;
 const actCanTemplate = !!act && actHasObject;
 const actCanEdit = !!act && actHasObject && act.canWrite === true;
 const actCanArchive = !!act && act.accessId != null && act.hiddenForMe !== true;
-// ⭐ Текущая роль пользователя на объекте (для UI-подсказок в модалке)
-const myRole = accessObject?.role;
 
 // ⭐ №197: «Команда проекта» — отдельные участники проекта vs участники всего объекта.
 // Участник всего объекта видит все проекты, поэтому в команду проекта он входит неявно.
@@ -440,6 +444,14 @@ const loadAccessMembers = async (objectId: number) => {
   try {
     const members = await fetchAccessList(objectId);
     setAccessMembers(members);
+    // ⭐ №207: держим счётчик у кнопки «Участники» в актуальном состоянии
+    const uniqueUsers = new Set(members.filter((m) => !m.revokedAt).map((m) => m.userId)).size;
+    setObjects((prev) =>
+      prev.map((o) => (o.id === objectId ? { ...o, participantsCount: uniqueUsers } : o)),
+    );
+    setAccessObject((prev) =>
+      prev && prev.id === objectId ? { ...prev, participantsCount: uniqueUsers } : prev,
+    );
   } catch (err: unknown) {
     setAccessError(getApiErrorMessage(err, 'Ошибка загрузки участников'));
   } finally {
@@ -463,6 +475,18 @@ const handleOpenAccess = (obj: ObjectData) => {
     .then(setAccessProjects)
     .catch(() => setAccessProjects([]));
 };
+
+// ⭐ №207: «Участники объекта» из карточки проекта (Projects → Objects).
+// Открываем модалку один раз и сразу чистим state, чтобы возврат назад её не повторял.
+useEffect(() => {
+  if (!openAccessFromState || objects.length === 0) return;
+  if (openAccessHandledRef.current === openAccessFromState) return;
+  openAccessHandledRef.current = openAccessFromState;
+  const target = objects.find((o) => o.id === openAccessFromState);
+  navigate('/objects', { replace: true, state: null });
+  if (target && target.canManage) handleOpenAccess(target);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [openAccessFromState, objects]);
 
 // ⭐ №178: одобрить / отклонить заявку на право создавать проекты
 const handleApproveAccessRequest = async (request: AccessRequestData) => {
@@ -661,6 +685,7 @@ const handleCloseAccess = () => {
   setInviteTab('link');
   setLinkRole('FOREMAN');
   setInviteHidePrices(false);
+  setInviteCanCreateProjects(false);
   setLinkHidePrices(false);
   setCreatedLinkUrl(null);
   setActiveLinks([]);
@@ -685,6 +710,11 @@ const handleInvite = async () => {
       // ⭐ №163: '' = на весь объект, иначе — только на выбранный проект
       projectId: inviteProjectId === '' ? null : inviteProjectId,
       hidePrices: inviteHidePrices, // ⭐ №182
+      // ⭐ №207: право создавать проекты — только прораб + весь объект
+      canCreateProjects:
+        inviteRole === 'FOREMAN' && inviteProjectId === ''
+          ? inviteCanCreateProjects
+          : false,
     });
     setInviteIdentifier('');
     await loadAccessMembers(accessObject.id);
@@ -707,85 +737,44 @@ const handleChangeRole = async (accessId: number, newRole: AccessRole) => {
   }
 };
 
-// ⭐ №168/№193: отзыв доступа закрывает ЖИВОЙ доступ целиком (не «только чтение»),
-// смета и справочник цен сохраняются в личных шаблонах человека (снимок на дату).
-const handleRevokeAccess = async (member: AccessMember) => {
+// ⭐ №207: «Удалить участника» — единственное действие. Бэкенд перед удалением
+// снимает личные копии (шаблоны смет + снимок доступа), поэтому наработка человека
+// не пропадает: он останется с ней даже без доступа к объекту.
+const handleRemoveAccess = async (member: AccessMember) => {
   if (!token || !accessObject) return;
   const who = member.user.fullName || member.user.email || member.user.phone || 'участника';
   const ok = await confirm({
-    title: 'Отозвать доступ?',
-    text: `Доступ для ${who} закроется: объект станет недоступен. Смета и справочник цен сохранятся в его личных шаблонах (снимок на дату отзыва), данные объекта останутся на месте.`,
-    confirmText: 'Отозвать',
-    danger: true,
-  });
-  if (!ok) return;
-  setAccessError('');
-  try {
-    const res = await revokeAccess(accessObject.id, member.id);
-    const copy = res.templates > 0
-      ? ` Сохранено шаблонов: ${res.templates}${res.catalogCopied ? ' + справочник цен' : ''}.`
-      : '';
-    notify(`Доступ отозван.${copy}`, 'success');
-    await loadAccessMembers(accessObject.id);
-  } catch (err: unknown) {
-    setAccessError(getApiErrorMessage(err, 'Ошибка отзыва доступа'));
-  }
-};
-
-// ⭐ №168: вернуть доступ одним кликом (без повторного приглашения)
-const handleRestoreAccess = async (accessId: number) => {
-  if (!token || !accessObject) return;
-  setAccessError('');
-  try {
-    await restoreAccess(accessObject.id, accessId);
-    notify('Доступ возвращён', 'success');
-    await loadAccessMembers(accessObject.id);
-  } catch (err: unknown) {
-    setAccessError(getApiErrorMessage(err, 'Ошибка возврата доступа'));
-  }
-};
-
-// ⭐ №168: удалить запись доступа навсегда
-const handlePurgeAccess = async (member: AccessMember) => {
-  if (!token || !accessObject) return;
-  const who = member.user.fullName || member.user.email || member.user.phone || 'участника';
-  const ok = await confirm({
-    title: 'Удалить доступ навсегда?',
-    text: `Запись доступа для ${who} будет удалена. Снимок его сметы останется в его шаблонах.`,
+    title: 'Удалить участника?',
+    text: `Доступ для ${who} будет удалён без возможности восстановления: объект и его проекты станут недоступны. Перед удалением FRAME сохранит ему личную копию сметы и справочника цен — эти данные останутся в его шаблонах. Чтобы вернуть человека, его нужно пригласить заново.`,
     confirmText: 'Удалить',
     danger: true,
   });
   if (!ok) return;
   setAccessError('');
+  setAccessLoading(true);
   try {
-    await purgeAccess(accessObject.id, member.id);
+    const res = await removeAccess(accessObject.id, member.id);
+    const copy = res.templates > 0
+      ? ` Сохранено шаблонов: ${res.templates}${res.catalogCopied ? ' + справочник цен' : ''}.`
+      : '';
+    notify(`Участник удалён.${copy}`, 'success');
     await loadAccessMembers(accessObject.id);
   } catch (err: unknown) {
-    setAccessError(getApiErrorMessage(err, 'Ошибка удаления доступа'));
+    setAccessError(getApiErrorMessage(err, 'Ошибка удаления участника'));
+  } finally {
+    setAccessLoading(false);
   }
 };
 
-// ⭐ №168: «управляет командой» — флаг прораба, выдаёт администратор объекта
-const handleToggleManager = async (accessId: number, isManager: boolean) => {
+// ⭐ №207: «может создавать проекты» — право прораба, выдаётся администратором объекта
+const handleToggleCreateProjects = async (accessId: number, canCreateProjects: boolean) => {
   if (!token || !accessObject) return;
   setAccessError('');
   try {
-    await updateAccess(accessObject.id, accessId, { isManager });
+    await updateAccess(accessObject.id, accessId, { canCreateProjects });
     await loadAccessMembers(accessObject.id);
   } catch (err: unknown) {
     setAccessError(getApiErrorMessage(err, 'Ошибка смены прав'));
-  }
-};
-
-// ⭐ №182: скрыть/показать цены участнику (делегирование прав)
-const handleToggleHidePrices = async (accessId: number, hidePrices: boolean) => {
-  if (!token || !accessObject) return;
-  setAccessError('');
-  try {
-    await updateAccess(accessObject.id, accessId, { hidePrices });
-    await loadAccessMembers(accessObject.id);
-  } catch (err: unknown) {
-    setAccessError(getApiErrorMessage(err, 'Ошибка смены видимости цен'));
   }
 };
 
@@ -1629,11 +1618,14 @@ trailing: headerTrailing,
               if (o) handleOpenAccess(o);
             }}
           >
-            Пригласить участника
+            Участники
+            {actCanInvite && act?.participantsCount != null
+              ? ` · ${act.participantsCount}`
+              : ''}
           </Button>
           {!actCanInvite && (
             <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
-              Нужны права на управление командой: администратор объекта или прораб-менеджер.
+              Командой управляет администратор объекта. Прораб может отправить заявку на доступ.
             </Typography>
           )}
 
@@ -2147,33 +2139,18 @@ trailing: headerTrailing,
                       )}
                     </Box>
 
-                    {/* ⭐ №168: «управляет командой» — флаг прораба, выдаёт администратор объекта */}
-                    {canManage && member.role === 'FOREMAN' && myRole === 'CUSTOMER' && !member.revokedAt && (
+                    {/* ⭐ №207: «может создавать проекты» — право прораба с доступом на весь объект */}
+                    {canManage && member.role === 'FOREMAN' && !member.projectId && !member.revokedAt && (
                       <FormControlLabel
                         sx={{ mr: 0 }}
                         control={
                           <Checkbox
                             size="small"
-                            checked={member.isManager}
-                            onChange={(e) => handleToggleManager(member.id, e.target.checked)}
+                            checked={member.canCreateProjects}
+                            onChange={(e) => handleToggleCreateProjects(member.id, e.target.checked)}
                           />
                         }
-                        label={<Typography variant="caption">менеджер</Typography>}
-                      />
-                    )}
-
-                    {/* ⭐ №182: видимость цен — отдельное право, не роль */}
-                    {canManage && member.role !== 'VIEWER' && !member.revokedAt && (
-                      <FormControlLabel
-                        sx={{ mr: 0 }}
-                        control={
-                          <Checkbox
-                            size="small"
-                            checked={member.hidePrices}
-                            onChange={(e) => handleToggleHidePrices(member.id, e.target.checked)}
-                          />
-                        }
-                        label={<Typography variant="caption">🙈 цены</Typography>}
+                        label={<Typography variant="caption">проекты</Typography>}
                       />
                     )}
 
@@ -2192,20 +2169,18 @@ trailing: headerTrailing,
                       <Chip label={roleLabel(member.role)} size="small" color={roleColor(member.role)} />
                     )}
 
-                    {canManage && (member.revokedAt ? (
-                      <>
-                        <IconButton size="small" color="primary" title="Вернуть доступ" onClick={() => handleRestoreAccess(member.id)}>
-                          <RestoreIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton size="small" color="error" title="Удалить навсегда" onClick={() => handlePurgeAccess(member)}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </>
-                    ) : (
-                      <IconButton size="small" color="warning" title="Отозвать доступ" onClick={() => handleRevokeAccess(member)}>
-                        <LockIcon fontSize="small" />
+                    {/* ⭐ №207: одно действие — удалить (с подтверждением и без восстановления) */}
+                    {canManage && (
+                      <IconButton
+                        size="small"
+                        color="error"
+                        title="Удалить участника"
+                        disabled={accessLoading}
+                        onClick={() => handleRemoveAccess(member)}
+                      >
+                        <DeleteIcon fontSize="small" />
                       </IconButton>
-                    ))}
+                    )}
                   </Box>
                 ))}
               </Box>
@@ -2215,7 +2190,7 @@ trailing: headerTrailing,
 
             {/* Форма приглашения */}
             {!canManage ? (
-              <Alert severity="warning">Управлять участниками может администратор объекта или прораб-менеджер.</Alert>
+              <Alert severity="warning">Управлять участниками может только администратор объекта.</Alert>
             ) : (
               <>
                 <Typography variant="subtitle1" gutterBottom>➕ Пригласить участника</Typography>
@@ -2372,6 +2347,25 @@ trailing: headerTrailing,
                         ? 'Участник увидит все проекты объекта, включая созданные позже.'
                         : 'Участник увидит только выбранный проект. Остальные проекты объекта ему недоступны.'}
                     </Typography>
+                    {/* ⭐ №207: право создавать проекты — только прораб и только на весь объект */}
+                    {inviteRole === 'FOREMAN' && inviteProjectId === '' && (
+                      <>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={inviteCanCreateProjects}
+                              onChange={(e) => setInviteCanCreateProjects(e.target.checked)}
+                            />
+                          }
+                          label="🏗 Разрешить создавать проекты"
+                        />
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: -2 }}>
+                          {inviteCanCreateProjects
+                            ? 'Прораб сможет создавать новые проекты в этом объекте. Командой и участниками он не управляет.'
+                            : 'Проекты создаёте только вы. Прораб сможет отправить заявку — вы её одобрите.'}
+                        </Typography>
+                      </>
+                    )}
                     {/* ⭐ №182: видимость цен — отдельное право (как в приглашении ссылкой) */}
                     {inviteRole !== 'VIEWER' && (
                       <>

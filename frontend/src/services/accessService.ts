@@ -14,10 +14,10 @@ export interface AccessMember {
   role: AccessRole;
   invitedBy: number | null;
   createdAt: string;
-  // ⭐ №168: управление командой / личный архив / мягкий отзыв
-  isManager: boolean;
+  // ⭐ №207: «прораб-менеджер» упразднён — право создавать проекты отдельным флагом
+  canCreateProjects: boolean;
   isHidden: boolean;
-  // ⭐ №182: участнику скрыты цены
+  // ⭐ №182: участнику скрыты цены (фиксируется приглашением, потом не меняется)
   hidePrices: boolean;
   revokedAt: string | null;
   revokedById: number | null;
@@ -38,7 +38,7 @@ export interface MyAccess {
   projectId: number | null;
   projectName: string | null;
   role: AccessRole;
-  isManager: boolean;
+  canCreateProjects: boolean;
   isHidden: boolean;
   revokedAt: string | null;
   createdAt: string;
@@ -51,23 +51,25 @@ export interface AddAccessPayload {
   phone?: string;
   role: AccessRole;
   projectId?: number | null; // null = весь объект
-  isManager?: boolean;
-  hidePrices?: boolean; // ⭐ №182
+  // ⭐ №207: право создавать проекты (только прораб + доступ на весь объект)
+  canCreateProjects?: boolean;
+  hidePrices?: boolean; // ⭐ №182: фиксируется приглашением
 }
 
-// ⭐ Payload для смены роли / прав менеджера / видимости цен
+// ⭐ Payload для смены роли / права создавать проекты.
+// Видимости цен здесь нет: она задаётся только при приглашении (№207).
 export interface UpdateAccessPayload {
   role?: AccessRole;
-  isManager?: boolean;
-  hidePrices?: boolean; // ⭐ №182
+  canCreateProjects?: boolean;
 }
 
-// ⭐ №168: что вернул отзыв (для сообщения «копия сохранена в шаблонах»)
-export interface RevokeResult {
+// ⭐ №207: что вернуло удаление участника (для сообщения «копия сохранена»)
+export interface RemoveAccessResult {
   success: boolean;
-  revokedAt: string;
+  removed: number;
   templates: number;
   catalogCopied: boolean;
+  snapshots: number;
 }
 
 // 1. Получить список участников объекта
@@ -100,34 +102,14 @@ export const updateAccess = async (
   return response.data;
 };
 
-// 4. ⭐ №168: отозвать доступ — МЯГКО (read-only + снимок в шаблонах)
-export const revokeAccess = async (
+// 4. ⭐ №207: удалить участника. Бэкенд перед удалением снимает личные копии
+// (шаблоны смет + снимок доступа), затем жёстко удаляет все его записи доступа.
+export const removeAccess = async (
   objectId: number,
   accessId: number,
-): Promise<RevokeResult> => {
-  const response = await api.post(
-    `/objects/${objectId}/access/${accessId}/revoke`,
-  );
+): Promise<RemoveAccessResult> => {
+  const response = await api.delete(`/objects/${objectId}/access/${accessId}`);
   return response.data;
-};
-
-// 5. ⭐ №168: вернуть доступ одним кликом
-export const restoreAccess = async (
-  objectId: number,
-  accessId: number,
-): Promise<AccessMember> => {
-  const response = await api.post(
-    `/objects/${objectId}/access/${accessId}/restore`,
-  );
-  return response.data;
-};
-
-// 6. ⭐ №168: удалить запись доступа навсегда
-export const purgeAccess = async (
-  objectId: number,
-  accessId: number,
-): Promise<void> => {
-  await api.delete(`/objects/${objectId}/access/${accessId}`);
 };
 
 // 7. ⭐ №168: мои доступы (активные / архив / отозванные)

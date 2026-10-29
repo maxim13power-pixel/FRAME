@@ -37,16 +37,15 @@ export class AccessService {
     return access;
   }
 
-  // ⭐ №168: управлять командой может администратор объекта или прораб-менеджер (isManager).
+  // ⭐ №207: управлять командой может ТОЛЬКО администратор объекта (CUSTOMER, projectId = null).
+  // «Прораб-менеджер» упразднён: прорабу команда не нужна, а право создавать
+  // проекты он получает отдельным флагом canCreateProjects (или по заявке №178).
   // Отозванный участник сюда не доходит — отзыв режется в getMyAccess (№193).
   private async assertManager(objectId: number, userId: number) {
     const my = await this.getMyAccess(objectId, userId);
-    const canManage =
-      my.role === AccessRole.CUSTOMER ||
-      (my.role === AccessRole.FOREMAN && my.isManager);
-    if (!canManage) {
+    if (my.role !== AccessRole.CUSTOMER) {
       throw new ForbiddenException(
-        'Управлять участниками может администратор объекта или прораб-менеджер',
+        'Управлять участниками может только администратор объекта',
       );
     }
     return my;
@@ -95,18 +94,9 @@ export class AccessService {
 
   // 1. Список участников объекта (для модалки «Управление доступом»)
   async getAccessList(objectId: number, userId: number) {
-    const my = await this.getMyAccess(objectId, userId); // проверка доступа (и отзыва — №193)
-    // ⭐ №203 (F11): список содержит e-mail и телефоны участников — отдаём его только тем,
-    // кто управляет командой. Наблюдатель и обычный прораб получают 403
-    // (в UI модалка участников и так открывается только при canManage).
-    const canManage =
-      my.role === AccessRole.CUSTOMER ||
-      (my.role === AccessRole.FOREMAN && my.isManager);
-    if (!canManage) {
-      throw new ForbiddenException(
-        'Список участников доступен администратору объекта или прораб-менеджеру',
-      );
-    }
+    // ⭐ №207: единственная проверка — администратор объекта (команда только у него).
+    // ⭐ №203 (F11): список содержит e-mail и телефоны участников — никому больше.
+    await this.assertManager(objectId, userId);
     return this.prisma.objectAccess.findMany({
       where: { objectId },
       include: {
@@ -119,20 +109,11 @@ export class AccessService {
   }
 
   // 2. Пригласить пользователя (ТЗ 3.5)
-  // ⭐ №168: если запись уже есть и была отозвана — это «вернуть доступ» одним действием,
-  // без повторного приглашения и без создания дубля.
+  // ⭐ №207: приглашает только администратор объекта. Устаревшая отозванная запись
+  // переиспользуется (без дубля), но настройки берутся из формы приглашения:
+  // скрытие цен фиксируется при приглашении и потом не меняется.
   async addAccess(objectId: number, dto: AddAccessDto, actorUserId: number) {
     const myAccess = await this.assertManager(objectId, actorUserId);
-
-    // Только администратор объекта может выдать роль администратора или права менеджера.
-    if (
-      (dto.role === AccessRole.CUSTOMER || dto.isManager) &&
-      myAccess.role !== AccessRole.CUSTOMER
-    ) {
-      throw new ForbiddenException(
-        'Только администратор объекта может выдать роль администратора или права менеджера',
-      );
-    }
 
     // ⭐ №182: нельзя открыть другому цены, которые скрыты у тебя самого
     this.assertCanDelegatePrices(myAccess, dto.hidePrices);
@@ -146,6 +127,12 @@ export class AccessService {
     }
 
     const projectId = dto.projectId ?? null;
+    // ⭐ №207: право создавать проекты имеет смысл только для объектной записи
+    // и только для прораба — администратору объекта оно не нужно (и так может).
+    const canCreateProjects =
+      projectId == null && dto.role === AccessRole.FOREMAN
+        ? !!dto.canCreateProjects
+        : false;
     // ⭐ Уникальность держит частичный индекс (COALESCE(projectId,0)) — ищем вручную,
     // чтобы NULL-safe вернуть отозванного, а не ловить P2002.
     const existing = await this.prisma.objectAccess.findFirst({
@@ -165,8 +152,8 @@ export class AccessService {
           revokedById: null,
           isHidden: false,
           role: dto.role,
-          isManager: dto.role === AccessRole.FOREMAN && !!dto.isManager,
-          hidePrices: dto.hidePrices ?? existing.hidePrices,
+          canCreateProjects,
+          hidePrices: dto.hidePrices ?? false,
           invitedBy: actorUserId,
         },
         include: {
@@ -184,7 +171,7 @@ export class AccessService {
         {
           userId: invitedUser.id,
           role: dto.role,
-          isManager: restored.isManager,
+          canCreateProjects: restored.canCreateProjects,
           hidePrices: restored.hidePrices,
         },
       );
@@ -197,7 +184,7 @@ export class AccessService {
         objectId,
         projectId, // null = весь объект
         role: dto.role,
-        isManager: dto.role === AccessRole.FOREMAN && !!dto.isManager,
+        canCreateProjects,
         hidePrices: dto.hidePrices ?? false,
         invitedBy: actorUserId,
       },
@@ -214,18 +201,19 @@ export class AccessService {
       objectId,
       'create',
       undefined,
-      { userId: invitedUser.id, role: dto.role, isManager: created.isManager, hidePrices: created.hidePrices },
+      { userId: invitedUser.id, role: dto.role, canCreateProjects: created.canCreateProjects, hidePrices: created.hidePrices },
     );
     return created;
   }
-  // 3. Сменить роль участника и/или права менеджера
+  // 3. Сменить роль участника / право создавать проекты.
+  // ⭐ №207: видимость цен здесь НЕ меняется — она фиксируется при приглашении.
   async updateAccess(
     objectId: number,
     accessId: number,
     dto: UpdateAccessDto,
     actorUserId: number,
   ) {
-    const myAccess = await this.assertManager(objectId, actorUserId);
+    await this.assertManager(objectId, actorUserId);
 
     const target = await this.prisma.objectAccess.findFirst({
       where: { id: accessId, objectId },
@@ -238,33 +226,17 @@ export class AccessService {
     }
     if (target.revokedAt) {
       throw new BadRequestException(
-        'Доступ отозван — сначала верните его, потом меняйте роль',
+        'Доступ отозван — пригласите участника заново, чтобы изменить роль',
       );
     }
 
-    // Прораб-менеджер не трогает администраторов объекта и не повышает никого до администратора объекта.
-    if (myAccess.role !== AccessRole.CUSTOMER) {
-      if (
-        target.role === AccessRole.CUSTOMER ||
-        dto.role === AccessRole.CUSTOMER
-      ) {
-        throw new ForbiddenException(
-          'Только администратор объекта может менять роль администратора',
-        );
-      }
-      if (dto.isManager) {
-        throw new ForbiddenException(
-          'Только администратор объекта может назначать прорабов-менеджеров',
-        );
-      }
-    }
-
     const nextRole = dto.role ?? target.role;
-    const nextManager = dto.isManager ?? target.isManager;
-    const nextHidePrices = dto.hidePrices ?? target.hidePrices;
-
-    // ⭐ №182: открыть цены другому может только тот, у кого они не скрыты
-    this.assertCanDelegatePrices(myAccess, dto.hidePrices);
+    // ⭐ №207: право создавать проекты — только у прораба с объектным доступом.
+    // Роль администратора объекта имеет это право по определению.
+    const nextCanCreateProjects =
+      (dto.canCreateProjects ?? target.canCreateProjects) &&
+      nextRole === AccessRole.FOREMAN &&
+      target.projectId == null;
 
     // ⭐ №181: последнего администратора объекта нельзя понизить (инвариант «≥1 администратор»).
     // Раньше проверка стояла только на отзыве и удалении доступа — понижение роли её обходило.
@@ -272,16 +244,12 @@ export class AccessService {
       await this.assertNotLastCustomer(objectId, target);
     }
 
-    if (nextManager && nextRole !== AccessRole.FOREMAN) {
-      throw new BadRequestException('Права менеджера доступны только прорабу');
-    }
-
     const updated = await this.prisma.objectAccess.update({
       where: { id: accessId },
       data: {
         role: nextRole,
-        isManager: nextManager,
-        hidePrices: nextHidePrices,
+        // ⭐ №207: hidePrices приглашением фиксируется — здесь не меняется
+        canCreateProjects: nextCanCreateProjects,
       },
       include: {
         user: {
@@ -298,143 +266,26 @@ export class AccessService {
       {
         userId: target.userId,
         role: target.role,
-        isManager: target.isManager,
+        canCreateProjects: target.canCreateProjects,
         hidePrices: target.hidePrices,
       },
       {
         userId: target.userId,
         role: nextRole,
-        isManager: nextManager,
-        hidePrices: nextHidePrices,
+        canCreateProjects: nextCanCreateProjects,
+        hidePrices: target.hidePrices,
       },
     );
     return updated;
   }
 
-  // 4. Отозвать доступ — доступ закрывается, данные остаются в личных копиях:
-  // шаблоны смет (+копия справочника цен) и неизменяемый «Снимок доступа» (№194).
-  async revokeAccess(objectId: number, accessId: number, actorUserId: number) {
-    const myAccess = await this.assertManager(objectId, actorUserId);
-
-    const target = await this.prisma.objectAccess.findFirst({
-      where: { id: accessId, objectId },
-    });
-    if (!target) {
-      throw new NotFoundException('Запись доступа не найдена');
-    }
-    if (target.userId === actorUserId) {
-      throw new BadRequestException('Нельзя отозвать собственный доступ');
-    }
-    if (target.revokedAt) {
-      throw new BadRequestException('Доступ уже отозван');
-    }
-    if (
-      myAccess.role === AccessRole.FOREMAN &&
-      target.role === AccessRole.CUSTOMER
-    ) {
-      throw new ForbiddenException('Прораб не может отозвать доступ администратора объекта');
-    }
-    await this.assertNotLastCustomer(objectId, target);
-
-    const now = new Date();
-    // Снимок и отзыв — в одной транзакции: либо есть копия, либо доступ остаётся.
-    const result = await this.prisma.$transaction(async (tx) => {
-      const copies = await this.createSnapshot(tx, target, now);
-      // ⭐ №194 (F1 шаг 2): неизменяемый слепок «как было» — не только смета,
-      // но и акты, склад, бригады с выходами. Живёт в личном пространстве
-      // участника, поэтому переживает и удаление записи доступа.
-      const hidePrices = target.hidePrices || target.role === AccessRole.VIEWER;
-      const blind = await buildSnapshotPayload(tx, {
-        objectId: target.objectId,
-        projectId: target.projectId,
-        hidePrices,
-        takenAt: now,
-      });
-      let snapshotId: number | null = null;
-      if (blind) {
-        const saved = await tx.accessSnapshot.create({
-          data: {
-            userId: target.userId,
-            objectId: target.objectId,
-            accessId: target.id,
-            objectName: blind.objectName,
-            projectId: target.projectId,
-            projectName: blind.projectName,
-            role: target.role,
-            hidePrices,
-            takenAt: now,
-            revokedBy: actorUserId,
-            summary: blind.summary as unknown as Prisma.InputJsonValue,
-            payload: blind.payload,
-          },
-          select: { id: true },
-        });
-        snapshotId = saved.id;
-      }
-      await tx.objectAccess.update({
-        where: { id: accessId },
-        data: { revokedAt: now, revokedById: actorUserId },
-      });
-      return { ...copies, snapshotId };
-    });
-
-    // ⭐ №131: журнал отзыва доступа
-    await this.audit.log(
-      actorUserId,
-      'object_access',
-      objectId,
-      'revoke',
-      { userId: target.userId, role: target.role },
-      { userId: target.userId, revokedAt: now, ...result },
-    );
-    return { success: true, revokedAt: now, ...result };
-  }
-
-  // 5. Вернуть доступ одним кликом (без повторного приглашения)
-  async restoreAccess(objectId: number, accessId: number, actorUserId: number) {
-    const myAccess = await this.assertManager(objectId, actorUserId);
-
-    const target = await this.prisma.objectAccess.findFirst({
-      where: { id: accessId, objectId },
-    });
-    if (!target) {
-      throw new NotFoundException('Запись доступа не найдена');
-    }
-    if (!target.revokedAt) {
-      throw new BadRequestException('Доступ не был отозван');
-    }
-    if (
-      myAccess.role === AccessRole.FOREMAN &&
-      target.role === AccessRole.CUSTOMER
-    ) {
-      throw new ForbiddenException(
-        'Прораб не может вернуть доступ администратору объекта — это делает администратор объекта',
-      );
-    }
-
-    const updated = await this.prisma.objectAccess.update({
-      where: { id: accessId },
-      data: { revokedAt: null, revokedById: null },
-      include: {
-        user: {
-          select: { id: true, fullName: true, email: true, phone: true },
-        },
-      },
-    });
-    await this.audit.log(
-      actorUserId,
-      'object_access',
-      objectId,
-      'restore',
-      { userId: target.userId, revokedAt: target.revokedAt },
-      { userId: target.userId, revokedAt: null },
-    );
-    return updated;
-  }
-
-  // 6. Удалить запись доступа навсегда (после отзыва)
-  async purgeAccess(objectId: number, accessId: number, actorUserId: number) {
-    const myAccess = await this.assertManager(objectId, actorUserId);
+  // 4. ⭐ №207: УДАЛИТЬ участника — единственное действие вместо «отозвать / вернуть / удалить».
+  // Порядок важен: сначала снимаем личные копии (шаблоны смет + справочник цен) и
+  // неизменяемый «Снимок доступа» (№194) — наработка человека остаётся у него навсегда,
+  // затем ЖЁСТКО удаляем все его записи доступа к объекту (объектную и проектные).
+  // Восстановления нет: чтобы вернуть человека, его приглашают заново.
+  async removeParticipant(objectId: number, accessId: number, actorUserId: number) {
+    await this.assertManager(objectId, actorUserId);
 
     const target = await this.prisma.objectAccess.findFirst({
       where: { id: accessId, objectId },
@@ -445,21 +296,74 @@ export class AccessService {
     if (target.userId === actorUserId) {
       throw new BadRequestException('Нельзя удалить собственный доступ');
     }
-    if (
-      myAccess.role === AccessRole.FOREMAN &&
-      target.role === AccessRole.CUSTOMER
-    ) {
-      throw new ForbiddenException('Прораб не может удалить доступ администратора объекта');
-    }
     await this.assertNotLastCustomer(objectId, target);
 
-    await this.prisma.objectAccess.delete({ where: { id: accessId } });
-    await this.audit.log(actorUserId, 'object_access', objectId, 'delete', {
-      userId: target.userId,
-      role: target.role,
-      revokedAt: target.revokedAt,
+    const now = new Date();
+    const grants = await this.prisma.objectAccess.findMany({
+      where: { objectId, userId: target.userId },
+      orderBy: { createdAt: 'asc' },
     });
-    return { success: true };
+    // Если есть объектная запись — она покрывает все проекты, отдельные снимки
+    // по проектам не нужны (иначе у человека появятся дубли шаблонов).
+    const objectWide = grants.find((g) => g.projectId == null);
+    const jobs = objectWide ? [objectWide] : grants;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      let templates = 0;
+      let catalogCopied = false;
+      let snapshots = 0;
+      for (const grant of jobs) {
+        const copies = await this.createSnapshot(tx, grant, now);
+        templates += copies.templates;
+        catalogCopied = catalogCopied || copies.catalogCopied;
+
+        const hidePrices = grant.hidePrices || grant.role === AccessRole.VIEWER;
+        const blind = await buildSnapshotPayload(tx, {
+          objectId: grant.objectId,
+          projectId: grant.projectId,
+          hidePrices,
+          takenAt: now,
+        });
+        if (!blind) continue;
+        await tx.accessSnapshot.create({
+          data: {
+            userId: grant.userId,
+            objectId: grant.objectId,
+            accessId: grant.id,
+            objectName: blind.objectName,
+            projectId: grant.projectId,
+            projectName: blind.projectName,
+            role: grant.role,
+            hidePrices,
+            takenAt: now,
+            revokedBy: actorUserId,
+            summary: blind.summary as unknown as Prisma.InputJsonValue,
+            payload: blind.payload,
+          },
+        });
+        snapshots += 1;
+      }
+
+      await tx.objectAccess.deleteMany({
+        where: { objectId, userId: target.userId },
+      });
+      return { templates, catalogCopied, snapshots, removed: grants.length };
+    });
+
+    // ⭐ №131: журнал удаления участника
+    await this.audit.log(
+      actorUserId,
+      'object_access',
+      objectId,
+      'delete',
+      {
+        userId: target.userId,
+        role: target.role,
+        grants: grants.length,
+      },
+      { userId: target.userId, ...result },
+    );
+    return { success: true, ...result };
   }
 
   // ⭐ №168: нельзя остаться без администратора объекта (инвариант И1)
@@ -512,7 +416,7 @@ export class AccessService {
       projectId: r.projectId,
       projectName: r.projectId ? (projectNames.get(r.projectId) ?? null) : null,
       role: r.role,
-      isManager: r.isManager,
+      canCreateProjects: r.canCreateProjects,
       isHidden: r.isHidden,
       revokedAt: r.revokedAt,
       createdAt: r.createdAt,

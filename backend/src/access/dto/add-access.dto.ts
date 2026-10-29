@@ -38,10 +38,11 @@ export class AddAccessDto {
   @Min(1)
   projectId?: number;
 
-  // ⭐ №168: «управляет командой» — только для FOREMAN, выдаёт администратор объекта
+  // ⭐ №207: право создавать проекты в объекте (только для FOREMAN и только
+  // при доступе на весь объект). Администратор объекта умеет это и так.
   @IsOptional()
   @IsBoolean()
-  isManager?: boolean;
+  canCreateProjects?: boolean;
 
   // ⭐ №182: делегирование «скрыть цены» (true — участник не видит деньги)
   @IsOptional()

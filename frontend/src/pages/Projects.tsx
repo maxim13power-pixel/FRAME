@@ -65,6 +65,7 @@ import type { AccessRequestData } from '../services/accessRequestService';
 import { getApiErrorText } from '../utils/errors';
 import DeleteIcon from '@mui/icons-material/Delete';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import PeopleIcon from '@mui/icons-material/People'; // ⭐ №207: команда объекта из карточки проекта
 import { FAB_STYLE } from '../theme';
 
 // ⭐ №158: значение селекта справочника — id, «не выбран» или «создать новый»
@@ -156,12 +157,10 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [requestComment, setRequestComment] = useState('');
   const [requestSaving, setRequestSaving] = useState(false);
   // Может ли пользователь создавать проекты в этом объекте.
-  // ⭐ №179: строгая проверка — только объектный доступ (projectId=null). Участнику,
-  // приглашённому в один проект, показываем «Запросить право», а не тупиковый 403.
-  const canCreateProjects =
-    !!currentObject &&
-    currentObject.hasObjectAccess === true &&
-    currentObject.role !== 'VIEWER';
+  // ⭐ №207: серверный флаг — админ объекта всегда может; прораб — если админ
+  // выдал право canCreateProjects или одобрил его заявку. Участник одного проекта
+  // видит «Запросить право» вместо тупикового 403.
+  const canCreateProjects = currentObject?.canCreateProjects === true;
 
   // ⭐ №158: кому скрыты цены (VIEWER/hidePrices) — блок справочника не показываем
   const hideFinance = currentObject?.hidePrices === true;
@@ -521,6 +520,9 @@ const createProjectAction = async (projectData?: {
 // По умолчанию отмечен только администратор объекта — решение владельца 10.1(1).
 const openAccessReminder = async (project: ProjectData) => {
   if (!objectId) return;
+  // ⭐ №207: список участников и выдачу доступа делает только администратор объекта.
+  // Прораб с правом создания проектов создаёт проект, но команду не трогает.
+  if (currentObject?.canManage !== true) return;
   setReminderProject(project);
   setReminderOpen(true);
   setReminderLoading(true);
@@ -1324,6 +1326,29 @@ onBack: () => navigate('/objects'),
           >
             Заметка к проекту
           </Button>
+
+          {/* ⭐ №207: команда объекта — из карточки проекта, чтобы не искать её в «Объектах» */}
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<PeopleIcon />}
+            disabled={currentObject?.canManage !== true}
+            onClick={() => {
+              const objectIdNum = currentObject?.id;
+              handleCloseActions();
+              if (objectIdNum) {
+                navigate('/objects', { state: { openAccessObjectId: objectIdNum } });
+              }
+            }}
+          >
+            Участники объекта
+          </Button>
+          {currentObject?.canManage !== true && (
+            <Typography variant="caption" color="text.secondary">
+              Командой управляет администратор объекта — откройте «Объекты» → ⚙️ → «Участники».
+            </Typography>
+          )}
 
           {!canEditProjectCard(actionsProject) && (
             <Typography variant="caption" color="text.secondary">

@@ -1858,3 +1858,48 @@ SectionIntro на остальные разделы (пункт №4); (5) им�
  НЕ СДЕЛАНО (ждёт решений по §51): капча в prod — нужен `SMARTCAPTCHA_SERVER_KEY` в env Amvera.
 
 
+53. №207 МОДЕЛЬ ДОСТУПА: РЕШЕНИЯ ВЛАДЕЛЬЦА (S1+S2) (29.10.2026)
+ РЕШЕНИЯ ВЛАДЕЛЬЦА (зафиксированы дословно по смыслу):
+  1) роли/приглашения: управление командой — ТОЛЬКО администратор объекта. «Прораб-менеджер» (isManager)
+     упразднён. Прораб, которому нужно больше прав, отправляет заявку на объект; админ одобряет.
+  2) удаление участника — ЖЁСТКОЕ (hard delete всех его грантов: объектного и проектных), без
+     восстановления, но с модалкой-предупреждением.
+  3) AccessSnapshot остаётся: это не восстановление доступа, а личная копия наработки человека
+     (шаблоны смет + справочник цен + неизменяемый слепок). Снимается ПЕРЕД удалением грантов.
+  4) скрытие цен задаётся ТОЛЬКО при приглашении; у существующего участника изменить нельзя.
+  5) «Суперадмин FRAME» из профиля убран; техническая роль ADMIN остаётся в правах.
+  6) «Пригласить участника» → «Участники» + счётчик команды.
+ ЧТО СДЕЛАНО (backend):
+  - schema: ObjectAccess.canCreateProjects (миграция 20261029170000); isManager помечен устаревшим
+    (колонка сохранена ради истории, в правах не участвует);
+  - access-scope: canManage = CUSTOMER && объектный грант; новый флаг canCreateProjects
+    (только объектный грант, не VIEWER); isManager удалён из RoleResolution/select;
+  - access.service: assertManager → только CUSTOMER; addAccess пишет hidePrices и canCreateProjects
+    на приглашении; updateAccess меняет ТОЛЬКО role/canCreateProjects (hidePrices не принимается);
+    revoke/restore/purge заменены на removeParticipant (снимок+шаблоны → deleteMany всех грантов юзера);
+  - access.controller: POST /revoke и /restore удалены, DELETE /objects/:id/access/:accessId = удаление;
+  - access-request: approve выдаёт FOREMAN + canCreateProjects (вместо isManager); заявки видят админы
+    объекта и глобальный ADMIN;
+  - projects.create: создаёт админ объекта ИЛИ прораб с canCreateProjects (иначе 403 с подсказкой про заявку);
+  - objects: в ответах canCreateProjects + participantsCount (только когда canManage);
+  - DTO: AddAccessDto.canCreateProjects, UpdateAccessDto { role, canCreateProjects }.
+ ЧТО СДЕЛАНО (frontend):
+  - Settings: чип «Суперадмин FRAME» не рендерится (ADMIN скрыт), строка «менеджер» из «Мои доступы» убрана;
+  - Objects: кнопка «Участники · N», чекбокс «проекты» у прораба (весь объект), роль+удаление
+    с подтверждением, чекбоксы «менеджер» и «🙈 цены» убраны, счётчик обновляется после изменений,
+    в приглашении — «🏗 Разрешить создавать проекты» (только прораб + весь объект);
+  - Projects: «Добавить проект» опирается на серверный canCreateProjects; в меню проекта —
+    «Участники объекта» (переход в Objects с автоподткрытием модалки); напоминание о доступе
+    показывается только администратору объекта.
+ ВАЖНО ПРО БАЗУ: dev-база была в состоянии «db push без истории миграций», из-за чего
+ `migrate deploy` падал на «relation access_snapshots already exists». Починено:
+ `prisma db push` + `migrate resolve --applied` для 140000/150000/160000/170000 → `migrate status`
+ = «Database schema is up to date!». На проде (Railway/Amvera) все 4 миграции применятся штатно.
+ ПРОВЕРКИ: Jest 24 сьюта / 183 passed / 2 todo; tsc --noEmit (be) и tsc -b (fe) чисто;
+ `npm run verify` зелёный (vite build 31.1 с). Спеки обновлены под новую модель
+ (access-scope: canManage/canCreateProjects; access.service: 403 прорабу, hidePrices не меняется,
+ self-delete и последний админ; objects: canCreateProjects у создателя).
+ ДАЛЬШЕ: S3 — импорт из Excel (шаблон-пустышка, меню «Из шаблона», всегда новый справочник,
+ чтение _meta, синоним «По спецификации», предупреждение о чужом объекте, понятные ошибки).
+
+

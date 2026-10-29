@@ -15,7 +15,9 @@ export interface AccessGrant {
   projectId: number | null;
   role: AccessRole;
   hidePrices: boolean;
-  /** ⭐ №168: право управлять командой (только для FOREMAN) */
+  /** ⭐ №207: право создавать проекты в объекте (выдаётся админом объекта / по заявке) */
+  canCreateProjects?: boolean;
+  /** ⚠️ №207: устарело, в правах больше не участвует */
   isManager?: boolean;
   /** ⭐ №168: объект скрыт в личном архиве этого участника */
   isHidden?: boolean;
@@ -32,10 +34,12 @@ export interface RoleResolution {
   hidePrices: boolean;
   /** есть общая (projectId = null) запись — права на сам объект */
   hasObjectAccess: boolean;
-  isManager: boolean;
+  /** ⭐ №207: может создавать проекты в объекте */
+  canCreateProjects: boolean;
   /** доступ отозван → только чтение замороженной копии */
   revoked: boolean;
   canWrite: boolean;
+  /** ⭐ №207: управление командой — только администратор объекта (CUSTOMER) */
   canManage: boolean;
 }
 
@@ -61,7 +65,7 @@ export async function loadAccessGrants(
       projectId: true,
       role: true,
       hidePrices: true,
-      isManager: true,
+      canCreateProjects: true,
       isHidden: true,
       revokedAt: true,
     },
@@ -220,7 +224,7 @@ const NO_ACCESS: RoleResolution = {
   role: null,
   hidePrices: false,
   hasObjectAccess: false,
-  isManager: false,
+  canCreateProjects: false,
   revoked: false,
   canWrite: false,
   canManage: false,
@@ -260,13 +264,20 @@ function makeResolution(
     // один и тот же пользователь получал 0 в списке и сумму в аналитике.
     hidePrices: revoked || !canSeeMoney(own),
     hasObjectAccess,
-    isManager: !!source.isManager,
+    // ⭐ №207: проекты создаёт администратор объекта (CUSTOMER) или прораб,
+    // которому это право выдал админ объекта / одобрил его заявку.
+    // Право имеет смысл только для объектной записи (projectId = null).
+    canCreateProjects:
+      !revoked &&
+      hasObjectAccess &&
+      role !== AccessRole.VIEWER &&
+      (role === AccessRole.CUSTOMER || !!source.canCreateProjects),
     revoked,
     canWrite: !revoked && role !== AccessRole.VIEWER,
-    canManage:
-      !revoked &&
-      (role === AccessRole.CUSTOMER ||
-        (role === AccessRole.FOREMAN && !!source.isManager)),
+    // ⭐ №207: команду ведёт ТОЛЬКО администратор объекта.
+    // «Прораб-менеджер» (isManager) упразднён: прораб подаёт заявку на объект,
+    // админ одобряет — и он получает право создавать проекты.
+    canManage: !revoked && hasObjectAccess && role === AccessRole.CUSTOMER,
   };
 }
 

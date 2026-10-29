@@ -145,6 +145,16 @@ export class ProjectsService {
     const access = await this.checkObjectAccess(dto.objectId, userId);
     // Наблюдатель не может создавать проекты (и отозванный — тоже)
     this.assertWritable(access, 'создавать проекты');
+    // ⭐ №207: создавать проекты может администратор объекта (CUSTOMER) или прораб,
+    // которому это право выдал админ объекта / одобрил его заявку (canCreateProjects).
+    if (
+      access.role !== AccessRole.CUSTOMER &&
+      access.canCreateProjects !== true
+    ) {
+      throw new ForbiddenException(
+        'Создавать проекты может администратор объекта. Отправьте заявку — администратор объекта её одобрит.',
+      );
+    }
 
     // ⭐ №158: справочник проекта (если передан)
     const catalogId =

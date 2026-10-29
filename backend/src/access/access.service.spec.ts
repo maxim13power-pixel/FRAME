@@ -74,14 +74,16 @@ describe('AccessService — понижение последнего админи
     await expect(service.getAccessList(3, 7)).rejects.toThrow(ForbiddenException);
   });
 
-  it('прораб-менеджер получает список участников', async () => {
+  // ⭐ №207: «прораб-менеджер» упразднён — команда только у администратора объекта
+  it('прораб с правом создавать проекты не получает список участников ⇒ ForbiddenException', async () => {
     prisma.objectAccess.findFirst.mockReset();
-    prisma.objectAccess.findFirst
-      .mockResolvedValueOnce({ ...adminGrant, role: 'FOREMAN', isManager: true })
-      .mockResolvedValueOnce({ ...adminGrant, role: 'FOREMAN', isManager: true });
-    prisma.objectAccess.findMany.mockResolvedValue([{ id: 1 }]);
+    prisma.objectAccess.findFirst.mockResolvedValue({
+      ...adminGrant,
+      role: 'FOREMAN',
+      canCreateProjects: true,
+    });
 
-    await expect(service.getAccessList(3, 7)).resolves.toEqual([{ id: 1 }]);
+    await expect(service.getAccessList(3, 7)).rejects.toThrow(ForbiddenException);
   });
 
   it('понижение при наличии другого администратора ⇒ проходит', async () => {
@@ -92,55 +94,63 @@ describe('AccessService — понижение последнего админи
     expect(prisma.objectAccess.update).toHaveBeenCalled();
   });
 
-  it('смена isManager у последнего администратора не блокируется', async () => {
-    await service.updateAccess(3, 2, { isManager: false } as any, 7);
+  it('выдача права создавать проекты не требует проверки «последний админ»', async () => {
+    await service.updateAccess(3, 2, { canCreateProjects: true } as any, 7);
 
     expect(prisma.objectAccess.update).toHaveBeenCalled();
+    expect(prisma.objectAccess.count).not.toHaveBeenCalled();
   });
 
-  // ⭐ №182: делегирование видимости цен
-  it('нельзя открыть цены, если у самого актора они скрыты ⇒ ForbiddenException', async () => {
+  // ⭐ №207: видимость цен фиксируется приглашением и через updateAccess не меняется
+  it('updateAccess не меняет hidePrices (только роль и право создавать проекты)', async () => {
+    await service.updateAccess(
+      3,
+      2,
+      { role: 'FOREMAN', hidePrices: true } as any,
+      7,
+    );
+
+    const data = prisma.objectAccess.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('hidePrices');
+    expect(data.role).toBe('FOREMAN');
+  });
+
+  // ⭐ №182/№207: делегирование цен проверяется на приглашении
+  it('нельзя пригласить с открытыми ценами, если у актора они скрыты ⇒ ForbiddenException', async () => {
     prisma.objectAccess.findFirst
       .mockReset()
-      .mockResolvedValueOnce({ ...adminGrant, hidePrices: true })
-      .mockResolvedValueOnce({
-        ...adminGrant,
-        id: 2,
-        userId: 9,
-        hidePrices: false,
-      });
+      .mockResolvedValue({ ...adminGrant, hidePrices: true });
 
     await expect(
-      service.updateAccess(3, 2, { hidePrices: false } as any, 7),
+      service.addAccess(
+        3,
+        { email: 'worker@frame.app', role: 'FOREMAN', hidePrices: false } as any,
+        7,
+      ),
     ).rejects.toThrow(/скрыты цены/);
-    expect(prisma.objectAccess.update).not.toHaveBeenCalled();
   });
 
-  it('скрыть цены участнику можно, и это попадает в журнал', async () => {
+  // ⭐ №207: удаление участника — жёсткое, но с защитой от самоудаления
+  it('нельзя удалить собственный доступ ⇒ BadRequestException', async () => {
     prisma.objectAccess.findFirst
       .mockReset()
       .mockResolvedValueOnce({ ...adminGrant })
-      .mockResolvedValueOnce({
-        ...adminGrant,
-        id: 2,
-        userId: 9,
-        hidePrices: false,
-      });
+      .mockResolvedValueOnce({ ...adminGrant, id: 5, userId: 7 });
 
-    await service.updateAccess(3, 2, { hidePrices: true } as any, 7);
-
-    expect(prisma.objectAccess.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ hidePrices: true }),
-      }),
+    await expect(service.removeParticipant(3, 5, 7)).rejects.toThrow(
+      BadRequestException,
     );
-    expect(audit.log).toHaveBeenCalledWith(
-      7,
-      'object_access',
-      3,
-      'update',
-      expect.objectContaining({ hidePrices: false }),
-      expect.objectContaining({ hidePrices: true }),
+  });
+
+  it('нельзя удалить последнего администратора объекта ⇒ BadRequestException', async () => {
+    prisma.objectAccess.findFirst
+      .mockReset()
+      .mockResolvedValueOnce({ ...adminGrant })
+      .mockResolvedValueOnce({ ...adminGrant, id: 2, userId: 9 });
+    prisma.objectAccess.count.mockResolvedValue(0);
+
+    await expect(service.removeParticipant(3, 2, 7)).rejects.toThrow(
+      BadRequestException,
     );
   });
 });

@@ -29,7 +29,7 @@ const NO_ACCESS = {
   role: null,
   hidePrices: false,
   hasObjectAccess: false,
-  isManager: false,
+  canCreateProjects: false,
   revoked: false,
   canWrite: false,
   canManage: false,
@@ -129,7 +129,7 @@ describe('access-scope (№163)', () => {
         role: 'CUSTOMER',
         hidePrices: false,
         hasObjectAccess: true,
-        isManager: false,
+        canCreateProjects: true,
         revoked: false,
         canWrite: true,
         canManage: true,
@@ -202,21 +202,39 @@ describe('access-scope (№163)', () => {
       expect(my.canWrite).toBe(true);
     });
 
-    // ⭐ №168: управлять командой может администратор объекта и прораб-менеджер
-    it('прораб с isManager управляет командой, обычный — нет', () => {
-      const manager = resolveObjectRole(
-        [grant(1, null, AccessRole.FOREMAN, false, { isManager: true })],
+    // ⭐ №207: команду ведёт только администратор объекта; прораб — никогда,
+    // даже если ему разрешено создавать проекты.
+    it('командой управляет только администратор объекта', () => {
+      const admin = resolveObjectRole([grant(1, null, AccessRole.CUSTOMER)], 1);
+      const foreman = resolveObjectRole(
+        [grant(1, null, AccessRole.FOREMAN, false, { canCreateProjects: true })],
         1,
       );
-      const worker = resolveObjectRole([grant(1, null, AccessRole.FOREMAN)], 1);
-      expect(manager.canManage).toBe(true);
-      expect(worker.canManage).toBe(false);
-      expect(worker.canWrite).toBe(true);
+      expect(admin.canManage).toBe(true);
+      expect(foreman.canManage).toBe(false);
+      expect(foreman.canWrite).toBe(true);
+      // право создавать проекты — есть, управления командой — нет
+      expect(foreman.canCreateProjects).toBe(true);
+      expect(admin.canCreateProjects).toBe(true);
+    });
+
+    // ⭐ №207: право создавать проекты — только объектная запись и не наблюдатель
+    it('canCreateProjects не выдаётся проектной записи и наблюдателю', () => {
+      const projectOnly = resolveObjectRole(
+        [grant(1, 10, AccessRole.FOREMAN, false, { canCreateProjects: true })],
+        1,
+      );
+      const viewer = resolveObjectRole(
+        [grant(1, null, AccessRole.VIEWER, false, { canCreateProjects: true })],
+        1,
+      );
+      expect(projectOnly.canCreateProjects).toBe(false);
+      expect(viewer.canCreateProjects).toBe(false);
     });
 
     it('наблюдатель никогда не управляет и не пишет', () => {
       const my = resolveObjectRole(
-        [grant(1, null, AccessRole.VIEWER, false, { isManager: true })],
+        [grant(1, null, AccessRole.VIEWER, false, { canCreateProjects: true })],
         1,
       );
       expect(my.canManage).toBe(false);

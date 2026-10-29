@@ -25,9 +25,12 @@ export interface ObjectData {
   // (флаг revoked убран в №193: отозванный доступ объект не получает вовсе)
   accessId?: number | null;
   hiddenForMe?: boolean;
-  isManager?: boolean;
+  // ⭐ №207: «прораб-менеджер» упразднён; право создавать проекты — отдельный флаг
+  canCreateProjects?: boolean;
   canWrite?: boolean;
   canManage?: boolean;
+  /** ⭐ №207: сколько людей в команде объекта (только для админа объекта) */
+  participantsCount?: number | null;
 }
 
 // Получить объекты.

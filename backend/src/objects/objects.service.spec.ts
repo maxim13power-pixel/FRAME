@@ -27,7 +27,7 @@ describe('ObjectsService — создание объекта (№181)', () => {
     expect(data.accesses.create).toEqual({
       userId: 7,
       role: 'CUSTOMER',
-      isManager: false,
+      canCreateProjects: true, // ⭐ №207
     });
   });
 
@@ -36,6 +36,6 @@ describe('ObjectsService — создание объекта (№181)', () => {
 
     const data = prisma.object.create.mock.calls[0][0].data;
     expect(data.accesses.create.role).toBe('CUSTOMER');
-    expect(data.accesses.create.isManager).toBe(false);
+    expect(data.accesses.create.canCreateProjects).toBe(true);
   });
 });

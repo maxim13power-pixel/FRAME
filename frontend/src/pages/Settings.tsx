@@ -39,9 +39,10 @@ import { getTokenExpiry } from '../utils/jwt';
 const MAX_TABS = 5;
 const MIN_TABS = 3;
 
-// ⭐ Глобальная роль пользователя (Role из Prisma) → человекочитаемое название
+// ⭐ Глобальная роль пользователя (Role из Prisma) → человекочитаемое название.
+// ⭐ №207: роль ADMIN наружу не показываем (по просьбе владельца): техническая
+// роль не должна светиться в профиле — у администратора объекта есть своя подпись.
 const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Суперадмин FRAME',
   STORE_MANAGER: 'Кладовщик',
   FOREMAN: 'Прораб',
   CUSTOMER: 'Администратор объекта',
@@ -191,10 +192,10 @@ const Settings: React.FC = () => {
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#04164b' }} noWrap>
               {user?.name || 'Пользователь'}
             </Typography>
-            {user?.role && (
+            {user?.role && ROLE_LABELS[user.role] && (
               <Chip
                 size="small"
-                label={ROLE_LABELS[user.role] || user.role}
+                label={ROLE_LABELS[user.role]}
                 sx={{ mt: 0.5, bgcolor: '#e3f2fd', color: '#1976d2', fontWeight: 600 }}
               />
             )}
@@ -357,7 +358,6 @@ const Settings: React.FC = () => {
                           .join(' · ')}
                         {' · '}
                         {[...new Set(group.rows.map(r => ROLE_LABELS[r.role] ?? r.role))].join(', ')}
-                        {group.rows.some(r => r.isManager) ? ' · менеджер' : ''}
                       </Typography>
                     </Box>
                     {revoked ? (

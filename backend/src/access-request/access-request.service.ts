@@ -41,16 +41,14 @@ export class AccessRequestService {
     return user?.role === Role.ADMIN;
   }
 
-  // Менеджер объекта = администратор объекта или прораб-менеджер с ОБЪЕКТНОЙ записью (projectId = null)
+  // ⭐ №207: заявки рассматривает админ объекта (CUSTOMER, projectId = null).
+  // Прораб-менеджер упразднён — право создавать проекты выдаётся флагом.
   private async isObjectManager(objectId: number, userId: number) {
     const my = await this.prisma.objectAccess.findFirst({
       where: { userId, objectId, projectId: null },
     });
     if (!my || my.revokedAt) return false;
-    return (
-      my.role === AccessRole.CUSTOMER ||
-      (my.role === AccessRole.FOREMAN && my.isManager)
-    );
+    return my.role === AccessRole.CUSTOMER;
   }
 
   // ─── Подать заявку ───
@@ -125,7 +123,7 @@ export class AccessRequestService {
     });
   }
 
-  // ─── Входящие: админ видит всё, менеджер — свои объекты ───
+  // ─── Входящие: админ видит всё, администратор объекта — свои объекты ───
   async listIncoming(userId: number, status?: AccessRequestStatus) {
     const admin = await this.isAdmin(userId);
     const managed = await this.prisma.objectAccess.findMany({
@@ -133,10 +131,7 @@ export class AccessRequestService {
         userId,
         projectId: null,
         revokedAt: null,
-        OR: [
-          { role: AccessRole.CUSTOMER },
-          { role: AccessRole.FOREMAN, isManager: true },
-        ],
+        role: AccessRole.CUSTOMER, // ⭐ №207: команду и заявки ведёт админ объекта
       },
       select: { objectId: true },
     });
@@ -216,7 +211,8 @@ export class AccessRequestService {
         where: { id: existing.id },
         data: {
           role: keepCustomer ? AccessRole.CUSTOMER : AccessRole.FOREMAN,
-          isManager: keepCustomer ? existing.isManager : true,
+          // ⭐ №207: именно право создавать проекты, а не «прораб-менеджер»
+          canCreateProjects: true,
           revokedAt: null,
           revokedById: null,
           isHidden: false,
@@ -229,7 +225,7 @@ export class AccessRequestService {
           objectId: request.objectId,
           projectId: null,
           role: AccessRole.FOREMAN,
-          isManager: true,
+          canCreateProjects: true, // ⭐ №207
           invitedBy: userId,
         },
       });
@@ -241,7 +237,7 @@ export class AccessRequestService {
       id,
       'status_change',
       { status: 'PENDING' },
-      { status: 'APPROVED', granted: 'object:FOREMAN+manager' },
+      { status: 'APPROVED', granted: 'object:FOREMAN+createProjects' },
     );
 
     return this.prisma.accessRequest.findUnique({

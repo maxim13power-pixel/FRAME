@@ -57,38 +57,18 @@ export class AccessController {
     );
   }
 
-  // POST /objects/:objectId/access/:accessId/revoke — отозвать доступ (мягко)
-  // ⭐ №168: доступ не удаляется, а «замораживается»: read-only + снимок в шаблонах.
-  @Post(':accessId/revoke')
-  revokeAccess(
+  // DELETE /objects/:objectId/access/:accessId — ⭐ №207: удалить участника.
+  // Перед удалением бэкенд снимает личные копии (шаблоны смет + снимок доступа).
+  @Delete(':accessId')
+  removeParticipant(
     @Param('objectId', ParseIntPipe) objectId: number,
     @Param('accessId', ParseIntPipe) accessId: number,
     @Req() req,
   ) {
-    return this.accessService.revokeAccess(objectId, accessId, req.user.userId);
-  }
-
-  // POST /objects/:objectId/access/:accessId/restore — вернуть доступ одним кликом
-  @Post(':accessId/restore')
-  restoreAccess(
-    @Param('objectId', ParseIntPipe) objectId: number,
-    @Param('accessId', ParseIntPipe) accessId: number,
-    @Req() req,
-  ) {
-    return this.accessService.restoreAccess(
+    return this.accessService.removeParticipant(
       objectId,
       accessId,
       req.user.userId,
     );
-  }
-
-  // DELETE /objects/:objectId/access/:accessId — удалить запись доступа навсегда
-  @Delete(':accessId')
-  purgeAccess(
-    @Param('objectId', ParseIntPipe) objectId: number,
-    @Param('accessId', ParseIntPipe) accessId: number,
-    @Req() req,
-  ) {
-    return this.accessService.purgeAccess(objectId, accessId, req.user.userId);
   }
 }
