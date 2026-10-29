@@ -65,6 +65,12 @@ export class CaptchaService {
       this.logger.error(
         'SMARTCAPTCHA_SERVER_KEY не настроен в env. Капча отключена!',
       );
+      // ⭐ №206: без серверного ключа регистрация была невозможна в dev —
+      // пропускаем капчу вне продакшена, а в проде честно отказываем.
+      if (process.env.NODE_ENV !== 'production') {
+        this.logger.warn('Капча пропущена: dev-режим без SMARTCAPTCHA_SERVER_KEY');
+        return true;
+      }
       return false;
     }
 

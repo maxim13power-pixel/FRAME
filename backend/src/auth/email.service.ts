@@ -36,6 +36,11 @@ export class EmailService {
     });
   }
 
+  // ⭐ №206: настроен ли SMTP — нужно, чтобы в dev показать код подтверждения
+  isConfigured(): boolean {
+    return !!this.transporter;
+  }
+
   // ⭐ HOTFIX: XSS-экранирование для безопасности
   private escapeHtml(text: string): string {
     return text

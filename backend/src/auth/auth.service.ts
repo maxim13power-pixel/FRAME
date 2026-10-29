@@ -115,8 +115,8 @@ export class AuthService {
       throw new HttpException('Слишком много запросов. Попробуйте через час.', 429);
     }
 
-    await this.sendCode(email);
-    return { message: 'Код отправлен на email' };
+    const sent = await this.sendCode(email);
+    return { message: 'Код отправлен на email', ...this.devCodePayload(sent) };
   }
   // ⭐ P0-4: Запрос восстановления пароля
   async forgotPassword(dto: ForgotPasswordDto) {
@@ -208,13 +208,22 @@ export class AuthService {
     });
   }
 
-  private async sendCode(email: string): Promise<void> {
+  private async sendCode(
+    email: string,
+  ): Promise<{ code: string; emailSent: boolean }> {
     const code = this.generateCode();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
     await this.prismaService.verificationToken.create({
       data: { email, code, expiresAt },
     });
     await this.emailService.sendVerificationCode(email, code);
+    return { code, emailSent: this.emailService.isConfigured() };
+  }
+
+  /** ⭐ №206: в dev без SMTP отдаём код в ответе, иначе зарегистрироваться нельзя */
+  private devCodePayload(sent: { code: string; emailSent: boolean }) {
+    const isProd = process.env.NODE_ENV === 'production';
+    return !isProd && !sent.emailSent ? { devCode: sent.code } : {};
   }
 
   async requestCode(dto: RequestCodeDto) {
@@ -223,8 +232,8 @@ export class AuthService {
     if (recent >= 3) {
       throw new HttpException('Слишком много запросов. Попробуйте через час.', 429);
     }
-    await this.sendCode(email);
-    return { message: 'Код отправлен на email' };
+    const sent = await this.sendCode(email);
+    return { message: 'Код отправлен на email', ...this.devCodePayload(sent) };
   }
 
   async verifyEmail(dto: VerifyEmailDto) {

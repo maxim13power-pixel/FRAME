@@ -42,6 +42,8 @@ const Register: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  // ⭐ №206: в dev без SMTP бэкенд отдаёт код в ответе — показываем его на экране
+  const [devCode, setDevCode] = useState('');
 
   // ⭐ №122b: верификация email — 2 шага
   const [step, setStep] = useState<'email' | 'code'>('email');
@@ -90,12 +92,16 @@ const Register: React.FC = () => {
     setLoading(true);
     try {
       // ⭐ №122b: пользователь НЕ создаётся — бэкенд отправляет код на email
-      await api.post('/auth/register', {
+      const response = await api.post('/auth/register', {
         fullName: fullName.trim(),
         password,
         email: email.trim(),
         captchaToken: captchaToken ?? undefined,
       });
+      // ⭐ №206: dev-режим без SMTP — код пришёл в ответе
+      const dev = (response.data?.devCode as string | undefined) ?? '';
+      setDevCode(dev);
+      if (dev) setCode(dev);
       setStep('code');
       setExpireMinutes(15);
       setResendCooldown(60);
@@ -111,7 +117,10 @@ const Register: React.FC = () => {
     setError('');
     setLoading(true);
     try {
-      await api.post('/auth/request-code', { email: email.trim() });
+      const response = await api.post('/auth/request-code', { email: email.trim() });
+      const dev = (response.data?.devCode as string | undefined) ?? '';
+      setDevCode(dev);
+      if (dev) setCode(dev);
       setExpireMinutes(15);
       setResendCooldown(60);
     } catch (err: unknown) {
@@ -307,6 +316,11 @@ const Register: React.FC = () => {
             <Alert severity="info" sx={{ mb: 2, width: '100%' }}>
               Код отправлен на <b>{email.trim()}</b>
             </Alert>
+            {devCode && (
+              <Alert severity="warning" sx={{ mb: 2, width: '100%' }}>
+                Демо-режим без почты: код уже подставлен — <b>{devCode}</b>. Нажмите «Подтвердить».
+              </Alert>
+            )}
             <Stack spacing={2}>
               <TextField
                 fullWidth
