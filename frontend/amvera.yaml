@@ -1,0 +1,15 @@
+# ============================================================
+# FRAME frontend — конфигурация приложения на Amvera (№209)
+# Вариант B: фронт живёт в ОТДЕЛЬНОМ репозитории Amvera (окружение node / browser):
+#   git subtree push --prefix frontend amvera-fe main:master
+# Сборка: npm install && npm run build (tcs -b + vite build), в артефакты идёт dist/*.
+# ============================================================
+meta:
+  environment: node
+  toolchain:
+    name: browser
+    version: 22
+
+build:
+  artifacts:
+    "dist/*": /

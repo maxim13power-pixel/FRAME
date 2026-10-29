@@ -1,0 +1,23 @@
+# ============================================================
+# FRAME backend — конфигурация приложения на Amvera (№209)
+# Вариант B: backend и frontend живут в ОТДЕЛЬНЫХ репозиториях Amvera.
+# Этот файл попадает в корень репозитория бэкенда через:
+#   git subtree push --prefix backend amvera-be main:master
+# ============================================================
+meta:
+  environment: node
+  toolchain:
+    name: npm
+    version: 22
+
+build:
+  # Amvera сам делает `npm install`, здесь — генерация Prisma Client и nest build.
+  additionalCommands: npx prisma generate && npm run build
+
+run:
+  # Миграции применяются при каждом старте (идемпотентно), затем сервер.
+  # ВАЖНО: db:seed здесь НЕ запускаем — он пересоздаёт демо-справочник расценок.
+  command: npx prisma migrate deploy && node dist/main
+  # Приложение слушает PORT || 3000 → переменная PORT=3000 в панели Amvera обязательна.
+  containerPort: 3000
+  servicePort: 80

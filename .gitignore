@@ -17,6 +17,9 @@ Thumbs.db
 .env
 .env.local
 .env.production
+.env.development
+# №209: прод-конфиг фронта обязан быть в git — на Amvera env недоступны на этапе сборки
+!frontend/.env.production
 
 # Файлы IDE
 .vscode/

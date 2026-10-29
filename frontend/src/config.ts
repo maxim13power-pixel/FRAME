@@ -38,11 +38,12 @@ export const STORE_URLS = {
 /**
  * URL бэкенда для API-запросов.
  * В dev-режиме: http://localhost:3000
- * В проде: https://твой-бэкенд.up.railway.app
- * 
+ * В проде (Amvera): https://api.frame-app.ru — значение подставляется из
+ * frontend/.env.production (коммитится в git, т.к. на Amvera env недоступны на сборке).
+ *
  * ВАЖНО: Vite читает .env только при старте → после изменения VITE_API_BASE_URL
- * нужно перезапустить npm run dev
+ * нужно перезапустить npm run dev / npm run build
  */
 export const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string) ||
-  (import.meta.env.DEV ? 'http://localhost:3000' : 'https://frame-backend.up.railway.app');
+  (import.meta.env.DEV ? 'http://localhost:3000' : 'https://api.frame-app.ru');

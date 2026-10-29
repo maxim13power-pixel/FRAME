@@ -1961,3 +1961,69 @@ SectionIntro на остальные разделы (пункт №4); (5) им�
  Brevo, JWT/DB).
 
 
+55. №209 ПЕРЕЕЗД RAILWAY → AMVERA: ПОДГОТОВКА (ВАРИАНТ B) (29.10.2026)
+ РЕШЕНИЯ ВЛАДЕЛЬЦА (новый чат, до начала работ):
+  1) архитектура — ВАРИАНТ B: два отдельных приложения Amvera (backend, frontend), деплой через
+     `git subtree push`; причина — Amvera ищет amvera.yaml ТОЛЬКО в корне репозитория и подпапку
+     (монорепо) указать нельзя;
+  2) данные с Railway ПЕРЕНОСИМ (на 29.10 09:33 UTC его backend отвечал /health 200, фронт мёртв);
+  3) домен frame-app.ru уже куплен, DNS на reg.ru (ns1/ns2.reg.ru); api.frame-app.ru — под бэкенд;
+  4) почта — Яндекс 360 SMTP (Brevo из РФ не работает), серверный ключ SmartCaptcha у владельца есть.
+ ФАКТИЧЕСКОЕ СОСТОЯНИЕ, СОБРАННОЕ ПЕРЕД ПЕРЕЕЗДОМ:
+  - backend/.env локально: DATABASE_URL (localhost:5433), VITE_SMARTCAPTCHA_CLIENT_KEY, JWT_SECRET,
+    CORS_ORIGINS; SMTP и SMARTCAPTCHA_SERVER_KEY отсутствуют, NODE_ENV не задан;
+  - прод отстаёт на 4 миграции (20261029140000_access_snapshots, ...150000_import_batches,
+    ...160000_owner_general_entities, ...170000_can_create_projects), локально 21 миграция, status = up to date;
+  - локально есть pg_dump/psql 18, Docker с postgres:15.
+ ЧТО СДЕЛАНО:
+  - `src/auth/email.service.ts`: SMTP теперь универсальный — SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/
+    SMTP_FROM, старые BREVO_* работают как алиас; адрес отправителя вынесен в поле класса;
+  - `backend/.env.example`: секция SMTP с Яндексом (smtp.yandex.ru:465, пароль приложения) и
+    предупреждением «без SMTP в prod регистрация невозможна — devCode отдаётся только вне production»;
+  - `backend/amvera.yaml`: node/npm 22; build `npx prisma generate && npm run build`;
+    run `npx prisma migrate deploy && node dist/main`; containerPort 3000, servicePort 80;
+    db:seed в старт-команду НЕ ставим (он пересоздаёт [DEMO]-расценки и может порвать priceItemId);
+  - `frontend/amvera.yaml`: node/browser 22, `npm install && npm run build`, артефакты `dist/*` → `/`
+    (нативный nginx Amvera с SPA-роутингом);
+  - `frontend/.env.production` — в git: VITE_API_BASE_URL=https://api.frame-app.ru,
+    VITE_APP_URL=https://frame-app.ru, VITE_SMARTCAPTCHA_CLIENT_KEY (site key публичен). Причина:
+    на Amvera «на этапе сборки переменные окружения не доступны», а без ключа капчи прод-регистрация
+    уходила бы в 400;
+  - `.gitignore`: исключение `!frontend/.env.production`;
+  - `frontend/src/config.ts`: прод-fallback API заменён с мёртвого frame-backend.up.railway.app на
+    https://api.frame-app.ru;
+  - `scripts/deploy-amvera.ps1` — git subtree push в amvera-be/amvera-fe (проверяет грязное дерево и
+    наличие remote, подсказывает split-push при расхождении истории);
+  - `scripts/db-migrate-railway-to-amvera.ps1` — счётчики ключевых таблиц → pg_dump (plain) →
+    очистка несовместимых SET → psql restore → сверка счётчиков → `prisma migrate deploy`;
+  - `docs/AMVERA.md` — ранбук: архитектура, таблица env, порядок шагов (PG → дамп → restore →
+    миграции → be → DNS reg.ru → fe → smoke), гочи и риски.
+ ГОЧИ, ПРОВЕРЕННЫЕ НА МЕСТЕ (важно для следующих чатов):
+  - Windows PowerShell 5.1 читает .ps1 без BOM как ANSI → кириллица ломает парсер; оба скрипта
+    записаны в UTF-8 **с BOM**;
+  - PS 5.1 теряет двойные кавычки при передаче SQL в `psql -c` (идентификаторы "User" превращались
+    в user) → SQL всегда идёт через временный файл `-f`;
+  - pg_dump 18 добавляет `SET transaction_timeout = 0;`, которого нет в PostgreSQL <= 16 —
+    pg_restore на PG 15 падал с «unrecognized configuration parameter»; поэтому по умолчанию
+    plain-дамп с вырезанием `SET transaction_timeout|idle_session_timeout` и заливка через psql
+    (клиент 18 совместим с серверами 15–18). `-Format custom` оставлен, но падает на PG <= 16;
+  - в dev `_prisma_migrations` 22 строки: 21 применённая + 1 откаченная (rolled_back_at не null)
+    запись access_snapshots — это норма, Prisma её игнорирует.
+ ПРОВЕРКИ: `tsc --noEmit` (be) чисто, `tsc -b` (fe) чисто, Jest 25 сьютов / 193 passed / 2 todo,
+ `npm run verify` зелёный (vite build 15.77 с; backend перед verify остановлен, после — поднят).
+ Скрипт переноса прогнан вживую на одноразовой БД: dump dev → restore в frame_restore_test →
+ все 14 счётчиков совпали (User 8, Object 11, Project 28, object_access 17, materials 196,
+ price_items 925, audit_logs 56, _prisma_migrations 22 и т.д.), temp-БД удалена.
+ ДАЛЬШЕ (нужны действия владельца в панелях):
+  1) создать PostgreSQL на Amvera (тариф не ниже «Начальный Плюс»), БД frame_db, пользователь
+     frame_user, включить ежедневные бэкапы + домен типа POSTGRES для внешнего доступа;
+  2) прислать DATABASE_PUBLIC_URL из Railway и внешний URL Amvera → прогнать
+     `scripts/db-migrate-railway-to-amvera.ps1` (дамп, restore, сверка, 4 миграции);
+  3) создать проекты Amvera backend (490 ₽) и frontend (290 ₽), задать env по docs/AMVERA.md,
+     добавить remote amvera-be/amvera-fe → `scripts/deploy-amvera.ps1`;
+  4) DNS reg.ru: TXT (подтверждение владения) + A на IP из панели Amvera для frame-app.ru
+     и api.frame-app.ru;
+  5) smoke на новом стенде: регистрация (капча + письмо Яндекса), вход, объект → проект,
+     приглашение прораба, 403 у прораба на список участников, импорт xlsx, удаление участника
+     со снимком, экспорт Excel/PDF.
+

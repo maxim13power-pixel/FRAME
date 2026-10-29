@@ -1,6 +1,6 @@
 # FRAME — карточка состояния для нового чата
 
-Дата: 29.10.2026. Репозиторий: `C:\PROJECTS\frame-app`, ветка `main`, HEAD `e4bcdbe` (= `origin/main`).
+Дата: 29.10.2026. Репозиторий: `C:\PROJECTS\frame-app`, ветка `main`. Актуальный коммит — №209 (§55, подготовка переезда на Amvera); `origin/main` отстаёт на него (не запушен).
 Подробная история решений — `PROJECT_STATUS.md`, разделы **§52–§54** (самое свежее), §37–§51 — долги аудита.
 
 ## Что это за проект
@@ -19,14 +19,21 @@ cd C:\PROJECTS\frame-app; npm run verify
 cd backend; npx jest            # 25 сьютов / 193 passed / 2 todo
 cd backend; npx prisma migrate status
 cd backend; npx prisma migrate deploy   # применять миграции
+
+# деплой на Amvera (№209, вариант B: два отдельных репозитория Amvera)
+.\scripts\deploy-amvera.ps1              # или -App be / -App fe
+.\scripts\db-migrate-railway-to-amvera.ps1 -RailwayUrl <railway> -AmveraUrl <amvera> -RunMigrations
 ```
+
+⚠️ Гоча: `nest build` (внутри `verify`) виснет/ломает `dist`, если запущен `start:dev` — сначала убить backend-ноды (и вотчер `nest start --watch`!), потом verify, потом поднять снова.
+⚠️ Гоча Windows: PowerShell 5.1 читает .ps1 без BOM как ANSI — наши скрипты в `scripts/` записаны **с BOM**, не пересохранять без него.
+
 Запуск dev-серверов (detached, чтобы не держать сессию):
 ```powershell
 $log = Join-Path $env:TEMP 'frame-backend-dev.log'
 Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
   CommandLine = "cmd /c npm --prefix backend run start:dev > `"$log`" 2>&1"; CurrentDirectory = 'C:\PROJECTS\frame-app' }
 ```
-⚠️ Гоча: `nest build` (внутри `verify`) виснет/ломает `dist`, если запущен `start:dev` — сначала убить backend-ноды, потом verify, потом поднять снова.
 
 ## Состояние кода (всё в main, запушено)
 
@@ -36,6 +43,7 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | §53 №207 | S1+S2 модель доступа по решению владельца | `0b5e06c` |
 | §54 №208 | S3 импорт сметы по решению владельца | `6b4b79a` |
 | — | `POST /objects` отдаёт флаги прав создателя | `e4bcdbe` |
+| §55 №209 | подготовка переезда Railway → Amvera (вариант B): amvera.yaml, прод-конфиг фронта, скрипты | последний |
 
 ### Действующая модель доступа (№207)
 - `canManage` (команда) = **только `CUSTOMER` с объектным доступом**. «Прораб-менеджер» (`isManager`) упразднён; колонка в БД осталась как история, в правах не участвует.
@@ -57,10 +65,13 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 
 ## Dev-окружение: что важно знать
 - `backend/.env` **не содержит** `SMARTCAPTCHA_SERVER_KEY` и SMTP — в dev капча пропускается, `devCode` приходит в ответе (в проде так нельзя).
-- Dev-БД чинилась: была в состоянии «`db push` без истории миграций»; сейчас `db push` + `migrate resolve --applied` для четырёх миграций, `migrate status` = «Database schema is up to date!» (21 миграция).
+- `NODE_ENV=production` обязателен на стенде: иначе капча без серверного ключа пропускается и `devCode` может уехать в ответ.
+- SMTP (№209): переменные `SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_FROM`, старые `BREVO_*` — алиас. Прод — **Яндекс 360** (`smtp.yandex.ru:465`, пароль приложения), Brevo из РФ не работает.
+- Vite-переменные прода лежат в **`frontend/.env.production`** (закоммичен): на Amvera env недоступны на этапе сборки. `frontend/.env` — только для dev (там site key капчи).
+- Dev-БД чинилась: была в состоянии «`db push` без истории миграций»; сейчас `db push` + `migrate resolve --applied` для четырёх миграций, `migrate status` = «Database schema is up to date!» (21 миграция). В `_prisma_migrations` 22 строки — 21 применённая + 1 откаченная (`20261029140000_access_snapshots`), это норма.
 
 ## Что осталось
-1. **Переезд Railway → Amvera**: `npx prisma migrate deploy` (на проде не применены: `20261029140000_access_snapshots`, `20261029150000_import_batches`, `20261029160000_owner_general_entities`, `20261029170000_can_create_projects`) + env (`DATABASE_URL`, `JWT_SECRET`, `SMARTCAPTCHA_SERVER_KEY`, `BREVO_*`).
+1. **Переезд Railway → Amvera (№209, вариант B)** — подготовка сделана (`amvera.yaml` в обоих модулях, `frontend/.env.production`, скрипты `deploy-amvera.ps1` / `db-migrate-railway-to-amvera.ps1`, ранбук `docs/AMVERA.md`). Осталось сделать в панелях: PG на Amvera + внешний домен POSTGRES → перенос данных (dump/restore + `migrate deploy` 4 миграций) → проекты backend/frontend + env → DNS reg.ru (`frame-app.ru`, `api.frame-app.ru`) → smoke.
 2. Отложено осознанно: **F13/F15** — слой capabilities (~18 файлов, ~17 локальных `assert*`), рискованно и без пользовательской ценности до запуска.
 3. Опционально: удалить неиспользуемую колонку `object_access.isManager` отдельной миграцией.
 4. Мелочи на будущее: лимит 2 МБ на JSON/файл импорта; `prices.catalogName` строится по времени — повторный preview даёт другое имя.
