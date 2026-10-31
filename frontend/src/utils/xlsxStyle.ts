@@ -88,6 +88,11 @@ export interface SheetSpec {
   metaRows?: number[];
   merges?: XLSX.Range[];
   headerHeight?: number;
+  /**
+   * ⭐ №213: высота обычных (не шапка/не разделитель) строк в пунктах.
+   * Нужна для ПУСТОГО шаблона: дефолтные ~15 pt слишком узкие, чтобы писать в них руками.
+   */
+  bodyHeight?: number;
 }
 
 // Целое ли значение (с допуском на ошибки округления float: 100.00000000000001 → целое)
@@ -96,6 +101,7 @@ const isInt = (v: unknown) => typeof v === 'number' && Math.abs(v - Math.round(v
 // ⭐ Раскладывает значения по сетке и навешивает оформление (границы/шапка/форматы)
 export const makeSheet = ({
   aoa, kinds, headerRows, groupCells = [], totalRow, metaRows = [], merges = [], headerHeight = 32,
+  bodyHeight,
 }: SheetSpec): XLSX.WorkSheet => {
   const nCols = kinds.length;
   const lastRow = aoa.length - 1;
@@ -159,8 +165,11 @@ export const makeSheet = ({
 
   ws['!rows'] = Array.from({ length: lastRow + 1 }, (_v, r) => {
     if (metaSet.has(r)) return { hpt: 18 };
-    if (blankRow(r)) return { hpt: 8 };
     if (headerSet.has(r)) return { hpt: headerHeight };
+    // ⭐ №213: если задана высота «тела», она применяется ко ВСЕМ строкам данных,
+    // включая пустые: в шаблоне это поля для заполнения, а не строки-разделители.
+    if (bodyHeight) return { hpt: bodyHeight };
+    if (blankRow(r)) return { hpt: 8 };
     return {};
   });
 

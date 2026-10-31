@@ -48,6 +48,8 @@ export const downloadImportTemplate = (): void => {
     kinds: HEADERS.map((h) => h.kind),
     headerRows: [0],
     headerHeight: 30,
+    // ⭐ №213: строки-«пустышки» повыше, но чуть ниже шапки — в них удобно писать руками
+    bodyHeight: 24,
   });
   sheet['!cols'] = [
     { wch: 46 },
