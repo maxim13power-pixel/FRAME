@@ -18,6 +18,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ImportsService } from './imports.service';
+import { fixMultipartFileName } from './name-normalizer';
 import type { CommitResolution } from './imports.service';
 
 /** Файл из multer: нам нужны только имя и буфер (diskStorage не используем). */
@@ -42,7 +43,8 @@ export class ImportsController {
       return this.imports.preview({
         projectId,
         userId: req.user.userId,
-        fileName: file.originalname,
+        // ⭐ №214: busboy отдаёт имя файла в latin1 — чиним кириллицу до справочника цен
+        fileName: fixMultipartFileName(file.originalname),
         buffer: file.buffer,
       });
     }

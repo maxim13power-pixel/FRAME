@@ -73,3 +73,17 @@ export const parseNumberRu = (value: unknown): number | null => {
 /** Единица из строки файла (для парсера). */
 export const parseUnit = (value: unknown): { unit: Unit | null; approx: boolean } =>
   normalizeUnit(value);
+
+/**
+ * ⭐ №214: имя файла из multipart.
+ * multer 2.0.2 (busboy) декодирует `filename="…"` как latin1, а браузер присылает байты
+ * UTF-8 — «Шаблон сметы FRAME.xlsx» превращалось в «Ð¨Ð°Ð±Ð»Ð¾Ð½ ÑÐ¼ÐµÑÑ…» и попадало
+ * в название нового справочника цен. Перекодируем обратно ТОЛЬКО если это действительно
+ * мойибаке и результат — корректный UTF-8 (иначе имя уже нормальное, например латиница).
+ */
+export const fixMultipartFileName = (name: string): string => {
+  if (!name || !/[\u0080-\u00FF]/.test(name)) return name;
+  const repaired = Buffer.from(name, 'latin1').toString('utf8');
+  if (!repaired || repaired.includes('\uFFFD')) return name;
+  return repaired;
+};

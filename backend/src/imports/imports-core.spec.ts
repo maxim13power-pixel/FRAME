@@ -4,10 +4,34 @@ import * as ExcelJS from 'exceljs';
 import { EstimateParserService } from './estimate-parser.service';
 import { matchRow } from './price-matcher';
 import { normalizeUnit } from './unit-normalizer';
-import { normalizeArticle, normalizeText, parseNumberRu } from './name-normalizer';
+import { normalizeArticle, fixMultipartFileName, normalizeText, parseNumberRu } from './name-normalizer';
 import type { CatalogItem } from './imports.types';
 
 const parser = new EstimateParserService();
+
+describe('fixMultipartFileName (№214)', () => {
+  it('чинит кириллицу, испорченную latin1-декодированием busboy', () => {
+    const original = 'Шаблон сметы FRAME (2).xlsx';
+    // ровно то, что приходит от multer: UTF-8 байты, прочитанные как latin1
+    const broken = Buffer.from(original, 'utf8').toString('latin1');
+    expect(broken).not.toBe(original);
+    expect(fixMultipartFileName(broken)).toBe(original);
+  });
+
+  it('латинское имя не трогает', () => {
+    expect(fixMultipartFileName('materials-78-2026-10-31 (1).xlsx')).toBe(
+      'materials-78-2026-10-31 (1).xlsx',
+    );
+  });
+
+  it('корректную кириллицу не трогает', () => {
+    expect(fixMultipartFileName('Смета.xlsx')).toBe('Смета.xlsx');
+  });
+
+  it('настоящую latin1-строку не трогает (нельзя восстановить как UTF-8)', () => {
+    expect(fixMultipartFileName('Résumé.xlsx')).toBe('Résumé.xlsx');
+  });
+});
 
 describe('normalizeUnit (№202)', () => {
   it('распознаёт синонимы и помечает приблизительные', () => {
