@@ -147,6 +147,11 @@ const Register: React.FC = () => {
       });
       // ⭐ Успех → авторизация (редирект делает App.tsx через защиту маршрута)
       login(response.data.access_token, response.data.user);
+      // ⭐ №210: уводим со страницы регистрации явно, как в Login.tsx.
+      // Иначе при неудачном ре-рендере человек остаётся на форме, жмёт
+      // «Подтвердить» ещё раз — и получает 400 «код уже использован»,
+      // хотя аккаунт уже создан.
+      navigate('/', { replace: true });
     } catch (err: unknown) {
       setCodeError(getApiErrorMessage(err, 'Неверный код'));
     } finally {

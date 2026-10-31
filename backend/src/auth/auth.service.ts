@@ -18,6 +18,11 @@ import { RequestCodeDto } from './dto/request-code.dto'; // ⭐ №122b
 import { VerifyEmailDto } from './dto/verify.dto'; // ⭐ №122b
 import * as crypto from 'crypto'; // ⭐ P0-4
 import { AccessRole, Unit } from '@prisma/client'; // ⭐ №127 онбординг
+
+// ⭐ №210: код подтверждения израсходован (двойной клик/повторная отправка формы).
+// Текст вынесен наружу — его проверяет спека регистрации.
+export const EMAIL_CODE_ALREADY_USED =
+  'Код уже использован — аккаунт создан. Войдите в систему или запросите новый код.';
 @Injectable()
 export class AuthService {
   constructor(
@@ -254,6 +259,16 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
     });
     if (!token) {
+      // ⭐ №210: код уже израсходован (двойной клик / повторная отправка формы).
+      // Раньше человек видел «Неверный или просроченный код» и считал, что
+      // регистрация не сработала, хотя аккаунт уже создан.
+      const usedToken = await this.prismaService.verificationToken.findFirst({
+        where: { email, code: dto.code, used: true, expiresAt: { gte: new Date() } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (usedToken) {
+        throw new BadRequestException(EMAIL_CODE_ALREADY_USED);
+      }
       throw new BadRequestException('Неверный или просроченный код');
     }
 

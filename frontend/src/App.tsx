@@ -5,10 +5,10 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { Box, CircularProgress } from '@mui/material';
 import ProtectedRoute from './components/ProtectedRoute';
 import theme from './theme';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { FeedbackProvider } from './contexts/FeedbackContext';
 import AccessRevokedModal from './components/AccessRevokedModal'; // ⭐ №168
-import { PENDING_INVITE_KEY, getToken, safeGetString } from './utils/storage';
+import { PENDING_INVITE_KEY, safeGetString } from './utils/storage';
 
 // ⭐ Шаг 99 (P1-6): React.lazy — каждая страница грузится своим чанком.
 // Раньше первый вход тянул сразу все 24 страницы в одном бандле.
@@ -48,7 +48,11 @@ const PageLoader = () => (
 const AppRoutes = () => {
   useLocation();
   const navigate = useNavigate();
-  const token = getToken();
+  // ⭐ №210: token берём из контекста, а НЕ из localStorage на рендере.
+  // Раньше `getToken()` читался один раз: после login() в Register (без явного
+  // navigate) AppRoutes не перерисовывался, /register оставался на экране,
+  // человек жал «Подтвердить» повторно — а код уже израсходован (400).
+  const { token } = useAuth();
 
   // ⭐ После логина возвращаем юзера на ссылку-приглашение (если он пришёл по ней)
   useEffect(() => {
