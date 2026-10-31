@@ -1,7 +1,6 @@
 // frontend/src/utils/exportMaterials.ts
 // ⭐ Экспорт материалов проекта в XLSX и PDF (клиентская генерация, бэкенд не трогаем).
 // XLSX собирается через xlsx-js-style (форк SheetJS, умеет писать границы/заливки/форматы).
-import * as XLSX from 'xlsx-js-style';
 // pdfmake 0.3.x не поставляет .d.ts для build/pdfmake и build/vfs_fonts — ожидаем ошибку типов.
 // @ts-expect-error TS7016: нет деклараций для модуля
 import pdfMake from 'pdfmake/build/pdfmake';
@@ -10,7 +9,7 @@ import pdfFonts from 'pdfmake/build/vfs_fonts';
 import type { MaterialData, MaterialFixData } from '../services/materialService';
 import { fileDate, formatDateTime, money, num, qty, unitLabel, type ExportMeta } from './exportShared';
 import { buildMaterialsWorkbook } from './materialsWorkbook';
-import type { ColKind } from './xlsxStyle';
+import { downloadWorkbook, type ColKind } from './xlsxStyle';
 
 // ⭐ ExportMeta живёт в exportShared — реэкспорт, чтобы не менять импорты в страницах.
 export type { ExportMeta };
@@ -57,9 +56,8 @@ export function exportMaterialsXlsx(
 ): void {
   // ⭐ Сборка книги (оба листа + оформление) — в materialsWorkbook.ts
   const wb = buildMaterialsWorkbook(materials, meta, includePrices, fixes);
-  XLSX.writeFile(wb, `materials-${meta.projectId}-${fileDate(meta.exportedAt)}.xlsx`, {
-    cellStyles: true,
-  });
+  // ⭐ №212: БЕЗ XLSX.writeFile — в браузере он падал на fs и отдавал битый .xlsx
+  downloadWorkbook(wb, `materials-${meta.projectId}-${fileDate(meta.exportedAt)}.xlsx`);
 }
 
 export function exportMaterialsPdf(

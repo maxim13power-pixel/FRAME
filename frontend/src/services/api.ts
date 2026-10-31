@@ -28,7 +28,10 @@ const isPublicAuthRequest = (url?: string): boolean =>
 
 const api = axios.create({
   baseURL: API_URL,
-  headers: { 'Content-Type': 'application/json' },
+  // ⭐ №212: Content-Type НЕ фиксируем. Раньше здесь стоял 'application/json', и axios
+  // (1.x, см. formDataToJSON) при JSON-заголовке ПРЕВРАЩАЛ FormData в JSON — файл
+  // не уходил на сервер, импорт отвечал 400 «Приложите файл». Для объектов axios
+  // и так ставит application/json, а для FormData отдаёт выбор браузеру (boundary).
 });
 
 // ⭐ Request: автоматический Bearer из localStorage.

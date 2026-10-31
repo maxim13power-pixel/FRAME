@@ -2,7 +2,7 @@
 // ⭐ Выгрузка «Склада» в XLSX с тем же оформлением, что и «Сметы» (границы, шапка, форматы).
 import * as XLSX from 'xlsx-js-style';
 import { formatDateTime, fileDate, num } from './exportShared';
-import { makeSheet, type ColKind } from './xlsxStyle';
+import { makeSheet, downloadWorkbook, type ColKind } from './xlsxStyle';
 
 export interface WarehouseExportItem {
   name: string;
@@ -71,5 +71,6 @@ export function exportWarehouseXlsx(items: WarehouseExportItem[]): void {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Склад');
-  XLSX.writeFile(wb, `sklad-${fileDate(now)}.xlsx`, { cellStyles: true });
+  // ⭐ №212: БЕЗ XLSX.writeFile — в браузере он падал на fs и отдавал битый .xlsx
+  downloadWorkbook(wb, `sklad-${fileDate(now)}.xlsx`);
 }

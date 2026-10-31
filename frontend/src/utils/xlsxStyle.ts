@@ -8,6 +8,32 @@ export const MONEY_FMT = '#,##0.00';
 export const QTY_FMT_DEC = '#,##0.###';
 export const QTY_FMT_INT = '#,##0';
 
+/**
+ * ⭐ №212: сохранение книги средствами БРАУЗЕРА.
+ * `XLSX.writeFile` в браузере обращается к Node-модулю `fs` (Vite выносит его наружу,
+ * доступ бросает исключение) — в итоге скачивался битый .xlsx: Excel его открывал,
+ * а наш импорт отвечал 400 «Не удалось прочитать файл». Пишем массив байт и отдаём
+ * через Blob — без fs и stream.
+ */
+export const downloadWorkbook = (workbook: XLSX.WorkBook, fileName: string): void => {
+  const data = XLSX.write(workbook, {
+    bookType: 'xlsx',
+    type: 'array',
+    cellStyles: true,
+  }) as ArrayBuffer;
+  const blob = new Blob([data], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
 const LINE = 'FFB0BEC5';
 const FONT = { name: 'Calibri', sz: 11 };
 const thin = { style: 'thin', color: { rgb: LINE } };

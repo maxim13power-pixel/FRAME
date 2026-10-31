@@ -2138,3 +2138,46 @@ SectionIntro на остальные разделы (пункт №4); (5) им�
     позиции MATERIAL в WORK-категории). Категория глобальна и имеет один `kind` — это долг модели,
     не правил, чтобы не ломать существующие справочники.
 
+
+58. №212 АУДИТ: ПОЧЕМУ ИМПОРТ ОТВЕЧАЛ 400 И ПОЧЕМУ ФАЙЛЫ БЫЛИ БИТЫЕ (31.10.2026)
+ СИМПТОМЫ ОТ ВЛАДЕЛЬЦА: при выборе файла в окне «Импорт из Excel» — `POST /imports/estimates
+  /preview 400`; в консоли браузера `Module "stream" has been externalized...` и
+  `Module "fs" has been externalized... Cannot access "fs.writeFileSync"` (при скачивании шаблона);
+  «не загружается файл», «заполненный шаблон тоже не импортировался».
+ ПРИЧИНА №1 (400 на preview) — ФРОНТ, не бэкенд:
+  `services/api.ts` создавал axios с ЖЁСТКИМ `headers: { 'Content-Type': 'application/json' }`.
+  В axios 1.13 (`lib/defaults/index.js`, transformRequest) при JSON-заголовке FormData
+  ПРЕВРАЩАЕТСЯ в JSON (`formDataToJSON`) — на сервер уходило `{ projectId: "72", file: {} }`,
+  без файла. Контроллер отвечал 400 «Приложите файл .xlsx/.csv или строки таблицы».
+  Поэтому импорт «не работал» в UI и при этом отлично работал в curl (там multipart).
+ ПРИЧИНА №2 (шаблон и выгрузка приходили битыми):
+  `XLSX.writeFile()` — это Node-путь: он лезет в `fs.writeFileSync`. Vite выносит `fs`/`stream`
+  наружу, и обращение бросает исключение — файл на выходе получался невалидным.
+  Именно поэтому оба .xlsx, присланные в предыдущей итерации, не читались: КОРРУПЦИЯ БЫЛА
+  НЕ «ПРИ ПЕРЕДАЧЕ», А ПРИ ГЕНЕРАЦИИ В БРАУЗЕРЕ (уточнение к §57).
+  Задеты три места: шаблон сметы, выгрузка материалов, выгрузка склада.
+ ЧТО СДЕЛАНО:
+  - `services/api.ts`: убран глобальный `Content-Type: application/json` (для объектов axios
+    ставит его сам, для FormData отдаёт выбор браузеру — с boundary);
+  - `services/importService.ts`: в `previewEstimateImport` multipart задаётся ЯВНО —
+    защита от повторения, даже если кто-то вернёт глобальный заголовок;
+  - `utils/xlsxStyle.ts`: новый `downloadWorkbook(wb, fileName)` — `XLSX.write({type:'array'})`
+    → `Blob` → `URL.createObjectURL` → `<a download>` и `revokeObjectURL`. Без fs/stream;
+  - `utils/importTemplate.ts`, `utils/exportMaterials.ts`, `utils/exportWarehouse.ts`:
+    `XLSX.writeFile` заменён на `downloadWorkbook` (неиспользуемый импорт XLSX убран).
+ ПРОВЕРКИ:
+  - живой реплей: `POST /imports/estimates/preview` с multipart → 201; тот же запрос «как его
+    отправлял фронт» (JSON с пустым file) → 400 «Приложите файл…» — причина подтверждена;
+  - байты новой генерации перехвачены в Node через шим `document/Blob/URL` (тот же код
+    `downloadWorkbook`): шаблон 57 967 Б — валидный zip, exceljs читает лист «Смета» с 7
+    колонками («Цена работ за ед.» / «Цена материала за ед.») и лист «Как заполнять»;
+    выгрузка материалов 34 499 Б — zip распаковывается (18 файлов);
+  - Jest 25 сьютов / 203 passed / 1 todo, `tsc --noEmit` (be) и `tsc -b` (fe) чисто,
+    `npm run verify` зелёный (vite build 22.6 с; backend перед verify остановлен, после поднят).
+ ЧТО ДЕЛАТЬ ВЛАДЕЛЬЦУ: Ctrl+F5 (HMR у него не подключён) → «Из шаблона» → «Скачать пустой
+  шаблон» (теперь 7 колонок и валидный файл) → заполнить → «Импорт из Excel». Старые скачанные
+  файлы (`materials-69-2026-10-31.xlsx`, прежний шаблон) — БИТЫЕ, их нужно скачать заново.
+ ОСТАЛОСЬ ПО НАБЛЮДЕНИЮ: предупреждение «Module stream externalized» в консоли останется —
+  это импорт самого `xlsx-js-style` (Node-сборка внутри пакета), на работу не влияет:
+  пути через fs больше не вызываются.
+

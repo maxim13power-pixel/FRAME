@@ -3,7 +3,7 @@
 // Юзер заполняет его на своём ПК (материалы, работы, количества, цены) и импортирует
 // в проект: позиции попадают в смету, а цены — в НОВЫЙ справочник цен FRAME.
 import * as XLSX from 'xlsx-js-style';
-import { makeSheet, type ColKind } from './xlsxStyle';
+import { makeSheet, downloadWorkbook, type ColKind } from './xlsxStyle';
 
 const HEADERS: { top: string; kind: ColKind }[] = [
   { top: 'Наименование', kind: 'text' },
@@ -76,5 +76,6 @@ export const downloadImportTemplate = (): void => {
     Sheets: wb.SheetNames.map((name) => ({ name, Hidden: name === '_meta' ? 1 : 0 })),
   };
 
-  XLSX.writeFile(wb, 'Шаблон сметы FRAME.xlsx', { cellStyles: true });
+  // ⭐ №212: НЕ XLSX.writeFile — в браузере он упирается в fs и пишет битый файл
+  downloadWorkbook(wb, 'Шаблон сметы FRAME.xlsx');
 };

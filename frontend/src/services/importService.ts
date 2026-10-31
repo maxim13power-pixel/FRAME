@@ -79,7 +79,11 @@ export const previewEstimateImport = async (
   const form = new FormData();
   form.append('projectId', String(projectId));
   form.append('file', file);
-  const response = await api.post('/imports/estimates/preview', form);
+  // ⭐ №212: multipart задаём ЯВНО. Если оставить глобальный application/json,
+  // axios конвертирует FormData в JSON и файл до сервера не доедет (был 400).
+  const response = await api.post('/imports/estimates/preview', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
   return response.data;
 };
 
