@@ -28,8 +28,11 @@ const makeService = () => {
         object: { create: jest.fn().mockResolvedValue({ id: 10 }) },
         project: { create: jest.fn().mockResolvedValue({ id: 20 }) },
         material: { create: jest.fn().mockResolvedValue({ id: 30 }) },
+        materialFix: { create: jest.fn().mockResolvedValue({ id: 40 }) },
       }),
     ),
+    // ⭐ №211: демо-объект ищет системный справочник цен
+    priceCatalog: { findFirst: jest.fn().mockResolvedValue(null) },
   };
   const jwt = { sign: jest.fn().mockReturnValue('jwt.token') };
   const captcha = { validate: jest.fn().mockResolvedValue(true) };

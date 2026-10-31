@@ -362,6 +362,21 @@ export class PriceListService {
           orderBy: { name: 'asc' },
         },
       },
+    }).then(async (categories) => {
+      // ⭐ №211: категории живут глобально, а позиции — в справочнике. Из-за этого
+      // в «Демо-справочнике» виднелись пустые категории чужих справочников.
+      // Прячем только те, где позиции ЕСТЬ, но в другом справочнике: совсем новая
+      // (пустая) категория пользователю остаётся видимой, чтобы он мог её наполнить.
+      if (!catalogId) return categories;
+      const emptyIds = categories.filter((c) => c.items.length === 0).map((c) => c.id);
+      if (emptyIds.length === 0) return categories;
+      const elsewhere = await this.prisma.priceItem.findMany({
+        where: { categoryId: { in: emptyIds } },
+        select: { categoryId: true },
+        distinct: ['categoryId'],
+      });
+      const hide = new Set(elsewhere.map((i) => i.categoryId));
+      return categories.filter((c) => !hide.has(c.id));
     });
   }
 

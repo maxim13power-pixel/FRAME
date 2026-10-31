@@ -46,6 +46,10 @@ const normCell = (v: unknown): string =>
     .replace(/[\s\u00A0\u202F]+/g, ' ')
     .trim();
 
+// ⭐ №211: в файле теперь ДВЕ цены — работа и материал. «Цена материала за ед.»
+// содержит слово «цена», поэтому её распознаём раньше обычной цены.
+const MATERIAL_HINT = 'материал';
+
 const hit = (cell: string, synonyms: string[]): boolean =>
   synonyms.some((s) => cell === s || cell.startsWith(`${s} `) || cell.includes(s));
 
@@ -100,12 +104,16 @@ export class EstimateParserService {
       );
     }
     const rows: ParsedRow[] = [];
+    // ⭐ №211: в двухстрочной шапке (наша выгрузка, объединённые ячейки) подписи
+    // верхней строки повторяются в нижней — такая строка не должна становиться позицией.
+    const headerNameCell = normCell((matrix[headerIndex] ?? [])[nameColumn] ?? '');
     for (let i = headerIndex + 1; i < matrix.length; i += 1) {
       const line = matrix[i] ?? [];
       const name = String(line[nameColumn] ?? '').trim();
       const low = normCell(name);
-      // Итоговые строки пропускаем: это не позиции сметы
-      if (!name || low.startsWith('итого') || low.startsWith('всего') || low.startsWith('ндс')) continue;
+      // Повтор шапки и итоговые строки — не позиции сметы
+      if (!name || (headerNameCell && low === headerNameCell)) continue;
+      if (low.startsWith('итого') || low.startsWith('всего') || low.startsWith('ндс')) continue;
       rows.push({
         row: i + 1,
         name,
@@ -113,6 +121,9 @@ export class EstimateParserService {
         qtyRaw: columns.qty != null ? String(line[columns.qty] ?? '').trim() || null : null,
         unitRaw: columns.unit != null ? String(line[columns.unit] ?? '').trim() || null : null,
         priceRaw: columns.price != null ? String(line[columns.price] ?? '').trim() || null : null,
+        // ⭐ №211: цена материала — отдельная колонка (шаблон и выгрузка FRAME)
+        priceMatRaw:
+          columns.priceMat != null ? String(line[columns.priceMat] ?? '').trim() || null : null,
       });
     }
     if (rows.length === 0) {
@@ -130,6 +141,7 @@ export class EstimateParserService {
         unit: columns.unit,
         qty: columns.qty,
         price: columns.price,
+        priceMat: columns.priceMat,
         headerRow: headerIndex + 1,
         confidence: columns.confidence,
       },
@@ -176,6 +188,8 @@ export const detectHeader = (
     unit: number | null;
     qty: number | null;
     price: number | null;
+    /** ⭐ №211: цена материала (отдельная колонка «Цена материала за ед.») */
+    priceMat: number | null;
     confidence: number;
   };
 } => {
@@ -187,7 +201,10 @@ export const detectHeader = (
     const found = emptyColumns();
     cells.forEach((cell, idx) => {
       if (!cell) return;
-      if (found.name == null && hit(cell, HEADER_SYNONYMS.name)) found.name = idx;
+      // «Цена материала…» содержит слово «цена» — проверяем РАНЬШЕ цены работы
+      if (found.priceMat == null && cell.includes(MATERIAL_HINT) && hit(cell, HEADER_SYNONYMS.price)) {
+        found.priceMat = idx;
+      } else if (found.name == null && hit(cell, HEADER_SYNONYMS.name)) found.name = idx;
       else if (found.unit == null && hit(cell, HEADER_SYNONYMS.unit)) found.unit = idx;
       else if (found.qty == null && hit(cell, HEADER_SYNONYMS.qty)) found.qty = idx;
       else if (found.price == null && hit(cell, HEADER_SYNONYMS.price)) found.price = idx;
@@ -212,6 +229,7 @@ export const detectHeader = (
       unit: columns.unit,
       qty: columns.qty,
       price: columns.price,
+      priceMat: columns.priceMat,
       confidence: Math.round((matched / 4) * 100) / 100,
     },
   };
@@ -223,6 +241,7 @@ const emptyColumns = (): {
   unit: number | null;
   qty: number | null;
   price: number | null;
+  priceMat: number | null;
   confidence: number;
 } => ({
   name: null,
@@ -230,6 +249,7 @@ const emptyColumns = (): {
   unit: null,
   qty: null,
   price: null,
+  priceMat: null,
   confidence: 0,
 });
 

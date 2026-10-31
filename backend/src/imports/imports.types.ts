@@ -10,6 +10,8 @@ export interface ParsedRow {
   qtyRaw: string | null;
   unitRaw: string | null;
   priceRaw: string | null;
+  /** ⭐ №211: цена материала из отдельной колонки (может отсутствовать) */
+  priceMatRaw: string | null;
 }
 
 export interface DetectedColumns {
@@ -18,6 +20,8 @@ export interface DetectedColumns {
   unit: number | null;
   qty: number | null;
   price: number | null;
+  /** ⭐ №211: колонка цены материала */
+  priceMat: number | null;
   headerRow: number;
   /** 0..1 — уверенность в распознавании шапки */
   confidence: number;
@@ -79,7 +83,9 @@ export interface PreviewRow {
   /** найденная расценка (работа) и её цена из справочника */
   work: RowMatch;
   filePrice: number | null;
-  /** ⭐ №208: в файле есть цена → строка пойдёт в новый справочник */
+  /** ⭐ №211: цена материала из файла (уйдёт в справочник как расценка MATERIAL) */
+  fileMaterialPrice: number | null;
+  /** ⭐ №208: в файле есть цена (работа или материал) → строка пойдёт в новый справочник */
   hasPrice: boolean;
   priceDeltaPct: number | null;
   /** существующая строка сметы с таким же названием (импорт не блокирует — №208) */

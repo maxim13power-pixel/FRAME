@@ -19,6 +19,8 @@ export interface ImportPreviewRow {
   article: string | null;
   work: ImportPreviewMatch;
   filePrice: number | null;
+  /** ⭐ №211: цена материала из файла (отдельная колонка шаблона/выгрузки) */
+  fileMaterialPrice?: number | null;
   /** ⭐ №208: цена из файла → строка попадёт в новый справочник */
   hasPrice: boolean;
   priceDeltaPct: number | null;

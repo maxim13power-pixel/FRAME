@@ -319,57 +319,111 @@ export class AuthService {
     return this.login(user, false);
   }
 
-  // ⭐ №127: создаёт демо-объект «Квартира-образец» с 3 проектами (видами работ)
-  // и реальными материалами в спецификациях — чтобы новый прораб сразу увидел,
-  // как устроен FRAME (aha-момент). Цены — снапшоты (priceItemId=null), без db:seed.
+  // ⭐ №127/№211: создаёт демо-объект «Квартира-образец» с 3 проектами (видами работ),
+  // позициями, расценками ИЗ демо-справочника и частичным прогрессом — чтобы новый
+  // прораб сразу видел, как FRAME выглядит на живом объекте, а не как пустой шаблон.
   private async createDemoObject(userId: number): Promise<void> {
     const now = new Date();
     const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    // ⭐ №211: помощники для «живого» демо-объекта (даты фиксаций, деньги)
+    const dayAgo = (days: number) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
 
     // ⭐ 3 проекта демо-объекта: подготовка → черновые → чистовые
     const demoTemplate: {
       name: string;
-      materials: { name: string; unit: Unit; spec: number; price: number }[];
+      /** дни назад, за которые бригада фиксировала объёмы (для «Посменной сводки») */
+      shifts: number[];
+      materials: {
+        name: string;
+        unit: Unit;
+        spec: number;
+        used: number;
+        /** расценка материала в демо-справочнике (та же единица измерения) */
+        matItem?: string;
+      }[];
     }[] = [
       {
         name: 'Демонтаж и подготовка',
+        shifts: [11, 4],
         materials: [
-          { name: 'Демонтаж старой отделки', unit: Unit.SQUARE_METER, spec: 68, price: 250 },
-          { name: 'Грунтовка стен и потолка', unit: Unit.SQUARE_METER, spec: 180, price: 45 },
-          { name: 'Вынос и погрузка мусора', unit: Unit.SET, spec: 1, price: 8500 },
+          { name: 'Демонтаж старой отделки', unit: Unit.SQUARE_METER, spec: 68, used: 68 },
+          { name: 'Грунтовка стен', unit: Unit.SQUARE_METER, spec: 180, used: 120 },
+          { name: 'Демонтаж обоев', unit: Unit.SQUARE_METER, spec: 40, used: 0 },
         ],
       },
       {
         name: 'Черновые работы',
+        shifts: [8, 3],
         materials: [
-          { name: 'Устройство стяжки пола', unit: Unit.SQUARE_METER, spec: 68, price: 450 },
-          { name: 'Штукатурка стен по маякам', unit: Unit.SQUARE_METER, spec: 120, price: 550 },
-          { name: 'Шпаклёвка стен под покраску', unit: Unit.SQUARE_METER, spec: 120, price: 180 },
-          { name: 'Электромонтаж: прокладка кабеля', unit: Unit.METER, spec: 120, price: 180 },
-          { name: 'Сантехмонтаж: разводка труб', unit: Unit.METER, spec: 30, price: 480 },
+          { name: 'Заливка стяжки пола', unit: Unit.SQUARE_METER, spec: 68, used: 68 },
+          { name: 'Шпаклёвка стен', unit: Unit.SQUARE_METER, spec: 120, used: 84 },
+          {
+            name: 'Прокладка кабеля в штробе',
+            unit: Unit.METER,
+            spec: 120,
+            used: 60,
+            matItem: 'Кабель ВВГнг-LS 3×1.5',
+          },
+          {
+            name: 'Монтаж труб водоснабжения полипропилен',
+            unit: Unit.METER,
+            spec: 30,
+            used: 12,
+            matItem: 'Труба полипропилен PN20 25мм',
+          },
         ],
       },
       {
         name: 'Чистовая отделка',
+        shifts: [2],
         materials: [
-          { name: 'Укладка ламината', unit: Unit.SQUARE_METER, spec: 68, price: 380 },
-          { name: 'Укладка керамогранита (санузел)', unit: Unit.SQUARE_METER, spec: 18, price: 700 },
-          { name: 'Покраска стен', unit: Unit.SQUARE_METER, spec: 120, price: 220 },
-          { name: 'Оклейка стен обоями', unit: Unit.SQUARE_METER, spec: 40, price: 300 },
-          { name: 'Установка розеток и выключателей', unit: Unit.PIECE, spec: 24, price: 350 },
+          { name: 'Укладка ламината', unit: Unit.SQUARE_METER, spec: 68, used: 0 },
+          { name: 'Укладка керамогранита', unit: Unit.SQUARE_METER, spec: 18, used: 18 },
+          { name: 'Покраска стен', unit: Unit.SQUARE_METER, spec: 120, used: 24 },
+          {
+            // ⚠️ имя ровно как в демо-справочнике («встроенной», не «встроенная»)
+            name: 'Установка розетки встроенной',
+            unit: Unit.PIECE,
+            spec: 24,
+            used: 0,
+            matItem: 'Розетка встроенная Legrand',
+          },
         ],
       },
     ];
+
+    // ⭐ №211: расценки берём из системного (демо) справочника — ownerId = null.
+    // Благодаря этому объект привязан к справочнику, а позиции ссылаются на реальные
+    // расценки (в модалке материала сразу видно, что выбрано, а не пустые поля).
+    const demoCatalog = await this.prismaService.priceCatalog.findFirst({
+      where: { ownerId: null },
+      orderBy: { id: 'asc' },
+      select: {
+        id: true,
+        items: { select: { id: true, name: true, price: true, kind: true } },
+      },
+    });
+    const normName = (s: string) => s.toLowerCase().replace(/ё/g, 'е').trim();
+    const workByName = new Map<string, { id: number; price: number }>();
+    const matByName = new Map<string, { id: number; price: number }>();
+    for (const item of demoCatalog?.items ?? []) {
+      const entry = { id: item.id, price: Number(item.price) };
+      if (item.kind === 'WORK') workByName.set(normName(item.name), entry);
+      else matByName.set(normName(item.name), entry);
+    }
 
     await this.prismaService.$transaction(async (tx) => {
       const object = await tx.object.create({
         data: {
           name: 'Квартира-образец, 68 м²',
           address: 'г. Москва, ул. Демонстрационная, д. 1, кв. 42',
-          startDate: now,
+          startDate: dayAgo(14),
           endDate: end,
           plannedEndDate: end,
           isDemo: true,
+          // ⭐ №211: справочник цен объекта — иначе в смете нечего выбирать «из справочника»
+          catalogId: demoCatalog?.id ?? null,
           note: 'Демо-объект для знакомства с FRAME. Можно удалить.',
           accesses: {
             create: { userId, role: AccessRole.CUSTOMER },
@@ -381,21 +435,56 @@ export class AuthService {
         const project = await tx.project.create({
           data: {
             name: p.name,
-            startDate: now,
+            startDate: dayAgo(14),
             endDate: end,
             objectId: object.id,
           },
         });
         for (const m of p.materials) {
-          await tx.material.create({
+          const work = workByName.get(normName(m.name));
+          const mat = m.matItem ? matByName.get(normName(m.matItem)) : undefined;
+          const used = Math.min(m.used, m.spec);
+          const workPrice = work?.price ?? 0;
+          const matPrice = mat?.price ?? 0;
+          const shifts = p.shifts;
+          const material = await tx.material.create({
             data: {
               name: m.name,
               unit: m.unit,
               specQuantity: m.spec,
-              unitPrice: m.price,
+              totalUsed: used,
+              // ⭐ №211: прогресс = факт / план, а не нули у всех проектов
+              progressPercent: m.spec > 0 ? Math.round((used / m.spec) * 1000) / 10 : 0,
+              priceItemId: work?.id ?? null,
+              unitPrice: workPrice,
+              totalCost: r2(used * workPrice),
+              materialItemId: mat?.id ?? null,
+              materialUnitPrice: matPrice,
+              materialTotalCost: r2(used * matPrice),
+              lastEntry: used > 0 ? used : null,
+              lastEntryDate: used > 0 ? dayAgo(shifts[shifts.length - 1] ?? 0) : null,
               projectId: project.id,
             },
           });
+          // ⭐ №211: фиксации — иначе «Посменная сводка» и графики пустые.
+          // Объём бьём на две смены, чтобы демо-объект выглядел как рабочая документация.
+          if (used > 0) {
+            const firstShift = Math.round(used * 0.6 * 1000) / 1000;
+            const parts = [
+              { amount: firstShift, days: shifts[0] ?? 0 },
+              { amount: Math.round((used - firstShift) * 1000) / 1000, days: shifts[1] ?? 0 },
+            ].filter((part) => part.amount > 0);
+            for (const part of parts) {
+              await tx.materialFix.create({
+                data: {
+                  materialId: material.id,
+                  amount: part.amount,
+                  fixedAt: dayAgo(part.days),
+                  userId,
+                },
+              });
+            }
+          }
         }
       }
     });

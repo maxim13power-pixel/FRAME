@@ -86,7 +86,9 @@ const EstimateImportModal: React.FC<Props> = ({ open, projectId, onClose, onImpo
     [preview, selected],
   );
   const planned = toImport.reduce(
-    (sum, r) => sum + (r.qty ?? 0) * (r.filePrice ?? r.work.price ?? 0),
+    // ⭐ №211: в сумму входят обе цены из файла — работа и материал
+    (sum, r) =>
+      sum + (r.qty ?? 0) * ((r.filePrice ?? r.work.price ?? 0) + (r.fileMaterialPrice ?? 0)),
     0,
   );
 
@@ -224,7 +226,12 @@ const EstimateImportModal: React.FC<Props> = ({ open, projectId, onClose, onImpo
                           {statusChip(r)}
                           {r.filePrice != null && r.filePrice > 0 && (
                             <Typography variant="caption" color="success.main">
-                              {money(r.filePrice)} ₽ из файла
+                              работа {money(r.filePrice)} ₽ из файла
+                            </Typography>
+                          )}
+                          {r.fileMaterialPrice != null && r.fileMaterialPrice > 0 && (
+                            <Typography variant="caption" color="success.main">
+                              материал {money(r.fileMaterialPrice)} ₽ из файла
                             </Typography>
                           )}
                           {r.work.price != null && (

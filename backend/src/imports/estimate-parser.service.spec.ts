@@ -68,6 +68,39 @@ describe('EstimateParserService (№208)', () => {
     expect(parsed.rows[0].qtyRaw).toBe('25,5');
   });
 
+  it('шаблон FRAME: две цены (работа + материал), повтор шапки не становится позицией', async () => {
+    const buffer = await buildWorkbook([
+      [
+        'Наименование',
+        'Артикул',
+        'Ед. изм.',
+        'Количество',
+        'Цена работ за ед.',
+        'Цена материала за ед.',
+        'Примечание',
+      ],
+      // нижняя строка двухстрочной шапки (в нашей выгрузке там повтор подписей)
+      [
+        'Наименование',
+        'Артикул',
+        'Ед. изм.',
+        'Количество',
+        'Цена работ за ед.',
+        'Цена материала за ед.',
+        'Примечание',
+      ],
+      ['Укладка ламината', '', 'м2', 68, 280, 950, ''],
+    ]);
+
+    const parsed = await parser.parseBuffer(buffer, 'Шаблон сметы FRAME.xlsx');
+
+    // ⭐ №211: строка-повтор шапки не должна превращаться в позицию «Наименование»
+    expect(parsed.rows).toHaveLength(1);
+    expect(parsed.columns.price).toBe(4);
+    expect(parsed.columns.priceMat).toBe(5);
+    expect(parsed.rows[0]).toMatchObject({ priceRaw: '280', priceMatRaw: '950' });
+  });
+
   it('без шапки с «Наименование» — понятная ошибка, а не мусор', async () => {
     const buffer = await buildWorkbook([
       ['что-то', 'иное'],

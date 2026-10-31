@@ -140,13 +140,17 @@ export class ImportsService {
 
     const fileWarnings: string[] = [];
     // ⭐ №208: цены из файла. Кто не видит цены — не загружает их (решение владельца).
-    const pricedRowsCount = parsed.rows.filter((r) => {
-      const p = parseNumberRu(r.priceRaw);
+    // ⭐ №211: цен в файле теперь две — «Цена работ» и «Цена материала».
+    const positive = (raw: string | null): boolean => {
+      const p = parseNumberRu(raw);
       return p != null && p > 0;
-    }).length;
+    };
+    const pricedRowsCount = parsed.rows.filter(
+      (r) => positive(r.priceRaw) || positive(r.priceMatRaw),
+    ).length;
     if (pricedRowsCount > 0 && !moneyVisible) {
       throw new ForbiddenException(
-        'У вас скрыты цены — импортировать файл с ценами нельзя. Уберите колонку «Цена» из файла или попросите администратора объекта загрузить его.',
+        'У вас скрыты цены — импортировать файл с ценами нельзя. Уберите колонки «Цена работ»/«Цена материала» из файла или попросите администратора объекта загрузить его.',
       );
     }
     // ⭐ №208: наш файл узнаём по скрытому листу `_meta`
@@ -184,6 +188,8 @@ export class ImportsService {
       const unit = normalizeUnit(raw.unitRaw);
       const qty = parseNumberRu(raw.qtyRaw);
       const filePrice = parseNumberRu(raw.priceRaw);
+      // ⭐ №211: отдельная цена материала (в шаблоне — своя колонка)
+      const fileMaterialPrice = parseNumberRu(raw.priceMatRaw);
       const work = matchRow({ name: raw.name, article: raw.article, unit: unit.unit }, catalog);
       const duplicate = byName.get(normalizeText(raw.name)) ?? null;
 
@@ -216,8 +222,9 @@ export class ImportsService {
         article: raw.article,
         work,
         filePrice,
-        // ⭐ №208: цена из файла → строка попадёт в новый справочник
-        hasPrice: filePrice != null && filePrice > 0,
+        fileMaterialPrice,
+        // ⭐ №208/№211: цена из файла (работа или материал) → строка попадёт в новый справочник
+        hasPrice: (filePrice != null && filePrice > 0) || (fileMaterialPrice != null && fileMaterialPrice > 0),
         priceDeltaPct: deltaPct,
         duplicate: duplicate
           ? {
@@ -240,7 +247,10 @@ export class ImportsService {
     };
     const plannedCost = rows.reduce(
       (sum, r) =>
-        sum + (r.errors.length === 0 ? (r.qty ?? 0) * (r.filePrice ?? r.work.price ?? 0) : 0),
+        sum +
+        (r.errors.length === 0
+          ? (r.qty ?? 0) * ((r.filePrice ?? r.work.price ?? 0) + (r.fileMaterialPrice ?? 0))
+          : 0),
       0,
     );
 
@@ -322,16 +332,20 @@ export class ImportsService {
         return r.errors.length === 0;
       });
 
-      // ⭐ №208: цены из файла → НОВЫЙ справочник. Существующие не меняем и не переключаем.
-      const priced = toImport.filter((r) => r.filePrice != null && (r.filePrice as number) > 0);
-      if (priced.length > 0 && !moneyVisible) {
+      // ⭐ №208/№211: цены из файла (работы и материалы) → НОВЫЙ справочник.
+      const pricedWork = toImport.filter((r) => r.filePrice != null && (r.filePrice as number) > 0);
+      const pricedMat = toImport.filter(
+        (r) => r.fileMaterialPrice != null && (r.fileMaterialPrice as number) > 0,
+      );
+      if ((pricedWork.length > 0 || pricedMat.length > 0) && !moneyVisible) {
         throw new ForbiddenException(
           'У вас скрыты цены — сохранять цены из файла нельзя. Попросите администратора объекта.',
         );
       }
       let catalog: { id: number; name: string } | null = null;
-      const priceItemByRow = new Map<number, { id: number; price: number }>();
-      if (priced.length > 0) {
+      const workItemByRow = new Map<number, { id: number; price: number }>();
+      const matItemByRow = new Map<number, { id: number; price: number }>();
+      if (pricedWork.length > 0 || pricedMat.length > 0) {
         catalog = await tx.priceCatalog.create({
           data: {
             name: preview.prices?.catalogName ?? this.catalogName(batch.fileName, new Date()),
@@ -339,14 +353,20 @@ export class ImportsService {
           },
           select: { id: true, name: true },
         });
-        // Позиция прайса живёт в категории — для импорта заводим служебную
-        const category = await tx.priceCategory.upsert({
+        // Позиция прайса живёт в категории — для импорта заводим служебные (работы и материалы)
+        const workCategory = await tx.priceCategory.upsert({
           where: { name_kind: { name: 'Импорт из Excel', kind: 'WORK' } },
           create: { name: 'Импорт из Excel', kind: 'WORK', sortOrder: 999 },
           update: {},
           select: { id: true },
         });
-        for (const r of priced) {
+        const matCategory = await tx.priceCategory.upsert({
+          where: { name_kind: { name: 'Импорт из Excel', kind: 'MATERIAL' } },
+          create: { name: 'Импорт из Excel', kind: 'MATERIAL', sortOrder: 999 },
+          update: {},
+          select: { id: true },
+        });
+        for (const r of pricedWork) {
           const item = await tx.priceItem.create({
             data: {
               name: r.name,
@@ -356,11 +376,28 @@ export class ImportsService {
               kind: 'WORK',
               ownerId: input.userId,
               catalogId: catalog.id,
-              categoryId: category.id,
+              categoryId: workCategory.id,
             },
             select: { id: true },
           });
-          priceItemByRow.set(r.row, { id: item.id, price: r.filePrice as number });
+          workItemByRow.set(r.row, { id: item.id, price: r.filePrice as number });
+        }
+        // ⭐ №211: цена материала — отдельная расценка MATERIAL в том же новом справочнике
+        for (const r of pricedMat) {
+          const item = await tx.priceItem.create({
+            data: {
+              name: r.name,
+              article: r.article,
+              unit: r.unit as never,
+              price: new Prisma.Decimal(r.fileMaterialPrice as number),
+              kind: 'MATERIAL',
+              ownerId: input.userId,
+              catalogId: catalog.id,
+              categoryId: matCategory.id,
+            },
+            select: { id: true },
+          });
+          matItemByRow.set(r.row, { id: item.id, price: r.fileMaterialPrice as number });
         }
       }
 
@@ -386,9 +423,17 @@ export class ImportsService {
         }
 
         // Цена: сначала из файла (новый справочник), иначе — из справочника FRAME
-        const fromFile = priceItemByRow.get(r.row);
+        const fromFile = workItemByRow.get(r.row);
+        // ⭐ №211: цена материала из файла — своя расценка MATERIAL
+        const matFromFile = matItemByRow.get(r.row);
         let priceItemId: number | null = null;
         let unitPrice = 0;
+        let materialItemId: number | null = null;
+        let materialUnitPrice = 0;
+        if (matFromFile) {
+          materialItemId = matFromFile.id;
+          materialUnitPrice = matFromFile.price;
+        }
         if (fromFile) {
           priceItemId = fromFile.id;
           unitPrice = fromFile.price;
@@ -422,8 +467,9 @@ export class ImportsService {
             totalCost: new Prisma.Decimal(0),
             materialTotalCost: new Prisma.Decimal(0),
             unitPrice: new Prisma.Decimal(unitPrice),
-            materialUnitPrice: new Prisma.Decimal(0),
+            materialUnitPrice: new Prisma.Decimal(materialUnitPrice),
             priceItemId,
+            materialItemId,
             isSpecLocked: false,
             note: null,
             projectId: batch.projectId,
@@ -443,8 +489,10 @@ export class ImportsService {
         skipped: skippedCount,
         skippedDetails: skipped.slice(0, 200),
         rowsTotal: preview.rows.length,
-        // ⭐ №208: что за справочник создан — фронт покажет «цены прочитаны»
-        catalog: catalog ? { id: catalog.id, name: catalog.name, items: priced.length } : null,
+        // ⭐ №208/№211: что за справочник создан — фронт покажет «цены прочитаны»
+        catalog: catalog
+          ? { id: catalog.id, name: catalog.name, items: pricedWork.length + pricedMat.length }
+          : null,
       };
 
       await tx.importBatch.update({
@@ -453,7 +501,7 @@ export class ImportsService {
           status: 'COMMITTED',
           createdCount: created,
           skippedCount,
-          pricesCreated: priced.length,
+          pricesCreated: pricedWork.length + pricedMat.length,
           committedAt: new Date(),
           report: report as unknown as Prisma.InputJsonValue,
         },

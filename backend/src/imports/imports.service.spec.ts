@@ -17,6 +17,7 @@ const row = (over: Partial<PreviewRow> = {}): PreviewRow => ({
   article: null,
   work: { status: 'EXACT', priceItemId: 88, price: 950, score: 1, candidates: [] },
   filePrice: 1200,
+  fileMaterialPrice: null,
   hasPrice: true,
   priceDeltaPct: 26.3,
   duplicate: null,
@@ -115,6 +116,29 @@ describe('ImportsService.commit (№202/№208)', () => {
     const data = tx.material.create.mock.calls[0][0].data;
     expect(Number(data.unitPrice)).toBe(950);
     expect(data.priceItemId).toBe(88);
+  });
+
+  it('⭐ №211: цена материала из файла → отдельная расценка MATERIAL в том же справочнике', async () => {
+    const { service, tx } = makeService(
+      batchWith([row({ filePrice: null, fileMaterialPrice: 380, hasPrice: true })]),
+    );
+    tx.priceItem.create.mockResolvedValueOnce({ id: 601 });
+
+    const result = await service.commit({ batchId: 41, userId: 7 });
+
+    expect(tx.priceCatalog.create).toHaveBeenCalledTimes(1);
+    expect(tx.priceItem.create).toHaveBeenCalledTimes(1);
+    const item = tx.priceItem.create.mock.calls[0][0].data;
+    expect(item.kind).toBe('MATERIAL');
+    expect(Number(item.price)).toBe(380);
+
+    const data = tx.material.create.mock.calls[0][0].data;
+    expect(Number(data.materialUnitPrice)).toBe(380);
+    expect(data.materialItemId).toBe(601);
+    // работы в файле не было → цена работы берётся из справочника FRAME (как и раньше)
+    expect(data.priceItemId).toBe(88);
+    expect(Number(data.unitPrice)).toBe(950);
+    expect(result.created).toBe(1);
   });
 
   it('строка без совпадения в справочнике пишется с нулевой ценой', async () => {
