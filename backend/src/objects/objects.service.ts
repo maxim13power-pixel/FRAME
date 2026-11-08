@@ -36,21 +36,20 @@ export class ObjectsService {
   }
 
   /**
-   * ⭐ №219 (аудит §64, P1-2): справочник цен и даты объекта — управленческое решение
-   * уровня администратора объекта. Прораб (canWrite) может менять только имя/адрес/заметку:
-   * раньше он мог подменить справочник и тем самым поменять ВСЕ расценки объекта.
+   * ⭐ №219/№220 (уточнение владельца): справочник цен объекта — «деньги».
+   * Менять его может тот, кому доверяют цены: администратор объекта ИЛИ участник,
+   * который цены ВИДИТ (не VIEWER и без hidePrices). Кто цен не видит — не может
+   * подставить другой справочник. ДАТЫ объекта не ограничиваем (см. №220): прораб
+   * продлевает объект при создании проекта «за пределы» срока.
    */
-  private assertManageOnlyFields(
-    my: { canManage: boolean },
-    dto: { catalogId?: unknown; startDate?: unknown; endDate?: unknown },
-  ) {
-    const restricted: string[] = [];
-    if (dto.catalogId !== undefined) restricted.push('справочник цен');
-    if (dto.startDate !== undefined || dto.endDate !== undefined) restricted.push('даты объекта');
-    if (restricted.length > 0 && !my.canManage) {
-      throw new ForbiddenException(
-        `Менять ${restricted.join(' и ')} может только администратор объекта`,
-      );
+  private assertPriceTrustForCatalog(my: {
+    canManage: boolean;
+    hidePrices: boolean;
+    role: AccessRole | null;
+  }) {
+    const seesPrices = !my.hidePrices && my.role !== AccessRole.VIEWER;
+    if (!my.canManage && !seesPrices) {
+      throw new ForbiddenException('У вас скрыты цены — менять справочник цен объекта нельзя');
     }
   }
 
@@ -223,8 +222,9 @@ export class ObjectsService {
   // Обновление — только если есть доступ к объекту
   async update(id: number, dto: Partial<CreateObjectDto>, userId: number) {
     const my = await this.assertCanEdit(id, userId);
-    // ⭐ №219: справочник цен и даты — только администратор объекта
-    this.assertManageOnlyFields(my, dto);
+    // ⭐ №220: справочник цен — по «доверию к ценам» (см. assertPriceTrustForCatalog),
+    // даты объекта правит любой, кто может писать (нужно для продления из проектов)
+    if (dto.catalogId !== undefined) this.assertPriceTrustForCatalog(my);
     // ⭐ №164: смена справочника объекта (undefined = не трогаем, null = отвязать)
     const catalogId =
       dto.catalogId === undefined
@@ -296,11 +296,9 @@ export class ObjectsService {
   }
 
   async updateEndDate(id: number, newEndDate: string, userId: number) {
-    const my = await this.assertCanEdit(id, userId);
-    // ⭐ №219: дата окончания объекта — только администратор объекта
-    if (!my.canManage) {
-      throw new ForbiddenException('Менять дату окончания может только администратор объекта');
-    }
+    // ⭐ №220 (решение владельца): ограничение по роли ОТКАЧЕНО — прораб продлевает объект,
+    // когда создаёт проект с окончанием позже срока объекта (модалка подтверждения).
+    await this.assertCanEdit(id, userId);
     // ⭐ №219: пустое/битое тело раньше давало 500 (Invalid Date → Prisma) — теперь 400
     const parsed = newEndDate ? new Date(newEndDate) : new Date(Number.NaN);
     if (!newEndDate || Number.isNaN(parsed.getTime())) {

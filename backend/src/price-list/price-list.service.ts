@@ -254,6 +254,11 @@ export class PriceListService {
     if (!access || !access.canRead) {
       throw new NotFoundException('Справочник не найден или нет доступа');
     }
+    // ⭐ №220: копия переносит ЦЕНЫ. Кому цены скрыты — копировать нельзя,
+    // иначе он получит их в своём справочнике и увидит.
+    if (!(await this.pricesVisibleFor(sourceId, userId))) {
+      throw new ForbiddenException('У вас скрыты цены — копировать справочник нельзя');
+    }
     const items = await this.prisma.priceItem.findMany({
       where: { catalogId: sourceId, isActive: true },
       orderBy: { name: 'asc' },
@@ -340,20 +345,38 @@ export class PriceListService {
   }
 
   /**
-   * ⭐ №219 (аудит §64, P1-1): видит ли пользователь ДЕНЬГИ.
-   * hidePrices выдаётся приглашением, VIEWER всегда без цен. Решение владельца:
-   * раздел «Справочники цен» не закрываем (наблюдатель может быть админом другого
-   * объекта), но цифры прячем — если человек не видит цены НИГДЕ.
-   * «Хотя бы один» грант с ценами → считаем, что цены ему доступны (скрывать бессмысленно).
+   * ⭐ №220 (уточнение владельца): видит ли пользователь цены В КОНКРЕТНОМ справочнике.
+   *  • свой справочник — всегда видит;
+   *  • объектный/проектный — если в ЭТОМ объекте цены не скрыты;
+   *  • общий системный — только если привязан к объекту, где цены видны (иначе «—»);
+   *  • без catalogId (общий поиск) — «видит цены хотя бы где-то».
+   * Так наблюдатель, у которого есть свой демо-объект, не видит цены ЧУЖИХ справочников.
    */
-  private async canSeePrices(userId?: number): Promise<boolean> {
+  private async pricesVisibleFor(catalogId: number | undefined, userId?: number): Promise<boolean> {
     if (!userId) return false;
     if (await this.isAdmin(userId)) return true;
-    const grant = await this.prisma.objectAccess.findFirst({
-      where: { userId, revokedAt: null, hidePrices: false, role: { not: AccessRole.VIEWER } },
-      select: { id: true },
+    const grants = await this.prisma.objectAccess.findMany({
+      where: { userId, revokedAt: null },
+      select: { objectId: true, role: true, hidePrices: true },
     });
-    return !!grant;
+    const sees = (g: { role: string; hidePrices: boolean }) =>
+      !g.hidePrices && g.role !== AccessRole.VIEWER;
+    if (catalogId == null) return grants.some(sees);
+    const catalog = await this.prisma.priceCatalog.findUnique({
+      where: { id: catalogId },
+      select: {
+        ownerId: true,
+        objects: { select: { id: true } },
+        projects: { select: { objectId: true } },
+      },
+    });
+    if (!catalog) return false;
+    if (catalog.ownerId === userId) return true;
+    const objectIds = new Set<number>([
+      ...(catalog.objects ?? []).map((o) => o.id),
+      ...(catalog.projects ?? []).map((p) => p.objectId),
+    ]);
+    return grants.some((g) => objectIds.has(g.objectId) && sees(g));
   }
 
   /** Прячет цифры в позициях справочника (названия и артикулы остаются). */
@@ -386,7 +409,7 @@ export class PriceListService {
       },
     }).then(async (categories) => {
       // ⭐ №219: цифры прячем всем, кто не видит деньги нигде (VIEWER / hidePrices)
-      const hidePrices = !(await this.canSeePrices(userId));
+      const hidePrices = !(await this.pricesVisibleFor(catalogId, userId));
       const withPrices = (list: typeof categories) =>
         hidePrices
           ? list.map((c) => ({ ...c, items: this.stripItemPrices(c.items) }))
@@ -494,7 +517,7 @@ export class PriceListService {
     }
     // ⭐ №219: если пользователь не видит деньги — не ищем и по цене (иначе подбор
     // цифр в поиске выдаёт реальные цены), а сами цифры в ответе прячем.
-    const hidePrices = !(await this.canSeePrices(userId));
+    const hidePrices = !(await this.pricesVisibleFor(catalogId, userId));
     // ⭐ №179: цифры в запросе ищем ещё и по цене
     const priceIds =
       search && !hidePrices

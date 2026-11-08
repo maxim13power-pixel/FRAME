@@ -26,6 +26,9 @@ import { AccessRole, Unit } from '@prisma/client'; // ⭐ №127 онборди�
 // Текст вынесен наружу — его проверяет спека регистрации.
 export const EMAIL_CODE_ALREADY_USED =
   'Код уже использован — аккаунт создан. Войдите в систему или запросите новый код.';
+
+/** ⭐ №220: имя личной копии демо-справочника, которая создаётся при регистрации. */
+export const DEMO_CATALOG_COPY_NAME = 'Демо-справочник (пример)';
 @Injectable()
 export class AuthService {
   constructor(
@@ -499,27 +502,67 @@ export class AuthService {
       },
     ];
 
-    // ⭐ №211: расценки берём из системного (демо) справочника — ownerId = null.
-    // Благодаря этому объект привязан к справочнику, а позиции ссылаются на реальные
-    // расценки (в модалке материала сразу видно, что выбрано, а не пустые поля).
+    // ⭐ №211/№220: «пример» берём из системного справочника (ownerId = null), но юзеру
+    // создаём ЛИЧНУЮ копию — её можно править под свои цены, не задевая остальных.
     const demoCatalog = await this.prismaService.priceCatalog.findFirst({
       where: { ownerId: null },
       orderBy: { id: 'asc' },
       select: {
         id: true,
-        items: { select: { id: true, name: true, price: true, kind: true } },
+        items: {
+          select: {
+            id: true,
+            name: true,
+            article: true,
+            unit: true,
+            price: true,
+            kind: true,
+            categoryId: true,
+          },
+        },
       },
     });
     const normName = (s: string) => s.toLowerCase().replace(/ё/g, 'е').trim();
-    const workByName = new Map<string, { id: number; price: number }>();
-    const matByName = new Map<string, { id: number; price: number }>();
-    for (const item of demoCatalog?.items ?? []) {
-      const entry = { id: item.id, price: Number(item.price) };
-      if (item.kind === 'WORK') workByName.set(normName(item.name), entry);
-      else matByName.set(normName(item.name), entry);
-    }
 
     await this.prismaService.$transaction(async (tx) => {
+      // ⭐ №220: личная копия демо-справочника (названия остаются, цены юзер меняет под себя)
+      let demoCatalogId: number | null = null;
+      const sourceItems = demoCatalog?.items ?? [];
+      if (demoCatalog) {
+        const copy = await tx.priceCatalog.create({
+          data: { name: DEMO_CATALOG_COPY_NAME, ownerId: userId },
+          select: { id: true },
+        });
+        demoCatalogId = copy.id;
+        if (sourceItems.length > 0) {
+          await tx.priceItem.createMany({
+            data: sourceItems.map((i) => ({
+              ownerId: userId,
+              catalogId: copy.id,
+              name: i.name,
+              article: i.article,
+              unit: i.unit,
+              price: i.price,
+              categoryId: i.categoryId,
+              kind: i.kind,
+            })),
+          });
+        }
+      }
+      // расценки для демо-позиций — уже из ЛИЧНОЙ копии
+      const workByName = new Map<string, { id: number; price: number }>();
+      const matByName = new Map<string, { id: number; price: number }>();
+      if (demoCatalogId) {
+        const copied = await tx.priceItem.findMany({
+          where: { catalogId: demoCatalogId },
+          select: { id: true, name: true, price: true, kind: true },
+        });
+        for (const item of copied) {
+          const entry = { id: item.id, price: Number(item.price) };
+          if (item.kind === 'WORK') workByName.set(normName(item.name), entry);
+          else matByName.set(normName(item.name), entry);
+        }
+      }
       const object = await tx.object.create({
         data: {
           name: 'Квартира-образец, 68 м²',
@@ -528,8 +571,8 @@ export class AuthService {
           endDate: end,
           plannedEndDate: end,
           isDemo: true,
-          // ⭐ №211: справочник цен объекта — иначе в смете нечего выбирать «из справочника»
-          catalogId: demoCatalog?.id ?? null,
+          // ⭐ №220: демо-объект привязан к ЛИЧНОЙ копии демо-справочника
+          catalogId: demoCatalogId,
           note: 'Демо-объект для знакомства с FRAME. Можно удалить.',
           accesses: {
             create: { userId, role: AccessRole.CUSTOMER },
