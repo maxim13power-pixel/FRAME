@@ -231,18 +231,26 @@ const PhotoCaptureDialog: React.FC<Props> = ({
                 <TextField
                   size="small"
                   fullWidth
-                  placeholder="Комментарий к фото (необязательно)"
+                  placeholder="Комментарий к фото (до 500 символов)"
                   value={item.comment}
                   onChange={(e) => updateItem(item.key, { comment: e.target.value.slice(0, 500) })}
                   disabled={item.status === 'uploading'}
                   multiline
-                  maxRows={3}
+                  maxRows={4}
                   inputProps={{ maxLength: 500 }}
+                  // ⭐ №229: слитный текст без пробелов переносится, а не уезжает вправо
+                  sx={{ '& textarea': { overflowWrap: 'anywhere', wordBreak: 'break-word' } }}
                 />
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5, gap: 1 }}>
-                  <Typography variant="caption" color="text.secondary">
+                  {/* ⭐ №229: счётчик виден всегда — понятно, что лимит 500, а не «обрезало молча» */}
+                  <Typography
+                    variant="caption"
+                    color={item.comment.length >= 500 ? 'warning.main' : 'text.secondary'}
+                    fontWeight={item.comment.length >= 500 ? 600 : 400}
+                  >
                     {formatFileSize(item.prepared.file.size)} • {item.prepared.width}×{item.prepared.height}
-                    {item.comment.length > 0 ? ` • ${item.comment.length}/500` : ''}
+                    {` • ${item.comment.length}/500`}
+                    {item.comment.length >= 500 ? ' — лимит' : ''}
                   </Typography>
                   <IconButton
                     size="small"

@@ -242,7 +242,7 @@ const PhotoGalleryDialog: React.FC<Props> = ({
                         <CircularProgress size={20} />
                       </Box>
                     )}
-                    <Box sx={{ p: 1 }}>
+                    <Box sx={{ p: 1, minWidth: 0 }}>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                         {formatDate(photo.createdAt)}
                         {photo.authorName ? ` • ${photo.authorName}` : ''}
@@ -255,6 +255,9 @@ const PhotoGalleryDialog: React.FC<Props> = ({
                           WebkitBoxOrient: 'vertical',
                           overflow: 'hidden',
                           minHeight: '2.4em',
+                          // ⭐ №229: длинное слово/слитный текст не должен растягивать карточку
+                          wordBreak: 'break-word',
+                          overflowWrap: 'anywhere',
                         }}
                       >
                         {photo.comment || 'Без комментария'}
@@ -307,13 +310,37 @@ const PhotoGalleryDialog: React.FC<Props> = ({
             <CircularProgress sx={{ color: '#fff' }} />
           )}
         </DialogContent>
-        <DialogContent>
+        <DialogContent sx={{ maxWidth: '100%', overflowX: 'hidden' }}>
           {viewer?.authorName && (
             <Typography variant="caption" color="text.secondary">Автор: {viewer.authorName}</Typography>
           )}
-          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 0.5 }}>
-            {viewer?.comment || 'Без комментария'}
-          </Typography>
+          {/* ⭐ №229: комментарий переносится (в т.ч. слитный текст без пробелов) и скроллится,
+              а не растягивает диалог в одну бесконечную строку */}
+          <Box
+            sx={{
+              mt: 0.5,
+              maxHeight: '30vh',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              pr: 1,
+            }}
+          >
+            <Typography
+              variant="body2"
+              sx={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                overflowWrap: 'anywhere',
+              }}
+            >
+              {viewer?.comment || 'Без комментария'}
+            </Typography>
+          </Box>
+          {viewer && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              {viewer.comment ? `${viewer.comment.length}/500 символов` : ''}
+            </Typography>
+          )}
         </DialogContent>
       </Dialog>
     </>
