@@ -16,10 +16,26 @@ export interface MaterialPhotoData {
   hasThumb: boolean;
 }
 
+/** ⭐ №230: фото в ленте на Главной (с подписями материала/проекта/объекта). */
+export interface PhotoFeedItem extends MaterialPhotoData {
+  materialId: number;
+  materialName: string;
+  projectId: number;
+  projectName: string;
+  objectId: number;
+  objectName: string;
+}
+
 export const fetchMaterialPhotos = async (
   materialId: number,
 ): Promise<MaterialPhotoData[]> => {
   const response = await api.get(`/materials/${materialId}/photos`);
+  return response.data;
+};
+
+/** ⭐ №230: последние фото по доступным объектам (лента на Главной). */
+export const fetchRecentPhotos = async (limit = 12): Promise<PhotoFeedItem[]> => {
+  const response = await api.get('/photos/recent', { params: { limit } });
   return response.data;
 };
 

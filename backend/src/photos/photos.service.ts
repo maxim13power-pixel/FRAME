@@ -15,6 +15,12 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertAccessActive, findProjectAccess } from '../auth/access-scope';
+import {
+  accessibleProjectWhere,
+  buildWorkScope,
+  isScopeEmpty,
+  loadAccessGrants,
+} from '../auth/access-scope';
 import { PHOTO_STORAGE } from './photo-storage';
 import type { PhotoStorage } from './photo-storage';
 import { buildPhotoKey } from './photo-storage';
@@ -59,6 +65,16 @@ export interface PhotoFileDto {
   cacheKey: string;
 }
 
+/** ⭐ №230: элемент ленты «последние фото» на Главной. */
+export interface PhotoFeedItemDto extends PhotoListItemDto {
+  materialId: number;
+  materialName: string;
+  projectId: number;
+  projectName: string;
+  objectId: number;
+  objectName: string;
+}
+
 const PHOTO_SELECT = {
   id: true,
   comment: true,
@@ -69,6 +85,24 @@ const PHOTO_SELECT = {
   width: true,
   height: true,
   thumbName: true,
+} as const;
+
+// ⭐ №230: те же поля + материал/проект/объект для подписи в ленте
+const FEED_SELECT = {
+  ...PHOTO_SELECT,
+  materialId: true,
+  material: {
+    select: {
+      name: true,
+      project: {
+        select: {
+          id: true,
+          name: true,
+          object: { select: { id: true, name: true } },
+        },
+      },
+    },
+  },
 } as const;
 
 type PhotoRow = {
@@ -145,6 +179,38 @@ export class PhotosService {
       width: r.width,
       height: r.height,
       hasThumb: Boolean(r.thumbName),
+    }));
+  }
+
+  /**
+   * ⭐ №230: последние фото по всем доступным объектам (лента на Главной).
+   * Доступ — как у дашборда: активные гранты, скрытые/отозванные не в счёт, архивные
+   * объекты исключены (accessibleProjectWhere). hidePrices фото не скрывает — денег
+   * в ответе нет, это подтверждение объёмов.
+   */
+  async recent(userId: number, limit = 12): Promise<PhotoFeedItemDto[]> {
+    const safeLimit = Math.min(
+      Math.max(Math.trunc(Number.isFinite(limit) ? limit : 12), 1),
+      24,
+    );
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const scope = buildWorkScope(grants);
+    if (isScopeEmpty(scope)) return [];
+    const rows = await this.prisma.materialPhoto.findMany({
+      where: { material: { project: accessibleProjectWhere(scope) } },
+      orderBy: { createdAt: 'desc' },
+      take: safeLimit,
+      select: FEED_SELECT,
+    });
+    const base = await this.withAuthors(rows as unknown as PhotoRow[]);
+    return rows.map((row, index) => ({
+      ...base[index],
+      materialId: row.materialId,
+      materialName: row.material.name,
+      projectId: row.material.project.id,
+      projectName: row.material.project.name,
+      objectId: row.material.project.object.id,
+      objectName: row.material.project.object.name,
     }));
   }
 

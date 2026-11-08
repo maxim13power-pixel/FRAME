@@ -8,16 +8,9 @@ import {
 } from '@mui/material';
 import AddAPhotoIcon from '@mui/icons-material/AddAPhoto';
 import CloseIcon from '@mui/icons-material/Close';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import DownloadIcon from '@mui/icons-material/Download';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import {
-  deleteMaterialPhoto,
-  fetchMaterialPhotos,
-  fetchPhotoBlob,
-} from '../services/photoService';
+import { fetchMaterialPhotos, fetchPhotoBlob } from '../services/photoService';
 import type { MaterialPhotoData } from '../services/photoService';
-import { useFeedback } from '../contexts/FeedbackContext';
+import PhotoViewerDialog from './PhotoViewerDialog';
 import { getApiErrorMessage } from '../utils/errors';
 
 interface Props {
@@ -55,24 +48,19 @@ const PhotoGalleryDialog: React.FC<Props> = ({
 }) => {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
-  const { confirm, error: notifyError } = useFeedback();
   const [photos, setPhotos] = useState<MaterialPhotoData[]>([]);
   const [thumbs, setThumbs] = useState<Record<number, string>>({});
+  // ⭐ №230: файл мог не сохраниться (битые/старые данные) — показываем заглушку, не вечный спиннер
+  const [failedThumbs, setFailedThumbs] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [viewer, setViewer] = useState<MaterialPhotoData | null>(null);
-  const [viewerUrl, setViewerUrl] = useState('');
-  const [deleting, setDeleting] = useState(false);
   const urlsRef = useRef<Record<number, string>>({});
 
   const revokeAll = useCallback(() => {
     Object.values(urlsRef.current).forEach((url) => URL.revokeObjectURL(url));
     urlsRef.current = {};
     setThumbs({});
-    setViewerUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return '';
-    });
   }, []);
 
   const load = useCallback(async () => {
@@ -104,6 +92,7 @@ const PhotoGalleryDialog: React.FC<Props> = ({
       });
       urlsRef.current = next;
       setThumbs(next);
+      setFailedThumbs(new Set(list.filter((p) => !next[p.id]).map((p) => p.id)));
     } catch (err) {
       setError(getApiErrorMessage(err, 'Не удалось загрузить фото'));
     } finally {
@@ -133,48 +122,11 @@ const PhotoGalleryDialog: React.FC<Props> = ({
     return [...map.entries()];
   }, [photos]);
 
-  const openViewer = async (photo: MaterialPhotoData) => {
+  const openViewer = (photo: MaterialPhotoData) => {
     setViewer(photo);
-    try {
-      const blob = await fetchPhotoBlob(photo.id, 'full');
-      setViewerUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return URL.createObjectURL(blob);
-      });
-    } catch (err) {
-      notifyError(getApiErrorMessage(err, 'Не удалось открыть фото'));
-    }
   };
 
-  const closeViewer = () => {
-    setViewer(null);
-    setViewerUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return '';
-    });
-  };
-
-  const removePhoto = async (photo: MaterialPhotoData) => {
-    const ok = await confirm({
-      title: 'Удалить фото?',
-      text: 'Фото будет удалено безвозвратно.',
-      confirmText: 'Удалить',
-      cancelText: 'Отмена',
-      danger: true,
-    });
-    if (!ok) return;
-    setDeleting(true);
-    try {
-      await deleteMaterialPhoto(photo.id);
-      closeViewer();
-      await load();
-      onChanged();
-    } catch (err) {
-      notifyError(getApiErrorMessage(err, 'Не удалось удалить фото'));
-    } finally {
-      setDeleting(false);
-    }
-  };
+  const closeViewer = () => setViewer(null);
 
   return (
     <>
@@ -237,6 +189,15 @@ const PhotoGalleryDialog: React.FC<Props> = ({
                         loading="lazy"
                         sx={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' }}
                       />
+                    ) : failedThumbs.has(photo.id) ? (
+                      <Box
+                        sx={{
+                          width: '100%', aspectRatio: '1 / 1', display: 'flex',
+                          alignItems: 'center', justifyContent: 'center', bgcolor: '#eceff1',
+                        }}
+                      >
+                        <Typography variant="caption" color="text.secondary">Файл недоступен</Typography>
+                      </Box>
                     ) : (
                       <Box sx={{ width: '100%', aspectRatio: '1 / 1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <CircularProgress size={20} />
@@ -271,78 +232,14 @@ const PhotoGalleryDialog: React.FC<Props> = ({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(viewer)} onClose={closeViewer} fullScreen maxWidth="lg">
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <IconButton onClick={closeViewer} aria-label="Назад"><ArrowBackIcon /></IconButton>
-          <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>
-            {viewer ? formatDate(viewer.createdAt) : ''}
-          </Typography>
-          {viewerUrl && (
-            <IconButton
-              component="a"
-              href={viewerUrl}
-              download={`photo-${viewer?.id ?? 0}.jpg`}
-              aria-label="Скачать"
-            >
-              <DownloadIcon />
-            </IconButton>
-          )}
-          {viewer && (
-            <IconButton
-              onClick={() => void removePhoto(viewer)}
-              disabled={deleting}
-              color="error"
-              aria-label="Удалить фото"
-            >
-              <DeleteOutlineIcon />
-            </IconButton>
-          )}
-        </DialogTitle>
-        <DialogContent dividers sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#111', minHeight: 240 }}>
-          {viewerUrl ? (
-            <Box
-              component="img"
-              src={viewerUrl}
-              alt={viewer?.comment ?? 'Фото'}
-              sx={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
-            />
-          ) : (
-            <CircularProgress sx={{ color: '#fff' }} />
-          )}
-        </DialogContent>
-        <DialogContent sx={{ maxWidth: '100%', overflowX: 'hidden' }}>
-          {viewer?.authorName && (
-            <Typography variant="caption" color="text.secondary">Автор: {viewer.authorName}</Typography>
-          )}
-          {/* ⭐ №229: комментарий переносится (в т.ч. слитный текст без пробелов) и скроллится,
-              а не растягивает диалог в одну бесконечную строку */}
-          <Box
-            sx={{
-              mt: 0.5,
-              maxHeight: '30vh',
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              pr: 1,
-            }}
-          >
-            <Typography
-              variant="body2"
-              sx={{
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                overflowWrap: 'anywhere',
-              }}
-            >
-              {viewer?.comment || 'Без комментария'}
-            </Typography>
-          </Box>
-          {viewer && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-              {viewer.comment ? `${viewer.comment.length}/500 символов` : ''}
-            </Typography>
-          )}
-        </DialogContent>
-      </Dialog>
+      <PhotoViewerDialog
+        photo={viewer}
+        onClose={closeViewer}
+        onDeleted={() => {
+          void load();
+          onChanged();
+        }}
+      />
     </>
   );
 };

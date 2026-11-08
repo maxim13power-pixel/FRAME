@@ -297,4 +297,89 @@ describe('PhotosService', () => {
       await expect(service.remove(3, 7)).rejects.toBeInstanceOf(NotFoundException);
     });
   });
+
+  describe('recent — лента фото на Главной (№230)', () => {
+    const feedRow = {
+      id: 5,
+      comment: 'Бетон залит',
+      createdAt: new Date('2026-11-08T10:00:00.000Z'),
+      createdById: 7,
+      mimeType: 'image/jpeg',
+      sizeBytes: 1234,
+      width: 1600,
+      height: 900,
+      thumbName: null,
+      materialId: 42,
+      material: {
+        name: 'Бетон М300',
+        project: { id: 10, name: 'Проект А', object: { id: 5, name: 'Объект А' } },
+      },
+    };
+
+    it('отдаёт фото с подписями материала/проекта/объекта', async () => {
+      prisma.materialPhoto.findMany.mockResolvedValue([feedRow]);
+
+      const res = await service.recent(7, 12);
+
+      expect(res).toHaveLength(1);
+      expect(res[0]).toEqual({
+        id: 5,
+        comment: 'Бетон залит',
+        createdAt: '2026-11-08T10:00:00.000Z',
+        authorName: 'Пётр',
+        mimeType: 'image/jpeg',
+        sizeBytes: 1234,
+        width: 1600,
+        height: 900,
+        hasThumb: false,
+        materialId: 42,
+        materialName: 'Бетон М300',
+        projectId: 10,
+        projectName: 'Проект А',
+        objectId: 5,
+        objectName: 'Объект А',
+      });
+    });
+
+    it('нет объектов — пустая лента, БД не дёргаем', async () => {
+      prisma.objectAccess.findMany.mockResolvedValue([]);
+
+      await expect(service.recent(7)).resolves.toEqual([]);
+      expect(prisma.materialPhoto.findMany).not.toHaveBeenCalled();
+    });
+
+    it('limit зажимается в 1..24', async () => {
+      prisma.materialPhoto.findMany.mockResolvedValue([]);
+      await service.recent(7, 100);
+      expect(prisma.materialPhoto.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 24 }),
+      );
+
+      prisma.materialPhoto.findMany.mockClear();
+      await service.recent(7, 0);
+      expect(prisma.materialPhoto.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 1 }),
+      );
+    });
+
+    it('наблюдатель с hidePrices фото видит (деньги здесь не отдаются)', async () => {
+      prisma.objectAccess.findMany.mockResolvedValue([
+        { id: 1, role: 'VIEWER', hidePrices: true, revokedAt: null, projectId: null },
+      ]);
+      prisma.materialPhoto.findMany.mockResolvedValue([feedRow]);
+
+      const res = await service.recent(7, 12);
+
+      expect(res).toHaveLength(1);
+    });
+
+    it('отозванный доступ в ленту не попадает', async () => {
+      prisma.objectAccess.findMany.mockResolvedValue([
+        { id: 1, role: 'FOREMAN', hidePrices: false, revokedAt: new Date(), projectId: null },
+      ]);
+
+      await expect(service.recent(7)).resolves.toEqual([]);
+      expect(prisma.materialPhoto.findMany).not.toHaveBeenCalled();
+    });
+  });
 });

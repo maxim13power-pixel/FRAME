@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, Stack, LinearProgress, Chip, Button,
@@ -14,6 +14,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { fetchDashboardSummary } from '../services/dashboardService';
 import type { DashboardSummary } from '../services/dashboardService';
+import { fetchPhotoBlob, fetchRecentPhotos } from '../services/photoService'; // ⭐ №230
+import type { MaterialPhotoData, PhotoFeedItem } from '../services/photoService';
+import PhotoViewerDialog from '../components/PhotoViewerDialog'; // ⭐ №230
 import { parseDecimal } from '../utils/decimal'; // 🔒 P1-3: бэкенд отдаёт Decimal строкой
 
 // 🔒 Шаг 103 (P1-3): принимаем number | string — Decimal с бэкенда приходит строкой
@@ -57,6 +60,9 @@ const timeAgo = (iso: string) => {
   if (h < 24) return `${h} ч назад`;
   return `${Math.floor(h / 24)} дн назад`;
 };
+/** ⭐ №230: подпись даты в ленте фото («8 нояб.») */
+const photoDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
@@ -64,14 +70,47 @@ const Home: React.FC = () => {
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // ⭐ №230: лента последних фото по доступным объектам
+  const [feedPhotos, setFeedPhotos] = useState<PhotoFeedItem[]>([]);
+  const [feedThumbs, setFeedThumbs] = useState<Record<number, string>>({});
+  const [viewerPhoto, setViewerPhoto] = useState<MaterialPhotoData | null>(null);
+  const feedUrlsRef = useRef<Record<number, string>>({});
 
   useMobileHeader({ title: 'Главная' });
+
+  // Лента не критична для Главной: ошибки глотаем, дашборд показываем в любом случае
+  const loadFeed = async () => {
+    try {
+      const list = await fetchRecentPhotos(12);
+      const pairs = await Promise.all(
+        list.map(async (p) => {
+          try {
+            const blob = await fetchPhotoBlob(p.id, p.hasThumb ? 'thumb' : 'full');
+            return [p.id, URL.createObjectURL(blob)] as const;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const next: Record<number, string> = {};
+      pairs.forEach((pair) => {
+        if (pair) next[pair[0]] = pair[1];
+      });
+      Object.values(feedUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+      feedUrlsRef.current = next;
+      setFeedPhotos(list);
+      setFeedThumbs(next);
+    } catch {
+      setFeedPhotos([]);
+    }
+  };
 
   const load = async () => {
     if (!token) return;
     try {
       setLoading(true);
-      setData(await fetchDashboardSummary());
+      const [summary] = await Promise.all([fetchDashboardSummary(), loadFeed()]);
+      setData(summary);
       setError('');
     } catch (e) {
       console.error(e);
@@ -85,6 +124,15 @@ const Home: React.FC = () => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // ⭐ №230: освобождаем objectURL миниатюр ленты при уходе со страницы
+  useEffect(
+    () => () => {
+      Object.values(feedUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+      feedUrlsRef.current = {};
+    },
+    [],
+  );
 
   if (loading) {
     return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
@@ -144,7 +192,7 @@ const Home: React.FC = () => {
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
           <AccountBalanceWalletIcon sx={{ fontSize: 20, color: '#1976d2' }} />
-          <Typography variant="subtitle1" fontWeight={700}>Деньги по всем объектам</Typography>
+          <Typography variant="subtitle1" fontWeight={700}>Расчёт по всем объектам</Typography>
         </Box>
         <Typography variant="caption" color="text.secondary">
           В работе: {data.kpi.projectsCount} проектов • {data.kpi.objectsCount} объекта • {data.kpi.materialsCount} позиций
@@ -211,6 +259,85 @@ const Home: React.FC = () => {
           Подробнее в Аналитике →
         </Button>
       </Paper>
+
+      {/* ⭐ №230: последние фото по объектам — горизонтальная лента */}
+      {feedPhotos.length > 0 && (
+        <Paper sx={{ p: 2, borderRadius: 2, mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: 1 }}>
+            <Typography variant="subtitle1" fontWeight={700}>Фото с объектов</Typography>
+            <Typography variant="caption" color="text.secondary">последние {feedPhotos.length}</Typography>
+          </Box>
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 1.5,
+              overflowX: 'auto',
+              pb: 1,
+              scrollSnapType: 'x mandatory',
+              WebkitOverflowScrolling: 'touch',
+              '&::-webkit-scrollbar': { height: 6 },
+              '&::-webkit-scrollbar-thumb': { bgcolor: '#cfd8dc', borderRadius: 3 },
+            }}
+          >
+            {feedPhotos.map((p) => (
+              <Box
+                key={p.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setViewerPhoto(p)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setViewerPhoto(p);
+                  }
+                }}
+                title={p.comment || p.materialName}
+                sx={{
+                  flex: '0 0 auto',
+                  width: { xs: 112, sm: 132 },
+                  cursor: 'pointer',
+                  scrollSnapAlign: 'start',
+                }}
+              >
+                {feedThumbs[p.id] ? (
+                  <Box
+                    component="img"
+                    src={feedThumbs[p.id]}
+                    alt={p.comment || p.materialName}
+                    loading="lazy"
+                    sx={{
+                      width: '100%',
+                      height: { xs: 112, sm: 132 },
+                      objectFit: 'cover',
+                      borderRadius: 2,
+                      display: 'block',
+                      bgcolor: '#eceff1',
+                    }}
+                  />
+                ) : (
+                  <Box
+                    sx={{
+                      width: '100%',
+                      height: { xs: 112, sm: 132 },
+                      borderRadius: 2,
+                      bgcolor: '#eceff1',
+                    }}
+                  />
+                )}
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }} noWrap>
+                  {photoDate(p.createdAt)}
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', fontWeight: 600 }} noWrap>
+                  {p.materialName}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }} noWrap>
+                  {p.objectName}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </Paper>
+      )}
 
       {/* ─── 2. ГОРИТ НА НЕДЕЛЕ ─── */}
       {data.hotProjects.length > 0 && (
@@ -381,6 +508,9 @@ const Home: React.FC = () => {
       >
         Открыть объекты
       </Button>
+
+      {/* ⭐ №230: просмотр фото из ленты (удаление здесь не нужно — только просмотр) */}
+      <PhotoViewerDialog photo={viewerPhoto} onClose={() => setViewerPhoto(null)} />
     </Box>
   );
 };

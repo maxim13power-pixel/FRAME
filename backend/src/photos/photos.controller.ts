@@ -33,6 +33,24 @@ interface PhotoUploadFiles {
   thumb?: UploadedImage[];
 }
 
+@Controller('photos')
+@UseGuards(JwtAuthGuard)
+export class PhotosFeedController {
+  constructor(private readonly photos: PhotosService) {}
+
+  /** ⭐ №230: последние фото по доступным объектам для ленты на Главной. */
+  @Get('recent')
+  recent(@Req() req: AuthedRequest, @Query('limit') limit?: string) {
+    const parsed = limit && limit.trim() !== '' ? Number(limit) : 12;
+    return this.photos.recent(
+      req.user.userId,
+      Number.isFinite(parsed) ? parsed : 12,
+    );
+  }
+}
+
+// ⭐ №230: лента «последние фото» — отдельный маршрут /photos/recent,
+// чтобы не пересекаться с /materials/photos/:photoId/file.
 @Controller('materials')
 @UseGuards(JwtAuthGuard)
 export class PhotosController {
