@@ -1,12 +1,48 @@
 // backend/src/users/users.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import type { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
+
+  // ⭐ №215: правка своего профиля (имя/телефон). Ответ — в форме login.user,
+  // чтобы фронт обновил контекст без перезагрузки страницы.
+  async updateMyProfile(userId: number, dto: UpdateProfileDto) {
+    const data: { fullName?: string; phone?: string | null } = {};
+    if (dto.fullName !== undefined) {
+      const fullName = dto.fullName.trim();
+      if (fullName.length < 2) {
+        throw new BadRequestException('Имя минимум 2 символа');
+      }
+      data.fullName = fullName;
+    }
+    if (dto.phone !== undefined) {
+      const phone = dto.phone.trim();
+      if (phone && !/^\+?[0-9]{10,15}$/.test(phone)) {
+        throw new BadRequestException('Телефон: от 10 до 15 цифр, может начинаться с +');
+      }
+      data.phone = phone || null;
+    }
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('Нечего сохранять');
+    }
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data,
+      select: { id: true, fullName: true, email: true, phone: true, role: true },
+    });
+    return {
+      id: user.id,
+      name: user.fullName,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+    };
+  }
 
   // ⭐ Сводный список участников по всем объектам, к которым у юзера есть доступ.
   // Управление (приглашение/роли/отзыв) — в access.service.ts (модалка объекта),

@@ -1,7 +1,8 @@
 // backend/src/users/users.controller.ts
-import { Controller, Delete, Get, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Patch, Req, UseGuards, ValidationPipe } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from './users.service';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -21,6 +22,16 @@ export class UsersController {
   }
 
   // ⭐ №130 (152-ФЗ): удаление аккаунта
+  // ⭐ №215: правка своего профиля — имя и телефон (email/роль не меняются)
+  @Patch('me')
+  updateMe(
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: UpdateProfileDto,
+    @Req() req,
+  ) {
+    return this.usersService.updateMyProfile(req.user.userId, dto);
+  }
+
   @Delete('me')
   deleteMe(@Req() req) {
     return this.usersService.deleteMe(req.user.userId);

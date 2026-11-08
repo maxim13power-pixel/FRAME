@@ -19,6 +19,7 @@ import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import SmartCaptcha from '../components/SmartCaptcha';
 import { getApiErrorMessage } from '../utils/errors';
+import { PASSWORD_RULE_TEXT, passwordIssue } from '../utils/password';
 // ⭐ Шаг 63: регистрация ТОЛЬКО по email (переключатель убран по продуктовому решению).
 // Стиль полей — ТОЧНО как на странице логина (outlined, белый фон, синяя рамка при фокусе).
 const fieldSx = {
@@ -81,8 +82,9 @@ const Register: React.FC = () => {
       setError('Укажите корректный E-mail');
       return;
     }
-    if (password.length < 6) {
-      setError('Пароль минимум 6 символов');
+    const passwordProblem = passwordIssue(password);
+    if (passwordProblem) {
+      setError(passwordProblem);
       return;
     }
     if (!consent) {
@@ -256,6 +258,7 @@ const Register: React.FC = () => {
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                helperText={PASSWORD_RULE_TEXT}
                 sx={fieldSx}
                 slotProps={{
                   input: {

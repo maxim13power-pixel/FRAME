@@ -14,6 +14,8 @@ import { CaptchaService } from '../captcha';
 import { EmailService } from './email.service'; // ⭐ P0-4
 import { ForgotPasswordDto } from './dto/forgot-password.dto'; // ⭐ P0-4
 import { ResetPasswordDto } from './dto/reset-password.dto'; // ⭐ P0-4
+import { ChangePasswordDto } from './dto/change-password.dto'; // ⭐ №215
+import { passwordIssue } from './password-policy'; // ⭐ №215
 import { RequestCodeDto } from './dto/request-code.dto'; // ⭐ №122b
 import { VerifyEmailDto } from './dto/verify.dto'; // ⭐ №122b
 import * as crypto from 'crypto'; // ⭐ P0-4
@@ -198,6 +200,38 @@ export class AuthService {
     ]);
 
     return { message: 'Пароль успешно изменён. Теперь вы можете войти.' };
+  }
+
+  // ⭐ №215: смена пароля из настроек. Требуем текущий пароль (защита от угона сессии),
+  // новый проверяем общей политикой, инкрементим tokenVersion (другие устройства
+  // разлогиниваются) и возвращаем СВЕЖИЙ токен — текущее устройство остаётся в системе.
+  async changePassword(userId: number, dto: ChangePasswordDto) {
+    const user = await this.prismaService.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('Пользователь не найден');
+    }
+    const currentOk = await bcrypt.compare(dto.currentPassword ?? '', user.password);
+    if (!currentOk) {
+      throw new BadRequestException('Текущий пароль указан неверно');
+    }
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('Новый пароль совпадает с текущим — придумайте другой');
+    }
+    const issue = passwordIssue(dto.newPassword);
+    if (issue) {
+      throw new BadRequestException(issue);
+    }
+    const hashed = await bcrypt.hash(dto.newPassword, 10);
+    const updated = await this.prismaService.user.update({
+      where: { id: userId },
+      data: { password: hashed, tokenVersion: { increment: 1 } },
+    });
+    // ⚠️ login() асинхронный — сначала await, иначе спред промиса потеряет токен
+    const auth = await this.login(updated, false);
+    return {
+      ...auth,
+      message: 'Пароль изменён. Остальные устройства вышли из аккаунта.',
+    };
   }
 
   // ═══════ №122b: ВЕРИФИКАЦИЯ EMAIL ═══════

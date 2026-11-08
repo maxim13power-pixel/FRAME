@@ -44,3 +44,22 @@ export const exportMyData = async (): Promise<unknown> => {
 export const deleteMyAccount = async (): Promise<void> => {
   await api.delete('/users/me');
 };
+
+
+// ⭐ №215: правка своего профиля (имя и телефон). Ответ — та же форма, что у login.user,
+// поэтому контекст авторизации обновляется без перезагрузки.
+export interface MyProfile {
+  id: number;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  role: string;
+}
+
+export const updateMyProfile = async (payload: {
+  fullName?: string;
+  phone?: string;
+}): Promise<MyProfile> => {
+  const response = await api.patch('/users/me', payload);
+  return response.data;
+};

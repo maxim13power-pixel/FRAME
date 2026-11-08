@@ -6,6 +6,8 @@ import {
   Matches,
 } from 'class-validator';
 import { AtLeastOne } from './at-least-one.decorator';
+import { IsStrongPassword } from './is-strong-password.decorator';
+
 export class RegisterDto {
   @IsOptional()
   @IsEmail({}, { message: 'Некорректный email' })
@@ -21,7 +23,7 @@ export class RegisterDto {
   phone?: string;
 
   @IsString({ message: 'Пароль обязателен' })
-  @MinLength(6, { message: 'Пароль минимум 6 символов' })
+  @IsStrongPassword()
   password!: string;
 
   @IsString({ message: 'Имя обязательно' })

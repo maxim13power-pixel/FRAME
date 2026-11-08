@@ -17,6 +17,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto'; // ⭐ P0-4
 import { ResetPasswordDto } from './dto/reset-password.dto'; // ⭐ P0-4
 import { RequestCodeDto } from './dto/request-code.dto'; // ⭐ №122b
 import { VerifyEmailDto } from './dto/verify.dto'; // ⭐ №122b
+import { ChangePasswordDto } from './dto/change-password.dto'; // ⭐ №215
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -44,6 +45,17 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async logoutAll(@Req() req) {
     return this.authService.logoutAll(req.user.userId);
+  }
+
+  // ⭐ №215: смена пароля из настроек (текущий пароль обязателен)
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  async changePassword(
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: ChangePasswordDto,
+    @Req() req,
+  ) {
+    return this.authService.changePassword(req.user.userId, dto);
   }
 
   // ⭐ Регистрация нового пользователя

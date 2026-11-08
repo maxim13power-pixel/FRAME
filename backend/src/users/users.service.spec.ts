@@ -3,6 +3,62 @@
 // но членов команды — только по моим проектам (приватность контактов).
 import { UsersService } from './users.service';
 
+describe('UsersService.updateMyProfile (№215)', () => {
+  const makeUsersService = () => {
+    const prisma = {
+      user: {
+        update: jest.fn().mockImplementation(({ data }) =>
+          Promise.resolve({
+            id: 5,
+            fullName: data.fullName ?? 'Старое имя',
+            email: 'a@b.ru',
+            phone: data.phone ?? null,
+            role: 'FOREMAN',
+          }),
+        ),
+      },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return { service: new UsersService(prisma as any), prisma };
+  };
+
+  it('меняет имя и отдаёт форму login.user', async () => {
+    const { service, prisma } = makeUsersService();
+
+    const result = await service.updateMyProfile(5, { fullName: '  Марина  ' });
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 5 },
+      data: { fullName: 'Марина' },
+      select: { id: true, fullName: true, email: true, phone: true, role: true },
+    });
+    expect(result).toMatchObject({ id: 5, name: 'Марина', email: 'a@b.ru' });
+  });
+
+  it('пустой телефон очищает поле (null)', async () => {
+    const { service, prisma } = makeUsersService();
+
+    await service.updateMyProfile(5, { phone: '' });
+
+    expect(prisma.user.update.mock.calls[0][0].data).toEqual({ phone: null });
+  });
+
+  it('слишком короткое имя → 400, база не трогается', async () => {
+    const { service, prisma } = makeUsersService();
+
+    await expect(service.updateMyProfile(5, { fullName: ' А ' })).rejects.toThrow(
+      /Имя минимум 2 символа/,
+    );
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('пустая правка → 400', async () => {
+    const { service } = makeUsersService();
+    await expect(service.updateMyProfile(5, {})).rejects.toThrow(/Нечего сохранять/);
+  });
+});
+
+
 describe('UsersService.getTeam — «Моя команда» (№184)', () => {
   const prisma = {
     objectAccess: { findMany: jest.fn() },

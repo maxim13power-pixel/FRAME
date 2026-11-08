@@ -1,6 +1,8 @@
 // backend/src/auth/dto/verify.dto.ts
 // ⭐ №122b: подтверждение email 6-значным кодом.
 import { IsEmail, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsStrongPassword } from './is-strong-password.decorator';
+
 
 export class VerifyEmailDto {
   @IsEmail({}, { message: 'Некорректный email' })
@@ -17,6 +19,6 @@ export class VerifyEmailDto {
 
   @IsOptional()
   @IsString({ message: 'password: строка или ничего' })
-  @MinLength(6, { message: 'password: минимум 6 символов' })
+  @IsStrongPassword()
   password?: string;
 }

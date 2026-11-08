@@ -6,6 +6,7 @@ import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { resetPassword } from '../services/authService';
 import { getApiErrorMessage } from '../utils/errors';
+import { PASSWORD_RULE_TEXT, passwordIssue } from '../utils/password';
 
 const ResetPassword: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -27,8 +28,9 @@ const ResetPassword: React.FC = () => {
       setError('Неверная или устаревшая ссылка. Запросите восстановление ещё раз.');
       return;
     }
-    if (password.length < 6) {
-      setError('Пароль должен быть минимум 6 символов');
+    const passwordProblem = passwordIssue(password);
+    if (passwordProblem) {
+      setError(passwordProblem);
       return;
     }
     if (password !== confirmPassword) {
@@ -88,6 +90,7 @@ const ResetPassword: React.FC = () => {
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                helperText={PASSWORD_RULE_TEXT}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">

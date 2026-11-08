@@ -3,6 +3,7 @@
 // Раньше здесь стоял `it.todo`, из-за чего рассинхрон «код израсходован, а
 // клиент остался на форме» не ловился ни одним тестом.
 import { BadRequestException, ConflictException, HttpException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 
 // ⭐ №210: auth.service импортирует баррель капчи, а тот тянет @nestjs/axios (ESM) —
 // jest его не парсит. Сетевой сервис в юнит-тестах не нужен, мокаем баррель.
@@ -21,6 +22,7 @@ const makeService = () => {
     user: {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn(),
+      update: jest.fn(),
     },
     // Онбординг (демо-объект) выполняется в транзакции — отдаём простую заглушку.
     $transaction: jest.fn(async (cb: (tx: unknown) => unknown) =>
@@ -132,6 +134,60 @@ describe('AuthService.verifyEmail (продолжение)', () => {
     expect(prisma.user.create).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled(); // демо-объект не пересоздаётся
     expect(result.access_token).toBe('jwt.token');
+  });
+});
+
+describe('AuthService.changePassword (№215)', () => {
+  const OLD = 'old-pass1';
+  const hash = bcrypt.hashSync(OLD, 4); // 4 раунда — тесты быстрее
+
+  it('неверный текущий пароль → 400, пароль не меняется', async () => {
+    const { service, prisma } = makeService();
+    prisma.user.findUnique.mockResolvedValue({ ...newUser, password: hash });
+
+    await expect(
+      service.changePassword(5, { currentPassword: 'wrong-pass1', newPassword: 'Marina2026' }),
+    ).rejects.toThrow('Текущий пароль указан неверно');
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('слабый новый пароль → 400 с текстом политики', async () => {
+    const { service, prisma } = makeService();
+    prisma.user.findUnique.mockResolvedValue({ ...newUser, password: hash });
+
+    await expect(
+      service.changePassword(5, { currentPassword: OLD, newPassword: '123456' }),
+    ).rejects.toThrow(/8 символов/);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('новый пароль совпадает с текущим → 400', async () => {
+    const { service, prisma } = makeService();
+    prisma.user.findUnique.mockResolvedValue({ ...newUser, password: hash });
+
+    await expect(
+      service.changePassword(5, { currentPassword: OLD, newPassword: OLD }),
+    ).rejects.toThrow(/совпадает с текущим/);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('успех: пароль перехэширован, tokenVersion +1, вернулся свежий токен', async () => {
+    const { service, prisma, jwt } = makeService();
+    prisma.user.findUnique.mockResolvedValue({ ...newUser, password: hash });
+    prisma.user.update.mockResolvedValue({ ...newUser, tokenVersion: 1 });
+
+    const result = await service.changePassword(5, {
+      currentPassword: OLD,
+      newPassword: 'Marina2026',
+    });
+
+    const updateArgs = prisma.user.update.mock.calls[0][0];
+    expect(updateArgs.where).toEqual({ id: 5 });
+    expect(updateArgs.data.tokenVersion).toEqual({ increment: 1 });
+    expect(updateArgs.data.password).not.toBe('Marina2026'); // хэш, не открытый текст
+    expect(jwt.sign).toHaveBeenCalled();
+    expect(result.access_token).toBe('jwt.token');
+    expect(result.message).toMatch(/Пароль изменён/);
   });
 });
 

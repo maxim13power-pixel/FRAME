@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, Stack, FormControlLabel, Checkbox, Avatar,
-  Button, Divider, Modal, Alert, Chip,
+  Button, Divider, Modal, Alert, Chip, TextField, CircularProgress,
   List, ListItemButton, ListItemIcon, ListItemText,
   IconButton, useMediaQuery, useTheme,
   Accordion, AccordionSummary, AccordionDetails,
@@ -14,6 +14,8 @@ import EmailIcon from '@mui/icons-material/Email';
 import PhoneIcon from '@mui/icons-material/Phone';
 import LogoutIcon from '@mui/icons-material/Logout';
 import DevicesIcon from '@mui/icons-material/Devices';
+import EditIcon from '@mui/icons-material/Edit';
+import LockResetIcon from '@mui/icons-material/LockReset';
 import TuneIcon from '@mui/icons-material/Tune';
 import SecurityIcon from '@mui/icons-material/Security';
 import InfoIcon from '@mui/icons-material/Info';
@@ -30,10 +32,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 // ⭐ №179: сброс одноразовых подсказок разделов
 import { resetAllIntros } from '../components/SectionIntro';
-import { exportMyData, deleteMyAccount } from '../services/usersService';
+import { exportMyData, deleteMyAccount, updateMyProfile } from '../services/usersService';
 import { fetchMyAccess } from '../services/accessService';
 import type { MyAccess } from '../services/accessService';
-import { logoutAll } from '../services/authService';
+import { logoutAll, changePassword } from '../services/authService';
+import { getApiErrorMessage } from '../utils/errors';
+import { PASSWORD_RULE_TEXT, passwordIssue } from '../utils/password';
 import { getTokenExpiry } from '../utils/jwt';
 
 const MAX_TABS = 5;
@@ -53,13 +57,20 @@ const Settings: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { user, logout, token } = useAuth();
+  const { user, logout, token, login } = useAuth();
   const { error: notifyError, notify } = useFeedback();
   useMobileHeader({ title: 'Настройки', onBack: () => navigate(-1) });
 
   const [selected, setSelected] = useState<string[]>(() => getBottomNavConfig());
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [loggingOutAll, setLoggingOutAll] = useState(false);
+  // ⭐ №215: правка имени и смена пароля прямо из профиля
+  const [nameDraft, setNameDraft] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwRepeat, setPwRepeat] = useState('');
+  const [savingPw, setSavingPw] = useState(false);
   // ⭐ №168: «Мои доступы» — активные / архив / отозванные
   const [myAccess, setMyAccess] = useState<MyAccess[]>([]);
   const [accessLoading, setAccessLoading] = useState(true);
@@ -150,6 +161,61 @@ const Settings: React.FC = () => {
     }
   };
 
+  // ⭐ №215: черновик имени подтягиваем из профиля
+  useEffect(() => {
+    setNameDraft(user?.name ?? '');
+  }, [user?.name]);
+
+  // ⭐ №215: сохранение имени. Ответ сервера — форма login.user, кладём в контекст.
+  const handleSaveName = async () => {
+    const fullName = nameDraft.trim();
+    if (fullName.length < 2) {
+      notifyError('Имя минимум 2 символа');
+      return;
+    }
+    try {
+      setSavingName(true);
+      const updated = await updateMyProfile({ fullName });
+      if (token) login(token, updated);
+      notify('Имя сохранено');
+    } catch (err: unknown) {
+      notifyError(getApiErrorMessage(err, 'Не удалось сохранить имя'));
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  // ⭐ №215: смена пароля. Сервер инкрементит tokenVersion (другие устройства выходят)
+  // и отдаёт новый токен — сохраняем его, чтобы текущая сессия осталась живой.
+  const handleChangePassword = async () => {
+    const issue = passwordIssue(pwNew);
+    if (issue) {
+      notifyError(issue);
+      return;
+    }
+    if (pwNew !== pwRepeat) {
+      notifyError('Пароли не совпадают');
+      return;
+    }
+    if (pwCurrent === pwNew) {
+      notifyError('Новый пароль совпадает с текущим');
+      return;
+    }
+    try {
+      setSavingPw(true);
+      const result = await changePassword(pwCurrent, pwNew);
+      login(result.access_token, result.user);
+      setPwCurrent('');
+      setPwNew('');
+      setPwRepeat('');
+      notify('Пароль изменён. Остальные устройства вышли из аккаунта');
+    } catch (err: unknown) {
+      notifyError(getApiErrorMessage(err, 'Не удалось изменить пароль'));
+    } finally {
+      setSavingPw(false);
+    }
+  };
+
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
@@ -217,6 +283,99 @@ const Settings: React.FC = () => {
             )}
           </Stack>
         )}
+        {/* ⭐ №215: редактирование профиля и пароля — в том же окне, где выход */}
+        <Accordion
+          disableGutters
+          elevation={0}
+          sx={{ mt: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, '&:before': { display: 'none' } }}
+        >
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <EditIcon sx={{ color: '#1976d2' }} />
+              <Typography variant="subtitle2" fontWeight={700}>Изменить имя</Typography>
+            </Box>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Stack spacing={1.5}>
+              <TextField
+                size="small"
+                label="Имя и фамилия"
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                fullWidth
+              />
+              <Button
+                variant="contained"
+                onClick={handleSaveName}
+                disabled={
+                  savingName || nameDraft.trim().length < 2 || nameDraft.trim() === (user?.name ?? '')
+                }
+                startIcon={savingName ? <CircularProgress size={16} color="inherit" /> : undefined}
+                sx={{ alignSelf: 'flex-start' }}
+              >
+                Сохранить имя
+              </Button>
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
+
+        <Accordion
+          disableGutters
+          elevation={0}
+          sx={{ mt: 1, border: '1px solid', borderColor: 'divider', borderRadius: 2, '&:before': { display: 'none' } }}
+        >
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <LockResetIcon sx={{ color: '#1976d2' }} />
+              <Typography variant="subtitle2" fontWeight={700}>Сменить пароль</Typography>
+            </Box>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Stack spacing={1.5}>
+              <TextField
+                size="small"
+                type="password"
+                label="Текущий пароль"
+                value={pwCurrent}
+                onChange={(e) => setPwCurrent(e.target.value)}
+                autoComplete="current-password"
+                fullWidth
+              />
+              <TextField
+                size="small"
+                type="password"
+                label="Новый пароль"
+                value={pwNew}
+                onChange={(e) => setPwNew(e.target.value)}
+                helperText={PASSWORD_RULE_TEXT}
+                autoComplete="new-password"
+                fullWidth
+              />
+              <TextField
+                size="small"
+                type="password"
+                label="Повторите новый пароль"
+                value={pwRepeat}
+                onChange={(e) => setPwRepeat(e.target.value)}
+                autoComplete="new-password"
+                fullWidth
+              />
+              <Button
+                variant="contained"
+                onClick={handleChangePassword}
+                disabled={savingPw || !pwCurrent || !pwNew || !pwRepeat}
+                startIcon={savingPw ? <CircularProgress size={16} color="inherit" /> : undefined}
+                sx={{ alignSelf: 'flex-start' }}
+              >
+                Изменить пароль
+              </Button>
+              <Typography variant="caption" color="text.secondary">
+                После смены пароля остальные устройства выйдут из аккаунта.
+              </Typography>
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
+
         <Divider sx={{ my: 2 }} />
         {/* ⭐ №160: срок действия текущей сессии (из exp в JWT) */}
         {sessionExpiry && (

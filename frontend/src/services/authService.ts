@@ -19,3 +19,14 @@ export const logoutAll = async () => {
   const response = await api.post('/auth/logout-all');
   return response.data;
 };
+
+
+// ⭐ №215: смена пароля из «Настроек». Сервер проверяет текущий пароль, инкрементит
+// tokenVersion (другие устройства выходят) и возвращает СВЕЖИЙ токен для этого устройства.
+export const changePassword = async (
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ access_token: string; user: unknown; message?: string }> => {
+  const response = await api.post('/auth/change-password', { currentPassword, newPassword });
+  return response.data;
+};
