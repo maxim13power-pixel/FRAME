@@ -23,6 +23,7 @@ import { AccessRequestModule } from './access-request/access-request.module'; //
 import { ObjectTemplatesModule } from './object-templates/object-templates.module'; // ⭐ №175
 import { SnapshotsModule } from './snapshots/snapshots.module'; // ⭐ №194: снимок доступа
 import { ImportsModule } from './imports/imports.module'; // ⭐ №202: импорт сметы из Excel
+import { PhotosModule } from './photos/photos.module'; // ⭐ №227: фото-фиксация материалов
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -50,6 +51,7 @@ import { ImportsModule } from './imports/imports.module'; // ⭐ №202: имп�
     ObjectTemplatesModule, // ⭐ №175: шаблоны объектов
     SnapshotsModule, // ⭐ №194: снимок доступа (только чтение)
     ImportsModule, // ⭐ №202: импорт сметы из Excel
+    PhotosModule, // ⭐ №227: фото-фиксация материалов
   ],
   controllers: [AppController],
   providers: [AppService],
