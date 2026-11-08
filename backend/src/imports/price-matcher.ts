@@ -46,6 +46,16 @@ export interface MatchInput {
   unit: Unit | null;
 }
 
+/**
+ * ⭐ №222: длинные названия не должны вешать матчер.
+ * Сравнение идёт по первым 200 символам: на файле с 11 000-символьными названиями
+ * `scorePair` строил триграммы по всей строке для каждого кандидата (~300 × 11k × 300 строк)
+ * — событийный цикл Node блокировался, и бэкенд переставал отвечать (проверено вживую).
+ */
+export const MATCH_NAME_LIMIT = 200;
+const clipName = (name: string): string =>
+  name.length > MATCH_NAME_LIMIT ? name.slice(0, MATCH_NAME_LIMIT) : name;
+
 /** score = 0.6×Jaccard + 0.4×Dice с штрафами по числам и единице. */
 const scorePair = (input: MatchInput, item: CatalogItem): number => {
   const aTokens = significantTokens(input.name);
@@ -79,6 +89,9 @@ export const matchRow = (input: MatchInput, catalog: CatalogItem[], limit = 200)
   const none: RowMatch = { status: 'NONE', priceItemId: null, price: null, score: 0, candidates: [] };
   if (!input.name.trim() || catalog.length === 0) return none;
 
+  // ⭐ №222: дальше работаем с усечённым названием (см. MATCH_NAME_LIMIT)
+  const safeInput: MatchInput = { ...input, name: clipName(input.name) };
+
   // Шаг 0: артикул — самый надёжный ключ
   const articleNorm = normalizeArticle(input.article);
   if (articleNorm) {
@@ -96,7 +109,7 @@ export const matchRow = (input: MatchInput, catalog: CatalogItem[], limit = 200)
     }
   }
 
-  const inputNorm = normalizeText(input.name);
+  const inputNorm = normalizeText(safeInput.name);
   if (!inputNorm) return none;
 
   // Шаг 1: точное совпадение названия + совместимая единица
@@ -114,13 +127,13 @@ export const matchRow = (input: MatchInput, catalog: CatalogItem[], limit = 200)
   }
 
   // Предфильтр: приличные кандидаты по токенам (не более `limit` штук)
-  const firstToken = significantTokens(input.name)[0]?.slice(0, 3);
+  const firstToken = significantTokens(safeInput.name)[0]?.slice(0, 3);
   const pool = catalog
     .filter((c) => (input.unit ? c.unit === input.unit : true))
     .filter((c) => (firstToken ? normalizeText(c.name).includes(firstToken) : true))
     .slice(0, limit);
   const scored = (pool.length > 0 ? pool : catalog.slice(0, limit))
-    .map((item) => ({ item, score: scorePair(input, item) }))
+    .map((item) => ({ item, score: scorePair(safeInput, item) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 

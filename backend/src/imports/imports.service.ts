@@ -53,6 +53,13 @@ export interface CommitInput {
 
 const MAX_ROWS = 500;
 
+/**
+ * ⭐ №222: таймаут интерактивной транзакции коммита.
+ * По умолчанию Prisma рвёт транзакцию через 5 с; 500 строк пишутся по одной,
+ * и при параллельном импорте двух партий обе падали с P2028 «Transaction not found» (500).
+ */
+const COMMIT_TX_OPTIONS = { timeout: 30_000, maxWait: 20_000 } as const;
+
 @Injectable()
 export class ImportsService {
   constructor(
@@ -300,7 +307,27 @@ export class ImportsService {
       .slice(0, 64);
   }
 
+  /**
+   * ⭐ №222: коммит под защитой от «тихих» 500.
+   * Если транзакция всё же упрётся в таймаут (P2028) или конфликт сериализации (P2034),
+   * пользователь получит понятный 409 «повторите», а не Internal server error.
+   */
   async commit(input: CommitInput) {
+    try {
+      return await this.commitInternal(input);
+    } catch (err) {
+      const code =
+        err instanceof Prisma.PrismaClientKnownRequestError ? err.code : undefined;
+      if (code === 'P2028' || code === 'P2034') {
+        throw new ConflictException(
+          'Импорт занял слишком много времени — возможно, в этот проект одновременно пишет другой участник. Повторите через минуту.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  private async commitInternal(input: CommitInput) {
     const batch = await this.prisma.importBatch.findUnique({ where: { id: input.batchId } });
     if (!batch) throw new NotFoundException('Партия импорта не найдена');
     const { moneyVisible } = await this.assertCanImport(batch.projectId, input.userId);
@@ -508,7 +535,7 @@ export class ImportsService {
       });
 
       return { batchId: batch.id, status: 'COMMITTED' as const, ...report };
-    });
+    }, COMMIT_TX_OPTIONS);
 
     await this.audit.log(input.userId, 'estimate_import', batch.id, 'commit', null, {
       projectId: batch.projectId,

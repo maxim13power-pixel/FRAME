@@ -33,6 +33,36 @@ describe('fixMultipartFileName (№214)', () => {
   });
 });
 
+describe('matchRow — длинные названия (№222)', () => {
+  const catalog = [
+    {
+      id: 1,
+      name: 'Укладка ламината',
+      article: null,
+      unit: 'SQUARE_METER' as never,
+      price: 280,
+      kind: 'WORK' as never,
+      category: null,
+    },
+  ];
+
+  it('сопоставление с 10 000-символьным названием не «вешает» процесс', () => {
+    const longName = 'Позиция ' + 'х'.repeat(10_000);
+    const started = Date.now();
+
+    for (let i = 0; i < 50; i += 1) {
+      const result = matchRow(
+        { name: longName, article: null, unit: 'SQUARE_METER' as never },
+        catalog,
+      );
+      expect(result.status).toBe('NONE');
+    }
+
+    // до фикса этот блок занимал минуты (триграммы по 10k символов × кандидаты × строки)
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+});
+
 describe('normalizeUnit (№202)', () => {
   it('распознаёт синонимы и помечает приблизительные', () => {
     expect(normalizeUnit('шт').unit).toBe('PIECE');
