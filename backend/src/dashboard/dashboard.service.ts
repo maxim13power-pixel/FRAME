@@ -1,8 +1,12 @@
 // backend/src/dashboard/dashboard.service.ts
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import type { DashboardSummaryDto } from './dashboard.types';
-import { buildMoneyMetrics, buildVolumeMetrics } from './dashboard.metrics'; // ⭐ №225
+import type { DashboardSummaryDto, DashboardNoPriceDto } from './dashboard.types';
+import {
+  buildMoneyMetrics,
+  buildVolumeMetrics,
+  normalizeNoPriceLimit,
+} from './dashboard.metrics'; // ⭐ №225/№231
 import {
   accessibleObjectWhere,
   accessibleProjectWhere,
@@ -301,6 +305,44 @@ export class DashboardService {
         amount: Number(f.amount),
         fixedAt: f.fixedAt.toISOString(), // ⭐ Date → ISO-строка по контракту DTO
       })),
+    };
+  }
+
+  /**
+   * ⭐ №231: полный список «Без расценки» (кнопка «показать все» на Главной).
+   * В сводке отдаются только 5 позиций, а счётчик — все; раскрывать было нечем.
+   * Фильтры те же: только «денежно-видимые» проекты (hidePrices/VIEWER не видят цен).
+   */
+  async getNoPrice(userId: number, limit = 5): Promise<DashboardNoPriceDto> {
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const moneyVisibleProject = accessibleProjectWhere(buildMoneyScope(grants));
+    const where = {
+      OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
+      project: moneyVisibleProject,
+    };
+    const [items, count] = await Promise.all([
+      this.prisma.material.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        take: normalizeNoPriceLimit(limit),
+        select: {
+          id: true,
+          name: true,
+          unitPrice: true,
+          materialUnitPrice: true,
+          // objectId нужен фронту для deep-link в строку сметы
+          project: { select: { id: true, name: true, objectId: true } },
+        },
+      }),
+      this.prisma.material.count({ where }),
+    ]);
+    return {
+      items: items.map((n) => ({
+        ...n,
+        unitPrice: Number(n.unitPrice),
+        materialUnitPrice: Number(n.materialUnitPrice),
+      })),
+      count,
     };
   }
 }

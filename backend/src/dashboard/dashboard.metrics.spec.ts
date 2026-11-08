@@ -1,7 +1,7 @@
 // backend/src/dashboard/dashboard.metrics.spec.ts
 // ⭐ №225 (§71, №118): объём и деньги — разные сущности.
 // Пороги бейджа «объём перевыполнен на N %»: 0.99 / 1.0 / 1.86.
-import { buildMoneyMetrics, buildVolumeMetrics } from './dashboard.metrics';
+import { buildMoneyMetrics, buildVolumeMetrics, normalizeNoPriceLimit } from './dashboard.metrics';
 
 describe('buildVolumeMetrics — бейдж «объём перевыполнен на N %»', () => {
   it('0.99 (не выполнили план) — процента перевыполнения нет', () => {
@@ -44,6 +44,17 @@ describe('buildVolumeMetrics — бейдж «объём перевыполне�
     const v = buildVolumeMetrics(NaN, 100);
     expect(v.used).toBe(0);
     expect(v.percent).toBe(0);
+  });
+});
+
+describe('normalizeNoPriceLimit — лимит списка «без расценки»', () => {
+  it('мусор и границы', () => {
+    expect(normalizeNoPriceLimit(NaN)).toBe(5);
+    expect(normalizeNoPriceLimit(0)).toBe(1);
+    expect(normalizeNoPriceLimit(-3)).toBe(1);
+    expect(normalizeNoPriceLimit(500)).toBe(200);
+    expect(normalizeNoPriceLimit(7.9)).toBe(7);
+    expect(normalizeNoPriceLimit(12)).toBe(12);
   });
 });
 

@@ -10,9 +10,11 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary'; // ⭐ №231
+import EditIcon from '@mui/icons-material/Edit'; // ⭐ №231
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
-import { fetchDashboardSummary } from '../services/dashboardService';
+import { fetchDashboardSummary, fetchNoPriceItems } from '../services/dashboardService';
 import type { DashboardSummary } from '../services/dashboardService';
 import { fetchPhotoBlob, fetchRecentPhotos } from '../services/photoService'; // ⭐ №230
 import type { MaterialPhotoData, PhotoFeedItem } from '../services/photoService';
@@ -23,6 +25,8 @@ import { parseDecimal } from '../utils/decimal'; // 🔒 P1-3: бэкенд от
 const fmtMoney = (v: number | string) =>
   Math.round(parseDecimal(v)).toLocaleString('ru-RU');
 const DAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+/** ⭐ №231: сколько последних фото показываем на Главной */
+const FEED_LIMIT = 12;
 // ⭐ №173: дату из API («YYYY-MM-DD») разбираем как UTC-полночь и берём UTC-день:
 // new Date('2026-10-19') в западных зонах даёт 18-е число и подпись «съезжает».
 const dayLabel = (iso: string) => {
@@ -75,13 +79,16 @@ const Home: React.FC = () => {
   const [feedThumbs, setFeedThumbs] = useState<Record<number, string>>({});
   const [viewerPhoto, setViewerPhoto] = useState<MaterialPhotoData | null>(null);
   const feedUrlsRef = useRef<Record<number, string>>({});
+  // ⭐ №231: полный список «Без расценки» (в сводке только 5 позиций)
+  const [noPriceAll, setNoPriceAll] = useState<DashboardSummary['noPrice'] | null>(null);
+  const [noPriceLoading, setNoPriceLoading] = useState(false);
 
   useMobileHeader({ title: 'Главная' });
 
   // Лента не критична для Главной: ошибки глотаем, дашборд показываем в любом случае
   const loadFeed = async () => {
     try {
-      const list = await fetchRecentPhotos(12);
+      const list = await fetchRecentPhotos(FEED_LIMIT);
       const pairs = await Promise.all(
         list.map(async (p) => {
           try {
@@ -105,12 +112,29 @@ const Home: React.FC = () => {
     }
   };
 
+  // ⭐ №231: раскрыть/свернуть все позиции «Без расценки»
+  const toggleNoPrice = async () => {
+    if (noPriceAll) {
+      setNoPriceAll(null);
+      return;
+    }
+    try {
+      setNoPriceLoading(true);
+      setNoPriceAll(await fetchNoPriceItems(200));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setNoPriceLoading(false);
+    }
+  };
+
   const load = async () => {
     if (!token) return;
     try {
       setLoading(true);
       const [summary] = await Promise.all([fetchDashboardSummary(), loadFeed()]);
       setData(summary);
+      setNoPriceAll(null);
       setError('');
     } catch (e) {
       console.error(e);
@@ -156,6 +180,9 @@ const Home: React.FC = () => {
   const volumeOverrun = data.volume.overrunPercent; // null — перевыполнения нет
   const moneyOverBudget = data.money.overBudget;
   const moneyDiff = data.money.difference;
+  // ⭐ №231: «Без расценки» — 5 из сводки или полный список после раскрытия
+  const noPriceItems = noPriceAll?.items ?? data.noPrice.items;
+  const noPriceCount = noPriceAll?.count ?? data.noPrice.count;
   const maxWeek = Math.max(...data.weekChart.map(w => w.count), 1);
   // ⭐ №173: неделя Пн→Вс — сегодняшнюю колонку подсвечиваем (локальная дата)
   const now = new Date();
@@ -263,8 +290,11 @@ const Home: React.FC = () => {
       {/* ⭐ №230: последние фото по объектам — горизонтальная лента */}
       {feedPhotos.length > 0 && (
         <Paper sx={{ p: 2, borderRadius: 2, mb: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: 1 }}>
-            <Typography variant="subtitle1" fontWeight={700}>Фото с объектов</Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <PhotoLibraryIcon sx={{ fontSize: 20, color: '#1976d2' }} />
+              <Typography variant="subtitle1" fontWeight={700}>Фото с объектов</Typography>
+            </Stack>
             <Typography variant="caption" color="text.secondary">последние {feedPhotos.length}</Typography>
           </Box>
           <Box
@@ -341,7 +371,7 @@ const Home: React.FC = () => {
 
       {/* ─── 2. ГОРИТ НА НЕДЕЛЕ ─── */}
       {data.hotProjects.length > 0 && (
-        <Box sx={{ mb: 2 }}>
+        <Paper sx={{ p: 2, borderRadius: 2, mb: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
             <LocalFireDepartmentIcon color="error" />
             <Typography variant="subtitle1" fontWeight={700}>
@@ -376,7 +406,7 @@ const Home: React.FC = () => {
               );
             })}
           </Stack>
-        </Box>
+        </Paper>
       )}
 
       {/* ─── 3. НЕДЕЛЯ ПРОРАБА (Пн→Вс) ─── */}
@@ -426,16 +456,16 @@ const Home: React.FC = () => {
       </Paper>
 
       {/* ─── 4. БЕЗ РАСЦЕНКИ ─── */}
-      {data.noPrice.count > 0 && (
+      {noPriceCount > 0 && (
         <Paper sx={{ p: 2, borderRadius: 2, mb: 2, border: '1px solid #ffe0b2' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
             <WarningAmberIcon sx={{ fontSize: 20, color: '#ef6c00' }} />
             <Typography variant="subtitle1" fontWeight={700}>
-              Без расценки — смета занижена • {data.noPrice.count}
+              Без расценки — смета занижена • {noPriceCount}
             </Typography>
           </Box>
           <Stack spacing={0.5} sx={{ mb: 1 }}>
-            {data.noPrice.items.map(m => (
+            {noPriceItems.map(m => (
               <Box
                 key={m.id}
                 onClick={() => navigate(`/objects/${m.project.objectId}/projects/${m.project.id}/materials?materialId=${m.id}`)}
@@ -467,17 +497,35 @@ const Home: React.FC = () => {
               </Box>
             ))}
           </Stack>
-            {data.noPrice.count > data.noPrice.items.length && (
-            <Typography variant="caption" color="text.secondary">
-              + ещё {data.noPrice.count - data.noPrice.items.length}… Нажмите на позицию, чтобы открыть строку сметы.
-            </Typography>
+          {noPriceCount > data.noPrice.items.length && (
+            <>
+              <Button
+                size="small"
+                variant="text"
+                disabled={noPriceLoading}
+                onClick={() => void toggleNoPrice()}
+                sx={{ textTransform: 'none', color: '#1976d2', fontWeight: 600, p: 0.5, minWidth: 0 }}
+              >
+                {noPriceAll
+                  ? 'Свернуть ↑'
+                  : noPriceLoading
+                    ? 'Загружаем…'
+                    : `+ ещё ${noPriceCount - data.noPrice.items.length}… (показать все) →`}
+              </Button>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                Нажмите на позицию, чтобы открыть строку сметы.
+              </Typography>
+            </>
           )}
         </Paper>
       )}
 
       {/* ─── 5. ЛЕНТА ФИКСАЦИЙ ─── */}
       <Paper sx={{ p: 2, borderRadius: 2, mb: 2 }}>
-        <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>Последние фиксации</Typography>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+          <EditIcon sx={{ fontSize: 20, color: '#1976d2' }} />
+          <Typography variant="subtitle1" fontWeight={700}>Последние фиксации</Typography>
+        </Stack>
         <Stack divider={<Divider />} spacing={1}>
           {data.recentFixes.map(f => (
             <Box

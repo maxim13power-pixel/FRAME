@@ -28,4 +28,14 @@ export class DashboardController {
       Number.isFinite(parsed) && Math.abs(parsed) <= 840 ? parsed : undefined,
     );
   }
+
+  /** ⭐ №231: полный список «Без расценки» для раскрытия на Главной. */
+  @Get('no-price')
+  getNoPrice(@Req() req: AuthedRequest, @Query('limit') limit?: string) {
+    const parsed = limit && limit.trim() !== '' ? Number(limit) : 5;
+    return this.dashboardService.getNoPrice(
+      req.user.userId,
+      Number.isFinite(parsed) ? parsed : 5,
+    );
+  }
 }

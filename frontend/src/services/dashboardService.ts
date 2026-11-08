@@ -75,3 +75,14 @@ export const fetchDashboardSummary = async (): Promise<DashboardSummary> => {
   });
   return response.data;
 };
+
+/**
+ * ⭐ №231: полный список «Без расценки» (в сводке приходят только 5 позиций).
+ * limit зажимается на бэкенде в 1..200.
+ */
+export const fetchNoPriceItems = async (
+  limit = 200,
+): Promise<DashboardSummary['noPrice']> => {
+  const response = await api.get('/dashboard/no-price', { params: { limit } });
+  return response.data;
+};

@@ -12,6 +12,11 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+/** ⭐ №231: лимит списка «без расценки» (1..200, по умолчанию 5). */
+export function normalizeNoPriceLimit(raw: number): number {
+  return Math.min(Math.max(Math.trunc(Number.isFinite(raw) ? raw : 5), 1), 200);
+}
+
 /** Процент с одним знаком после запятой (как в аналитике). */
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
