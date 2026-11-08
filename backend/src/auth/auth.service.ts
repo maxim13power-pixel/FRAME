@@ -16,6 +16,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto'; // ⭐ P0-4
 import { ResetPasswordDto } from './dto/reset-password.dto'; // ⭐ P0-4
 import { ChangePasswordDto } from './dto/change-password.dto'; // ⭐ №215
 import { passwordIssue } from './password-policy'; // ⭐ №215
+import { LoginThrottleService } from './login-throttle.service'; // ⭐ №217
 import { RequestCodeDto } from './dto/request-code.dto'; // ⭐ №122b
 import { VerifyEmailDto } from './dto/verify.dto'; // ⭐ №122b
 import * as crypto from 'crypto'; // ⭐ P0-4
@@ -32,7 +33,78 @@ export class AuthService {
     private prismaService: PrismaService,
     private captchaService: CaptchaService,
     private emailService: EmailService, // ⭐ P0-4
+    private loginThrottle: LoginThrottleService, // ⭐ №217
   ) {}
+
+  /**
+   * ⭐ №217: вход с защитой от перебора.
+   * Порядок: блокировка → капча (после 3 неудач) → проверка пароля → сброс счётчиков.
+   * Сообщение об ошибке пароля остаётся общим («неверный телефон/email или пароль»),
+   * чтобы нельзя было выяснить, существует ли аккаунт.
+   */
+  async loginWithGuard(input: {
+    identifier: string;
+    password: string;
+    rememberMe?: boolean;
+    captchaToken?: string;
+    ip?: string;
+  }) {
+    const keys = this.loginThrottle.keys(input.ip, input.identifier);
+    const state = this.loginThrottle.check(keys);
+
+    if (state.locked) {
+      throw new HttpException(
+        {
+          statusCode: 429,
+          error: 'Too Many Requests',
+          message: `Слишком много неудачных попыток входа. Попробуйте через ${Math.ceil(
+            state.retryAfterSeconds / 60,
+          )} мин.`,
+          code: 'LOGIN_LOCKED',
+          retryAfterSeconds: state.retryAfterSeconds,
+        },
+        429,
+      );
+    }
+
+    if (state.captchaRequired) {
+      // ⭐ Неудачная/отсутствующая капча — тоже неудачная попытка, иначе счётчик
+      // «замирал» на 3 и блокировка после 5 не наступала бы никогда.
+      const captchaOk = input.captchaToken
+        ? await this.captchaService.validate(input.captchaToken, input.ip ?? '')
+        : false;
+      if (!captchaOk) {
+        const after = this.loginThrottle.registerFailure(keys);
+        throw new BadRequestException({
+          statusCode: 400,
+          error: 'Bad Request',
+          message: input.captchaToken
+            ? 'Капча не пройдена. Попробуйте ещё раз'
+            : 'Подтвердите, что вы не робот, и повторите вход',
+          code: 'CAPTCHA_REQUIRED',
+          attemptsLeft: after.attemptsLeft,
+          locked: after.locked,
+        });
+      }
+    }
+
+    const user = await this.validateUser(input.identifier, input.password);
+    if (!user) {
+      const after = this.loginThrottle.registerFailure(keys);
+      throw new UnauthorizedException({
+        statusCode: 401,
+        error: 'Unauthorized',
+        message: 'Неверный телефон/email или пароль',
+        code: 'BAD_CREDENTIALS',
+        attemptsLeft: after.attemptsLeft,
+        captchaRequired: after.captchaRequired,
+        locked: after.locked,
+      });
+    }
+
+    this.loginThrottle.reset(keys);
+    return this.login(user, input.rememberMe ?? false);
+  }
 
   async validateUser(login: string, pass: string): Promise<any> {
     // ⭐ Фича: принимаем и email и телефон (удобно для пользователей)

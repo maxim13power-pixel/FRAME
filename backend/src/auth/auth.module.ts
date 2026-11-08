@@ -7,6 +7,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CaptchaModule } from '../captcha'; // ⭐ НОВОЕ
 import { EmailService } from './email.service'; // ⭐ P0-4
+import { LoginThrottleService } from './login-throttle.service'; // ⭐ №217
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET?.trim();
 
@@ -28,6 +29,6 @@ function getJwtSecret(): string {
     PrismaModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, EmailService],
+  providers: [AuthService, JwtStrategy, EmailService, LoginThrottleService],
 })
 export class AuthModule {}

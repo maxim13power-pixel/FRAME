@@ -26,18 +26,28 @@ export class AuthController {
   async login(
     @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
     dto: LoginDto,
+    @Request() request: ExpressRequest,
   ) {
     // ⭐ Поддерживаем и phone, и email (согласно PROJECT_STATUS_v9.md)
     const identifier = dto.phone || dto.email;
     if (!identifier) {
       throw new UnauthorizedException('Укажите телефон или email');
     }
+    // ⭐ №217: вход идёт через защиту от перебора (капча после 3 неудач, блок после 5)
+    return this.authService.loginWithGuard({
+      identifier,
+      password: dto.password,
+      rememberMe: dto.rememberMe,
+      captchaToken: dto.captchaToken,
+      ip: this.clientIp(request),
+    });
+  }
 
-    const user = await this.authService.validateUser(identifier, dto.password);
-    if (!user) {
-      throw new UnauthorizedException('Неверный телефон/email или пароль');
-    }
-    return this.authService.login(user, dto.rememberMe);
+  // ⭐ №217: реальный IP клиента (за прокси Railway/Amvera — x-forwarded-for)
+  private clientIp(request: ExpressRequest): string {
+    const forwardedFor = request.headers['x-forwarded-for'] as string | undefined;
+    if (forwardedFor) return forwardedFor.split(',')[0].trim();
+    return (request.connection as { remoteAddress?: string })?.remoteAddress ?? '';
   }
 
   // ⭐ №160: «Выйти на всех устройствах» — отзывает все выданные JWT

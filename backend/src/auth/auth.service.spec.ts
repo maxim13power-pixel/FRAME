@@ -10,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 jest.mock('../captcha', () => ({ CaptchaService: class CaptchaService {} }));
 
 import { AuthService, EMAIL_CODE_ALREADY_USED } from './auth.service';
+import { LoginThrottleService } from './login-throttle.service';
 
 const makeService = () => {
   const prisma = {
@@ -21,6 +22,7 @@ const makeService = () => {
     },
     user: {
       findUnique: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn(),
       update: jest.fn(),
     },
@@ -44,8 +46,19 @@ const makeService = () => {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const service = new AuthService(jwt as any, prisma as any, captcha as any, email as any);
-  return { service, prisma, jwt, captcha, email };
+  const throttle = new LoginThrottleService();
+  const service = new AuthService(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    jwt as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    prisma as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    captcha as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    email as any,
+    throttle,
+  );
+  return { service, prisma, jwt, captcha, email, throttle };
 };
 
 const newUser = {
@@ -188,6 +201,114 @@ describe('AuthService.changePassword (№215)', () => {
     expect(jwt.sign).toHaveBeenCalled();
     expect(result.access_token).toBe('jwt.token');
     expect(result.message).toMatch(/Пароль изменён/);
+  });
+});
+
+describe('AuthService.loginWithGuard (№217)', () => {
+  const PASS = 'Frame2026pass';
+  const hash = bcrypt.hashSync(PASS, 4);
+  const userRow = { ...newUser, password: hash, tokenVersion: 0 };
+
+  it('успешный вход отдаёт токен', async () => {
+    const { service, prisma } = makeService();
+    prisma.user.findFirst.mockResolvedValue(userRow);
+
+    const result = await service.loginWithGuard({
+      identifier: 'a@b.ru',
+      password: PASS,
+      ip: '1.1.1.1',
+    });
+
+    expect(result.access_token).toBe('jwt.token');
+  });
+
+  it('после 3 неудач требует капчу (400 CAPTCHA_REQUIRED), пароль верный или нет', async () => {
+    const { service, prisma } = makeService();
+    prisma.user.findFirst.mockResolvedValue(userRow);
+    for (let i = 0; i < 3; i += 1) {
+      await expect(
+        service.loginWithGuard({ identifier: 'a@b.ru', password: 'wrong-pass', ip: '1.1.1.1' }),
+      ).rejects.toThrow();
+    }
+
+    await expect(
+      service.loginWithGuard({ identifier: 'a@b.ru', password: PASS, ip: '1.1.1.1' }),
+    ).rejects.toMatchObject({ response: { code: 'CAPTCHA_REQUIRED' } });
+  });
+
+  it('с валидной капчей вход проходит', async () => {
+    const { service, prisma, captcha } = makeService();
+    prisma.user.findFirst.mockResolvedValue(userRow);
+    for (let i = 0; i < 3; i += 1) {
+      await service
+        .loginWithGuard({ identifier: 'a@b.ru', password: 'wrong-pass', ip: '1.1.1.1' })
+        .catch(() => undefined);
+    }
+
+    const result = await service.loginWithGuard({
+      identifier: 'a@b.ru',
+      password: PASS,
+      ip: '1.1.1.1',
+      captchaToken: 'captcha-token',
+    });
+
+    expect(captcha.validate).toHaveBeenCalledWith('captcha-token', '1.1.1.1');
+    expect(result.access_token).toBe('jwt.token');
+  });
+
+  it('неверная капча — 400 и вход не выполняется', async () => {
+    const { service, prisma, captcha } = makeService();
+    prisma.user.findFirst.mockResolvedValue(userRow);
+    captcha.validate.mockResolvedValue(false);
+    for (let i = 0; i < 3; i += 1) {
+      await service
+        .loginWithGuard({ identifier: 'a@b.ru', password: 'wrong-pass', ip: '1.1.1.1' })
+        .catch(() => undefined);
+    }
+
+    await expect(
+      service.loginWithGuard({
+        identifier: 'a@b.ru',
+        password: PASS,
+        ip: '1.1.1.1',
+        captchaToken: 'bad-token',
+      }),
+    ).rejects.toThrow(/Капча не пройдена/);
+  });
+
+  it('после 5 неудач — 429 LOGIN_LOCKED с retryAfterSeconds', async () => {
+    const { service, prisma } = makeService();
+    prisma.user.findFirst.mockResolvedValue(userRow);
+    for (let i = 0; i < 5; i += 1) {
+      await service
+        .loginWithGuard({ identifier: 'a@b.ru', password: 'wrong-pass', ip: '1.1.1.1' })
+        .catch(() => undefined);
+    }
+
+    await expect(
+      service.loginWithGuard({
+        identifier: 'a@b.ru',
+        password: PASS,
+        ip: '1.1.1.1',
+        captchaToken: 'captcha-token',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'LOGIN_LOCKED' } });
+  });
+
+  it('успешный вход сбрасывает накопленные неудачи', async () => {
+    const { service, prisma, throttle } = makeService();
+    prisma.user.findFirst.mockResolvedValue(userRow);
+    for (let i = 0; i < 2; i += 1) {
+      await service
+        .loginWithGuard({ identifier: 'a@b.ru', password: 'wrong-pass', ip: '1.1.1.1' })
+        .catch(() => undefined);
+    }
+    await service.loginWithGuard({ identifier: 'a@b.ru', password: PASS, ip: '1.1.1.1' });
+
+    expect(throttle.check(throttle.keys('1.1.1.1', 'a@b.ru'))).toMatchObject({
+      fails: 0,
+      captchaRequired: false,
+    });
   });
 });
 

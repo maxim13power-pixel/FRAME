@@ -18,6 +18,15 @@ import IconButton from '@mui/material/IconButton';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext'; // добавить эту строку
 import { getApiErrorMessage } from '../utils/errors';
+import SmartCaptcha from '../components/SmartCaptcha'; // ⭐ №217
+
+interface LoginErrorPayload {
+  code?: string;
+  message?: string;
+  attemptsLeft?: number;
+  retryAfterSeconds?: number;
+  captchaRequired?: boolean;
+}
 
 const Login: React.FC = () => {
   const [phone, setPhone] = useState('');
@@ -29,6 +38,11 @@ const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const handleClickShowPassword = () => setShowPassword((show) => !show);
   const [error, setError] = useState('');
+  // ⭐ №217: после нескольких неудач сервер требует капчу (защита от перебора)
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  // ключ пересоздаёт виджет: токен капчи одноразовый, после ошибки нужен новый
+  const [captchaKey, setCaptchaKey] = useState(0);
   const [loading, setLoading] = useState(false); // ⭐ кнопка не выглядит мёртвой при запросе
   const navigate = useNavigate();
   const location = useLocation();
@@ -49,12 +63,36 @@ const Login: React.FC = () => {
         phone,
         password,
         rememberMe,
+        // ⭐ №217: токен уходит только когда его требует сервер
+        captchaToken: captchaToken ?? undefined,
       });
       login(response.data.access_token, response.data.user);
       navigate(from, { replace: true });
     } catch (err: unknown) {
-      // ⭐ Ошибка остаётся на экране, страница НЕ перезагружается
-      setError(getApiErrorMessage(err, 'Ошибка входа'));
+      const payload = (err as { response?: { data?: LoginErrorPayload } })?.response?.data;
+      const message = getApiErrorMessage(err, 'Ошибка входа');
+
+      if (payload?.code === 'CAPTCHA_REQUIRED') {
+        setCaptchaRequired(true);
+        setCaptchaToken(null);
+        setCaptchaKey((k) => k + 1); // одноразовый токен — новый виджет
+        setError(message);
+      } else if (payload?.code === 'LOGIN_LOCKED') {
+        setError(message);
+      } else if (payload?.code === 'BAD_CREDENTIALS') {
+        if (payload.captchaRequired) {
+          setCaptchaRequired(true);
+          setCaptchaToken(null);
+          setCaptchaKey((k) => k + 1);
+        }
+        const left =
+          typeof payload.attemptsLeft === 'number' && payload.attemptsLeft > 0
+            ? ` Осталось попыток: ${payload.attemptsLeft}.`
+            : '';
+        setError(message + left);
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -312,10 +350,19 @@ const Login: React.FC = () => {
               {error}
             </Alert>
           )}
+          {/* ⭐ №217: капча появляется, когда сервер её требует (после 3 неудач) */}
+          {captchaRequired && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                Подтвердите, что вы не робот:
+              </Typography>
+              <SmartCaptcha key={captchaKey} onTokenChange={setCaptchaToken} />
+            </Box>
+          )}
           <Button
             type="button"
             onClick={doLogin}
-            disabled={loading}
+            disabled={loading || (captchaRequired && !captchaToken)}
             fullWidth
             variant="contained"
             sx={{

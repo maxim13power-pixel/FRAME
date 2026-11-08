@@ -22,4 +22,9 @@ export class LoginDto {
   @IsOptional()
   @IsBoolean()
   rememberMe?: boolean;
+
+  // ⭐ №217: токен капчи — нужен только после нескольких неудачных попыток входа
+  @IsOptional()
+  @IsString()
+  captchaToken?: string;
 }
