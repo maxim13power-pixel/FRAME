@@ -1,6 +1,6 @@
 // backend/src/brigades/dto/log-shift.dto.ts
 import {
-  IsArray, IsInt, IsISO8601, IsNumber, IsOptional, IsString, Max, MaxLength, Min,
+  IsArray, IsBoolean, IsInt, IsISO8601, IsNumber, IsOptional, IsString, Max, MaxLength, Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -56,5 +56,14 @@ export class LogShiftDto {
   @IsString({ message: 'comment: строка или ничего' })
   @MaxLength(500, { message: 'comment: максимум 500 символов' })
   comment?: string;
+
+  /**
+   * ⭐ №224: подтверждение «второй выход в тот же день».
+   * Без флага сервер отвечает 409 SHIFT_DUPLICATE, если у рабочего уже есть выход
+   * в этот день; фронт спрашивает и повторяет запрос с `allowDuplicate: true`.
+   */
+  @IsOptional()
+  @IsBoolean({ message: 'allowDuplicate: true/false или ничего' })
+  allowDuplicate?: boolean;
 }
 

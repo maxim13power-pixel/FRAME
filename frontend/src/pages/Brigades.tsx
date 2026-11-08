@@ -20,6 +20,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
+import { useFeedback } from '../contexts/FeedbackContext'; // ⭐ №224: подтверждение дубля выхода
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import { FAB_STYLE } from '../theme';
@@ -63,6 +64,8 @@ const Brigades: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
   const { token } = useAuth();
+  // ⭐ №224: askConfirm — наш диалог подтверждения (вместо браузерного confirm)
+  const { confirm: askConfirm } = useFeedback();
 
   const [brigades, setBrigades] = useState<BrigadeData[]>([]);
   const [objects, setObjects] = useState<ObjectData[]>([]);
@@ -469,9 +472,17 @@ const Brigades: React.FC = () => {
         comment: sComment.trim() || undefined,
       };
       if (editingShift) {
-        await updateBrigadeShift(selectedBrigade.id, editingShift.id, data);
+        try {
+          await updateBrigadeShift(selectedBrigade.id, editingShift.id, data);
+        } catch (err) {
+          if (!(await handleShiftDuplicate(err, data, true))) throw err;
+        }
       } else {
-        await logBrigadeShift(selectedBrigade.id, data);
+        try {
+          await logBrigadeShift(selectedBrigade.id, data);
+        } catch (err) {
+          if (!(await handleShiftDuplicate(err, data, false))) throw err;
+        }
       }
       setShiftOpen(false);
       loadTabData(selectedBrigade.id);
@@ -481,6 +492,38 @@ const Brigades: React.FC = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  /**
+   * ⭐ №224: сервер ответил 409 SHIFT_DUPLICATE (у рабочего уже есть выход в этот день).
+   * Спрашиваем подтверждение и повторяем запрос с `allowDuplicate: true`.
+   * Возвращает true, если выход в итоге записан.
+   */
+  const handleShiftDuplicate = async (
+    err: unknown,
+    data: BrigadeShiftPayload,
+    isEdit: boolean,
+  ): Promise<boolean> => {
+    const payload = (err as { response?: { data?: { code?: string; message?: string } } })
+      ?.response?.data;
+    if (payload?.code !== 'SHIFT_DUPLICATE' || !selectedBrigade) return false;
+
+    const ok = await askConfirm({
+      title: 'Второй выход за день',
+      text:
+        payload.message ?? 'У рабочего уже есть выход в этот день. Добавить второй выход?',
+      confirmText: 'Добавить',
+      cancelText: 'Отмена',
+    });
+    if (!ok) return false;
+
+    const withFlag: BrigadeShiftPayload = { ...data, allowDuplicate: true };
+    if (isEdit && editingShift) {
+      await updateBrigadeShift(selectedBrigade.id, editingShift.id, withFlag);
+    } else {
+      await logBrigadeShift(selectedBrigade.id, withFlag);
+    }
+    return true;
   };
 
   const handleDeleteShift = async () => {

@@ -103,7 +103,19 @@ const Analytics: React.FC = () => {
     ? [
         { label: 'Общий бюджет', value: `${fmtMoney(summary.totalBudget)} ₽`, color: '#1976d2' },
         { label: 'Потрачено', value: `${fmtMoney(summary.totalSpent)} ₽`, color: '#ef6c00' },
-        { label: 'На складе', value: `${fmtMoney(summary.totalWarehouseValue)} ₽`, color: '#2e7d32' },
+        {
+          label: 'На складе',
+          // ⭐ №224: если часть позиций без цены, сумма занижена — честно показываем это
+          value:
+            summary.warehouseItemsWithoutPrice > 0
+              ? `${fmtMoney(summary.totalWarehouseValue)} ₽ *`
+              : `${fmtMoney(summary.totalWarehouseValue)} ₽`,
+          color: '#2e7d32',
+          hint:
+            summary.warehouseItemsWithoutPrice > 0
+              ? `* ${summary.warehouseItemsWithoutPrice} поз. без цены не входят в стоимость`
+              : undefined,
+        },
         { label: 'Перерасход', value: `${summary.overrunCount} / ${summary.totalProjects}`, color: '#d32f2f' },
       ]
     : [];

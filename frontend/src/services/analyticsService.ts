@@ -6,6 +6,8 @@ export interface AnalyticsSummary {
   totalBudget: number;
   totalSpent: number;
   totalWarehouseValue: number;
+  /** ⭐ №224: сколько позиций склада без цены (их стоимость не входит в totalWarehouseValue) */
+  warehouseItemsWithoutPrice: number;
   overrunCount: number;
   onTrackCount: number;
   totalProjects: number;

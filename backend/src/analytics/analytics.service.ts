@@ -65,7 +65,7 @@ export class AnalyticsService {
 
   // ─── 1. Сводка: бюджеты/факт/склад/перерасходы ───
   async getSummary(userId: number) {
-    const [moneyRows, warehouseRows, projectRows, demoRows] = await Promise.all([
+    const [moneyRows, warehouseRows, projectRows, demoRows, noPriceRows] = await Promise.all([
       this.prisma.$queryRaw<MoneyRow[]>`
         SELECT
           COALESCE(SUM((m."unitPrice" + m."materialUnitPrice") * m."specQuantity"), 0)::float AS total_budget,
@@ -104,6 +104,25 @@ export class AnalyticsService {
           )
       `,
       this.budgetRows(userId),
+      // ⭐ №224: позиции склада БЕЗ цены — их стоимость не попадает в totalWarehouseValue,
+      // поэтому показываем их число, чтобы цифра не врала молча.
+      this.prisma.$queryRaw<{ cnt: number }[]>`
+        SELECT COUNT(*)::int AS cnt
+        FROM warehouse_items wi
+        WHERE wi."price" IS NULL
+          AND (
+            (wi."objectId" IS NULL AND (wi."createdBy" IS NULL OR wi."createdBy" = ${userId}))
+            OR EXISTS (
+              SELECT 1 FROM object_access oa
+              WHERE oa."objectId" = wi."objectId"
+                AND oa."userId" = ${userId}
+                AND oa."revokedAt" IS NULL
+                AND oa."isHidden" = false
+                AND oa."hidePrices" = false
+                AND oa."role" <> 'VIEWER'
+            )
+          )
+      `,
       // ⭐ №169: демо-объекты в расчётах (для стикера на главной/в аналитике)
       this.prisma.$queryRaw<{ cnt: number }[]>`
         SELECT COUNT(DISTINCT o.id)::int AS cnt
@@ -128,6 +147,8 @@ export class AnalyticsService {
       totalBudget: Math.round(money.total_budget * 100) / 100,
       totalSpent: Math.round(money.total_actual * 100) / 100,
       totalWarehouseValue: Math.round((warehouseRows[0]?.value ?? 0) * 100) / 100,
+      // ⭐ №224: сколько позиций склада без цены (их стоимость не входит в сумму выше)
+      warehouseItemsWithoutPrice: noPriceRows[0]?.cnt ?? 0,
       overrunCount,
       onTrackCount,
       totalProjects: projectRows.length,

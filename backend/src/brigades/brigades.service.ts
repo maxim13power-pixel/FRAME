@@ -2,7 +2,7 @@
 // ⭐ Срез 4: бригады — учёт выходов и выработки.
 // Бригада без объекта (objectId = null) — «мобильная», видна всем авторизованным.
 import {
-  BadRequestException, ForbiddenException, Injectable, NotFoundException,
+  BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -76,6 +76,45 @@ export class BrigadesService {
       fullName: byId.get(id)!.fullName,
       hours: Math.round((members.find((m) => m.memberId === id)!.hours) * 100) / 100,
     }));
+  }
+
+  /** ⭐ №224: у кого из состава уже есть выход в этот день (для предупреждения о дубле) */
+  private async findSameDayMembers(
+    brigadeId: number,
+    date: Date,
+    memberIds: number[],
+  ): Promise<{ memberId: number; fullName: string; hours: number }[]> {
+    if (memberIds.length === 0) return [];
+    // ⚠️ brigade_shifts.date — тип DATE: границы суток считаем в UTC (иначе локальный
+    // setHours уезжает на часовой пояс и диапазон не находит смену).
+    const dayKey = date.toISOString().slice(0, 10);
+    const start = new Date(`${dayKey}T00:00:00.000Z`);
+    const end = new Date(`${dayKey}T23:59:59.999Z`);
+    const shifts = await this.prisma.brigadeShift.findMany({
+      where: { brigadeId, date: { gte: start, lte: end } },
+      select: { id: true },
+    });
+    if (shifts.length === 0) return [];
+    const rows = await this.prisma.brigadeShiftMember.findMany({
+      where: { memberId: { in: memberIds }, shiftId: { in: shifts.map((s) => s.id) } },
+      select: { memberId: true, hours: true },
+    });
+    const memberIdsPresent = rows
+      .map((r) => r.memberId)
+      .filter((id): id is number => id != null);
+    if (memberIdsPresent.length === 0) return [];
+    const members = await this.prisma.brigadeMember.findMany({
+      where: { id: { in: memberIdsPresent } },
+      select: { id: true, fullName: true },
+    });
+    const nameById = new Map(members.map((m) => [m.id, m.fullName]));
+    return rows
+      .filter((r) => r.memberId != null)
+      .map((r) => ({
+        memberId: r.memberId as number,
+        fullName: nameById.get(r.memberId as number) ?? 'рабочий',
+        hours: Number(r.hours),
+      }));
   }
 
   /** ⭐ №169: дата выхода — валидная и не в будущем */
@@ -357,6 +396,28 @@ export class BrigadesService {
     }
     // ⭐ №169: состав бригады — источник истины по часам (сумма считается здесь)
     const memberRows = await this.resolveShiftMembers(brigadeId, dto.members);
+    // ⭐ №224: второй выход того же рабочего в тот же день — не блокируем (дневная
+    // и вечерняя смены бывают), но показываем: фронт спросит «добавить второй выход?»
+    // и повторит запрос с allowDuplicate: true.
+    if (memberRows && !dto.allowDuplicate) {
+      const clash = await this.findSameDayMembers(
+        brigadeId,
+        date,
+        memberRows.map((m) => m.memberId),
+      );
+      if (clash.length > 0) {
+        throw new ConflictException({
+          statusCode: 409,
+          error: 'Conflict',
+          message:
+            'У рабочего уже есть выход в этот день: ' +
+            clash.map((c) => `${c.fullName} — ${c.hours} ч`).join(', ') +
+            '. Добавить второй выход?',
+          code: 'SHIFT_DUPLICATE',
+          duplicates: clash,
+        });
+      }
+    }
     const hoursWorked = this.totalHours(memberRows, dto.hoursWorked);
     const shift = await this.prisma.brigadeShift.create({
       data: {

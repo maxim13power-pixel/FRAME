@@ -150,6 +150,8 @@ export interface BrigadeShiftPayload {
   outputArea?: number;
   projectId?: number;
   comment?: string;
+  /** ⭐ №224: подтверждение «второй выход того же рабочего в тот же день» */
+  allowDuplicate?: boolean;
 }
 
 export const logBrigadeShift = async (
