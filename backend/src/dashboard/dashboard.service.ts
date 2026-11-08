@@ -2,6 +2,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { DashboardSummaryDto } from './dashboard.types';
+import { buildMoneyMetrics, buildVolumeMetrics } from './dashboard.metrics'; // ⭐ №225
 import {
   accessibleObjectWhere,
   accessibleProjectWhere,
@@ -176,8 +177,14 @@ export class DashboardService {
     const volume = volumeRows[0] ?? { total_used: 0, spec_quantity: 0 };
     // ⭐ Смета/факт — только там, где юзер видит цены
     const money = moneyRows[0] ?? { estimate: 0, actual: 0 };
-    const percent =
-      volume.spec_quantity > 0 ? volume.total_used / volume.spec_quantity : 0;
+    // ⭐ №225 (§71, №118): объёмы и деньги считаем разными функциями.
+    // Раньше `percent = total_used / spec_quantity` (ОБЪЁМЫ) отдавался в блоке
+    // `money`, и UI подписывал его как «+864 % перерасход».
+    const volumeMetrics = buildVolumeMetrics(
+      volume.total_used,
+      volume.spec_quantity,
+    );
+    const moneyMetrics = buildMoneyMetrics(money.estimate, money.actual);
     // ── 2. WeekChart — Пн…Вс текущей недели ────────────────────────────────────
     // ⭐ №173: границы недели и дни считаются по часам пользователя (tzOffset),
     // поэтому фиксации за сегодня попадают в правую часть графика, а не теряются
@@ -264,10 +271,12 @@ export class DashboardService {
       },
       // ⭐ №169: сколько демо-объектов участвует в расчётах (0 = цифры точные)
       demoObjects,
+      // ⭐ №225: объёмы — отдельным блоком (бейдж «объём перевыполнен на N %»)
+      volume: volumeMetrics,
       money: {
-        estimate: money.estimate,
-        actual: money.actual,
-        percent,
+        ...moneyMetrics,
+        // @deprecated: прогресс ОБЪЁМОВ — оставлен ради обратной совместимости
+        percent: volumeMetrics.percent,
       },
       weekChart,
       hotProjects: hotProjectRows.map((p) => ({

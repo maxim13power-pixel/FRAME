@@ -14,13 +14,44 @@ export interface DashboardKpiDto {
   fixesWeekCount: number;
 }
 
+/**
+ * ⭐ №225 (§71, №118): ОБЪЁМЫ — отдельный блок.
+ * Раньше этот процент лежал в `money.percent`, поэтому UI подписывал прогресс
+ * объёмов как денежный перерасход («+864 % перерасход»).
+ */
+export interface DashboardVolumeDto {
+  /** Σ totalUsed по всем доступным объектам (объёмы, не деньги). */
+  used: number;
+  /** Σ specQuantity по всем доступным объектам. */
+  specQuantity: number;
+  /** Σ totalUsed / Σ specQuantity без верхнего клампа (может быть > 1). */
+  percent: number;
+  /**
+   * На сколько процентов объём перевыполнен (N в бейдже «объём перевыполнен на N %»).
+   * null — перевыполнения нет (в том числе ровно 100 %).
+   */
+  overrunPercent: number | null;
+}
+
 export interface DashboardMoneyDto {
   /** Смета = Σ (unitPrice + materialUnitPrice) × specQuantity по всем материалам. */
   estimate: number;
   /** Факт = Σ (totalCost + materialTotalCost) по всем материалам. */
   actual: number;
-  /** Процент выполнения работ = Σ totalUsed / Σ specQuantity (0..1). */
+  /**
+   * @deprecated ⭐ №225: это прогресс ОБЪЁМОВ (totalUsed / specQuantity), а не деньги.
+   * Оставлено для обратной совместимости; новым кодом использовать `volume.percent`,
+   * для денег — `difference` / `overBudget` / `overPercent`.
+   */
   percent: number;
+  /** Факт − смета (отрицательное значение = экономия). */
+  difference: number;
+  /** Факт от сметы в процентах (1 знак); null — смета = 0 (делить нельзя). */
+  percentOfEstimate: number | null;
+  /** true — факт больше сметы (денежный перерасход). */
+  overBudget: boolean;
+  /** На сколько процентов факт больше сметы; null — перерасхода нет или смета = 0. */
+  overPercent: number | null;
 }
 
 export interface DashboardWeekPointDto {
@@ -74,6 +105,8 @@ export interface DashboardSummaryDto {
   kpi: DashboardKpiDto;
   /** ⭐ №169: демо-объекты в расчётах (стикер «цифры неточные») */
   demoObjects: number;
+  /** ⭐ №225: объёмы (прогресс работ) — отдельно от денег. */
+  volume: DashboardVolumeDto;
   money: DashboardMoneyDto;
   weekChart: DashboardWeekPointDto[];
   hotProjects: DashboardHotProjectDto[];

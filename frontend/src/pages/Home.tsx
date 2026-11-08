@@ -98,11 +98,16 @@ const Home: React.FC = () => {
     );
   }
 
-  const rawPercent = Math.round(data.money.percent * 100);
-  const percent = Math.min(rawPercent, 100); // кламп для прогрессбара
-  const isOverrun = rawPercent >= 100;
-  const percentColor = isOverrun ? 'error.main' : 'success.main'; // красный при перерасходе
-  const overrunLabel = isOverrun ? `+${rawPercent - 100}% перерасход` : `${rawPercent}%`;
+  // ⭐ №225 (§71, №118): объёмы и деньги — РАЗНЫЕ сущности.
+  // Раньше `data.money.percent` (это был прогресс ОБЪЁМОВ) подписывался как
+  // «+864 % перерасход». Теперь:
+  //   • объём — свой бар + бейдж «объём перевыполнен на N %» (не красный);
+  //   • деньги — отдельно «факт больше сметы на X ₽ (Y %)» / «в пределах сметы».
+  const volumePercentRaw = Math.round(data.volume.percent * 100);
+  const volumePercent = Math.min(Math.max(volumePercentRaw, 0), 100); // кламп для бара
+  const volumeOverrun = data.volume.overrunPercent; // null — перевыполнения нет
+  const moneyOverBudget = data.money.overBudget;
+  const moneyDiff = data.money.difference;
   const maxWeek = Math.max(...data.weekChart.map(w => w.count), 1);
   // ⭐ №173: неделя Пн→Вс — сегодняшнюю колонку подсвечиваем (локальная дата)
   const now = new Date();
@@ -158,16 +163,39 @@ const Home: React.FC = () => {
             </Typography>
           </Box>
           <Box>
-            <Typography variant="caption" color="text.secondary">Освоено</Typography>
-            <Typography variant="h6" fontWeight={700} color={percentColor} sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
-              {overrunLabel}
+            <Typography variant="caption" color="text.secondary">Факт vs смета</Typography>
+            {/* ⭐ №225: деньги показываем только сравнением факта со сметой */}
+            <Typography
+              variant="h6"
+              fontWeight={700}
+              color={moneyOverBudget ? 'error.main' : 'success.main'}
+              sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}
+            >
+              {moneyOverBudget
+                ? `Факт больше сметы на ${fmtMoney(moneyDiff)} ₽${data.money.overPercent != null ? ` (${data.money.overPercent} %)` : ''}`
+                : 'В пределах сметы'}
             </Typography>
           </Box>
         </Stack>
+        {/* ⭐ №225: прогресс ОБЪЁМОВ — не деньги, красным не красим */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
+          <Typography variant="caption" color="text.secondary">Объём работ</Typography>
+          <Typography variant="caption" fontWeight={600}>{volumePercentRaw} %</Typography>
+          {volumeOverrun !== null && (
+            <Chip
+              size="small"
+              color="warning"
+              variant="outlined"
+              label={`Объём перевыполнен на ${volumeOverrun} %`}
+              sx={{ fontWeight: 600 }}
+            />
+          )}
+        </Box>
         <LinearProgress
           variant="determinate"
-          value={percent}
-          color={isOverrun ? 'error' : 'success'}
+          value={volumePercent}
+          color="info"
+          aria-label="Объём работ"
           sx={{ height: 10, borderRadius: 5, bgcolor: '#e0e0e0', '& .MuiLinearProgress-bar': { borderRadius: 5 } }}
         />
         {/* ⭐ Срез 3: ссылка в Аналитику (не перекрываем клик по карточке → Объекты) */}

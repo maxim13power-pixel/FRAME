@@ -10,7 +10,31 @@ export interface DashboardSummary {
     /** ⭐ №173: фиксаций за текущую неделю Пн→Вс (= сумма weekChart) */
     fixesWeekCount: number;
   };
-  money: { estimate: number; actual: number; percent: number };
+  /** ⭐ №225: объёмы (прогресс работ) — отдельно от денег */
+  volume: {
+    /** Σ totalUsed — объёмы, не рубли */
+    used: number;
+    /** Σ specQuantity */
+    specQuantity: number;
+    /** Доля выполнения 0..1+ (может быть больше 1) */
+    percent: number;
+    /** На сколько процентов объём перевыполнен; null — нет */
+    overrunPercent: number | null;
+  };
+  money: {
+    estimate: number;
+    actual: number;
+    /** @deprecated ⭐ №225 — это прогресс ОБЪЁМОВ, а не деньги. Используйте volume.percent */
+    percent: number;
+    /** Факт − смета */
+    difference: number;
+    /** Факт от сметы, %; null — смета 0 */
+    percentOfEstimate: number | null;
+    /** Факт больше сметы */
+    overBudget: boolean;
+    /** На сколько % факт больше сметы; null — нет перерасхода или смета 0 */
+    overPercent: number | null;
+  };
   /** ⭐ №169: сколько демо-объектов попало в расчёты (0 = цифры точные) */
   demoObjects: number;
   weekChart: { day: string; count: number }[];
