@@ -275,8 +275,8 @@ export class DashboardService {
       volume: volumeMetrics,
       money: {
         ...moneyMetrics,
-        // @deprecated: прогресс ОБЪЁМОВ — оставлен ради обратной совместимости
-        percent: volumeMetrics.percent,
+        // ⭐ №226 (§72, P3-6): deprecated `percent` удалён из ответа —
+        // прогресс объёмов живёт только в блоке `volume`.
       },
       weekChart,
       hotProjects: hotProjectRows.map((p) => ({

@@ -8,7 +8,10 @@ export interface AnalyticsSummary {
   totalWarehouseValue: number;
   /** ⭐ №224: сколько позиций склада без цены (их стоимость не входит в totalWarehouseValue) */
   warehouseItemsWithoutPrice: number;
+  /** ⭐ №226: перерасход — только проекты СО СМЕТОЙ (budget > 0 и actual > budget) */
   overrunCount: number;
+  /** ⭐ №226: проекты без сметы (budget = 0) — считаются отдельно, не «перерасход 100 %» */
+  noBudgetCount: number;
   onTrackCount: number;
   totalProjects: number;
   /** ⭐ №169: сколько демо-объектов попало в расчёты (0 = цифры точные) */
@@ -19,8 +22,9 @@ export interface BudgetVsActualItem {
   projectName: string;
   budget: number;
   actual: number;
-  percent: number;
-  status: 'under' | 'over' | 'on-track';
+  /** ⭐ №226: null, если сметы нет (делить нельзя) */
+  percent: number | null;
+  status: 'under' | 'over' | 'on-track' | 'no-budget';
 }
 
 export interface MonthlyTrendItem {
@@ -33,7 +37,8 @@ export interface TopOverrunItem {
   budget: number;
   actual: number;
   overrun: number;
-  percent: number;
+  /** ⭐ №226: null, если сметы нет */
+  percent: number | null;
 }
 
 export const fetchAnalyticsSummary = async (): Promise<AnalyticsSummary> => {
@@ -51,7 +56,11 @@ export const fetchBudgetVsActual = async (
 };
 
 export const fetchMonthlyTrend = async (): Promise<MonthlyTrendItem[]> => {
-  const response = await api.get('/analytics/monthly-trend');
+  // ⭐ №226 (§72, P3-4): месяцы считаются в зоне браузера (Date#getTimezoneOffset),
+  // а не в UTC сервера — иначе 1-е число месяца уезжает в предыдущий месяц.
+  const response = await api.get('/analytics/monthly-trend', {
+    params: { tzOffset: new Date().getTimezoneOffset() },
+  });
   return response.data;
 };
 

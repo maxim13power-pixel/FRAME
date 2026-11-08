@@ -99,7 +99,8 @@ const Analytics: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadAll]);
 
-  const summaryCards = summary
+  const summaryCards: { label: string; value: string; color: string; hint?: string }[] =
+    summary
     ? [
         { label: 'Общий бюджет', value: `${fmtMoney(summary.totalBudget)} ₽`, color: '#1976d2' },
         { label: 'Потрачено', value: `${fmtMoney(summary.totalSpent)} ₽`, color: '#ef6c00' },
@@ -116,7 +117,16 @@ const Analytics: React.FC = () => {
               ? `* ${summary.warehouseItemsWithoutPrice} поз. без цены не входят в стоимость`
               : undefined,
         },
-        { label: 'Перерасход', value: `${summary.overrunCount} / ${summary.totalProjects}`, color: '#d32f2f' },
+        {
+          label: 'Перерасход',
+          value: `${summary.overrunCount} / ${summary.totalProjects}`,
+          color: '#d32f2f',
+          // ⭐ №226: проекты без сметы — отдельная цифра, а не «перерасход 100 %»
+          hint:
+            summary.noBudgetCount > 0
+              ? `* без сметы: ${summary.noBudgetCount} — в перерасход не входят`
+              : undefined,
+        },
       ]
     : [];
 
@@ -125,6 +135,8 @@ const Analytics: React.FC = () => {
     Бюджет: d.budget,
     Факт: d.actual,
     over: d.status === 'over',
+    // ⭐ №226: проект без сметы — серый, а не «зелёный/красный»
+    noBudget: d.status === 'no-budget',
   }));
 
   const trendData = monthlyTrend.map((m) => ({
@@ -203,6 +215,12 @@ const Analytics: React.FC = () => {
             <Paper key={c.label} sx={{ p: 2, borderRadius: 2 }}>
               <Typography variant="caption" color="text.secondary">{c.label}</Typography>
               <Typography variant="h6" fontWeight={700} sx={{ color: c.color }}>{c.value}</Typography>
+              {/* ⭐ №226: сноски карточек (раньше hint не выводился вообще) */}
+              {c.hint && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  {c.hint}
+                </Typography>
+              )}
             </Paper>
           ))}
         </Box>
@@ -234,7 +252,7 @@ const Analytics: React.FC = () => {
                 <Bar dataKey="Бюджет" fill="#1976d2" />
                 <Bar dataKey="Факт">
                   {bvaData.map((d, i) => (
-                    <Cell key={i} fill={d.over ? '#d32f2f' : '#4caf50'} />
+                    <Cell key={i} fill={d.noBudget ? '#9e9e9e' : d.over ? '#d32f2f' : '#4caf50'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -265,11 +283,11 @@ const Analytics: React.FC = () => {
                 <Paper
                   key={t.projectName}
                   variant="outlined"
-                  sx={{ p: 1.5, borderRadius: 2, bgcolor: t.percent > 50 ? 'error.light' : 'transparent' }}
+                  sx={{ p: 1.5, borderRadius: 2, bgcolor: t.percent !== null && t.percent > 50 ? 'error.light' : 'transparent' }}
                 >
                   <Typography variant="body2" fontWeight={600}>{t.projectName}</Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Бюджет {fmtMoney(t.budget)} ₽ • Факт {fmtMoney(t.actual)} ₽ • +{fmtMoney(t.overrun)} ₽ ({t.percent}%)
+                    Бюджет {fmtMoney(t.budget)} ₽ • Факт {fmtMoney(t.actual)} ₽ • +{fmtMoney(t.overrun)} ₽ ({t.percent === null ? '—' : `${t.percent}%`})
                   </Typography>
                 </Paper>
               ))}
@@ -288,12 +306,12 @@ const Analytics: React.FC = () => {
                 </TableHead>
                 <TableBody>
                   {topOverrun.map((t) => (
-                    <TableRow key={t.projectName} sx={{ bgcolor: t.percent > 50 ? 'error.light' : 'transparent' }}>
+                    <TableRow key={t.projectName} sx={{ bgcolor: t.percent !== null && t.percent > 50 ? 'error.light' : 'transparent' }}>
                       <TableCell>{t.projectName}</TableCell>
                       <TableCell align="right">{fmtMoney(t.budget)} ₽</TableCell>
                       <TableCell align="right">{fmtMoney(t.actual)} ₽</TableCell>
                       <TableCell align="right" sx={{ color: '#d32f2f', fontWeight: 600 }}>+{fmtMoney(t.overrun)} ₽</TableCell>
-                      <TableCell align="right" sx={{ color: '#d32f2f', fontWeight: 600 }}>{t.percent}%</TableCell>
+                      <TableCell align="right" sx={{ color: '#d32f2f', fontWeight: 600 }}>{t.percent === null ? '—' : `${t.percent}%`}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

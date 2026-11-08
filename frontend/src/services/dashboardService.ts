@@ -24,8 +24,6 @@ export interface DashboardSummary {
   money: {
     estimate: number;
     actual: number;
-    /** @deprecated ⭐ №225 — это прогресс ОБЪЁМОВ, а не деньги. Используйте volume.percent */
-    percent: number;
     /** Факт − смета */
     difference: number;
     /** Факт от сметы, %; null — смета 0 */

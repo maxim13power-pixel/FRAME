@@ -38,12 +38,6 @@ export interface DashboardMoneyDto {
   estimate: number;
   /** Факт = Σ (totalCost + materialTotalCost) по всем материалам. */
   actual: number;
-  /**
-   * @deprecated ⭐ №225: это прогресс ОБЪЁМОВ (totalUsed / specQuantity), а не деньги.
-   * Оставлено для обратной совместимости; новым кодом использовать `volume.percent`,
-   * для денег — `difference` / `overBudget` / `overPercent`.
-   */
-  percent: number;
   /** Факт − смета (отрицательное значение = экономия). */
   difference: number;
   /** Факт от сметы в процентах (1 знак); null — смета = 0 (делить нельзя). */
