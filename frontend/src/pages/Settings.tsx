@@ -406,13 +406,15 @@ const Settings: React.FC = () => {
         </Button>
       </Paper>
 
-      {/* ⭐ Интерфейс — свёрнут по умолчанию (настройка редкая, не должна
-          оттеснять профиль и приватность) */}
-      <Accordion
-        disableGutters
-        elevation={0}
-        sx={{ borderRadius: 2, mb: 2, '&:before': { display: 'none' }, border: '1px solid', borderColor: 'divider' }}
-      >
+      {/* ⭐ №216: «Нижнее меню» — только для мобилки. На десктопе нижней навигации
+          нет (есть сайдбар/шапка), поэтому настройка там бессмысленна и только
+          отвлекает от профиля и приватности. */}
+      {isMobile && (
+        <Accordion
+          disableGutters
+          elevation={0}
+          sx={{ borderRadius: 2, mb: 2, '&:before': { display: 'none' }, border: '1px solid', borderColor: 'divider' }}
+        >
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
             <TuneIcon sx={{ color: '#1976d2' }} />
@@ -458,7 +460,8 @@ const Settings: React.FC = () => {
           Выбрано: {selected.length} из {MAX_TABS}. Меню обновится сразу после сохранения.
         </Typography>
         </AccordionDetails>
-      </Accordion>
+        </Accordion>
+      )}
 
       {/* ⭐ №168: «Мои доступы» — объекты, где я участник */}
       <Paper sx={{ p: 2.5, borderRadius: 2, mb: 2 }}>
