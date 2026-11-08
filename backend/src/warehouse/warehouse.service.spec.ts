@@ -1,6 +1,6 @@
 ﻿// backend/src/warehouse/warehouse.service.spec.ts
 // ⭐ №126: unit-тесты складской атомарности (Блок A) и доступа к чужому объекту (Блок C).
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { WarehouseService } from './warehouse.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 
@@ -137,12 +137,12 @@ describe('WarehouseService', () => {
   });
 
   describe('доступ — чужой объект (Блок C)', () => {
-    it('list с objectId чужого объекта ⇒ ForbiddenException', async () => {
+    it('list с objectId чужого объекта ⇒ NotFoundException (№221)', async () => {
       prisma.objectAccess.findFirst.mockResolvedValue(null);
 
       const promise = service.list(7, 999);
-      await expect(promise).rejects.toThrow(ForbiddenException);
-      await expect(promise).rejects.toThrow('Нет доступа к этому объекту');
+      await expect(promise).rejects.toThrow(NotFoundException);
+      await expect(promise).rejects.toThrow('Объект не найден');
     });
   });
 

@@ -31,7 +31,7 @@ export class EstimateTemplatesService {
         where: { userId, objectId: project.objectId, projectId: null },
       }));
     if (!access) {
-      throw new ForbiddenException('Нет доступа к этому проекту');
+      throw new NotFoundException('Проект не найден');
     }
     return access;
   }

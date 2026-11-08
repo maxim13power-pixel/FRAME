@@ -37,7 +37,7 @@ export class WarehouseService {
       projectId: null,
     });
     if (!access) {
-      throw new ForbiddenException('Нет доступа к этому объекту');
+      throw new NotFoundException('Объект не найден');
     }
     assertAccessActive(access); // ⭐ №193 (A₂ F1): отозванный доступ живых данных не читает
     return access;
@@ -59,7 +59,7 @@ export class WarehouseService {
       projectId,
     );
     if (!access) {
-      throw new ForbiddenException('Нет доступа к этому проекту');
+      throw new NotFoundException('Проект не найден');
     }
     assertAccessActive(access); // ⭐ №193 (A₂ F1)
     return access;

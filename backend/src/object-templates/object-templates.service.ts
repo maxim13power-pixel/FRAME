@@ -80,7 +80,7 @@ export class ObjectTemplatesService {
       const grants = await loadAccessGrants(this.prisma, userId);
       const my = resolveProjectAccess(grants, objectId, projectId);
       if (!my.role) {
-        throw new ForbiddenException('Нет доступа к этому проекту');
+        throw new NotFoundException('Проект не найден');
       }
       if (my.revoked) {
         throw new ForbiddenException('Доступ отозван: шаблон сохранить нельзя');

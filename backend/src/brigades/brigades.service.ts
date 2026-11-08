@@ -130,7 +130,7 @@ export class BrigadesService {
     const grants = await loadAccessGrants(this.prisma, userId);
     const my = resolveObjectRole(grants, objectId);
     if (!my.role) {
-      throw new ForbiddenException('Нет доступа к этому объекту');
+      throw new NotFoundException('Объект не найден');
     }
     // ⭐ №193 (A₂ F1): отозванный доступ живых данных не читает (в т.ч. выходы).
     if (my.revoked) {
@@ -152,7 +152,7 @@ export class BrigadesService {
     const grants = await loadAccessGrants(this.prisma, userId);
     const my = resolveProjectAccess(grants, project.objectId, projectId);
     if (!my.role) {
-      throw new ForbiddenException('Нет доступа к этому проекту');
+      throw new NotFoundException('Проект не найден');
     }
     if (my.revoked) {
       throw new ForbiddenException(REVOKED_ACCESS_MESSAGE); // ⭐ №193 (A₂ F1)

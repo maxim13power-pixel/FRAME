@@ -49,7 +49,7 @@ export class ProjectsService {
       projectId: null,
     });
     if (!access) {
-      throw new ForbiddenException('Нет доступа к этому объекту');
+      throw new NotFoundException('Объект не найден');
     }
     assertAccessActive(access); // ⭐ №193 (A₂ F1): отозванный доступ живых данных не читает
     return access;
@@ -72,7 +72,7 @@ export class ProjectsService {
       projectId,
     );
     if (!access) {
-      throw new ForbiddenException('Нет доступа к этому объекту');
+      throw new NotFoundException('Объект не найден');
     }
     assertAccessActive(access); // ⭐ №193 (A₂ F1)
     return access;
@@ -179,7 +179,7 @@ export class ProjectsService {
     const grants = await loadAccessGrants(this.prisma, userId);
     const my = resolveObjectRole(grants, objectId);
     if (!my.role) {
-      throw new ForbiddenException('Нет доступа к этому объекту');
+      throw new NotFoundException('Объект не найден');
     }
     // ⭐ №169: объект в ЛИЧНОМ архиве → его проекты не предлагаем в выборах.
     // Иначе демо-объект, убранный в архив, продолжал подсовывать свои проекты
@@ -334,7 +334,7 @@ export class ProjectsService {
     if (!project) throw new NotFoundException('Проект не найден');
     const grants = await loadAccessGrants(this.prisma, userId);
     const my = resolveObjectRole(grants, project.objectId);
-    if (!my.role) throw new ForbiddenException('Нет доступа к этому объекту');
+    if (!my.role) throw new NotFoundException('Объект не найден');
     if (my.revoked) throw new ForbiddenException(REVOKED_ACCESS_MESSAGE);
     const allowed = mode === 'write' ? my.hasObjectAccess && my.canWrite : my.canManage;
     if (!allowed) {

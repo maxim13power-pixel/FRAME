@@ -72,7 +72,7 @@ export class ImportsService {
     if (!project) throw new NotFoundException('Проект не найден');
     const grants = await loadAccessGrants(this.prisma, userId);
     const my = resolveProjectAccess(grants, project.objectId, projectId);
-    if (!my.role) throw new ForbiddenException('Нет доступа к этому проекту');
+    if (!my.role) throw new NotFoundException('Проект не найден');
     if (my.revoked) throw new ForbiddenException(REVOKED_ACCESS_MESSAGE);
     if (!my.canWrite) throw new ForbiddenException('Наблюдатель не может импортировать смету');
     const moneyVisible = canSeeMoney(grants.filter((g) => g.objectId === project.objectId));

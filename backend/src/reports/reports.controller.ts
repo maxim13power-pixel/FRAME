@@ -1,20 +1,6 @@
 // backend/src/reports/reports.controller.ts
 // ⭐ Раздел «Отчёты»: сметы и акты выполненных работ (CRUD, без экспорта).
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  ParseIntPipe,
-  Patch,
-  Post,
-  Query,
-  Req,
-  Res,
-  UseGuards,
-  ValidationPipe,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, Res, UseGuards, ValidationPipe, StreamableFile } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ReportsService } from './reports.service';
@@ -69,7 +55,9 @@ export class ReportsController {
       'Content-Disposition',
       `attachment; filename="report-${id}.pdf"`,
     );
-    return buffer;
+    // ⭐ №221: Buffer без StreamableFile Nest сериализует в JSON
+    // (`{"type":"Buffer","data":[…]}`) — скачивался «файл» с JSON внутри.
+    return new StreamableFile(buffer);
   }
 
   // ⭐ №122b: экспорт в XLSX (exceljs)
@@ -89,7 +77,8 @@ export class ReportsController {
       'Content-Disposition',
       `attachment; filename="report-${id}.xlsx"`,
     );
-    return buffer;
+    // ⭐ №221: тот же фикс — файл уходит байтами, а не JSON-обёрткой Buffer
+    return new StreamableFile(buffer);
   }
 
   @Post()

@@ -1,6 +1,6 @@
 // backend/src/audit/audit.service.spec.ts
 // ⭐ №180: журнал всей системы без области — только ADMIN; остальным нужен entity + entityId.
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AuditService } from './audit.service';
 
 describe('AuditService — чтение журнала (№180)', () => {
@@ -34,13 +34,13 @@ describe('AuditService — чтение журнала (№180)', () => {
     expect(prisma.auditLog.findMany).toHaveBeenCalled();
   });
 
-  it('entity+entityId чужого проекта ⇒ ForbiddenException', async () => {
+  it('entity+entityId чужого проекта ⇒ NotFoundException (№221)', async () => {
     prisma.report.findUnique.mockResolvedValue({ id: 5, projectId: 3 });
     prisma.project.findUnique.mockResolvedValue({ objectId: 2 });
     prisma.objectAccess.findFirst.mockResolvedValue(null);
 
     await expect(service.list(7, 'report', 5, 'FOREMAN')).rejects.toThrow(
-      ForbiddenException,
+      NotFoundException,
     );
     expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
   });

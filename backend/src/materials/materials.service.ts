@@ -104,7 +104,7 @@ export class MaterialsService {
       projectId,
     );
     if (!access) {
-      throw new ForbiddenException('Нет доступа к этому проекту');
+      throw new NotFoundException('Проект не найден');
     }
     assertAccessActive(access);
     return access;
@@ -130,7 +130,7 @@ export class MaterialsService {
       material.projectId,
     );
     if (!access) {
-      throw new ForbiddenException('Нет доступа к этому материалу');
+      throw new NotFoundException('Материал не найден');
     }
     assertAccessActive(access);
     return access;

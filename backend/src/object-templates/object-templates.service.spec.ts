@@ -105,14 +105,14 @@ describe('ObjectTemplatesService.createFromObject (№192)', () => {
     ).rejects.toThrow(/Доступ отозван/);
   });
 
-  it('чужой проект ⇒ ForbiddenException', async () => {
+  it('чужой проект ⇒ NotFoundException (№221)', async () => {
     prisma.objectAccess.findMany.mockResolvedValue([
       projectGrant({ projectId: 30 }),
     ]);
 
     await expect(
       service.createFromObject(15, dto({ projectId: 29 }), 7),
-    ).rejects.toThrow(ForbiddenException);
+    ).rejects.toThrow(NotFoundException);
   });
 
   it('проекта нет в объекте ⇒ NotFoundException', async () => {

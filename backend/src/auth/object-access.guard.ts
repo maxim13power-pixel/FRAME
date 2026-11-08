@@ -2,14 +2,7 @@
 // Проверяет что у пользователя есть доступ к конкретному объекту через таблицу ObjectAccess.
 // Используется в контроллерах ПОСЛЕ JwtAuthGuard:
 // @UseGuards(JwtAuthGuard, ObjectAccessGuard)
-import {
-  BadRequestException,
-  CanActivate,
-  ExecutionContext,
-  ForbiddenException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { BadRequestException, CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   assertAccessActive,
@@ -109,7 +102,7 @@ export class ObjectAccessGuard implements CanActivate {
         ? await findLiveAccess(this.prisma, { userId, objectId })
         : await findProjectAccess(this.prisma, userId, objectId, projectId);
     if (!access) {
-      throw new ForbiddenException('Нет доступа к этому объекту');
+      throw new NotFoundException('Объект не найден');
     }
 
     // ⭐ №193 (A₂ F1): отозванный доступ = НИЧЕГО живого, включая чтение.

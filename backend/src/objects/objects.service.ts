@@ -1,5 +1,10 @@
 ﻿// backend/src/objects/objects.service.ts
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AccessRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateObjectDto } from './dto/create-object.dto';
@@ -24,7 +29,7 @@ export class ObjectsService {
     const grants = await loadAccessGrants(this.prisma, userId);
     const my = resolveObjectRole(grants, objectId);
     if (!my.hasObjectAccess) {
-      throw new ForbiddenException('Нет доступа к этому объекту');
+      throw new NotFoundException('Объект не найден');
     }
     if (my.revoked) {
       throw new ForbiddenException(REVOKED_ACCESS_MESSAGE);
@@ -255,7 +260,7 @@ export class ObjectsService {
     const grants = await loadAccessGrants(this.prisma, userId);
     const my = resolveObjectRole(grants, id);
     if (!my.role) {
-      throw new ForbiddenException('Нет доступа к этому объекту');
+      throw new NotFoundException('Объект не найден');
     }
     const object = await this.prisma.object.findUnique({
       where: { id },

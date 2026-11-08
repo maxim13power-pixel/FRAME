@@ -47,7 +47,7 @@ export class AuditService {
       (await this.prisma.objectAccess.findFirst({
         where: { userId, objectId: project.objectId, projectId: null },
       }));
-    if (!access) throw new ForbiddenException('Нет доступа к этому проекту');
+    if (!access) throw new NotFoundException('Проект не найден');
     return access;
   }
 
@@ -91,7 +91,7 @@ export class AuditService {
       });
       if (!item) throw new NotFoundException('Расценка не найдена');
       if (item.ownerId != null && item.ownerId !== userId) {
-        throw new ForbiddenException('Нет доступа к этой расценке');
+        throw new NotFoundException('Расценка не найдена');
       }
       return;
     }
@@ -99,7 +99,7 @@ export class AuditService {
       const access = await this.prisma.objectAccess.findFirst({
         where: { userId, objectId: entityId, projectId: null },
       });
-      if (!access) throw new ForbiddenException('Нет доступа к этому объекту');
+      if (!access) throw new NotFoundException('Объект не найден');
       return;
     }
     throw new BadRequestException('Неизвестный тип сущности');

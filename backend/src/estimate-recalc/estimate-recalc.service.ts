@@ -70,7 +70,7 @@ export class EstimateRecalcService {
       project.objectId,
       projectId,
     );
-    if (!access) throw new ForbiddenException('Нет доступа к этому проекту');
+    if (!access) throw new NotFoundException('Проект не найден');
     assertAccessActive(access);
     return access;
   }

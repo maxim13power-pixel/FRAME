@@ -20,7 +20,7 @@ export class InviteService {
       where: { userId, objectId, projectId: null },
     });
     if (!access) {
-      throw new ForbiddenException('Нет доступа к этому объекту');
+      throw new NotFoundException('Объект не найден');
     }
     return access;
   }

@@ -63,7 +63,7 @@ export class AccessRequestService {
     const my = await this.prisma.objectAccess.findFirst({
       where: { userId, objectId },
     });
-    if (!my) throw new ForbiddenException('Нет доступа к этому объекту');
+    if (!my) throw new NotFoundException('Объект не найден');
     if (my.revokedAt) {
       throw new ForbiddenException('Доступ отозван: заявку подать нельзя');
     }
