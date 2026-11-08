@@ -122,6 +122,22 @@ export class WarehouseService {
     }
   }
 
+  /**
+   * ⭐ №223: цены склада — это деньги объекта, значит подчиняются тому же правилу,
+   * что и смета: hidePrices и роль VIEWER их скрывают. Раньше `price` уходил всем.
+   */
+  private seesPrices(access: { hidePrices?: boolean; role?: AccessRole | string } | null): boolean {
+    if (!access) return false;
+    return !access.hidePrices && access.role !== AccessRole.VIEWER;
+  }
+
+  /** Скрывать ли деньги для позиции этого объекта. */
+  private async hidePricesFor(objectId: number | null | undefined, userId: number): Promise<boolean> {
+    if (objectId == null) return false; // общая позиция — объектных денег нет
+    const access = await findLiveAccess(this.prisma, { userId, objectId, projectId: null });
+    return !this.seesPrices(access);
+  }
+
   // ⭐ №204 (A#2): владелец «общей» позиции — создатель. Глобальный ADMIN FRAME
   // может всё (суперадмин). Легаси-строки (createdBy = null) остаются общими.
   private async isAdmin(userId: number): Promise<boolean> {
@@ -193,11 +209,20 @@ export class WarehouseService {
       where.name = { contains: search.trim(), mode: 'insensitive' };
     }
 
-    return this.prisma.warehouseItem.findMany({
+    const items = await this.prisma.warehouseItem.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
       include: ITEM_INCLUDE,
     });
+    // ⭐ №223: прячем цены тем, кому скрыты деньги (по объекту позиции)
+    const cache = new Map<number | null, boolean>();
+    const result: (typeof items)[number][] = [];
+    for (const item of items) {
+      const key = item.objectId ?? null;
+      if (!cache.has(key)) cache.set(key, await this.hidePricesFor(key, userId));
+      result.push(cache.get(key) ? { ...item, price: null } : item);
+    }
+    return result;
   }
 
   // ─── Детальная позиция + последние 20 операций ───
@@ -209,7 +234,14 @@ export class WarehouseService {
       take: 20,
       include: { project: { select: { id: true, name: true } } },
     });
-    return { ...item, transactions };
+    // ⭐ №223: деньги скрываем и в карточке, и в истории операций
+    const hide = await this.hidePricesFor(item.objectId, userId);
+    if (!hide) return { ...item, transactions };
+    return {
+      ...item,
+      price: null,
+      transactions: transactions.map((t) => ({ ...t, price: null })),
+    };
   }
 
   // ─── Создать позицию ───
@@ -358,7 +390,7 @@ export class WarehouseService {
       where.warehouseItemId = { in: items.map((i) => i.id) };
     }
 
-    return this.prisma.warehouseTransaction.findMany({
+    const rows = await this.prisma.warehouseTransaction.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -367,5 +399,24 @@ export class WarehouseService {
         project: { select: { id: true, name: true } },
       },
     });
+    // ⭐ №223: цены операций скрываем там же, где скрыты деньги объекта позиции
+    if (rows.length === 0) return rows;
+    const itemIds = [...new Set(rows.map((r) => r.warehouseItemId))];
+    const objects = await this.prisma.warehouseItem.findMany({
+      where: { id: { in: itemIds } },
+      select: { id: true, objectId: true },
+    });
+    const objectByItem = new Map(objects.map((i) => [i.id, i.objectId]));
+    const cache = new Map<number | null, boolean>();
+    const hidden: boolean[] = [];
+    for (const id of itemIds) {
+      const key = objectByItem.get(id) ?? null;
+      if (!cache.has(key)) cache.set(key, await this.hidePricesFor(key, userId));
+      hidden.push(cache.get(key) as boolean);
+    }
+    const hideSet = new Set(itemIds.filter((id, idx) => hidden[idx]));
+    return hideSet.size === 0
+      ? rows
+      : rows.map((r) => (hideSet.has(r.warehouseItemId) ? { ...r, price: null } : r));
   }
 }

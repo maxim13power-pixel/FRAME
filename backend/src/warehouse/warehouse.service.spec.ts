@@ -35,6 +35,56 @@ describe('WarehouseService', () => {
     service = new WarehouseService(prisma as any);
   });
 
+  describe('list — скрытие цен склада (№223)', () => {
+    const items = [{ id: 1, objectId: 5, name: 'Цемент', quantity: 10, price: 300 }];
+
+    it('VIEWER не видит цену позиции склада', async () => {
+      prisma.warehouseItem.findMany.mockResolvedValue(items);
+      prisma.objectAccess.findFirst.mockResolvedValue({
+        id: 1,
+        role: 'VIEWER',
+        hidePrices: false,
+        projectId: null,
+        revokedAt: null,
+      });
+
+      const result = await service.list(7, 5);
+
+      expect(result[0].price).toBeNull();
+      expect(result[0].quantity).toBe(10); // количество видно
+    });
+
+    it('участник с hidePrices не видит цену', async () => {
+      prisma.warehouseItem.findMany.mockResolvedValue(items);
+      prisma.objectAccess.findFirst.mockResolvedValue({
+        id: 1,
+        role: 'FOREMAN',
+        hidePrices: true,
+        projectId: null,
+        revokedAt: null,
+      });
+
+      const result = await service.list(7, 5);
+
+      expect(result[0].price).toBeNull();
+    });
+
+    it('участник с ценами видит цену', async () => {
+      prisma.warehouseItem.findMany.mockResolvedValue(items);
+      prisma.objectAccess.findFirst.mockResolvedValue({
+        id: 1,
+        role: 'FOREMAN',
+        hidePrices: false,
+        projectId: null,
+        revokedAt: null,
+      });
+
+      const result = await service.list(7, 5);
+
+      expect(result[0].price).toBe(300);
+    });
+  });
+
   describe('createTransaction — складская атомарность (Блок A)', () => {
     const userId = 7;
 
