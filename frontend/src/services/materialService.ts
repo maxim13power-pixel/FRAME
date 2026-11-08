@@ -52,6 +52,8 @@ export interface MaterialData {
   projectId: number;
   createdAt?: string;
   updatedAt?: string;
+  /** ⭐ №228: сколько фото прикреплено к материалу (бейдж на кнопке камеры) */
+  photosCount?: number;
 }
 export interface MaterialFixData {
   id: number;

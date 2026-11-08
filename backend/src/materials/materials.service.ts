@@ -143,13 +143,18 @@ export class MaterialsService {
     const materials = await this.prisma.material.findMany({
       where: { projectId },
       orderBy: { id: 'asc' },
-      include: MATERIAL_INCLUDE,
+      // ⭐ №228: количество фото для бейджа на кнопке камеры (без N+1)
+      include: { ...MATERIAL_INCLUDE, _count: { select: { photos: true } } },
+    });
+    const withPhotoCount = materials.map((m) => {
+      const { _count, ...rest } = m;
+      return { ...rest, photosCount: _count?.photos ?? 0 };
     });
     // ⭐ Скрываем цены для VIEWER и юзеров с флагом hidePrices
     if (this.mustHidePrices(access)) {
-      return materials.map((m) => this.stripPrices(m));
+      return withPhotoCount.map((m) => this.stripPrices(m));
     }
-    return materials;
+    return withPhotoCount;
   }
 
   // История фиксаций одного материала

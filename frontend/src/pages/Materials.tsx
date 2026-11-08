@@ -33,6 +33,7 @@ import {
   Divider,
   Snackbar,
   Drawer,
+  Badge,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
@@ -53,6 +54,8 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
+import PhotoGalleryDialog from '../components/PhotoGalleryDialog'; // ⭐ №228: фото-фиксация
+import PhotoCaptureDialog from '../components/PhotoCaptureDialog'; // ⭐ №228
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { useScrollDirection } from '../hooks/useScrollDirection';
 import {
@@ -392,7 +395,10 @@ const [editMatPricePrice, setEditMatPricePrice] = useState('');
   const [editFixAmount, setEditFixAmount] = useState('');
   const [editFixNote, setEditFixNote] = useState('');
   // Информационная модалка вместо браузерного alert
-  const [infoModal, setInfoModal] = useState<{ open: boolean; text: string }>({ open: false, text: '' }); 
+  const [infoModal, setInfoModal] = useState<{ open: boolean; text: string }>({ open: false, text: '' });
+  // ⭐ №228: фото-фиксация — галерея материала и модалка съёмки/загрузки
+  const [photoGalleryMaterial, setPhotoGalleryMaterial] = useState<MaterialData | null>(null);
+  const [photoCaptureMaterial, setPhotoCaptureMaterial] = useState<MaterialData | null>(null); 
 // Полное редактирование материала (шестерёнка)
 const [editModalOpen, setEditModalOpen] = useState(false);
 const [editName, setEditName] = useState('');
@@ -666,6 +672,17 @@ useEffect(() => {
   };
   loadData();
 }, [token, projectId, objectId]);
+
+  // ⭐ №228: обновить только материалы (после загрузки/удаления фото) —
+  // без мигания всей страницы и повторной загрузки проекта/объекта
+  const refreshMaterials = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      setMaterials(await fetchMaterialsByProject(parseInt(projectId)));
+    } catch (err) {
+      console.error(err);
+    }
+  }, [projectId]);
 
   // ⭐ №161: подсветка строки, на которую перешли из виджета «Без расценки»
   useEffect(() => {
@@ -1733,8 +1750,17 @@ onClose={() => setFilterAnchorEl(null)}
               <TableCell sx={{ textAlign: 'center' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
                   <Typography variant="body2" fontWeight={600}>{m.lastEntry ?? '—'}</Typography>
-                  <IconButton size="small" sx={{ p: 0.3 }} onClick={() => setInfoModal({ open: true, text: '📷 Раздел фото в разработке — появится в версии 2' })}>
-                    <CameraAltIcon sx={{ fontSize: 16, color: '#757575' }} />
+                  {/* ⭐ №228: фото-фиксация — бейдж с количеством, клик открывает галерею */}
+                  <IconButton
+                    size="small"
+                    sx={{ p: 0.3 }}
+                    onClick={() => setPhotoGalleryMaterial(m)}
+                    aria-label="Фото материала"
+                    title="Фото материала"
+                  >
+                    <Badge badgeContent={m.photosCount ?? 0} color="primary" invisible={!m.photosCount}>
+                      <CameraAltIcon sx={{ fontSize: 16, color: m.photosCount ? '#1976d2' : '#757575' }} />
+                    </Badge>
                   </IconButton>
                 </Box>
                 {/* ⭐ Кнопка "+ фикс" скрыта для VIEWER (и на бэке addFix кидает 403) */}
@@ -1886,16 +1912,18 @@ onClose={() => setFilterAnchorEl(null)}
               <Button
                 variant="outlined"
                 size="small"
-                onClick={() => setInfoModal({ open: true, text: '📷 Раздел фото в разработке — появится в версии 2' })}
+                onClick={() => setPhotoGalleryMaterial(m)}
                 aria-label="Фотофиксация"
                 sx={{
                   minWidth: 48,
-                  color: '#757575',
-                  borderColor: '#bdbdbd',
-                  '&:hover': { borderColor: '#757575', bgcolor: 'rgba(0,0,0,0.04)' },
+                  color: m.photosCount ? '#1976d2' : '#757575',
+                  borderColor: m.photosCount ? '#90caf9' : '#bdbdbd',
+                  '&:hover': { borderColor: '#1976d2', bgcolor: 'rgba(25,118,210,0.04)' },
                 }}
               >
-                <CameraAltIcon fontSize="small" />
+                <Badge badgeContent={m.photosCount ?? 0} color="primary" invisible={!m.photosCount}>
+                  <CameraAltIcon fontSize="small" />
+                </Badge>
               </Button>
               {/* ⭐ Кнопка фиксации скрыта для VIEWER */}
               {!hidePrices && (
@@ -2684,6 +2712,30 @@ renderInput={(params) => (
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* ⭐ №228: галерея фото материала и модалка «Сделать фото / из галереи» */}
+      <PhotoGalleryDialog
+        open={Boolean(photoGalleryMaterial)}
+        materialId={photoGalleryMaterial?.id ?? 0}
+        materialName={photoGalleryMaterial?.name ?? ''}
+        onClose={() => setPhotoGalleryMaterial(null)}
+        onAddPhoto={() => {
+          setPhotoCaptureMaterial(photoGalleryMaterial);
+          setPhotoGalleryMaterial(null);
+        }}
+        onChanged={() => { void refreshMaterials(); }}
+      />
+      <PhotoCaptureDialog
+        open={Boolean(photoCaptureMaterial)}
+        materialId={photoCaptureMaterial?.id ?? 0}
+        materialName={photoCaptureMaterial?.name ?? ''}
+        onClose={() => setPhotoCaptureMaterial(null)}
+        onUploaded={() => {
+          setPhotoCaptureMaterial(null);
+          // Обновляем список, чтобы бейдж количества был актуальным
+          void refreshMaterials();
+        }}
+      />
     </Box>
   );
 };
