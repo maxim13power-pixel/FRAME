@@ -21,7 +21,7 @@ export interface PriceItemData {
   name: string;
   article?: string | null;
   unit: string;
-  price: number;
+  price: number | null;
   categoryId: number;
   catalogId?: number;
   category?: PriceCategoryData;

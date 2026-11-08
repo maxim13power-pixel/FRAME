@@ -19,6 +19,7 @@ export class ObjectsService {
   // ⭐ №164: менять сам объект может только участник с объектным доступом
   // и не наблюдатель (раньше хватало любой записи projectId=null).
   // ⭐ №193 (A₂ F1): отозванный доступ не даёт живых данных вообще.
+  // ⭐ №219: возвращает разрешение ролей, чтобы проверить «только админ» поля.
   private async assertCanEdit(objectId: number, userId: number) {
     const grants = await loadAccessGrants(this.prisma, userId);
     const my = resolveObjectRole(grants, objectId);
@@ -30,6 +31,26 @@ export class ObjectsService {
     }
     if (!my.canWrite) {
       throw new ForbiddenException('Наблюдатель не может менять объект');
+    }
+    return my;
+  }
+
+  /**
+   * ⭐ №219 (аудит §64, P1-2): справочник цен и даты объекта — управленческое решение
+   * уровня администратора объекта. Прораб (canWrite) может менять только имя/адрес/заметку:
+   * раньше он мог подменить справочник и тем самым поменять ВСЕ расценки объекта.
+   */
+  private assertManageOnlyFields(
+    my: { canManage: boolean },
+    dto: { catalogId?: unknown; startDate?: unknown; endDate?: unknown },
+  ) {
+    const restricted: string[] = [];
+    if (dto.catalogId !== undefined) restricted.push('справочник цен');
+    if (dto.startDate !== undefined || dto.endDate !== undefined) restricted.push('даты объекта');
+    if (restricted.length > 0 && !my.canManage) {
+      throw new ForbiddenException(
+        `Менять ${restricted.join(' и ')} может только администратор объекта`,
+      );
     }
   }
 
@@ -201,7 +222,9 @@ export class ObjectsService {
 
   // Обновление — только если есть доступ к объекту
   async update(id: number, dto: Partial<CreateObjectDto>, userId: number) {
-    await this.assertCanEdit(id, userId);
+    const my = await this.assertCanEdit(id, userId);
+    // ⭐ №219: справочник цен и даты — только администратор объекта
+    this.assertManageOnlyFields(my, dto);
     // ⭐ №164: смена справочника объекта (undefined = не трогаем, null = отвязать)
     const catalogId =
       dto.catalogId === undefined
@@ -273,10 +296,19 @@ export class ObjectsService {
   }
 
   async updateEndDate(id: number, newEndDate: string, userId: number) {
-    await this.assertCanEdit(id, userId);
+    const my = await this.assertCanEdit(id, userId);
+    // ⭐ №219: дата окончания объекта — только администратор объекта
+    if (!my.canManage) {
+      throw new ForbiddenException('Менять дату окончания может только администратор объекта');
+    }
+    // ⭐ №219: пустое/битое тело раньше давало 500 (Invalid Date → Prisma) — теперь 400
+    const parsed = newEndDate ? new Date(newEndDate) : new Date(Number.NaN);
+    if (!newEndDate || Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException('Дата окончания: ожидается строка вида ГГГГ-ММ-ДД');
+    }
     return this.prisma.object.update({
       where: { id },
-      data: { endDate: new Date(newEndDate) },
+      data: { endDate: parsed },
     });
   }
 }

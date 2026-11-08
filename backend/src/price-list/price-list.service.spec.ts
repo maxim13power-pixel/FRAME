@@ -13,6 +13,9 @@ describe('PriceListService — поиск в справочнике проект
     },
     object: { findFirst: jest.fn() },
     project: { findFirst: jest.fn() },
+    // ⭐ №219: проверка «видит ли пользователь цены» ходит в user/objectAccess
+    user: { findUnique: jest.fn() },
+    objectAccess: { findFirst: jest.fn() },
   };
 
   const audit = { log: jest.fn() };
@@ -22,6 +25,9 @@ describe('PriceListService — поиск в справочнике проект
     jest.clearAllMocks();
     prisma.priceItem.findMany.mockResolvedValue([]);
     prisma.object.findFirst.mockResolvedValue(null);
+    // ⭐ №219: по умолчанию цены видимы (есть активный грант без hidePrices)
+    prisma.user.findUnique.mockResolvedValue({ role: 'FOREMAN' });
+    prisma.objectAccess.findFirst.mockResolvedValue({ id: 1 });
     service = new PriceListService(prisma as any, audit as any);
   });
 
@@ -303,4 +309,57 @@ describe('PriceListService — справочники объекта и прое
 
 
 
+});
+
+
+describe('PriceListService — скрытие цен (№219)', () => {
+  const items = [{ id: 1, name: 'Стяжка', article: 'A-1', price: 320, category: null }];
+
+  const build = (opts: { pricesVisible: boolean }) => {
+    const prisma = {
+      priceItem: { findMany: jest.fn().mockResolvedValue(items) },
+      priceCatalog: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
+      object: { findFirst: jest.fn().mockResolvedValue(null) },
+      project: { findFirst: jest.fn().mockResolvedValue(null) },
+      objectAccess: {
+        findFirst: jest.fn().mockResolvedValue(opts.pricesVisible ? { id: 1 } : null),
+      },
+      user: { findUnique: jest.fn().mockResolvedValue({ role: 'FOREMAN' }) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    const service = new PriceListService(prisma as any, { log: jest.fn() } as any);
+    return { service, prisma };
+  };
+
+  it('нет видимых цен → price = null, название и артикул остаются', async () => {
+    const { service } = build({ pricesVisible: false });
+
+    const rows = await service.searchItems(undefined, undefined, 'WORK', 7);
+
+    expect(rows[0]).toMatchObject({ name: 'Стяжка', article: 'A-1', price: null });
+  });
+
+  it('есть видимые цены → price отдаётся как есть', async () => {
+    const { service } = build({ pricesVisible: true });
+
+    const rows = await service.searchItems(undefined, undefined, 'WORK', 7);
+
+    expect(rows[0].price).toBe(320);
+  });
+
+  it('скрытые цены не ищутся по цифрам запроса', async () => {
+    const { service, prisma } = build({ pricesVisible: false });
+
+    await service.searchItems('320', undefined, 'WORK', 7);
+
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('видимые цены — поиск по цифрам работает', async () => {
+    const { service, prisma } = build({ pricesVisible: true });
+
+    await service.searchItems('320', undefined, 'WORK', 7);
+
+    expect(prisma.$queryRaw).toHaveBeenCalled();
+  });
 });

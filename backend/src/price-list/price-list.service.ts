@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, PriceKind, Unit } from '@prisma/client';
+import { Prisma, PriceKind, Unit, AccessRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { canWriteWithRole, loadCatalogAccess } from './catalog-access'; // ⭐ №164
@@ -339,6 +339,28 @@ export class PriceListService {
     });
   }
 
+  /**
+   * ⭐ №219 (аудит §64, P1-1): видит ли пользователь ДЕНЬГИ.
+   * hidePrices выдаётся приглашением, VIEWER всегда без цен. Решение владельца:
+   * раздел «Справочники цен» не закрываем (наблюдатель может быть админом другого
+   * объекта), но цифры прячем — если человек не видит цены НИГДЕ.
+   * «Хотя бы один» грант с ценами → считаем, что цены ему доступны (скрывать бессмысленно).
+   */
+  private async canSeePrices(userId?: number): Promise<boolean> {
+    if (!userId) return false;
+    if (await this.isAdmin(userId)) return true;
+    const grant = await this.prisma.objectAccess.findFirst({
+      where: { userId, revokedAt: null, hidePrices: false, role: { not: AccessRole.VIEWER } },
+      select: { id: true },
+    });
+    return !!grant;
+  }
+
+  /** Прячет цифры в позициях справочника (названия и артикулы остаются). */
+  private stripItemPrices<T extends { price: unknown }>(items: T[]): T[] {
+    return items.map((item) => ({ ...item, price: null }));
+  }
+
   // Категории с активными расценками (общие + личные юзера; в справочнике — все его расценки)
   async getCategoriesWithItems(kind?: string, userId?: number, catalogId?: number) {
     if (catalogId) {
@@ -363,20 +385,27 @@ export class PriceListService {
         },
       },
     }).then(async (categories) => {
+      // ⭐ №219: цифры прячем всем, кто не видит деньги нигде (VIEWER / hidePrices)
+      const hidePrices = !(await this.canSeePrices(userId));
+      const withPrices = (list: typeof categories) =>
+        hidePrices
+          ? list.map((c) => ({ ...c, items: this.stripItemPrices(c.items) }))
+          : list;
+
       // ⭐ №211: категории живут глобально, а позиции — в справочнике. Из-за этого
       // в «Демо-справочнике» виднелись пустые категории чужих справочников.
       // Прячем только те, где позиции ЕСТЬ, но в другом справочнике: совсем новая
       // (пустая) категория пользователю остаётся видимой, чтобы он мог её наполнить.
-      if (!catalogId) return categories;
+      if (!catalogId) return withPrices(categories);
       const emptyIds = categories.filter((c) => c.items.length === 0).map((c) => c.id);
-      if (emptyIds.length === 0) return categories;
+      if (emptyIds.length === 0) return withPrices(categories);
       const elsewhere = await this.prisma.priceItem.findMany({
         where: { categoryId: { in: emptyIds } },
         select: { categoryId: true },
         distinct: ['categoryId'],
       });
       const hide = new Set(elsewhere.map((i) => i.categoryId));
-      return categories.filter((c) => !hide.has(c.id));
+      return withPrices(categories.filter((c) => !hide.has(c.id)));
     });
   }
 
@@ -463,10 +492,14 @@ export class PriceListService {
     if (catalogId && !(await this.canReadCatalog(catalogId, userId))) {
       throw new NotFoundException('Справочник не найден или нет доступа');
     }
+    // ⭐ №219: если пользователь не видит деньги — не ищем и по цене (иначе подбор
+    // цифр в поиске выдаёт реальные цены), а сами цифры в ответе прячем.
+    const hidePrices = !(await this.canSeePrices(userId));
     // ⭐ №179: цифры в запросе ищем ещё и по цене
-    const priceIds = search
-      ? await this.findIdsByPrice(search, { kind, categoryId, userId, catalogId })
-      : [];
+    const priceIds =
+      search && !hidePrices
+        ? await this.findIdsByPrice(search, { kind, categoryId, userId, catalogId })
+        : [];
     return this.prisma.priceItem.findMany({
       where: {
         AND: [
@@ -500,7 +533,7 @@ export class PriceListService {
       // остальные категории не видны. Теперь сортировка по порядку категорий и 50 строк.
       orderBy: [{ category: { sortOrder: 'asc' } }, { name: 'asc' }],
       take: 50,
-    });
+    }).then((items) => (hidePrices ? this.stripItemPrices(items) : items));
   }
 
   // Создание категории (общая — без владельца)

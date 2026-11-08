@@ -718,7 +718,7 @@ const Reports: React.FC = () => {
                   <MenuItem value="">Выберите позицию</MenuItem>
                   {catalogItems.map((pi) => (
                     <MenuItem key={pi.id} value={pi.id}>
-                      {pi.name} — {fmtMoney(pi.price)} ₽
+                      {pi.name} — {fmtMoney(pi.price ?? 0)} ₽
                     </MenuItem>
                   ))}
                 </Select>

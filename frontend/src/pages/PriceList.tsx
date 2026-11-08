@@ -219,7 +219,7 @@ const PriceListInner: React.FC = () => {
           if (priceSortBy === 'name') {
             comparison = a.name.localeCompare(b.name);
           } else if (priceSortBy === 'price') {
-            comparison = a.price - b.price;
+            comparison = (a.price ?? 0) - (b.price ?? 0);
           }
           return priceSortDirection === 'desc' ? -comparison : comparison;
         });
@@ -281,7 +281,7 @@ const PriceListInner: React.FC = () => {
     setItemName(item.name);
     setItemArticle(item.article || '');
     setItemUnit(item.unit);
-    setItemPrice(String(item.price));
+    setItemPrice(item.price == null ? '' : String(item.price));
     setItemCategoryId(item.categoryId);
     setNewCategoryName('');
     setItemModalOpen(true);
@@ -710,7 +710,7 @@ const PriceListInner: React.FC = () => {
                             {UNIT_OPTIONS.find(u => u.value === item.unit)?.label || item.unit}
                           </TableCell>
                           <TableCell sx={{ textAlign: 'right', fontWeight: 600 }}>
-                            {item.price.toLocaleString('ru-RU')} ₽
+                            {item.price == null ? '—' : `${item.price.toLocaleString('ru-RU')} ₽`}
                           </TableCell>
                           <TableCell sx={{ textAlign: 'center' }}>
                             <IconButton size="small" onClick={() => handleOpenEditItem(item)}>
@@ -751,7 +751,7 @@ const PriceListInner: React.FC = () => {
                           </Typography>
                         </Box>
                         <Typography sx={{ fontWeight: 700, mr: 1 }}>
-                          {item.price.toLocaleString('ru-RU')} ₽
+                          {item.price == null ? '—' : `${item.price.toLocaleString('ru-RU')} ₽`}
                         </Typography>
                         <IconButton size="small" onClick={() => handleOpenEditItem(item)}>
                           <SettingsIcon fontSize="small" />

@@ -2088,7 +2088,7 @@ onClose={() => setFilterAnchorEl(null)}
             }}
             onInputChange={(_e, value) => handlePriceSearch(value)}
             getOptionLabel={(option) =>
-            `${option.name} — ${option.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === option.unit)?.label || option.unit}`
+            `${option.name} — ${option.price == null ? '—' : `${option.price.toLocaleString('ru-RU')} ₽`}/${UNIT_OPTIONS.find(u => u.value === option.unit)?.label || option.unit}`
             }
 noOptionsText="Ничего не найдено. Начни вводить название..."
 onOpen={() => { if (priceOptions.length === 0) handlePriceSearch(''); }}
@@ -2101,7 +2101,7 @@ renderInput={(params) => (
             {selectedPriceItem && (
             <Box sx={{ bgcolor: 'rgba(76, 175, 80, 0.08)', p: 1.5, borderRadius: 1 }}>
             <Typography variant="body2">
-            Цена: <strong>{selectedPriceItem.price.toLocaleString('ru-RU')} ₽</strong>
+            Цена: <strong>{(selectedPriceItem.price ?? 0).toLocaleString('ru-RU')} ₽</strong>
             {' '}• {selectedPriceItem.category?.name || 'Без категории'}
             </Typography>
             </Box>
@@ -2180,7 +2180,7 @@ renderInput={(params) => (
     value={selectedMaterialItem}
     onChange={(_e, value) => setSelectedMaterialItem(value)}
     onInputChange={(_e, value) => handleMaterialPriceSearch(value)}
-    getOptionLabel={(o) => `${o.name} — ${o.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`}
+    getOptionLabel={(o) => `${o.name} — ${(o.price ?? 0).toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`}
     noOptionsText="Ничего не найдено"
     onOpen={() => { if (materialOptions.length === 0) handleMaterialPriceSearch(''); }}
     // ⭐ №179: доверяем серверному поиску (он ищет и по цене)
@@ -2192,7 +2192,7 @@ renderInput={(params) => (
     {selectedMaterialItem && (
     <Box sx={{ bgcolor: 'rgba(25, 118, 210, 0.08)', p: 1.5, borderRadius: 1 }}>
     <Typography variant="body2">
-    Цена: <strong>{selectedMaterialItem.price.toLocaleString('ru-RU')} ₽</strong> • {selectedMaterialItem.category?.name || 'Без категории'}
+    Цена: <strong>{(selectedMaterialItem.price ?? 0).toLocaleString('ru-RU')} ₽</strong> • {selectedMaterialItem.category?.name || 'Без категории'}
     </Typography>
     </Box>
     )}
@@ -2486,7 +2486,7 @@ textAlign: 'center',
       getOptionLabel={(option) => {
         if ((option as { __new__?: boolean } | null)?.__new__) return '➕ Создать новую расценку...';
         const o = option as PriceItemData;
-        return `${o.name} — ${o.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`;
+        return `${o.name} — ${(o.price ?? 0).toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`;
       }}
       noOptionsText="Ничего не найдено"
       // ⭐ №179: серверный поиск ищет и по цене — клиентский фильтр не должен его портить
@@ -2499,7 +2499,7 @@ textAlign: 'center',
     {editSelectedPriceItem && (
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
         <Typography variant="body2" color="text.secondary">
-          Текущая цена: <b>{editSelectedPriceItem.price.toLocaleString('ru-RU')} ₽</b>
+          Текущая цена: <b>{(editSelectedPriceItem.price ?? 0).toLocaleString('ru-RU')} ₽</b>
           {' '}• {editSelectedPriceItem.category?.name || 'Без категории'}
         </Typography>
         <Button size="small" onClick={() => { setEditSelectedPriceItem(null); setEditPriceItemId(null); }}>
@@ -2566,7 +2566,7 @@ loading={editMaterialLoading}
 value={editSelectedMaterialItem}
 onChange={(_e, value) => { setEditSelectedMaterialItem(value); setEditMaterialItemId(value?.id ?? null); }}
 onInputChange={(_e, value) => handleEditMaterialPriceSearch(value)}
-getOptionLabel={(o) => `${o.name} — ${o.price.toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`}
+getOptionLabel={(o) => `${o.name} — ${(o.price ?? 0).toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`}
 noOptionsText="Ничего не найдено"
 onOpen={() => { if (editMaterialOptions.length === 0) handleEditMaterialPriceSearch(''); }}
 filterOptions={(opts) => opts}
@@ -2577,7 +2577,7 @@ renderInput={(params) => (
 {editSelectedMaterialItem && (
 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
 <Typography variant="body2" color="text.secondary">
-Цена: <b>{editSelectedMaterialItem.price.toLocaleString('ru-RU')} ₽</b> • {editSelectedMaterialItem.category?.name || 'Без категории'}
+Цена: <b>{(editSelectedMaterialItem.price ?? 0).toLocaleString('ru-RU')} ₽</b> • {editSelectedMaterialItem.category?.name || 'Без категории'}
 </Typography>
 <Button size="small" onClick={() => { setEditSelectedMaterialItem(null); setEditMaterialItemId(null); }}>Сбросить</Button>
 </Box>
