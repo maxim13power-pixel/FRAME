@@ -1476,8 +1476,8 @@ setSortAnchorEl(null);
    {/* ⭐ №208: импорт/шаблон — в одном меню «Из шаблона» (мобилка: иконка в шапке) */}
 
    {/* Поиск и кнопка добавления (десктоп; мобилка — в хэдере) */}
-   {/* ⭐ №236: строка переносится, а не сжимает кнопки до «вылезания» текста */}
-   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, rowGap: 1, mb: { xs: 0, md: 2 }, alignItems: 'center' }}>
+   {/* ⭐ №238: строго одна строка — без переноса; поиск сжимается, кнопки компактные */}
+   <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 1, minWidth: 0, mb: { xs: 0, md: 2 }, alignItems: 'center' }}>
         {!isMobile && (
           <TextField
             placeholder="Поиск материалов..."
@@ -1485,9 +1485,8 @@ setSortAnchorEl(null);
             size="small"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            // ⭐ №237: без fullWidth — иначе поиск занимает всю строку и переносится;
-            // теперь он делит одну полку с кнопками и растягивается по остатку
-            sx={{ flexGrow: 1, flexBasis: 220, minWidth: 180 }}
+            // ⭐ №238: без fullWidth и с flexBasis 0 — поиск сжимается, а не переносит кнопки
+            sx={{ flexGrow: 1, flexBasis: 0, minWidth: 80 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -1500,7 +1499,7 @@ setSortAnchorEl(null);
 
 {/* Иконка сортировки (мобилка) — подсвечивается, если сортировка активна */}
 {!isMobile && projectCategories.length > 0 && (
-<FormControl size="small" sx={{ minWidth: 180 }}>
+<FormControl size="small" sx={{ minWidth: 130, flexShrink: 0 }}>
 <InputLabel>Категория</InputLabel>
 <Select
 value={categoryFilter ?? ''}
@@ -1522,10 +1521,11 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     onClick={(e) => setImportMenuAnchor(e.currentTarget)}
     sx={{
       flexShrink: 0,
-      minWidth: 168,
-      px: 2,
+      // ⭐ №238: компактнее по горизонтали (было minWidth 168 + px 2)
+      minWidth: 0,
+      px: 1.5,
       whiteSpace: 'nowrap',
-      // ⭐ №236: та же анимация, что у «Добавить позицию» (раньше её не было)
+      // ⭐ №236: та же анимация, что у «Добавить» (раньше её не было)
       transition: 'all 0.3s ease',
       '&:hover': {
         transform: 'translateY(-3px)',
@@ -1546,8 +1546,9 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     sx={{
       bgcolor: '#4caf50',
       border: '2px solid #388e3c',
-      // ⭐ №237: короче текст — меньше резервируем ширины, всё влезает в одну строку
-      minWidth: 140,
+      // ⭐ №238: компактная кнопка — минимум резервируемой ширины
+      minWidth: 0,
+      px: 1.5,
       flexShrink: 0,
       '&:hover': {
         bgcolor: '#388e3c',
