@@ -1781,7 +1781,7 @@ onClose={() => setFilterAnchorEl(null)}
 >
 <TableCell>{idx + 1}</TableCell>
 <TableCell>{m.name}</TableCell>
-<TableCell>{m.article || '-'}</TableCell>
+<TableCell sx={{ textAlign: 'center' }}>{m.article || '-'}</TableCell>
 <TableCell sx={{ textAlign: 'center' }}>{UNIT_OPTIONS.find(u => u.value === m.unit)?.label || m.unit}</TableCell>
 <TableCell sx={{ textAlign: 'center' }}>{m.specQuantity}</TableCell>
 <TableCell sx={{ textAlign: 'center', fontWeight: 600 }}>{m.totalUsed}</TableCell>
