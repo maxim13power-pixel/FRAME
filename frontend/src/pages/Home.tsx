@@ -261,7 +261,7 @@ const Home: React.FC = () => {
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ mb: 1.5 }}>
+        <Box sx={{ mb: 1.5, textAlign: 'center' }}>
           <Typography variant="caption" color="text.secondary">Факт vs смета</Typography>
           {/* ⭐ №225: деньги показываем только сравнением факта со сметой */}
           <Typography
