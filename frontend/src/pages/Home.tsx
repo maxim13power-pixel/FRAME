@@ -371,25 +371,45 @@ const Home: React.FC = () => {
 
       {/* ─── 2. ГОРИТ НА НЕДЕЛЕ ─── */}
       {data.hotProjects.length > 0 && (
-        <Paper sx={{ p: 2, borderRadius: 2, mb: 2 }}>
+        <Paper
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            mb: 2,
+            // ⭐ №232: как «Без расценки» — выделяем ВСЮ карточку,
+            // строки внутри без отдельных обводок. Просрочка → красноватая рамка.
+            border: '1px solid',
+            borderColor: overdueCount > 0 ? '#ffcdd2' : '#ffe0b2',
+          }}
+        >
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
             <LocalFireDepartmentIcon color="error" />
             <Typography variant="subtitle1" fontWeight={700}>
               Горит на неделе • просрочено: {overdueCount}
             </Typography>
           </Stack>
-          <Stack spacing={1}>
+          <Stack spacing={0.5}>
             {data.hotProjects.map(p => {
               const d = daysLeft(p.endDate);
+              const openProject = () =>
+                navigate(`/objects/${p.objectId}/projects/${p.id}/materials`);
               return (
-                <Paper
+                <Box
                   key={p.id}
-                  onClick={() => navigate(`/objects/${p.objectId}/projects/${p.id}/materials`)}
+                  onClick={openProject}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openProject();
+                    }
+                  }}
                   sx={{
-                    p: 1.5, borderRadius: 2, cursor: 'pointer',
-                    border: '1px solid',
-                    borderColor: d < 0 ? 'error.main' : d < 7 ? 'warning.main' : 'transparent',
-                    '&:hover': { bgcolor: '#f5f9ff' },
+                    p: 0.75,
+                    borderRadius: 1,
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: 'rgba(25,118,210,0.06)' },
                   }}
                 >
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
@@ -402,7 +422,7 @@ const Home: React.FC = () => {
                     />
                   </Box>
                   <Typography variant="caption" color="text.secondary">{p.objectName}</Typography>
-                </Paper>
+                </Box>
               );
             })}
           </Stack>
