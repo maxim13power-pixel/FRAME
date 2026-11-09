@@ -13,6 +13,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { ObjectsService } from './objects.service';
+import { ObjectDeletionService } from './object-deletion.service';
 import { CreateObjectDto } from './dto/create-object.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ObjectAccessGuard } from '../auth/object-access.guard';
@@ -20,7 +21,10 @@ import { ObjectAccessGuard } from '../auth/object-access.guard';
 @Controller('objects')
 @UseGuards(JwtAuthGuard, ObjectAccessGuard) // JWT + централизованная проверка доступа к объекту
 export class ObjectsController {
-  constructor(private readonly objectsService: ObjectsService) {}
+  constructor(
+    private readonly objectsService: ObjectsService,
+    private readonly deletion: ObjectDeletionService,
+  ) {}
 
   @Post()
   create(@Body() createObjectDto: CreateObjectDto, @Req() req) {
@@ -55,5 +59,17 @@ export class ObjectsController {
     @Req() req,
   ) {
     return this.objectsService.updateEndDate(id, endDate, req.user.userId);
+  }
+
+  /** ⭐ №246: назначить безвозвратное удаление через 30 дней (только админ объекта). */
+  @Post(':id/deletion')
+  scheduleDeletion(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.deletion.schedule(id, req.user.userId);
+  }
+
+  /** ⭐ №246: отменить запланированное удаление. */
+  @Delete(':id/deletion')
+  cancelDeletion(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.deletion.cancel(id, req.user.userId);
   }
 }

@@ -67,7 +67,7 @@ import {
   updateObjectTemplate,
 } from '../services/objectTemplateService';
 import type { ObjectTemplateData } from '../services/objectTemplateService';
-import { updateObject } from '../services/objectService';
+import { updateObject, scheduleObjectDeletion, cancelObjectDeletion } from '../services/objectService';
 import { fetchPriceCatalogs, createPriceCatalog } from '../services/priceListService'; // ⭐ №164
 import type { PriceCatalogData } from '../services/priceListService'; // ⭐ №164
 import Select from '@mui/material/Select';
@@ -98,6 +98,19 @@ const daysUntil = (endDateStr: string) => {
   const diffTime = end.getTime() - today.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return diffDays;
+};
+
+/**
+ * ⭐ №246: сколько дней осталось до безвозвратного удаления объекта.
+ * 0 — сегодня/просрочено (purge уже мог сработать).
+ */
+const deletionDaysLeft = (iso: string): number =>
+  Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000));
+
+/** «сегодня» / «через 29 дн.» */
+const deletionPhrase = (iso: string): string => {
+  const days = deletionDaysLeft(iso);
+  return days <= 0 ? 'сегодня' : `через ${days} дн.`;
 };
 
 const Objects: React.FC = () => {
@@ -369,40 +382,64 @@ const handleUpdateObject = async () => {
   }
 };
 
-// ⭐ №168: «Убрать в архив» — это ЛИЧНЫЙ архив (объект исчезает только у меня).
-// Данные, акты и склад остаются у всех остальных участников.
-const hideObjectForMe = async (obj: ObjectData) => {
-  if (!token) return;
-  if (!obj.accessId) {
-    notifyError('Архивировать можно только объект с доступом на весь объект');
-    return;
-  }
+const refreshObjects = async () => {
   try {
-    await setMyAccessHidden(obj.accessId, true);
-    setObjects(prev => prev.map(o => o.id === obj.id ? { ...o, hiddenForMe: true } : o));
+    setObjects(await fetchObjects({ includeArchived: true }));
   } catch {
-    notifyError('Не удалось убрать объект в архив');
+    // список обновится при следующем входе — не роняем страницу
+  }
+};
+
+// ⭐ №246: безвозвратное удаление через 30 дней. Только админ объекта.
+const handleScheduleDeletion = async (obj: ObjectData) => {
+  const ok = await confirm({
+    title: 'Удалить объект безвозвратно?',
+    text: `«${obj.name}» будет удалён через 30 дней. До этого его можно вернуть. Другие участники получат личные копии объекта (проекты, сметы, фиксации, склад, бригады, отчёты) — без фото.`,
+    confirmText: 'Удалить',
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await scheduleObjectDeletion(obj.id);
+    // Удаление «живёт» в архиве: сразу убираем объект в личный архив.
+    if (!obj.hiddenForMe && obj.accessId) {
+      await setMyAccessHidden(obj.accessId, true);
+    }
+    await refreshObjects();
+    notify('Удаление назначено: объект будет удалён через 30 дней', 'warning');
+  } catch (err) {
+    notifyError(getApiErrorMessage(err, 'Не удалось назначить удаление'));
+  }
+};
+
+const handleCancelDeletion = async (obj: ObjectData) => {
+  try {
+    await cancelObjectDeletion(obj.id);
+    await refreshObjects();
+    notify('Удаление отменено');
+  } catch (err) {
+    notifyError(getApiErrorMessage(err, 'Не удалось отменить удаление'));
   }
 };
 
 const handleDeleteObject = async () => {
   if (!deletingObject) return;
-  await hideObjectForMe(deletingObject);
+  await handleScheduleDeletion(deletingObject);
   setDeleteConfirmOpen(false);
   setDeletingObject(null); // очищаем
 };
 
-// ⭐ Демо-объект тоже просто скрываем у себя: жёсткое удаление запрещено (№168)
+// ⭐ №246: демо-объект тоже удаляем по общему правилу (таймер 30 дней).
 const handleDeleteDemo = async (obj: ObjectData) => {
-  await hideObjectForMe(obj);
+  await handleScheduleDeletion(obj);
 };
 
-// ⭐ Вернуть объект из личного архива
+// ⭐ Вернуть объект из личного архива (бэкенд заодно снимает мой срок удаления)
 const handleRestoreObject = async (obj: ObjectData) => {
   if (!token || !obj.accessId) return;
   try {
     await setMyAccessHidden(obj.accessId, false);
-    setObjects(prev => prev.map(o => o.id === obj.id ? { ...o, hiddenForMe: false } : o));
+    await refreshObjects();
   } catch {
     notifyError('Не удалось вернуть объект из архива');
   }
@@ -1087,21 +1124,22 @@ trailing: headerTrailing,
             return (
 <Paper
   key={obj.id}
-   onClick={() => {
-    //console.log('Клик по объекту:', obj.id, obj.name);
-    navigate(`/objects/${obj.id}/projects`);
-  }}
-  elevation={2}
-  sx={{
-    p: isMobile ? 1.5 : 3,
-    borderRadius: 3,
-    cursor: 'pointer',
-    transition: 'box-shadow 0.3s, transform 0.3s',
-    '&:hover': {
-      boxShadow: 6,
-      transform: 'scale(1.01)',
-    },
-  }}
+   onClick={obj.hiddenForMe ? undefined : () => {
+     navigate(`/objects/${obj.id}/projects`);
+   }}
+   elevation={2}
+   sx={{
+     p: isMobile ? 1.5 : 3,
+     borderRadius: 3,
+     // ⭐ №246: объект в личном архиве не открывается — проектов у него нет,
+     // клик и шестерёнка отключены (раньше вели в пустой раздел «Проекты»)
+     cursor: obj.hiddenForMe ? 'default' : 'pointer',
+     transition: 'box-shadow 0.3s, transform 0.3s',
+     '&:hover': obj.hiddenForMe ? {} : {
+       boxShadow: 6,
+       transform: 'scale(1.01)',
+     },
+   }}
 >
                 {obj.isDemo && (
                   <Alert
@@ -1122,6 +1160,45 @@ trailing: headerTrailing,
                     }
                   >
                     Это демо-данные.
+                  </Alert>
+                )}
+                {/* ⭐ №246: удаление объекта — таймер 30 дней; назначает/отменяет только админ */}
+                {(obj.deleteAfter || (obj.hiddenForMe && obj.canManage)) && (
+                  <Alert
+                    severity="error"
+                    onClick={(e) => e.stopPropagation()}
+                    sx={{ mb: 1, borderRadius: 2 }}
+                    action={
+                      obj.canManage ? (
+                        obj.deleteAfter ? (
+                          <Button
+                            size="small"
+                            color="inherit"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleCancelDeletion(obj);
+                            }}
+                          >
+                            Отменить удаление
+                          </Button>
+                        ) : (
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleScheduleDeletion(obj);
+                            }}
+                          >
+                            Удалить
+                          </Button>
+                        )
+                      ) : undefined
+                    }
+                  >
+                    {obj.deleteAfter
+                      ? `Объект будет удалён безвозвратно ${deletionPhrase(obj.deleteAfter)}. Остальные участники получат личные копии (без фото).`
+                      : 'Удалить объект безвозвратно? Он будет удалён через 30 дней — до этого можно вернуть.'}
                   </Alert>
                 )}
                 {obj.hiddenForMe && (
@@ -1179,8 +1256,9 @@ trailing: headerTrailing,
                   {/* ⭐ №187: шестерёнка действий — в первой строке (на месте процента),
                       процент переехал к прогресс-бару */}
                   <IconButton
-                    title="Действия с объектом"
+                    title={obj.hiddenForMe ? 'Объект в архиве — действия недоступны' : 'Действия с объектом'}
                     aria-label="Действия с объектом"
+                    disabled={obj.hiddenForMe}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleOpenActions(obj);

@@ -60,6 +60,12 @@ model Object {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   
+  // ⭐ №246: отложенное безвозвратное удаление (может назначить только админ объекта).
+  // До истечения срока объект можно вернуть — тогда все три поля очищаются.
+  deleteRequestedAt DateTime?
+  deleteAfter       DateTime?
+  deleteRequestedBy Int?
+
   projects        Project[]
   accesses        ObjectAccess[] // Кто имеет доступ к объекту
   inviteTokens    InviteToken[]  // Активные ссылки-приглашения
@@ -69,6 +75,7 @@ model Object {
   accessRequests  AccessRequest[] // ⭐ №178: заявки на право создавать проекты
 
   @@index([catalogId])
+  @@index([deleteAfter]) // ⭐ №246: быстрый поиск истёкших удалений
 }
 
 model Project {

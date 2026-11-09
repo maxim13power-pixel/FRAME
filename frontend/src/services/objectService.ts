@@ -31,6 +31,10 @@ export interface ObjectData {
   canManage?: boolean;
   /** ⭐ №207: сколько людей в команде объекта (только для админа объекта) */
   participantsCount?: number | null;
+  /** ⭐ №246: запланировано безвозвратное удаление (ISO) — null/undefined = нет */
+  deleteAfter?: string | null;
+  deleteRequestedAt?: string | null;
+  deleteRequestedBy?: number | null;
 }
 
 // Получить объекты.
@@ -69,5 +73,24 @@ export const fetchObjectById = async (id: number): Promise<ObjectData> => {
 
 export const updateObjectEndDate = async (id: number, endDate: string) => {
   const response = await api.patch(`/objects/${id}/end-date`, { endDate });
+  return response.data;
+};
+
+/**
+ * ⭐ №246: назначить безвозвратное удаление объекта через 30 дней.
+ * Доступно только администратору объекта (на бэке — 403 остальным).
+ */
+export const scheduleObjectDeletion = async (
+  id: number,
+): Promise<{ deleteAfter: string; daysLeft: number }> => {
+  const response = await api.post(`/objects/${id}/deletion`);
+  return response.data;
+};
+
+/** ⭐ №246: отменить запланированное удаление (любой админ объекта). */
+export const cancelObjectDeletion = async (
+  id: number,
+): Promise<{ cancelled: boolean }> => {
+  const response = await api.delete(`/objects/${id}/deletion`);
   return response.data;
 };

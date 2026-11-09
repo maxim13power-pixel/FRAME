@@ -439,6 +439,14 @@ export class AccessService {
       where: { userId, objectId: row.objectId },
       data: { isHidden },
     });
+    // ⭐ №246: «Вернуть» из личного архива отменяет запланированное удаление,
+    // если его назначал этот же пользователь.
+    if (!isHidden) {
+      await this.prisma.object.updateMany({
+        where: { id: row.objectId, deleteRequestedBy: userId },
+        data: { deleteRequestedAt: null, deleteAfter: null, deleteRequestedBy: null },
+      });
+    }
     return { success: true, isHidden, objectId: row.objectId };
   }
 
