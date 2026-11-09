@@ -3,7 +3,7 @@
 // снятые в момент отзыва доступа. Только чтение: правки здесь невозможны,
 // цены показываются, если они были видны участнику на момент отзыва.
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
   Alert, Box, Button, Chip, CircularProgress, Divider, IconButton, Paper, Stack,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography,
@@ -47,7 +47,7 @@ const summaryLine = (row: SnapshotRow) => {
 };
 
 const Snapshots: React.FC = () => {
-  const navigate = useNavigate();
+  const goBack = useBackNavigation('/settings');
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -59,7 +59,7 @@ const Snapshots: React.FC = () => {
 
   useMobileHeader({
     title: detail ? 'Снимок доступа' : 'Снимки доступа',
-    onBack: () => (detail ? setDetail(null) : navigate('/settings')),
+    onBack: () => (detail ? setDetail(null) : goBack()),
   });
 
   const load = async () => {
@@ -96,7 +96,7 @@ const Snapshots: React.FC = () => {
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <IconButton
-            onClick={() => (detail ? setDetail(null) : navigate('/settings'))}
+            onClick={() => (detail ? setDetail(null) : goBack())}
             aria-label={detail ? 'К списку снимков' : 'Назад в настройки'}
             sx={{
               mr: 1,

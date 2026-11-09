@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
   Box, Typography, Paper, Stack, CircularProgress, Alert, IconButton, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow,
@@ -32,6 +33,7 @@ const Analytics: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
+const goBack = useBackNavigation('/');
   const { token } = useAuth();
 
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
@@ -57,7 +59,7 @@ const Analytics: React.FC = () => {
     </IconButton>
   ) : undefined, [isMobile, objectFilter]);
 
-  useMobileHeader({ title: 'Аналитика', onBack: () => navigate(-1), trailing: headerTrailing });
+  useMobileHeader({ title: 'Аналитика', onBack: goBack, trailing: headerTrailing });
 
   const loadObjects = useCallback(async () => {
     try {
@@ -157,7 +159,7 @@ const Analytics: React.FC = () => {
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <IconButton
-            onClick={() => navigate('/')}
+            onClick={goBack}
             sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
             aria-label="В главное меню"
           >

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
   Box,
   Typography,
@@ -80,6 +81,7 @@ type CatalogSelectValue = number | '' | 'new';
 const Projects: React.FC = () => {
   const { objectId } = useParams<{ objectId: string }>();
   const navigate = useNavigate();
+const goBack = useBackNavigation('/objects');
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
@@ -859,7 +861,7 @@ const handleSaveNote = async () => {
 useMobileHeader({
 title: 'Проекты',
 editableKey: 'frame_title_projects',
-onBack: () => navigate('/objects'),
+onBack: goBack,
     searchOpen: mobileSearchOpen,
     searchValue: searchQuery,
     searchPlaceholder: 'Поиск проектов...',
@@ -885,7 +887,7 @@ onBack: () => navigate('/objects'),
         {!isMobile && (
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <IconButton
-              onClick={() => navigate('/objects')}
+              onClick={goBack}
               sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
               aria-label="Назад к объектам"
             >

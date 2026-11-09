@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
   Box,
   Typography,
@@ -318,6 +319,7 @@ const PriceStepSelects: React.FC<PriceStepSelectsProps> = ({
 const Materials: React.FC = () => {
   const { objectId, projectId } = useParams<{ objectId: string; projectId: string }>();
   const navigate = useNavigate();
+const goBack = useBackNavigation(`/objects/${objectId}/projects`);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
@@ -1369,7 +1371,7 @@ setSortAnchorEl(null);
 
   useMobileHeader({
     title: 'Сметы',
-    onBack: () => navigate(`/objects/${objectId}/projects`),
+    onBack: goBack,
     searchOpen: mobileSearchOpen,
     searchValue: searchQuery,
     searchPlaceholder: 'Поиск материалов...',
@@ -1394,7 +1396,7 @@ setSortAnchorEl(null);
         {!isMobile && (
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <IconButton
-              onClick={() => navigate(`/objects/${objectId}/projects`)}
+              onClick={goBack}
               sx={{
                 mr: 1,
                 bgcolor: 'rgba(0, 0, 0, 0.06)',

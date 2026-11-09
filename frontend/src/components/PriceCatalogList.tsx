@@ -3,6 +3,7 @@
 // карточки, внутри справочника — привычный вид с категориями и расценками.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
   Box,
   Button,
@@ -62,6 +63,7 @@ interface PriceCatalogListProps {
 
 const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) => {
   const navigate = useNavigate();
+const goBack = useBackNavigation('/');
   const { notify, success, error: notifyError, confirm } = useFeedback();
 
   const [catalogs, setCatalogs] = useState<PriceCatalogData[]>([]);
@@ -139,7 +141,7 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
   // нерабочую сортировку на списке справочников (сортировать тут нечего).
   useMobileHeader({
     title: showArchived ? 'Архив справочников' : 'Справочники цен',
-    onBack: () => navigate('/'),
+    onBack: goBack,
     searchOpen: mobileSearchOpen,
     searchValue: search,
     searchPlaceholder: 'Поиск справочника, объекта или проекта...',
@@ -343,7 +345,7 @@ const PriceCatalogList: React.FC<PriceCatalogListProps> = ({ defaultNewName }) =
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <IconButton
-            onClick={() => navigate('/')}
+            onClick={goBack}
             sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
             aria-label="В главное меню"
           >

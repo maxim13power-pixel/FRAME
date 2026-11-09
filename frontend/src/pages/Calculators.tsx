@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
   Box,
   FormControl,
@@ -123,7 +123,7 @@ const Calculators: React.FC = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
-  const navigate = useNavigate();
+  const goBack = useBackNavigation('/');
 
   const headerTrailing = useMemo(() => isMobile ? (
     <IconButton
@@ -140,7 +140,7 @@ const Calculators: React.FC = () => {
 
   useMobileHeader({
     title: 'Калькуляторы',
-    onBack: () => navigate('/'),
+    onBack: goBack,
     searchOpen: showSearch,
     searchValue: searchQuery,
     searchPlaceholder: 'Поиск калькулятора...',
@@ -189,7 +189,7 @@ const Calculators: React.FC = () => {
       {!isMobile && (
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            <IconButton onClick={() => navigate('/')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }} aria-label="В главное меню">
+            <IconButton onClick={goBack} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }} aria-label="В главное меню">
               <ArrowBackIcon />
             </IconButton>
             <Typography variant="h4" sx={{ flexGrow: 1 }}>Калькуляторы</Typography>

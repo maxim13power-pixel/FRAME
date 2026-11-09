@@ -35,7 +35,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { fetchRentals, createRental, extendRental, updateRental, deleteRental } from '../services/rentalsService';
 import type { RentalData } from '../services/rentalsService';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { FAB_STYLE } from '../theme';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -97,7 +97,7 @@ const Rentals: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
-  const navigate = useNavigate();
+  const goBack = useBackNavigation('/');
   const [rentals, setRentals] = useState<RentalData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -226,7 +226,7 @@ const Rentals: React.FC = () => {
 
   useMobileHeader({
     title: 'Аренда',
-    onBack: () => navigate('/'),
+    onBack: goBack,
     searchOpen: mobileSearchOpen,
     searchValue: searchQuery,
     searchPlaceholder: 'Поиск аренд...',
@@ -417,7 +417,7 @@ const Rentals: React.FC = () => {
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <IconButton
-            onClick={() => navigate('/')}
+            onClick={goBack}
             sx={{
               mr: 1,
               bgcolor: 'rgba(0,0,0,0.06)',

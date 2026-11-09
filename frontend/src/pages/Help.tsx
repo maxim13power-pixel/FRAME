@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
   Accordion,
   AccordionDetails,
@@ -552,11 +552,11 @@ const Help: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
-  const navigate = useNavigate();
+  const goBack = useBackNavigation('/');
 
   useMobileHeader({
     title: 'Помощь',
-    onBack: () => navigate('/'),
+    onBack: goBack,
     searchOpen: showSearch,
     searchValue: search,
     searchPlaceholder: 'Поиск по инструкциям',
@@ -590,7 +590,7 @@ const Help: React.FC = () => {
       {!isMobile && (
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            <IconButton onClick={() => navigate('/')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }} aria-label="В главное меню">
+            <IconButton onClick={goBack} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }} aria-label="В главное меню">
               <ArrowBackIcon />
             </IconButton>
             <Typography variant="h4" sx={{ flexGrow: 1 }}>Помощь</Typography>

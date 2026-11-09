@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
   Box, Typography, Paper, Stack, FormControlLabel, Checkbox, Avatar,
   Button, Divider, Modal, Alert, Chip, TextField, CircularProgress,
@@ -55,11 +56,12 @@ const ROLE_LABELS: Record<string, string> = {
 
 const Settings: React.FC = () => {
   const navigate = useNavigate();
+const goBack = useBackNavigation('/');
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { user, logout, token, login } = useAuth();
   const { error: notifyError, notify } = useFeedback();
-  useMobileHeader({ title: 'Настройки', onBack: () => navigate(-1) });
+  useMobileHeader({ title: 'Настройки', onBack: goBack });
 
   const [selected, setSelected] = useState<string[]>(() => getBottomNavConfig());
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -241,7 +243,7 @@ const Settings: React.FC = () => {
       {/* Заголовок на десктопе (на мобилке — в шапке) */}
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <IconButton onClick={() => navigate('/')} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }} aria-label="В главное меню">
+          <IconButton onClick={goBack} sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }} aria-label="В главное меню">
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h4" sx={{ flexGrow: 1 }}>Настройки</Typography>

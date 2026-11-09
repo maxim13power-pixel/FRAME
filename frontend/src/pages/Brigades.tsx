@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
   Box, Typography, Paper, TextField, InputAdornment, Button, Modal, Stack,
   Fab, useMediaQuery, useTheme, CircularProgress, Alert, Chip, IconButton,
@@ -62,7 +62,7 @@ const fmtDate = (value?: string | null) => {
 const Brigades: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const navigate = useNavigate();
+const goBack = useBackNavigation('/');
   const { token } = useAuth();
   // ⭐ №224: askConfirm — наш диалог подтверждения (вместо браузерного confirm)
   const { confirm: askConfirm } = useFeedback();
@@ -140,7 +140,7 @@ const Brigades: React.FC = () => {
     </IconButton>
   ) : undefined, [isMobile, objectFilter]);
 
-  useMobileHeader({ title: view === 'detail' && selectedBrigade ? selectedBrigade.name : 'Бригады', onBack: () => { if (viewRef.current === 'detail') { setView('list'); setSelectedBrigade(null); } else { navigate(-1); } }, searchOpen: mobileSearchOpen, searchValue: searchQuery, searchPlaceholder: 'Поиск бригад...', onSearchOpen: () => setMobileSearchOpen(true), onSearchClose: () => { setSearchQuery(''); setMobileSearchOpen(false); }, onSearchChange: (v) => setSearchQuery(v), trailing: headerTrailing });
+  useMobileHeader({ title: view === 'detail' && selectedBrigade ? selectedBrigade.name : 'Бригады', onBack: () => { if (viewRef.current === 'detail') { setView('list'); setSelectedBrigade(null); } else { goBack(); } }, searchOpen: mobileSearchOpen, searchValue: searchQuery, searchPlaceholder: 'Поиск бригад...', onSearchOpen: () => setMobileSearchOpen(true), onSearchClose: () => { setSearchQuery(''); setMobileSearchOpen(false); }, onSearchChange: (v) => setSearchQuery(v), trailing: headerTrailing });
 
   const loadObjects = useCallback(async () => {
     try {
@@ -557,7 +557,7 @@ const Brigades: React.FC = () => {
                 setView('list');
                 setSelectedBrigade(null);
               } else {
-                navigate('/');
+                goBack();
               }
             }}
             sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}

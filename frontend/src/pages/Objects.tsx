@@ -35,6 +35,7 @@ import type { ProjectData } from '../services/projectService'; // ⭐ №163
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -121,6 +122,7 @@ const Objects: React.FC = () => {
   const myUserId: number | undefined = user?.id;
   const { notify, error: notifyError, confirm } = useFeedback();
   const navigate = useNavigate();
+const goBack = useBackNavigation('/');
   const location = useLocation();
   // ⭐ №207: переход «Участники объекта» из карточки проекта
   const openAccessFromState = (
@@ -975,7 +977,7 @@ const handleSaveNote = async () => {
 
 useMobileHeader({
 title: showArchived ? 'Архив' : 'Объекты',
-onBack: () => navigate('/'),
+onBack: goBack,
 searchOpen: mobileSearchOpen,
 searchValue: searchQuery,
 searchPlaceholder: 'Поиск объектов...',
@@ -1011,7 +1013,7 @@ trailing: headerTrailing,
 {!isMobile && (
   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
     <IconButton
-      onClick={() => navigate('/')}
+      onClick={goBack}
       sx={{
         mr: 1,
         bgcolor: 'rgba(0,0,0,0.06)',

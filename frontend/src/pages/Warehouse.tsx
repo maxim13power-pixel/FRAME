@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
   Box, Typography, Paper, TextField, InputAdornment, Button, Modal, Stack,
   Fab, useMediaQuery, useTheme, CircularProgress, Alert, Chip, IconButton,
@@ -41,6 +42,7 @@ const Warehouse: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
+const goBack = useBackNavigation('/');
   const { token } = useAuth();
 
   const [items, setItems] = useState<WarehouseItemData[]>([]);
@@ -295,7 +297,7 @@ const Warehouse: React.FC = () => {
       setView('list');
       setSelectedItem(null);
     } else {
-      navigate(-1);
+      goBack();
     }
   }, [navigate]);
 
@@ -353,7 +355,7 @@ const Warehouse: React.FC = () => {
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <IconButton
-            onClick={() => navigate('/')}
+            onClick={handleBack}
             sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
             aria-label="В главное меню"
           >

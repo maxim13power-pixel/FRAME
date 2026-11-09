@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
   Box,
   Typography,
@@ -80,7 +81,6 @@ const UNIT_OPTIONS = [
 const NEW_CATEGORY_VALUE = '__new__';
 
 const PriceListInner: React.FC = () => {
-  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
@@ -88,6 +88,7 @@ const PriceListInner: React.FC = () => {
   // ⭐ №151: справочник выбирается по URL (/price-list/:catalogId)
   const { catalogId: catalogIdParam } = useParams<{ catalogId?: string }>();
   const catalogId = catalogIdParam ? parseInt(catalogIdParam) : undefined;
+  const goBack = useBackNavigation(catalogId ? '/price-list' : '/');
   const [catalogs, setCatalogs] = useState<PriceCatalogData[]>([]);
   const catalogName = catalogs.find((c) => c.id === catalogId)?.name;
 
@@ -153,7 +154,7 @@ const PriceListInner: React.FC = () => {
 
   useMobileHeader({
     title: headerTitle,
-    onBack: () => navigate(catalogId ? '/price-list' : '/'),
+    onBack: goBack,
     searchOpen: mobileSearchOpen,
     searchValue: searchQuery,
     searchPlaceholder: activeTab === 'WORK' ? 'Поиск работ...' : 'Поиск материалов...',
@@ -513,7 +514,7 @@ const PriceListInner: React.FC = () => {
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
           <IconButton
-            onClick={() => navigate(catalogId ? '/price-list' : '/')}
+            onClick={goBack}
             sx={{
               mr: 1,
               bgcolor: 'rgba(0,0,0,0.06)',

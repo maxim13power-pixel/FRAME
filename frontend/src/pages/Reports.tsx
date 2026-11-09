@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
   Box, Typography, Paper, TextField, Button, Modal, Stack, Fab,
   useMediaQuery, useTheme, CircularProgress, Alert, Chip, IconButton,
@@ -64,7 +64,7 @@ const fmtMoney = (v: number | string) =>
 const Reports: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const navigate = useNavigate();
+  const goBack = useBackNavigation('/');
   const { token } = useAuth();
 
   // ─── Данные ───
@@ -229,9 +229,9 @@ const Reports: React.FC = () => {
       setView('list');
       setSelectedReport(null);
     } else {
-      navigate(-1);
+      goBack();
     }
-  }, [navigate]);
+  }, [goBack]);
 
   const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
 
@@ -400,7 +400,7 @@ const Reports: React.FC = () => {
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <IconButton
-            onClick={() => navigate('/')}
+            onClick={handleBack}
             sx={{ mr: 1, bgcolor: 'rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(0,0,0,0.10)' } }}
             aria-label="В главное меню"
           >

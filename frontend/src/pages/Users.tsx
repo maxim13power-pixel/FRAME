@@ -6,6 +6,7 @@ import {
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SectionIntro from '../components/SectionIntro';
 import { fetchTeam } from '../services/usersService';
@@ -33,6 +34,7 @@ const displayName = (m: TeamMember) => m.fullName || m.email || m.phone || 'Бе
 
 const Users: React.FC = () => {
   const navigate = useNavigate();
+const goBack = useBackNavigation('/settings');
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [team, setTeam] = useState<TeamObject[]>([]);
@@ -43,7 +45,7 @@ const Users: React.FC = () => {
   // свой h4 на мобилке не рисуем — иначе заголовок дублируется.
   useMobileHeader({
     title: 'Моя команда',
-    onBack: () => navigate('/settings'),
+    onBack: goBack,
   });
 
   const load = async () => {
@@ -69,7 +71,7 @@ const Users: React.FC = () => {
       {!isMobile && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <IconButton
-            onClick={() => navigate('/settings')}
+            onClick={goBack}
             aria-label="Назад в настройки"
             sx={{
               mr: 1,
