@@ -43,6 +43,18 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
     setEditing(false);
   }, [editableKey]);
 
+  // ⭐ №235: заголовок могли переименовать на десктопной странице («Проекты») —
+  // обновляем шапку без перезагрузки
+  React.useEffect(() => {
+    const onTitleChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ key: string; value: string }>).detail;
+      if (!editableKey || !detail || detail.key !== editableKey) return;
+      setCustom(detail.value || '');
+    };
+    window.addEventListener('frame:title-changed', onTitleChanged);
+    return () => window.removeEventListener('frame:title-changed', onTitleChanged);
+  }, [editableKey]);
+
   const routeTitle =
     DEFAULT_TITLES.find(t => location.pathname.startsWith(t.prefix))?.title || 'FRAME';
   const title = config?.title || routeTitle;
@@ -57,13 +69,20 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
   const commitEdit = () => {
     if (editableKey) {
       const v = draft.trim();
-      if (v && v !== title) {
-        localStorage.setItem(editableKey, v);
-        setCustom(v);
-      } else {
-        localStorage.removeItem(editableKey);
-        setCustom('');
+      const next = v && v !== title ? v : '';
+      try {
+        if (next) localStorage.setItem(editableKey, next);
+        else localStorage.removeItem(editableKey);
+      } catch {
+        // localStorage недоступен — значение применится на текущую сессию
       }
+      setCustom(next);
+      // ⭐ №235: сообщаем десктопному заголовку страницы о переименовании
+      window.dispatchEvent(
+        new CustomEvent('frame:title-changed', {
+          detail: { key: editableKey, value: next },
+        }),
+      );
     }
     setEditing(false);
   };

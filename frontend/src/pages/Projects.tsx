@@ -49,6 +49,12 @@ import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
+import { safeGetString } from '../utils/storage'; // ⭐ №235: кастомный заголовок раздела
+
+// ⭐ №235: переименование заголовка «Проекты» — тот же ключ, что у мобильной шапки
+const PROJECTS_TITLE_KEY = 'frame_title_projects';
+const PROJECTS_TITLE_DEFAULT = 'Проекты (виды работ)';
+const TITLE_CHANGED_EVENT = 'frame:title-changed';
 // ⭐ №163: напоминание о доступе к новому проекту
 import { fetchAccessList, addAccess } from '../services/accessService';
 import type { AccessMember } from '../services/accessService';
@@ -85,6 +91,43 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // ⭐ №235: кастомный заголовок раздела (в мобильной шапке уже работал, теперь и на десктопе)
+  const [titleCustom, setTitleCustom] = useState(() => safeGetString(PROJECTS_TITLE_KEY));
+  const [titleEditing, setTitleEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+
+  useEffect(() => {
+    // синхронизация, если заголовок поменяли в мобильной шапке (или в другой вкладке)
+    const onTitleChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ key: string; value: string }>).detail;
+      if (detail?.key === PROJECTS_TITLE_KEY) setTitleCustom(detail.value || '');
+    };
+    window.addEventListener(TITLE_CHANGED_EVENT, onTitleChanged);
+    return () => window.removeEventListener(TITLE_CHANGED_EVENT, onTitleChanged);
+  }, []);
+
+  const startTitleEdit = () => {
+    setTitleDraft(titleCustom || PROJECTS_TITLE_DEFAULT);
+    setTitleEditing(true);
+  };
+
+  const commitTitleEdit = () => {
+    const value = titleDraft.trim();
+    const next = value && value !== PROJECTS_TITLE_DEFAULT ? value : '';
+    try {
+      if (next) localStorage.setItem(PROJECTS_TITLE_KEY, next);
+      else localStorage.removeItem(PROJECTS_TITLE_KEY);
+    } catch {
+      // localStorage недоступен — применяем хотя бы на текущую сессию
+    }
+    setTitleCustom(next);
+    window.dispatchEvent(
+      new CustomEvent(TITLE_CHANGED_EVENT, {
+        detail: { key: PROJECTS_TITLE_KEY, value: next },
+      }),
+    );
+    setTitleEditing(false);
+  };
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newStartDate, setNewStartDate] = useState('');
@@ -848,7 +891,42 @@ onBack: () => navigate('/objects'),
             >
               <ArrowBackIcon />
             </IconButton>
-            <Typography variant="h4" sx={{ flexGrow: 1 }}>Проекты (виды работ)</Typography>
+            {titleEditing ? (
+              <TextField
+                autoFocus
+                size="small"
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={commitTitleEdit}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitTitleEdit();
+                  if (e.key === 'Escape') setTitleEditing(false);
+                }}
+                inputProps={{ maxLength: 30 }}
+                sx={{ flexGrow: 1, maxWidth: 560 }}
+              />
+            ) : (
+              <Box
+                role="button"
+                tabIndex={0}
+                onClick={startTitleEdit}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    startTitleEdit();
+                  }
+                }}
+                title="Нажмите, чтобы переименовать раздел"
+                sx={{
+                  display: 'flex', alignItems: 'center', gap: 1, flexGrow: 1,
+                  cursor: 'pointer', borderRadius: 1, px: 0.5,
+                  '&:hover': { bgcolor: 'rgba(25,118,210,0.06)' },
+                }}
+              >
+                <Typography variant="h4">{titleCustom || PROJECTS_TITLE_DEFAULT}</Typography>
+                <EditIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+              </Box>
+            )}
           </Box>
         )}
         {/* Хлебные крошки (видны и на мобилке, и на десктопе) */}
