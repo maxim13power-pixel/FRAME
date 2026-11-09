@@ -2344,6 +2344,7 @@ trailing: headerTrailing,
                             <LinkIcon fontSize="small" sx={{ color: '#90a4ae' }} />
                             <Typography variant="caption" sx={{ flexGrow: 1 }} noWrap>
                               {roleLabel(link.role)}
+                              {link.project ? ` • проект: ${link.project.name}` : ''}
                               {link.hidePrices ? ' • 🙈 без цен' : ''} • использований: {link.usesCount}
                               {link.maxUses ? `/${link.maxUses}` : ''}
                             </Typography>

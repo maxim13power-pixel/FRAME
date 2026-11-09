@@ -28,6 +28,7 @@ interface InviteInfo {
   hidePrices: boolean;
   creator: { id: number; fullName: string | null; email: string | null; phone: string | null };
   object: { id: number; name: string; address: string };
+  project?: { id: number; name: string } | null;
   expiresAt: string | null;
   maxUses: number | null;
   usesCount: number;
@@ -80,10 +81,18 @@ const AcceptInvite: React.FC = () => {
     setAccepting(true);
     setError('');
     try {
-      await acceptInvite(inviteToken);
+      const acceptedInvite = await acceptInvite(inviteToken);
       setAccepted(true);
-      // Через 1.5 сек уводим в список объектов
-      setTimeout(() => navigate('/objects'), 1500);
+      // Через 1.5 сек уводим в объект или сразу в проект
+      setTimeout(
+        () =>
+          navigate(
+            acceptedInvite.projectId
+              ? `/objects/${acceptedInvite.objectId}/projects/${acceptedInvite.projectId}/materials`
+              : '/objects',
+          ),
+        1500,
+      );
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, 'Не удалось принять приглашение'));
     } finally {
@@ -160,6 +169,14 @@ const AcceptInvite: React.FC = () => {
                 <Typography variant="h6">{info.object.name}</Typography>
               </Box>
               <Typography variant="body2" color="text.secondary">{info.object.address}</Typography>
+              {info.project && (
+                <>
+                  <Divider sx={{ my: 1.5 }} />
+                  <Typography variant="body2">
+                    Проект: <b>{info.project.name}</b>
+                  </Typography>
+                </>
+              )}
               <Divider sx={{ my: 1.5 }} />
               <Stack direction="row" spacing={1} alignItems="center">
                 <Typography variant="body2">Ваша роль:</Typography>

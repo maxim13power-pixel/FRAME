@@ -11,6 +11,7 @@ describe('InviteService — выдача ролей (№180)', () => {
   const prisma = {
     objectAccess: { findFirst: jest.fn() },
     object: { findUnique: jest.fn() },
+    project: { findFirst: jest.fn() },
     inviteToken: { create: jest.fn() },
   };
 
@@ -65,6 +66,41 @@ describe('InviteService — выдача ролей (№180)', () => {
     await expect(
       service.createInviteLink(1, dto('FOREMAN'), 7),
     ).rejects.toThrow(/Доступ отозван/);
+    expect(prisma.inviteToken.create).not.toHaveBeenCalled();
+  });
+
+  // ⭐ №250: ссылка в конкретный проект
+  it('админ объекта выпускает ссылку с projectId', async () => {
+    givenAccess('CUSTOMER');
+    prisma.project.findFirst.mockResolvedValue({ id: 5 });
+
+    await service.createInviteLink(
+      1,
+      { role: 'FOREMAN', projectId: 5 } as CreateInviteDto,
+      7,
+    );
+
+    expect(prisma.project.findFirst).toHaveBeenCalledWith({
+      where: { id: 5, objectId: 1 },
+      select: { id: true },
+    });
+    expect(prisma.inviteToken.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ projectId: 5 }),
+      }),
+    );
+  });
+
+  it('прораб не может выпустить ссылку в проект', async () => {
+    givenAccess('FOREMAN');
+
+    await expect(
+      service.createInviteLink(
+        1,
+        { role: 'FOREMAN', projectId: 5 } as CreateInviteDto,
+        7,
+      ),
+    ).rejects.toThrow(/администратор объекта/);
     expect(prisma.inviteToken.create).not.toHaveBeenCalled();
   });
 });

@@ -63,6 +63,21 @@ export class InviteService {
       throw new NotFoundException('Объект не найден');
     }
 
+    // ⭐ №250: ссылку в конкретный проект выпускает только админ объекта,
+    // и проект обязан принадлежать этому объекту.
+    if (dto.projectId != null) {
+      if (myAccess.role !== 'CUSTOMER') {
+        throw new ForbiddenException(
+          'Ссылку-приглашение в проект создаёт администратор объекта',
+        );
+      }
+      const project = await this.prisma.project.findFirst({
+        where: { id: dto.projectId, objectId },
+        select: { id: true },
+      });
+      if (!project) throw new NotFoundException('Проект не найден');
+    }
+
     // Генерируем URL-safe токен (21 символ)
     const token = nanoid(21);
 
@@ -70,6 +85,7 @@ export class InviteService {
       data: {
         token,
         objectId,
+        projectId: dto.projectId ?? null,
         createdBy: actorUserId,
         role: dto.role,
         hidePrices: dto.hidePrices ?? false,
@@ -81,21 +97,27 @@ export class InviteService {
           select: { id: true, fullName: true, email: true, phone: true },
         },
         object: { select: { id: true, name: true, address: true } },
+        project: { select: { id: true, name: true } },
       },
     });
   }
 
-  // 2. Получить список активных ссылок объекта
-  async getInviteLinks(objectId: number, userId: number) {
+  // 2. Получить список активных ссылок объекта (можно только по проекту)
+  async getInviteLinks(objectId: number, userId: number, projectId?: number) {
     const access = await this.checkObjectAccess(objectId, userId);
     if (access.role === 'VIEWER') {
       return []; // VIEWER не видит инвайт-ссылок
     }
 
     return this.prisma.inviteToken.findMany({
-      where: { objectId, isActive: true },
+      where: {
+        objectId,
+        isActive: true,
+        ...(projectId != null ? { projectId } : {}),
+      },
       include: {
         creator: { select: { id: true, fullName: true } },
+        project: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -135,6 +157,7 @@ export class InviteService {
           select: { id: true, fullName: true, email: true, phone: true },
         },
         object: { select: { id: true, name: true, address: true } },
+        project: { select: { id: true, name: true } },
       },
     });
 
@@ -158,6 +181,7 @@ export class InviteService {
       hidePrices: invite.hidePrices,
       creator: invite.creator,
       object: invite.object,
+      project: invite.project,
       expiresAt: invite.expiresAt,
       maxUses: invite.maxUses,
       usesCount: invite.usesCount,
@@ -175,6 +199,7 @@ export class InviteService {
         include: {
           creator: { select: { id: true, fullName: true } },
           object: { select: { id: true, name: true } },
+          project: { select: { id: true, name: true } },
         },
       });
 
@@ -198,7 +223,7 @@ export class InviteService {
           data: {
             userId,
             objectId: invite.objectId,
-            projectId: null,
+            projectId: invite.projectId, // ⭐ №250: ссылка может вести в проект
             role: invite.role,
             hidePrices: invite.hidePrices,
             invitedBy: invite.createdBy,
@@ -207,7 +232,11 @@ export class InviteService {
       } catch (e: any) {
         // P2002 = Unique constraint failed → юзер уже имеет доступ
         if (e.code === 'P2002') {
-          throw new ConflictException('У вас уже есть доступ к этому объекту');
+          throw new ConflictException(
+            invite.projectId != null
+              ? 'У вас уже есть доступ к этому проекту'
+              : 'У вас уже есть доступ к этому объекту',
+          );
         }
         throw e;
       }
@@ -221,6 +250,8 @@ export class InviteService {
       return {
         message: 'Приглашение принято',
         objectId: invite.objectId,
+        projectId: invite.projectId,
+        projectName: invite.project?.name ?? null,
         role: invite.role,
       };
     });

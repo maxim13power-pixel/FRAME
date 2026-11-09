@@ -8,6 +8,8 @@ export interface InviteLink {
   id: number;
   token: string;
   objectId: number;
+  projectId?: number | null;
+  project?: { id: number; name: string } | null;
   createdBy: number;
   role: AccessRole;
   hidePrices: boolean;
@@ -25,6 +27,7 @@ export interface CreateInvitePayload {
   hidePrices?: boolean;
   expiresAt?: string;
   maxUses?: number;
+  projectId?: number;
 }
 
 // 1. Создать ссылку-приглашение
@@ -37,8 +40,13 @@ export const createInviteLink = async (
 };
 
 // 2. Список активных ссылок объекта
-export const fetchInviteLinks = async (objectId: number): Promise<InviteLink[]> => {
-  const response = await api.get(`/objects/${objectId}/invite-links`);
+export const fetchInviteLinks = async (
+  objectId: number,
+  projectId?: number,
+): Promise<InviteLink[]> => {
+  const response = await api.get(`/objects/${objectId}/invite-links`, {
+    params: projectId != null ? { projectId } : undefined,
+  });
   return response.data;
 };
 
@@ -53,7 +61,13 @@ export const revokeInviteLink = async (
 // 4. Принять приглашение (авторизованный юзер)
 export const acceptInvite = async (
   inviteToken: string,
-): Promise<{ message: string; objectId: number; role: AccessRole }> => {
+): Promise<{
+  message: string;
+  objectId: number;
+  projectId?: number | null;
+  projectName?: string | null;
+  role: AccessRole;
+}> => {
   const response = await api.post(`/invite/${inviteToken}/accept`, {});
   return response.data;
 };

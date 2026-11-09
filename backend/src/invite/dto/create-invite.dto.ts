@@ -24,4 +24,10 @@ export class CreateInviteDto {
   @IsInt()
   @Min(1)
   maxUses?: number; // макс. использований
+
+  // ⭐ №250: приглашение только в конкретный проект (null/нет — на весь объект)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  projectId?: number;
 }

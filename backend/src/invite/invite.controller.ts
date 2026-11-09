@@ -6,6 +6,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Query,
   Req,
   UseGuards,
   ValidationPipe,
@@ -38,8 +39,15 @@ export class InviteController {
   getInviteLinks(
     @Param('objectId', ParseIntPipe) objectId: number,
     @Req() req,
+    @Query('projectId') projectId?: string,
   ) {
-    return this.inviteService.getInviteLinks(objectId, req.user.userId);
+    const parsed =
+      projectId && projectId.trim() !== '' ? Number(projectId) : undefined;
+    return this.inviteService.getInviteLinks(
+      objectId,
+      req.user.userId,
+      Number.isFinite(parsed) ? parsed : undefined,
+    );
   }
 
   // DELETE /objects/:objectId/invite-links/:id — отозвать ссылку

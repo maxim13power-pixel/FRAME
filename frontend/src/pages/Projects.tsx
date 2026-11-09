@@ -871,7 +871,7 @@ const handleSaveNote = async () => {
       notify(
         proj.hiddenForMe
           ? `Проект «${proj.name}» возвращён из архива`
-          : `Проект «${proj.name}» убран в личный архив`,
+          : `Проект «${proj.name}» убран в архив`,
       );
     } catch (err) {
       notifyError(getApiErrorText(err, 'Не удалось изменить архив'));
@@ -1595,7 +1595,7 @@ onBack: goBack,
               if (p) void handleToggleProjectArchive(p);
             }}
           >
-            {actionsProject?.hiddenForMe ? 'Вернуть из архива' : 'В личный архив'}
+            {actionsProject?.hiddenForMe ? 'Вернуть из архива' : 'Убрать в архив'}
           </Button>
 
           {/* ⭐ №249: удаление проекта через 30 дней */}
@@ -1614,29 +1614,6 @@ onBack: goBack,
           >
             Удалить проект
           </Button>
-
-          {/* ⭐ №207: команда объекта — из карточки проекта, чтобы не искать её в «Объектах» */}
-          <Button
-            size="large"
-            fullWidth
-            variant="outlined"
-            startIcon={<PeopleIcon />}
-            disabled={currentObject?.canManage !== true}
-            onClick={() => {
-              const objectIdNum = currentObject?.id;
-              handleCloseActions();
-              if (objectIdNum) {
-                navigate('/objects', { state: { openAccessObjectId: objectIdNum } });
-              }
-            }}
-          >
-            Участники объекта
-          </Button>
-          {currentObject?.canManage !== true && (
-            <Typography variant="caption" color="text.secondary">
-              Командой управляет администратор объекта — откройте «Объекты» → ⚙️ → «Участники».
-            </Typography>
-          )}
 
           {!canEditProjectCard(actionsProject) && (
             <Typography variant="caption" color="text.secondary">

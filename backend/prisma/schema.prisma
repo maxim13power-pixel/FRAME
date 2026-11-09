@@ -103,6 +103,8 @@ model Project {
   deleteRequestedAt DateTime?
   deleteAfter       DateTime?
   deleteRequestedBy Int?
+  // ⭐ №250: ссылки-приглашения именно в этот проект
+  inviteTokens     InviteToken[]
 
   @@index([endDate])
   @@index([objectId])
@@ -508,6 +510,8 @@ model InviteToken {
   createdBy  Int          // кто создал ссылку (прораб или заказчик)
   role       AccessRole   @default(FOREMAN) // роль, с которой будет добавлен юзер
   hidePrices Boolean      @default(false)   // ⭐ флаг «скрыть цены» для приглашённых
+  projectId  Int?         // ⭐ №250: ссылка приглашает только в этот проект
+  project    Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   expiresAt  DateTime?    // срок жизни (null = бессрочно)
   maxUses    Int?         // макс. использований (null = без лимита)
   usesCount  Int          @default(0)       // счётчик использований
@@ -517,6 +521,7 @@ model InviteToken {
   creator    User         @relation("CreatedInvites", fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([objectId])
+  @@index([projectId])
   @@map("invite_tokens")
 }
 
