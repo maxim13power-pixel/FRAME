@@ -2312,7 +2312,7 @@ renderInput={(params) => (
                 (в пятницу забыл → в понедельник вносишь задним числом) */}
             <Box>
               <Typography variant="caption" color="text.secondary">
-                За какой день · назад можно 3 дня
+                Выберите дату
               </Typography>
               {/* ⭐ №233: даты — сетка 2×2, кнопки одинакового размера и не «склеены» */}
               <Box
@@ -2343,7 +2343,7 @@ renderInput={(params) => (
                 ))}
               </Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                Будущее запрещено. Внесённую фиксацию можно исправить 72 часа.
+                Фиксацию можно исправить 72 часа.
               </Typography>
             </Box>
             <TextField
