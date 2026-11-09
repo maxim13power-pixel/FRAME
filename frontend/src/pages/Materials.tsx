@@ -1476,7 +1476,8 @@ setSortAnchorEl(null);
    {/* ⭐ №208: импорт/шаблон — в одном меню «Из шаблона» (мобилка: иконка в шапке) */}
 
    {/* Поиск и кнопка добавления (десктоп; мобилка — в хэдере) */}
-   <Box sx={{ display: 'flex', gap: 1, mb: { xs: 0, md: 2 }, alignItems: 'center' }}>
+   {/* ⭐ №236: строка переносится, а не сжимает кнопки до «вылезания» текста */}
+   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, rowGap: 1, mb: { xs: 0, md: 2 }, alignItems: 'center' }}>
         {!isMobile && (
           <TextField
             placeholder="Поиск материалов..."
@@ -1485,7 +1486,7 @@ setSortAnchorEl(null);
             fullWidth
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            sx={{ flexGrow: 1 }}
+            sx={{ flexGrow: 1, minWidth: { md: 220 } }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -1518,7 +1519,20 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     variant="outlined"
     startIcon={<PlaylistAddIcon />}
     onClick={(e) => setImportMenuAnchor(e.currentTarget)}
-    sx={{ whiteSpace: 'nowrap' }}
+    sx={{
+      flexShrink: 0,
+      minWidth: 168,
+      px: 2,
+      whiteSpace: 'nowrap',
+      // ⭐ №236: та же анимация, что у «Добавить позицию» (раньше её не было)
+      transition: 'all 0.3s ease',
+      '&:hover': {
+        transform: 'translateY(-3px)',
+        boxShadow: '0 8px 16px rgba(0,0,0,0.12)',
+        borderColor: 'primary.main',
+        bgcolor: 'rgba(25,118,210,0.04)',
+      },
+    }}
   >
     Из шаблона
   </Button>
@@ -1532,6 +1546,7 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
       bgcolor: '#4caf50',
       border: '2px solid #388e3c',
       minWidth: '200px',
+      flexShrink: 0,
       '&:hover': {
         bgcolor: '#388e3c',
         borderColor: '#388e3c',
@@ -1553,7 +1568,7 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     onClick={() => setExportModalOpen(true)}
     disabled={exporting !== null}
     title="Скачать смету"
-    sx={{ minWidth: 0, px: 1.5, py: 1, transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' } }}
+    sx={{ minWidth: 0, px: 1.5, py: 1, flexShrink: 0, transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' } }}
   >
     {exporting ? <CircularProgress size={16} /> : <FileDownloadIcon fontSize="small" />}
   </Button>
