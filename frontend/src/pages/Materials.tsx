@@ -115,6 +115,12 @@ const mergeUpdatedMaterial = (prev: MaterialData, updated: MaterialData): Materi
   photosCount: prev.photosCount ?? updated.photosCount ?? 0,
 });
 
+/**
+ * ⭐ №241: деньги на одной строке. Разряды `ru-RU` уже разделены неразрывным пробелом,
+ * а перед «₽» стоял обычный пробел — из-за него валюта переносилась на новую строку.
+ */
+const rub = (value: number): string => `${value.toLocaleString('ru-RU')}\u00A0₽`;
+
 const UNIT_OPTIONS = [
   { value: 'PIECE', label: 'шт' },
   { value: 'METER', label: 'м' },
@@ -1821,15 +1827,15 @@ onClose={() => setFilterAnchorEl(null)}
               </TableCell>
               <TableCell sx={{ textAlign: 'center', fontWeight: 600, color: m.progressPercent >= 100 ? '#4caf50' : '#1976d2' }}>{m.progressPercent}%</TableCell>
               {/* ⭐ Денежные ячейки скрываем при hidePrices */}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right' }}>{m.totalCost > 0 ? `${m.totalCost.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right' }}>{m.materialTotalCost > 0 ? `${m.materialTotalCost.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{(m.totalCost + m.materialTotalCost) > 0 ? `${(m.totalCost + m.materialTotalCost).toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', borderLeft: '2px solid #90caf9' }}>{m.unitPrice > 0 ? `${m.unitPrice.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right' }}>{(m.unitPrice * m.specQuantity) > 0 ? `${(m.unitPrice * m.specQuantity).toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', borderLeft: '2px solid #90caf9' }}>{m.materialUnitPrice > 0 ? `${m.materialUnitPrice.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right' }}>{(m.materialUnitPrice * m.specQuantity) > 0 ? `${(m.materialUnitPrice * m.specQuantity).toLocaleString('ru-RU')} ₽` : '—'}</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, borderLeft: '2px solid #90caf9' }}>
-                {((m.unitPrice + m.materialUnitPrice) * m.specQuantity) > 0 ? `${((m.unitPrice + m.materialUnitPrice) * m.specQuantity).toLocaleString('ru-RU')} ₽` : '—'}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{m.totalCost > 0 ? rub(m.totalCost) : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{m.materialTotalCost > 0 ? rub(m.materialTotalCost) : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>{(m.totalCost + m.materialTotalCost) > 0 ? rub(m.totalCost + m.materialTotalCost) : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9' }}>{m.unitPrice > 0 ? rub(m.unitPrice) : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{(m.unitPrice * m.specQuantity) > 0 ? rub(m.unitPrice * m.specQuantity) : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9' }}>{m.materialUnitPrice > 0 ? rub(m.materialUnitPrice) : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{(m.materialUnitPrice * m.specQuantity) > 0 ? rub(m.materialUnitPrice * m.specQuantity) : '—'}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9' }}>
+                {((m.unitPrice + m.materialUnitPrice) * m.specQuantity) > 0 ? rub((m.unitPrice + m.materialUnitPrice) * m.specQuantity) : '—'}
               </TableCell>}
               <TableCell sx={{ textAlign: 'center' }}>
                 {/* ⭐ Шестерёнка настроек скрыта для VIEWER (и на бэке update/remove/editLastFix кидают 403) */}
@@ -1869,14 +1875,14 @@ onClose={() => setFilterAnchorEl(null)}
 <TableCell />
               <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.weightedPercent}%</TableCell>
               {/* ⭐ Итоги по деньгам скрываем при hidePrices */}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumWorkCurrent.toLocaleString('ru-RU')} ₽</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumMatCurrent.toLocaleString('ru-RU')} ₽</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumCurrentTotal.toLocaleString('ru-RU')} ₽</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>{rub(totals.sumWorkCurrent)}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>{rub(totals.sumMatCurrent)}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>{rub(totals.sumCurrentTotal)}</TableCell>}
               {!hidePrices && <TableCell sx={{ borderLeft: '2px solid #90caf9' }} />}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumWorkEstimate.toLocaleString('ru-RU')} ₽</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>{rub(totals.sumWorkEstimate)}</TableCell>}
               {!hidePrices && <TableCell sx={{ borderLeft: '2px solid #90caf9' }} />}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{totals.sumMatEstimate.toLocaleString('ru-RU')} ₽</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, borderLeft: '2px solid #90caf9' }}>{totals.sumEstimate.toLocaleString('ru-RU')} ₽</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>{rub(totals.sumMatEstimate)}</TableCell>}
+              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9' }}>{rub(totals.sumEstimate)}</TableCell>}
               <TableCell />
 </TableRow>
 </TableFooter>
@@ -1943,16 +1949,16 @@ onClose={() => setFilterAnchorEl(null)}
               <Box sx={{ bgcolor: '#f5f9ff', borderRadius: 1.5, p: 1, mb: 1, border: '1px solid #e3edf8' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
                   <Typography variant="caption" color="text.secondary">Работы:</Typography>
-                  <Typography variant="caption" fontWeight={600}>{m.totalCost > 0 ? `${m.totalCost.toLocaleString('ru-RU')} ₽` : '—'}</Typography>
+                  <Typography variant="caption" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>{m.totalCost > 0 ? rub(m.totalCost) : '—'}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
                   <Typography variant="caption" color="text.secondary">Материалы:</Typography>
-                  <Typography variant="caption" fontWeight={600}>{m.materialTotalCost > 0 ? `${m.materialTotalCost.toLocaleString('ru-RU')} ₽` : '—'}</Typography>
+                  <Typography variant="caption" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>{m.materialTotalCost > 0 ? rub(m.materialTotalCost) : '—'}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="body2" fontWeight={700}>Итого:</Typography>
-                  <Typography variant="body2" fontWeight={700} color="#1976d2">
-                    {(m.totalCost + m.materialTotalCost) > 0 ? `${(m.totalCost + m.materialTotalCost).toLocaleString('ru-RU')} ₽` : '—'}
+                  <Typography variant="body2" fontWeight={700} color="#1976d2" sx={{ whiteSpace: 'nowrap' }}>
+                    {(m.totalCost + m.materialTotalCost) > 0 ? rub(m.totalCost + m.materialTotalCost) : '—'}
                   </Typography>
                 </Box>
               </Box>
@@ -2046,14 +2052,14 @@ onClose={() => setFilterAnchorEl(null)}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
         <Box sx={{ textAlign: 'left' }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Смета</Typography>
-          <Typography variant="body2" fontWeight={700}>
-            {totals.sumEstimate.toLocaleString('ru-RU')} ₽
+          <Typography variant="body2" fontWeight={700} sx={{ whiteSpace: 'nowrap' }}>
+            {rub(totals.sumEstimate)}
           </Typography>
         </Box>
         <Box sx={{ textAlign: 'center' }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Факт</Typography>
-          <Typography variant="body2" fontWeight={700} color="#1976d2">
-            {totals.sumCurrentTotal.toLocaleString('ru-RU')} ₽
+          <Typography variant="body2" fontWeight={700} color="#1976d2" sx={{ whiteSpace: 'nowrap' }}>
+            {rub(totals.sumCurrentTotal)}
           </Typography>
         </Box>
         <Box sx={{ textAlign: 'right' }}>
