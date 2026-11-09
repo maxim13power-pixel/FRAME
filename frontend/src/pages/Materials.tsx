@@ -104,6 +104,17 @@ const SUMMARY_LIST_CLEARANCE_PX = 64; // доп. отступ списка, чт
 // ⭐ №177: запоминаем последний выбранный справочник цен (в модалке «Добавить позицию»)
 const PRICE_CATALOG_MEMO_KEY = 'frame:priceCatalogChoice';
 
+/**
+ * ⭐ №240: ответы API материала (фиксация/правка/настройки) не содержат `photosCount` —
+ * это агрегат списка. При замене строки сохраняем счётчик, иначе бейдж «пропадает»
+ * до перезагрузки страницы.
+ */
+const mergeUpdatedMaterial = (prev: MaterialData, updated: MaterialData): MaterialData => ({
+  ...prev,
+  ...updated,
+  photosCount: prev.photosCount ?? updated.photosCount ?? 0,
+});
+
 const UNIT_OPTIONS = [
   { value: 'PIECE', label: 'шт' },
   { value: 'METER', label: 'м' },
@@ -918,7 +929,7 @@ setPriceLoading(false);
         ...(fixDayOffset > 0 ? { fixedDate: localDateKey(-fixDayOffset) } : {}),
         tzOffset: new Date().getTimezoneOffset(), // окно считаем по календарю устройства
       });
-      setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
+      setMaterials(prev => prev.map(m => m.id === updated.id ? mergeUpdatedMaterial(m, updated) : m));
       handleCloseFixModal();
     } catch (err: unknown) {
       notifyError('Ошибка фиксации: ' + getApiErrorText(err, 'неизвестная ошибка'));
@@ -1016,7 +1027,7 @@ const handleSaveEditFix = async () => {
       amount,
       note: editFixNote || undefined,
     });
-    setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
+    setMaterials(prev => prev.map(m => m.id === updated.id ? mergeUpdatedMaterial(m, updated) : m));
     setEditFixModalOpen(false);
   } catch (err: unknown) {
     setInfoModal({ open: true, text: 'Ошибка: ' + getApiErrorText(err, 'неизвестная ошибка') });
@@ -1199,7 +1210,7 @@ const handleSaveEdit = async () => {
       priceItemId: priceItemIdToSend,
       materialItemId: materialItemIdToSend,
     });
-    setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
+    setMaterials(prev => prev.map(m => m.id === updated.id ? mergeUpdatedMaterial(m, updated) : m));
     loadCategories(); // ⭐ обновить категории фильтра
     setEditModalOpen(false);
   } catch (err: unknown) {
@@ -1771,18 +1782,35 @@ onClose={() => setFilterAnchorEl(null)}
               <TableCell sx={{ textAlign: 'center' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
                   <Typography variant="body2" fontWeight={600}>{m.lastEntry ?? '—'}</Typography>
-                  {/* ⭐ №228: фото-фиксация — бейдж с количеством, клик открывает галерею */}
-                  <IconButton
-                    size="small"
-                    sx={{ p: 0.3 }}
-                    onClick={() => setPhotoGalleryMaterial(m)}
-                    aria-label="Фото материала"
-                    title="Фото материала"
+                  {/* ⭐ №240: кнопка-прямоугольник со скруглением; бейдж — на углу КНОПКИ,
+                      а не поверх иконки */}
+                  <Badge
+                    badgeContent={m.photosCount ?? 0}
+                    color="primary"
+                    invisible={!m.photosCount}
+                    overlap="rectangular"
+                    anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+                    sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16, px: 0.5 } }}
                   >
-                    <Badge badgeContent={m.photosCount ?? 0} color="primary" invisible={!m.photosCount}>
-                      <CameraAltIcon sx={{ fontSize: 16, color: m.photosCount ? '#1976d2' : '#757575' }} />
-                    </Badge>
-                  </IconButton>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => setPhotoGalleryMaterial(m)}
+                      aria-label="Фото материала"
+                      title="Фото материала"
+                      sx={{
+                        minWidth: 40,
+                        px: 1,
+                        py: 0.5,
+                        borderRadius: 2,
+                        color: m.photosCount ? '#1976d2' : '#757575',
+                        borderColor: m.photosCount ? '#90caf9' : '#bdbdbd',
+                        '&:hover': { borderColor: '#1976d2', bgcolor: 'rgba(25,118,210,0.04)' },
+                      }}
+                    >
+                      <CameraAltIcon sx={{ fontSize: 18 }} />
+                    </Button>
+                  </Badge>
                 </Box>
                 {/* ⭐ Кнопка "+ фикс" скрыта для VIEWER (и на бэке addFix кидает 403) */}
                 {!hidePrices && (
@@ -1930,22 +1958,33 @@ onClose={() => setFilterAnchorEl(null)}
               </Box>
             )}
               <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={() => setPhotoGalleryMaterial(m)}
-                aria-label="Фотофиксация"
-                sx={{
-                  minWidth: 48,
-                  color: m.photosCount ? '#1976d2' : '#757575',
-                  borderColor: m.photosCount ? '#90caf9' : '#bdbdbd',
-                  '&:hover': { borderColor: '#1976d2', bgcolor: 'rgba(25,118,210,0.04)' },
-                }}
+              <Badge
+                badgeContent={m.photosCount ?? 0}
+                color="primary"
+                invisible={!m.photosCount}
+                overlap="rectangular"
+                anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+                sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16, px: 0.5 } }}
               >
-                <Badge badgeContent={m.photosCount ?? 0} color="primary" invisible={!m.photosCount}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => setPhotoGalleryMaterial(m)}
+                  aria-label="Фотофиксация"
+                  sx={{
+                    // ⭐ №240: шире на ~30 % (48 → 64), чтобы бейдж не перекрывал иконку
+                    minWidth: 64,
+                    px: 2,
+                    py: 0.75,
+                    borderRadius: 2,
+                    color: m.photosCount ? '#1976d2' : '#757575',
+                    borderColor: m.photosCount ? '#90caf9' : '#bdbdbd',
+                    '&:hover': { borderColor: '#1976d2', bgcolor: 'rgba(25,118,210,0.04)' },
+                  }}
+                >
                   <CameraAltIcon fontSize="small" />
-                </Badge>
-              </Button>
+                </Button>
+              </Badge>
               {/* ⭐ Кнопка фиксации скрыта для VIEWER */}
               {!hidePrices && (
                 <Button
