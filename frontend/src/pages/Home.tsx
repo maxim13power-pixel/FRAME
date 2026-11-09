@@ -24,6 +24,10 @@ import { parseDecimal } from '../utils/decimal'; // 🔒 P1-3: бэкенд от
 // 🔒 Шаг 103 (P1-3): принимаем number | string — Decimal с бэкенда приходит строкой
 const fmtMoney = (v: number | string) =>
   Math.round(parseDecimal(v)).toLocaleString('ru-RU');
+/** ⭐ №244: «1 740 ₽» — валюта не переносится (разряды ru-RU уже с NBSP) */
+const rub = (v: number | string) => `${fmtMoney(v)}\u00A0₽`;
+/** ⭐ №244: большие проценты с разрядами: 110866.3 → «110 866,3» */
+const pct = (v: number) => v.toLocaleString('ru-RU', { maximumFractionDigits: 1 });
 const DAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 /** ⭐ №231: сколько последних фото показываем на Главной */
 const FEED_LIMIT = 12;
@@ -224,45 +228,64 @@ const Home: React.FC = () => {
         <Typography variant="caption" color="text.secondary">
           В работе: {data.kpi.projectsCount} проектов • {data.kpi.objectsCount} объекта • {data.kpi.materialsCount} позиций
         </Typography>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ textAlign: 'center', my: 1.5, justifyContent: 'space-around' }}>
-          <Box>
+        {/* ⭐ №244: суммы — в сетке (на узком экране 2 колонки, не в одну кашу),
+            сравнение — отдельной строкой на всю ширину */}
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gap: 1,
+            my: 1.5,
+            textAlign: 'center',
+          }}
+        >
+          <Box sx={{ minWidth: 0 }}>
             <Typography variant="caption" color="text.secondary">Смета</Typography>
-            <Typography variant="h6" fontWeight={700} sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
-              {fmtMoney(data.money.estimate)} ₽
-            </Typography>
-          </Box>
-          <Box>
-            <Typography variant="caption" color="text.secondary">Факт</Typography>
-            <Typography variant="h6" fontWeight={700} color="primary" sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
-              {fmtMoney(data.money.actual)} ₽
-            </Typography>
-          </Box>
-          <Box>
-            <Typography variant="caption" color="text.secondary">Факт vs смета</Typography>
-            {/* ⭐ №225: деньги показываем только сравнением факта со сметой */}
             <Typography
               variant="h6"
               fontWeight={700}
-              color={moneyOverBudget ? 'error.main' : 'success.main'}
-              sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}
+              sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, whiteSpace: 'nowrap' }}
             >
-              {moneyOverBudget
-                ? `Факт больше сметы на ${fmtMoney(moneyDiff)} ₽${data.money.overPercent != null ? ` (${data.money.overPercent} %)` : ''}`
-                : 'В пределах сметы'}
+              {rub(data.money.estimate)}
             </Typography>
           </Box>
-        </Stack>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="caption" color="text.secondary">Факт</Typography>
+            <Typography
+              variant="h6"
+              fontWeight={700}
+              color="primary"
+              sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, whiteSpace: 'nowrap' }}
+            >
+              {rub(data.money.actual)}
+            </Typography>
+          </Box>
+        </Box>
+        <Box sx={{ mb: 1.5 }}>
+          <Typography variant="caption" color="text.secondary">Факт vs смета</Typography>
+          {/* ⭐ №225: деньги показываем только сравнением факта со сметой */}
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            color={moneyOverBudget ? 'error.main' : 'success.main'}
+            sx={{ fontSize: { xs: '0.95rem', sm: '1.15rem' }, lineHeight: 1.3 }}
+          >
+            {moneyOverBudget
+              ? `Факт больше сметы на ${rub(moneyDiff)}${data.money.overPercent != null ? ` (${pct(data.money.overPercent)}\u00A0%)` : ''}`
+              : 'В пределах сметы'}
+          </Typography>
+        </Box>
         {/* ⭐ №225: прогресс ОБЪЁМОВ — не деньги, красным не красим */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
           <Typography variant="caption" color="text.secondary">Объём работ</Typography>
-          <Typography variant="caption" fontWeight={600}>{volumePercentRaw} %</Typography>
+          <Typography variant="caption" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>{pct(volumePercentRaw)}&nbsp;%</Typography>
           {volumeOverrun !== null && (
             <Chip
               size="small"
               color="warning"
               variant="outlined"
-              label={`Объём перевыполнен на ${volumeOverrun} %`}
-              sx={{ fontWeight: 600 }}
+              label={`Объём перевыполнен на ${pct(volumeOverrun)}\u00A0%`}
+              sx={{ fontWeight: 600, maxWidth: '100%' }}
             />
           )}
         </Box>
