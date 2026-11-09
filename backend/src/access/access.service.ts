@@ -284,7 +284,86 @@ export class AccessService {
   // неизменяемый «Снимок доступа» (№194) — наработка человека остаётся у него навсегда,
   // затем ЖЁСТКО удаляем все его записи доступа к объекту (объектную и проектные).
   // Восстановления нет: чтобы вернуть человека, его приглашают заново.
-  async removeParticipant(objectId: number, accessId: number, actorUserId: number) {
+  async removeProjectParticipant(
+    projectId: number,
+    accessId: number,
+    actorUserId: number,
+  ) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { objectId: true },
+    });
+    if (!project) throw new NotFoundException('Проект не найден');
+    await this.assertManager(project.objectId, actorUserId);
+
+    const target = await this.prisma.objectAccess.findFirst({
+      where: { id: accessId, projectId, objectId: project.objectId },
+    });
+    if (!target) {
+      throw new NotFoundException('Доступ к этому проекту не найден');
+    }
+    if (target.userId === actorUserId) {
+      throw new BadRequestException('Нельзя удалить собственный доступ');
+    }
+    if (target.revokedAt) {
+      throw new BadRequestException('Доступ уже отозван');
+    }
+
+    const now = new Date();
+    const result = await this.prisma.$transaction(async (tx) => {
+      const copies = await this.createSnapshot(tx, target, now);
+      const hidePrices = target.hidePrices || target.role === AccessRole.VIEWER;
+      const blind = await buildSnapshotPayload(tx, {
+        objectId: target.objectId,
+        projectId: target.projectId,
+        hidePrices,
+        takenAt: now,
+      });
+      let snapshots = 0;
+      if (blind) {
+        await tx.accessSnapshot.create({
+          data: {
+            userId: target.userId,
+            objectId: target.objectId,
+            accessId: target.id,
+            objectName: blind.objectName,
+            projectId: target.projectId,
+            projectName: blind.projectName,
+            role: target.role,
+            hidePrices,
+            takenAt: now,
+            revokedBy: actorUserId,
+            summary: blind.summary as unknown as Prisma.InputJsonValue,
+            payload: blind.payload,
+          },
+        });
+        snapshots = 1;
+      }
+      await tx.objectAccess.delete({ where: { id: target.id } });
+      return {
+        removed: 1,
+        templates: copies.templates,
+        catalogCopied: copies.catalogCopied,
+        snapshots,
+      };
+    });
+
+    await this.audit.log(
+      actorUserId,
+      'object_access',
+      project.objectId,
+      'delete',
+      { userId: target.userId, role: target.role, projectId },
+      { userId: target.userId, ...result },
+    );
+    return { success: true, ...result };
+  }
+
+  async removeParticipant(
+    objectId: number,
+    accessId: number,
+    actorUserId: number,
+  ) {
     await this.assertManager(objectId, actorUserId);
 
     const target = await this.prisma.objectAccess.findFirst({

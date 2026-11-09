@@ -39,16 +39,16 @@ export interface DeletionAccess {
 }
 
 /** Типы источника для копирования (Prisma include). */
-type SourceProject = Prisma.ProjectGetPayload<{
+export type SourceProject = Prisma.ProjectGetPayload<{
   include: { materials: { include: { fixes: true } } };
 }>;
-type SourceWarehouse = Prisma.WarehouseItemGetPayload<{
+export type SourceWarehouse = Prisma.WarehouseItemGetPayload<{
   include: { transactions: true };
 }>;
-type SourceBrigade = Prisma.BrigadeGetPayload<{
+export type SourceBrigade = Prisma.BrigadeGetPayload<{
   include: { members: true; shifts: { include: { members: true } } };
 }>;
-type SourceReport = Prisma.ReportGetPayload<{ include: { items: true } }>;
+export type SourceReport = Prisma.ReportGetPayload<{ include: { items: true } }>;
 
 /**
  * Кому делаем копии: все активные (не отозванные) участники, кроме инициатора удаления.
@@ -266,7 +266,7 @@ export class ObjectDeletionService implements OnModuleInit, OnModuleDestroy {
     // Иначе при сбое повторный прогон наплодил бы дубли уже скопированным.
     await this.prisma.$transaction(async (tx) => {
       for (const userId of recipients) {
-        await this.cloneForParticipant(
+        await this.cloneIntoNewObject(
           tx,
           userId,
           object,
@@ -296,7 +296,7 @@ export class ObjectDeletionService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Личная копия объекта для одного участника (без фото). */
-  private async cloneForParticipant(
+  async cloneIntoNewObject(
     tx: Prisma.TransactionClient,
     userId: number,
     object: {

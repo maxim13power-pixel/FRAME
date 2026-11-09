@@ -26,10 +26,15 @@ export interface ProjectData {
   // (флаг revoked убран в №193: отозванный доступ проект не получает вовсе)
   canWrite?: boolean;
   canManage?: boolean;
-  // ⭐ №204 (A#10): карточка проекта (переименование/даты/заметка) и удаление —
+  // ⭐ №244: карточка проекта (переименование/даты/заметка) и удаление —
   // это права на ВЕСЬ объект, участнику одного проекта они не выдаются
   canEditCard?: boolean;
   canDeleteCard?: boolean;
+  // ⭐ №249: личный архив проекта + отложенное удаление
+  hiddenForMe?: boolean;
+  deleteAfter?: string | null;
+  deleteRequestedAt?: string | null;
+  deleteRequestedBy?: number | null;
 }
 
 // ⭐ №172: opts.includeHidden — вернуть проекты объекта, даже если он в личном
@@ -56,6 +61,31 @@ export const updateProject = async (id: number, data: Partial<Omit<ProjectData, 
 
 export const deleteProject = async (id: number) => {
   const response = await api.delete(`/projects/${id}`);
+  return response.data;
+};
+
+/** ⭐ №249: личный архив проекта — скрыть/показать только у себя. */
+export const setProjectHidden = async (
+  projectId: number,
+  isHidden: boolean,
+): Promise<{ success: boolean; isHidden: boolean; projectId: number }> => {
+  const response = await api.patch(`/me/projects/${projectId}`, { isHidden });
+  return response.data;
+};
+
+/** ⭐ №249: удаление проекта через 30 дней (только админ объекта). */
+export const scheduleProjectDeletion = async (
+  projectId: number,
+): Promise<{ deleteAfter: string; daysLeft: number }> => {
+  const response = await api.post(`/projects/${projectId}/deletion`);
+  return response.data;
+};
+
+/** ⭐ №249: отменить запланированное удаление проекта. */
+export const cancelProjectDeletion = async (
+  projectId: number,
+): Promise<{ cancelled: boolean }> => {
+  const response = await api.delete(`/projects/${projectId}/deletion`);
   return response.data;
 };
 

@@ -112,6 +112,18 @@ export const removeAccess = async (
   return response.data;
 };
 
+// 5. ⭐ №249: удалить участника ИМЕННО проекта (объектные доступы не трогаем).
+// Перед удалением бэкенд снимает личные копии сметы/снимок по этому проекту.
+export const removeProjectAccess = async (
+  projectId: number,
+  accessId: number,
+): Promise<RemoveAccessResult> => {
+  const response = await api.delete(
+    `/projects/${projectId}/access/${accessId}`,
+  );
+  return response.data;
+};
+
 // 7. ⭐ №168: мои доступы (активные / архив / отозванные)
 export const fetchMyAccess = async (): Promise<MyAccess[]> => {
   const response = await api.get('/me/access');

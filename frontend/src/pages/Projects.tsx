@@ -25,7 +25,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
-import { fetchProjectsByObject, createProject, updateProject, deleteProject } from '../services/projectService';
+import { fetchProjectsByObject, createProject, updateProject, setProjectHidden, scheduleProjectDeletion, cancelProjectDeletion } from '../services/projectService';
 import { fetchPriceCatalogs, createPriceCatalog } from '../services/priceListService';
 import type { PriceCatalogData } from '../services/priceListService';
 
@@ -71,12 +71,24 @@ import {
 import type { AccessRequestData } from '../services/accessRequestService';
 import { getApiErrorText } from '../utils/errors';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ArchiveIcon from '@mui/icons-material/Archive';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ProjectTeamDialog from '../components/ProjectTeamDialog'; // ⭐ №249
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import PeopleIcon from '@mui/icons-material/People'; // ⭐ №207: команда объекта из карточки проекта
 import { FAB_STYLE } from '../theme';
 
 // ⭐ №158: значение селекта справочника — id, «не выбран» или «создать новый»
 type CatalogSelectValue = number | '' | 'new';
+
+/** ⭐ №249: сколько дней осталось до удаления проекта. */
+const deletionDaysLeft = (iso: string): number =>
+  Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000));
+
+const deletionPhrase = (iso: string): string => {
+  const days = deletionDaysLeft(iso);
+  return days <= 0 ? 'сегодня' : `через ${days} дн.`;
+};
 
 const Projects: React.FC = () => {
   const { objectId } = useParams<{ objectId: string }>();
@@ -140,6 +152,9 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   // ⭐ №188: меню действий с проектом (шестерёнка на карточке)
   const [actionsProject, setActionsProject] = useState<ProjectData | null>(null);
+  // ⭐ №249: личный архив проектов + модалка участников проекта
+  const [showArchived, setShowArchived] = useState(false);
+  const [teamProject, setTeamProject] = useState<ProjectData | null>(null);
   // ⭐ №192: сохранение ПРОЕКТА как шаблона объекта
   const [objTplProject, setObjTplProject] = useState<ProjectData | null>(null);
   const [objTplName, setObjTplName] = useState('');
@@ -236,9 +251,12 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   };
 
   const filteredAndSortedProjects = useMemo(() => {
-    const filtered = projects.filter(proj =>
-      proj.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filtered = projects.filter(proj => {
+      // ⭐ №249: личный архив — как на «Объектах»: активные/архив раздельно
+      const archived = proj.hiddenForMe === true;
+      if (archived !== showArchived) return false;
+      return proj.name.toLowerCase().includes(searchQuery.toLowerCase());
+    });
     switch (sortBy) {
       case 'name':
         filtered.sort((a, b) => a.name.localeCompare(b.name));
@@ -256,7 +274,7 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
         break;
     }
     return filtered;
-  }, [projects, searchQuery, sortBy]);
+  }, [projects, searchQuery, sortBy, showArchived]);
 
 
   useEffect(() => {
@@ -264,7 +282,7 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
     const loadProjects = async () => {
       try {
         setLoading(true);
-        const data = await fetchProjectsByObject(parseInt(objectId));
+        const data = await fetchProjectsByObject(parseInt(objectId), { includeHidden: true });
         setProjects(data);
         setError('');
       } catch (err: unknown) {
@@ -833,33 +851,101 @@ const handleSaveNote = async () => {
 };
 
 
-  const handleDeleteProject = async () => {
-    if (!token || !deletingProject) return;
+  const reloadProjects = async () => {
+    if (!objectId) return;
     try {
-      await deleteProject(Number(deletingProject.id));
-      setProjects(prev => prev.filter(p => p.id !== deletingProject.id));
-      setDeleteConfirmOpen(false);
-      setDeletingProject(null);
+      const data = await fetchProjectsByObject(parseInt(objectId), {
+        includeHidden: true,
+      });
+      setProjects(data);
     } catch {
-      notifyError('Ошибка удаления проекта');
+      // список обновится при следующем входе — страницу не роняем
     }
+  };
+
+  // ⭐ №249: личный архив проекта (скрыт только у меня)
+  const handleToggleProjectArchive = async (proj: ProjectData) => {
+    try {
+      await setProjectHidden(proj.id, !proj.hiddenForMe);
+      await reloadProjects();
+      notify(
+        proj.hiddenForMe
+          ? `Проект «${proj.name}» возвращён из архива`
+          : `Проект «${proj.name}» убран в личный архив`,
+      );
+    } catch (err) {
+      notifyError(getApiErrorText(err, 'Не удалось изменить архив'));
+    }
+  };
+
+  // ⭐ №249: удаление через 30 дней. Другие участники получат личные копии проекта.
+  const handleScheduleProjectDeletion = async (proj: ProjectData) => {
+    const ok = await confirm({
+      title: 'Удалить проект безвозвратно?',
+      text: `«${proj.name}» будет удалён через 30 дней. До этого его можно вернуть. Другие участники получат личные копии проекта (смета, фиксации, склад, бригады и отчёты по этому проекту) — без фото.`,
+      confirmText: 'Удалить',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await scheduleProjectDeletion(proj.id);
+      // Удаление живёт в архиве: сразу убираем проект в личный архив.
+      await setProjectHidden(proj.id, true);
+      await reloadProjects();
+      notify(
+        `Удаление проекта «${proj.name}» назначено через 30 дней`,
+        'warning',
+      );
+    } catch (err) {
+      notifyError(getApiErrorText(err, 'Не удалось назначить удаление'));
+    }
+  };
+
+  const handleCancelProjectDeletion = async (proj: ProjectData) => {
+    try {
+      await cancelProjectDeletion(proj.id);
+      await reloadProjects();
+      notify('Удаление проекта отменено');
+    } catch (err) {
+      notifyError(getApiErrorText(err, 'Не удалось отменить удаление'));
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (!deletingProject) return;
+    await handleScheduleProjectDeletion(deletingProject);
+    setDeleteConfirmOpen(false);
+    setDeletingProject(null);
   };
   // ⭐ trailing в useMemo — стабильная ссылка, нет бесконечного цикла (как в Materials)
   const headerTrailing = useMemo(() => isMobile ? (
-    <IconButton
-      onClick={(e) => setSortAnchorEl(e.currentTarget)}
-      sx={{
-        bgcolor: sortBy !== 'newest' ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
-        color: sortBy !== 'newest' ? '#1976d2' : '#424242',
-        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
-      }}
-    >
-      <SortIcon />
-    </IconButton>
-  ) : undefined, [isMobile, sortBy]);
+    <>
+      <IconButton
+        onClick={() => setShowArchived(v => !v)}
+        aria-label={showArchived ? 'Активные' : 'Архив'}
+        sx={{
+          bgcolor: showArchived ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+          color: showArchived ? '#1976d2' : '#424242',
+          '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+        }}
+      >
+        {showArchived ? <CheckCircleIcon /> : <ArchiveIcon />}
+      </IconButton>
+      <IconButton
+        onClick={(e) => setSortAnchorEl(e.currentTarget)}
+        sx={{
+          bgcolor: sortBy !== 'newest' ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+          color: sortBy !== 'newest' ? '#1976d2' : '#424242',
+          '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+        }}
+      >
+        <SortIcon />
+      </IconButton>
+    </>
+  ) : undefined, [isMobile, sortBy, showArchived]);
 
 useMobileHeader({
-title: 'Проекты',
+title: showArchived ? 'Архив' : 'Проекты',
 editableKey: 'frame_title_projects',
 onBack: goBack,
     searchOpen: mobileSearchOpen,
@@ -996,6 +1082,15 @@ onBack: goBack,
               <MenuItem value="progress">По проценту %</MenuItem>
             </Select>
           </FormControl>
+          {/* ⭐ №249: личный архив проектов */}
+          <Button
+            variant={showArchived ? 'contained' : 'outlined'}
+            startIcon={showArchived ? <CheckCircleIcon /> : <ArchiveIcon />}
+            onClick={() => setShowArchived(v => !v)}
+            sx={{ whiteSpace: 'nowrap' }}
+          >
+            {showArchived ? 'Активные' : 'Архив'}
+          </Button>
           {/* ⭐ №178: если доступ только к проекту — вместо создания проекта подаём заявку */}
           {!currentObject ? (
             <Button variant="contained" startIcon={<NoteAddIcon />} disabled sx={{ minWidth: '200px' }}>
@@ -1038,21 +1133,81 @@ onBack: goBack,
   filteredAndSortedProjects.map(proj => (
 <Paper 
   key={proj.id} 
-  onClick={() => {
-    console.log('Переход в материалы проекта:', proj.id);
+  onClick={proj.hiddenForMe ? undefined : () => {
     navigate(`/objects/${objectId}/projects/${proj.id}/materials`);
   }}
   sx={{
     p: isMobile ? 1.5 : 2,
     borderRadius: 2,
-    cursor: 'pointer',
+    // ⭐ №249: проект в личном архиве не открывается (как объект в архиве)
+    cursor: proj.hiddenForMe ? 'default' : 'pointer',
     transition: 'box-shadow 0.3s, transform 0.3s',
-    '&:hover': {
+    '&:hover': proj.hiddenForMe ? {} : {
       boxShadow: 6,
       transform: 'scale(1.01)',
     },
   }}
 >
+{/* ⭐ №249: удаление проекта — таймер 30 дней, только админ объекта */}
+{(proj.deleteAfter || (proj.hiddenForMe && proj.canDeleteCard)) && (
+  <Alert
+    severity="error"
+    onClick={(e) => e.stopPropagation()}
+    sx={{ mb: 1, borderRadius: 2 }}
+    action={
+      proj.canDeleteCard ? (
+        proj.deleteAfter ? (
+          <Button
+            size="small"
+            color="inherit"
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleCancelProjectDeletion(proj);
+            }}
+          >
+            Отменить удаление
+          </Button>
+        ) : (
+          <Button
+            size="small"
+            color="error"
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleScheduleProjectDeletion(proj);
+            }}
+          >
+            Удалить
+          </Button>
+        )
+      ) : undefined
+    }
+  >
+    {proj.deleteAfter
+      ? `Проект будет удалён безвозвратно ${deletionPhrase(proj.deleteAfter)}. Участники получат личные копии (без фото).`
+      : 'Удалить проект безвозвратно? Он будет удалён через 30 дней — до этого можно вернуть.'}
+  </Alert>
+)}
+{proj.hiddenForMe && (
+  <Alert
+    severity="warning"
+    onClick={(e) => e.stopPropagation()}
+    sx={{ mb: 1, borderRadius: 2 }}
+    action={
+      <Button
+        size="small"
+        color="primary"
+        onClick={(e) => {
+          e.stopPropagation();
+          void handleToggleProjectArchive(proj);
+        }}
+      >
+        Вернуть
+      </Button>
+    }
+  >
+    Проект в вашем архиве — виден только вам.
+  </Alert>
+)}
 {/* Верхняя строка: иконка, название (до 2 строк), меню действий */}
 <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
   <DescriptionIcon sx={{ color: '#1976d2', mr: 1, fontSize: 28, mt: 0.25 }} />
@@ -1073,8 +1228,9 @@ onBack: goBack,
 </Typography>
 {/* ⭐ №188: все действия — в одной кнопке, как на «Объектах» */}
 <IconButton
-  title="Действия с проектом"
+  title={proj.hiddenForMe ? 'Проект в архиве — действия через панель' : 'Действия с проектом'}
   aria-label="Действия с проектом"
+  disabled={proj.hiddenForMe}
   onClick={(e) => {
     e.stopPropagation();
     handleOpenActions(proj);
@@ -1150,7 +1306,11 @@ onBack: goBack,
 ) : (
   <Paper sx={{ p: 3, textAlign: 'center' }}>
     <Typography>
-      {projects.length === 0 ? 'Нет проектов. Создайте первый проект.' : 'Ничего не найдено'}
+      {projects.length === 0
+        ? 'Нет проектов. Создайте первый проект.'
+        : showArchived
+          ? 'В архиве пока нет проектов'
+          : 'Ничего не найдено'}
     </Typography>
   </Paper>
 )}
@@ -1405,6 +1565,54 @@ onBack: goBack,
             }}
           >
             Заметка к проекту
+          </Button>
+
+          {/* ⭐ №249: участники ИМЕННО проекта */}
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<PeopleIcon />}
+            disabled={currentObject?.canManage !== true}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) setTeamProject(p);
+            }}
+          >
+            Участники проекта
+          </Button>
+
+          {/* ⭐ №249: личный архив проекта */}
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<ArchiveIcon />}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) void handleToggleProjectArchive(p);
+            }}
+          >
+            {actionsProject?.hiddenForMe ? 'Вернуть из архива' : 'В личный архив'}
+          </Button>
+
+          {/* ⭐ №249: удаление проекта через 30 дней */}
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            disabled={!canDeleteProjectCard(actionsProject)}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) void handleScheduleProjectDeletion(p);
+            }}
+          >
+            Удалить проект
           </Button>
 
           {/* ⭐ №207: команда объекта — из карточки проекта, чтобы не искать её в «Объектах» */}
@@ -1776,6 +1984,18 @@ onBack: goBack,
       </Modal>
 
 
+      {/* ⭐ №249: участники проекта */}
+      <ProjectTeamDialog
+        open={!!teamProject}
+        onClose={() => setTeamProject(null)}
+        objectId={currentObject?.id ?? Number(objectId)}
+        project={teamProject}
+        canManage={currentObject?.canManage === true}
+        onChanged={() => {
+          void reloadProjects();
+        }}
+      />
+
       {/* Модалка подтверждения удаления */}
       <Modal
         open={deleteConfirmOpen}
@@ -1794,9 +2014,11 @@ onBack: goBack,
           p: 3,
           borderRadius: 2,
         }}>
-          <Typography variant="h6" gutterBottom>Подтверждение удаления</Typography>
+          <Typography variant="h6" gutterBottom>Удалить проект?</Typography>
           <Typography sx={{ mb: 3 }}>
-            Вы уверены, что хотите удалить проект <b>"{deletingProject?.name}"</b>? Это действие необратимо.
+            Проект <b>"{deletingProject?.name}"</b> будет удалён безвозвратно
+            через 30 дней. До этого его можно вернуть из архива. Другие участники
+            получат личные копии проекта (без фото).
           </Typography>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
             <Button

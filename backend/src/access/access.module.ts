@@ -9,5 +9,7 @@ import { PrismaModule } from '../prisma/prisma.module';
   imports: [PrismaModule],
   controllers: [AccessController, MeAccessController],
   providers: [AccessService],
+  // ⭐ №249: проектный доступ удаляется через ProjectsModule
+  exports: [AccessService],
 })
 export class AccessModule {}

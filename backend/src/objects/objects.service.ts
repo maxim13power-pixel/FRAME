@@ -136,6 +136,12 @@ export class ObjectsService {
   async findAll(userId: number) {
     const grants = await loadAccessGrants(this.prisma, userId);
     const scope = buildAccessScope(grants);
+    // ⭐ №249: проекты в личном архиве не участвуют в прогрессе/счётчике объекта
+    const hiddenRows = await this.prisma.projectHidden.findMany({
+      where: { userId },
+      select: { projectId: true },
+    });
+    const hiddenProjectIds = hiddenRows.map((r) => r.projectId);
 
     const objects = await this.prisma.object.findMany({
       where: accessibleObjectWhere(scope, { includeArchived: true }),
@@ -144,7 +150,12 @@ export class ObjectsService {
         // ⭐ №164: справочник цен объекта (наследуют проекты)
         catalog: { select: { id: true, name: true } },
         projects: {
-          where: accessibleProjectWhere(scope, { includeArchived: true }),
+          where: {
+            ...accessibleProjectWhere(scope, { includeArchived: true }),
+            ...(hiddenProjectIds.length
+              ? { id: { notIn: hiddenProjectIds } }
+              : {}),
+          },
           include: {
             materials: {
               select: {

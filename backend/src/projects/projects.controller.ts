@@ -13,6 +13,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
+import { ProjectDeletionService } from './project-deletion.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ObjectAccessGuard } from '../auth/object-access.guard';
@@ -24,7 +25,10 @@ import { ObjectAccessGuard } from '../auth/object-access.guard';
 // проверка остаётся в ProjectsService.findOne/update/remove.
 // TODO: добавить резолв projectId→objectId в guard для полной централизации.
 export class ProjectsController {
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(
+    private readonly projectsService: ProjectsService,
+    private readonly deletion: ProjectDeletionService,
+  ) {}
 
   @Post()
   create(@Body() createProjectDto: CreateProjectDto, @Req() req) {
@@ -63,5 +67,17 @@ export class ProjectsController {
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req) {
     return this.projectsService.remove(id, req.user.userId);
+  }
+
+  /** ⭐ №249: удаление проекта через 30 дней (только админ объекта). */
+  @Post(':id/deletion')
+  scheduleDeletion(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.deletion.schedule(id, req.user.userId);
+  }
+
+  /** ⭐ №249: отменить запланированное удаление проекта. */
+  @Delete(':id/deletion')
+  cancelDeletion(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.deletion.cancel(id, req.user.userId);
   }
 }

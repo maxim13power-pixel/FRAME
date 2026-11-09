@@ -16,6 +16,7 @@ import {
   findProjectAccess,
   loadAccessGrants,
   resolveObjectRole,
+  resolveProjectAccess,
 } from '../auth/access-scope'; // ⭐ №163, №193, №204
 
 @Injectable()
@@ -191,6 +192,15 @@ export class ProjectsService {
     }
     const hidePrices = my.hidePrices;
 
+    // ⭐ №249: личный архив проектов — скрываем только у этого пользователя.
+    // includeHidden=1 нужен странице «Проекты» (режим «Архив») и карточке бригады.
+    const hiddenRows = await this.prisma.projectHidden.findMany({
+      where: { userId },
+      select: { projectId: true },
+    });
+    const hiddenIds = hiddenRows.map((r) => r.projectId);
+    const hiddenSet = new Set(hiddenIds);
+
     // Проекты, доступные юзеру внутри объекта
     const allowedProjectIds = grants
       .filter((g) => g.objectId === objectId && g.projectId != null)
@@ -200,7 +210,13 @@ export class ProjectsService {
       : { id: { in: allowedProjectIds } };
 
     const projects = await this.prisma.project.findMany({
-      where: { objectId, ...projectFilter },
+      where: {
+        objectId,
+        ...projectFilter,
+        ...(includeHidden || hiddenIds.length === 0
+          ? {}
+          : { id: { notIn: hiddenIds } }),
+      },
       orderBy: { createdAt: 'desc' },
       include: {
         materials: {
@@ -251,6 +267,8 @@ export class ProjectsService {
         // Участник одного проекта работает со сметой, но не с карточкой проекта.
         canEditCard: my.hasObjectAccess && my.canWrite,
         canDeleteCard: my.canManage,
+        // ⭐ №249: личный архив проекта + срок удаления
+        hiddenForMe: hiddenSet.has(p.id),
       };
     });
   }
@@ -369,6 +387,42 @@ export class ProjectsService {
     });
     // ⭐ Возвращаем проект с честным процентом (та же форма, что в списке)
     return this.findOne(id, userId);
+  }
+
+  // ⭐ №249: личный архив проекта (скрыт только у меня). Остальные участники
+  // продолжают видеть проект; объект и его данные не меняются.
+  async setHidden(projectId: number, userId: number, isHidden: boolean) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { objectId: true },
+    });
+    if (!project) throw new NotFoundException('Проект не найден');
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const my = resolveProjectAccess(grants, project.objectId, projectId);
+    if (!my.role) throw new NotFoundException('Проект не найден');
+    if (my.revoked) throw new ForbiddenException(REVOKED_ACCESS_MESSAGE);
+
+    if (isHidden) {
+      await this.prisma.projectHidden.upsert({
+        where: { userId_projectId: { userId, projectId } },
+        create: { userId, projectId },
+        update: {},
+      });
+    } else {
+      await this.prisma.projectHidden.deleteMany({
+        where: { userId, projectId },
+      });
+      // ⭐ №249: «Вернуть» снимает срок удаления, если его назначал этот же юзер
+      await this.prisma.project.updateMany({
+        where: { id: projectId, deleteRequestedBy: userId },
+        data: {
+          deleteRequestedAt: null,
+          deleteAfter: null,
+          deleteRequestedBy: null,
+        },
+      });
+    }
+    return { success: true, isHidden, projectId };
   }
 
   // ⚠️ №168: жёсткое удаление разрешено только для ПУСТОГО проекта (создан по ошибке).

@@ -27,6 +27,7 @@ model User {
 
   // Новые связи вместо Organization
   objectAccesses    ObjectAccess[]
+  hiddenProjects    ProjectHidden[]
   ownedPriceItems   PriceItem[]
   priceCatalogs     PriceCatalog[] @relation("CatalogOwner") // ⭐ №151: личные справочники цен
   createdInvites    InviteToken[]  @relation("CreatedInvites")
@@ -96,9 +97,31 @@ model Project {
   updatedAt   DateTime @updatedAt
   note        String?
 
+  // ⭐ №249: личный архив проекта (скрыт только у этого пользователя)
+  hiddenBy        ProjectHidden[]
+  // ⭐ №249: отложенное безвозвратное удаление проекта (30 дней, как у объектов)
+  deleteRequestedAt DateTime?
+  deleteAfter       DateTime?
+  deleteRequestedBy Int?
+
   @@index([endDate])
   @@index([objectId])
   @@index([catalogId])
+  @@index([deleteAfter])
+}
+
+// ⭐ №249: «Проект в архиве» — персональная скрытость, не влияет на других.
+model ProjectHidden {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  projectId Int
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@index([userId])
+  @@map("project_hidden")
 }
 
 enum Role {

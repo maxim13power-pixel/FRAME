@@ -9,6 +9,6 @@ import { PrismaModule } from '../prisma/prisma.module'; // путь может �
   controllers: [ObjectsController],
   providers: [ObjectsService, ObjectDeletionService],
   // ⭐ №175: ObjectTemplatesService переиспользует создание объекта (доступ создателя)
-  exports: [ObjectsService],
+  exports: [ObjectsService, ObjectDeletionService],
 })
 export class ObjectsModule {}
