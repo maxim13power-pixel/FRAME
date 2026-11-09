@@ -1762,10 +1762,10 @@ onClose={() => setFilterAnchorEl(null)}
         </TableRow>
         {!hidePrices && (
           <TableRow sx={{ bgcolor: '#e3f2fd' }}>
-            <TableCell sx={{ fontWeight: 600, textAlign: 'right', borderLeft: '2px solid #90caf9' }}>За ед.</TableCell>
-            <TableCell sx={{ fontWeight: 600, textAlign: 'right' }}>Итого руб.</TableCell>
-            <TableCell sx={{ fontWeight: 600, textAlign: 'right', borderLeft: '2px solid #90caf9' }}>За ед.</TableCell>
-            <TableCell sx={{ fontWeight: 600, textAlign: 'right' }}>Итого руб.</TableCell>
+            <TableCell sx={{ fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9' }}>За ед.</TableCell>
+            <TableCell sx={{ fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap' }}>Итого руб.</TableCell>
+            <TableCell sx={{ fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9' }}>За ед.</TableCell>
+            <TableCell sx={{ fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap' }}>Итого руб.</TableCell>
           </TableRow>
         )}
 </TableHead>
@@ -1782,7 +1782,7 @@ onClose={() => setFilterAnchorEl(null)}
 <TableCell>{idx + 1}</TableCell>
 <TableCell>{m.name}</TableCell>
 <TableCell>{m.article || '-'}</TableCell>
-<TableCell>{UNIT_OPTIONS.find(u => u.value === m.unit)?.label || m.unit}</TableCell>
+<TableCell sx={{ textAlign: 'center' }}>{UNIT_OPTIONS.find(u => u.value === m.unit)?.label || m.unit}</TableCell>
 <TableCell sx={{ textAlign: 'center' }}>{m.specQuantity}</TableCell>
 <TableCell sx={{ textAlign: 'center', fontWeight: 600 }}>{m.totalUsed}</TableCell>
               <TableCell sx={{ textAlign: 'center' }}>
