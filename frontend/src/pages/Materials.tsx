@@ -1538,6 +1538,19 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     Из шаблона
   </Button>
 )}
+{!isMobile && (
+  <Button
+    variant="outlined"
+    color="primary"
+    size="small"
+    onClick={() => setExportModalOpen(true)}
+    disabled={exporting !== null}
+    title="Скачать смету"
+    sx={{ minWidth: 0, px: 1.5, py: 1, flexShrink: 0, transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' } }}
+  >
+    {exporting ? <CircularProgress size={16} /> : <FileDownloadIcon fontSize="small" />}
+  </Button>
+)}
 {!isMobile && !hidePrices && (
   <Button
     variant="contained"
@@ -1561,19 +1574,6 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     }}
   >
     Добавить
-  </Button>
-)}
-{!isMobile && (
-  <Button
-    variant="outlined"
-    color="primary"
-    size="small"
-    onClick={() => setExportModalOpen(true)}
-    disabled={exporting !== null}
-    title="Скачать смету"
-    sx={{ minWidth: 0, px: 1.5, py: 1, flexShrink: 0, transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' } }}
-  >
-    {exporting ? <CircularProgress size={16} /> : <FileDownloadIcon fontSize="small" />}
   </Button>
 )}
       {/* ⭐ №208: меню «Из шаблона» */}
