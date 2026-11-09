@@ -429,11 +429,6 @@ const handleDeleteObject = async () => {
   setDeletingObject(null); // очищаем
 };
 
-// ⭐ №246: демо-объект тоже удаляем по общему правилу (таймер 30 дней).
-const handleDeleteDemo = async (obj: ObjectData) => {
-  await handleScheduleDeletion(obj);
-};
-
 // ⭐ Вернуть объект из личного архива (бэкенд заодно снимает мой срок удаления)
 const handleRestoreObject = async (obj: ObjectData) => {
   if (!token || !obj.accessId) return;
@@ -1146,18 +1141,6 @@ trailing: headerTrailing,
                     severity="info"
                     onClick={(e) => e.stopPropagation()}
                     sx={{ mb: 1, borderRadius: 2 }}
-                    action={
-                      <Button
-                        size="small"
-                        color="error"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteDemo(obj);
-                        }}
-                      >
-                        Удалить
-                      </Button>
-                    }
                   >
                     Это демо-данные.
                   </Alert>
