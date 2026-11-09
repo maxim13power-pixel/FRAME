@@ -1483,10 +1483,11 @@ setSortAnchorEl(null);
             placeholder="Поиск материалов..."
             variant="outlined"
             size="small"
-            fullWidth
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            sx={{ flexGrow: 1, minWidth: { md: 220 } }}
+            // ⭐ №237: без fullWidth — иначе поиск занимает всю строку и переносится;
+            // теперь он делит одну полку с кнопками и растягивается по остатку
+            sx={{ flexGrow: 1, flexBasis: 220, minWidth: 180 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -1545,7 +1546,8 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     sx={{
       bgcolor: '#4caf50',
       border: '2px solid #388e3c',
-      minWidth: '200px',
+      // ⭐ №237: короче текст — меньше резервируем ширины, всё влезает в одну строку
+      minWidth: 140,
       flexShrink: 0,
       '&:hover': {
         bgcolor: '#388e3c',
@@ -1557,7 +1559,7 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
       whiteSpace: 'nowrap',
     }}
   >
-    Добавить позицию
+    Добавить
   </Button>
 )}
 {!isMobile && (
