@@ -886,8 +886,11 @@ setPriceLoading(false);
   };
 
   // ⭐ №174: подпись кнопки выбора дня фиксации
+  // ⭐ №233: формат ДД.ММ (как принято в РФ). Раньше из ISO брали `slice(5)` —
+  // получалось ММ.ДД («11.09» вместо «09.11»).
   const fixDayLabel = (offset: number) => {
-    const date = localDateKey(-offset).slice(5).replace('-', '.');
+    const [, mm, dd] = localDateKey(-offset).split('-');
+    const date = `${dd}.${mm}`;
     if (offset === 0) return `Сегодня · ${date}`;
     if (offset === 1) return `Вчера · ${date}`;
     return `${offset} дн. назад · ${date}`;
@@ -2311,19 +2314,34 @@ renderInput={(params) => (
               <Typography variant="caption" color="text.secondary">
                 За какой день · назад можно 3 дня
               </Typography>
-              <Stack direction="row" spacing={0.5} sx={{ mt: 0.5, flexWrap: 'wrap' }}>
+              {/* ⭐ №233: даты — сетка 2×2, кнопки одинакового размера и не «склеены» */}
+              <Box
+                sx={{
+                  mt: 0.5,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: 1,
+                }}
+              >
                 {[0, 1, 2, 3].map(offset => (
                   <Button
                     key={offset}
                     size="small"
                     variant={fixDayOffset === offset ? 'contained' : 'outlined'}
                     onClick={() => setFixDayOffset(offset)}
-                    sx={{ px: 1, minWidth: 0, fontSize: 12 }}
+                    sx={{
+                      width: '100%',
+                      minWidth: 0,
+                      px: 1,
+                      fontSize: 12,
+                      whiteSpace: 'nowrap',
+                      textTransform: 'none',
+                    }}
                   >
                     {fixDayLabel(offset)}
                   </Button>
                 ))}
-              </Stack>
+              </Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                 Будущее запрещено. Внесённую фиксацию можно исправить 72 часа.
               </Typography>
