@@ -497,19 +497,26 @@ const Home: React.FC = () => {
             const isToday = w.day === todayIso;
             return (
               <Box key={w.day} sx={{ textAlign: 'center', flexGrow: 1 }}>
-                <Typography variant="caption" sx={{ display: 'block', fontWeight: 600, color: isToday ? 'primary.main' : 'inherit' }}>
-                  {w.count > 0 ? w.count : ''}
-                </Typography>
                 <Box
                   sx={{
-                    height: Math.max((w.count / maxWeek) * 60, 4),
+                    height: w.count > 0 ? Math.max((w.count / maxWeek) * 60, 22) : 4,
                     bgcolor: w.count > 0 ? (w.count === maxWeek ? '#ef6c00' : '#90caf9') : '#e0e0e0',
                     borderRadius: 1,
                     mb: 0.5,
                     // ⭐ №173: сегодняшний столбец выделяем кольцом
                     boxShadow: isToday ? '0 0 0 2px rgba(25,118,210,0.35)' : 'none',
+                    // ⭐ №260: число — внутри столбика, по центру
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: w.count === maxWeek ? '#fff' : '#0d47a1',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    lineHeight: 1,
                   }}
-                />
+                >
+                  {w.count > 0 ? w.count : ''}
+                </Box>
                 <Typography
                   variant="caption"
                   color={isToday ? 'primary' : 'text.secondary'}
