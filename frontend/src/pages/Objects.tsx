@@ -114,6 +114,31 @@ const deletionPhrase = (iso: string): string => {
   return days <= 0 ? 'сегодня' : `через ${days} дн.`;
 };
 
+/**
+ * ⭐ №265: PATCH объекта возвращает «сырую» запись без вычисляемых полей
+ * (progressPercent/projectsCount/права). Сохраняем их из карточки, иначе
+ * после переименования прогресс падает в 0 до перезагрузки.
+ */
+const mergeObjectUpdate = (
+  prev: ObjectData,
+  updated: ObjectData,
+): ObjectData => ({
+  ...prev,
+  ...updated,
+  progressPercent: updated.progressPercent ?? prev.progressPercent,
+  totalCost: updated.totalCost ?? prev.totalCost,
+  projectsCount: updated.projectsCount ?? prev.projectsCount,
+  role: updated.role ?? prev.role,
+  hidePrices: updated.hidePrices ?? prev.hidePrices,
+  hasObjectAccess: updated.hasObjectAccess ?? prev.hasObjectAccess,
+  accessId: updated.accessId ?? prev.accessId,
+  hiddenForMe: updated.hiddenForMe ?? prev.hiddenForMe,
+  canWrite: updated.canWrite ?? prev.canWrite,
+  canManage: updated.canManage ?? prev.canManage,
+  canCreateProjects: updated.canCreateProjects ?? prev.canCreateProjects,
+  participantsCount: updated.participantsCount ?? prev.participantsCount,
+});
+
 const Objects: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -375,8 +400,9 @@ const handleUpdateObject = async () => {
       endDate: editEndDate,
       catalogId,
     });
-    setObjects(prev => prev.map(obj => obj.id === updated.id ? updated : obj));
+    setObjects(prev => prev.map(obj => obj.id === updated.id ? mergeObjectUpdate(obj, updated) : obj));
     handleCloseEdit();
+    void refreshObjects();
   } catch (err) {
     notifyError(getApiErrorText(err, 'Ошибка обновления'));
   } finally {
