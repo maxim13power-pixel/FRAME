@@ -12,7 +12,6 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary'; // ⭐ №231
 import EditIcon from '@mui/icons-material/Edit'; // ⭐ №231
-import CheckIcon from '@mui/icons-material/Check'; // ⭐ №257
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { fetchDashboardSummary, fetchNoPriceItems } from '../services/dashboardService';
@@ -308,7 +307,7 @@ const Home: React.FC = () => {
           <Button
             size="small"
             variant="text"
-            endIcon={<CheckIcon sx={{ fontSize: 18 }} />}
+            endIcon={<ChevronRightIcon sx={{ fontSize: 20 }} />}
             onClick={(e) => {
               e.stopPropagation();
               navigate('/analytics');
@@ -435,8 +434,6 @@ const Home: React.FC = () => {
             <Typography variant="subtitle1" fontWeight={700}>
               Горит на неделе • просрочено: {overdueCount}
             </Typography>
-            <Box sx={{ flexGrow: 1 }} />
-            <CheckIcon sx={{ fontSize: 20, color: '#1976d2' }} />
           </Stack>
           <Stack spacing={0.5}>
             {data.hotProjects.map(p => {
@@ -470,6 +467,7 @@ const Home: React.FC = () => {
                       variant="outlined"
                       label={d < 0 ? `Просрочено ${Math.abs(d)} дн` : `${d} дн`}
                     />
+                    <ChevronRightIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
                   </Box>
                   <Typography variant="caption" color="text.secondary">{p.objectName}</Typography>
                 </Box>
