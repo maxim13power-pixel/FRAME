@@ -626,10 +626,11 @@ const Home: React.FC = () => {
 
       {/* ─── Быстрое действие ─── */}
       <Button
-        variant="contained"
+        variant="outlined"
+        fullWidth
         startIcon={<HomeWorkIcon />}
         onClick={() => navigate('/objects')}
-        sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, mb: 2 }}
+        sx={{ textTransform: 'none', mb: 2 }}
       >
         Открыть объекты
       </Button>
