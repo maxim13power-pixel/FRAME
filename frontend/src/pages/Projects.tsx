@@ -90,6 +90,25 @@ const deletionPhrase = (iso: string): string => {
   return days <= 0 ? 'сегодня' : `через ${days} дн.`;
 };
 
+/**
+ * ⭐ №252: слияние ответа PATCH с карточкой проекта.
+ * Сервер может вернуть не все UI-поля (права, прогресс) — не теряем их,
+ * иначе после переименования прогресс падал в 0 до перезагрузки.
+ */
+const mergeProjectUpdate = (
+  prev: ProjectData,
+  updated: ProjectData,
+): ProjectData => ({
+  ...prev,
+  ...updated,
+  progressPercent: updated.progressPercent ?? prev.progressPercent,
+  materialsCount: updated.materialsCount ?? prev.materialsCount,
+  totalCost: updated.totalCost ?? prev.totalCost,
+  canWrite: updated.canWrite ?? prev.canWrite,
+  canManage: updated.canManage ?? prev.canManage,
+  hiddenForMe: updated.hiddenForMe ?? prev.hiddenForMe,
+});
+
 const Projects: React.FC = () => {
   const { objectId } = useParams<{ objectId: string }>();
   const navigate = useNavigate();
@@ -707,8 +726,9 @@ const handleConfirmDateUpdate = async () => {
       });
       console.log('✅ Проект обновлён:', updated);
       
-      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      setProjects(prev => prev.map(p => p.id === updated.id ? mergeProjectUpdate(p, updated) : p));
       handleCloseEdit();
+      void reloadProjects();
       console.log('✅ Модалка закрыта');
       
     } else {
@@ -772,8 +792,9 @@ const updateProjectAction = async () => {
       endDate: editEndDate,
       catalogId: catalogIdFromSelect(editCatalogId),
     });
-    setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+    setProjects(prev => prev.map(p => p.id === updated.id ? mergeProjectUpdate(p, updated) : p));
     handleCloseEdit();
+    void reloadProjects();
   } catch {
     notifyError('Ошибка обновления проекта');
   }
@@ -843,7 +864,7 @@ const handleSaveNote = async () => {
     const updated = await updateProject(Number(editingNoteProject.id), {
       note: editNote.trim() !== '' ? editNote.trim() : null,
     });
-    setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+    setProjects(prev => prev.map(p => p.id === updated.id ? mergeProjectUpdate(p, updated) : p));
     handleCloseNoteModal();
   } catch (err: unknown) {
     notifyError('Ошибка обновления заметки: ' + getApiErrorText(err, 'неизвестная ошибка'));

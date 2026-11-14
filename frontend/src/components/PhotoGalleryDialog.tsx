@@ -176,6 +176,7 @@ const PhotoGalleryDialog: React.FC<Props> = ({
                         void openViewer(photo);
                       }
                     }}
+                    title={materialName}
                     sx={{
                       cursor: 'pointer', borderRadius: 2, overflow: 'hidden',
                       bgcolor: '#f5f9ff', border: '1px solid #e3edf8',
@@ -185,7 +186,7 @@ const PhotoGalleryDialog: React.FC<Props> = ({
                       <Box
                         component="img"
                         src={thumbs[photo.id]}
-                        alt={photo.comment ?? 'Фото'}
+                        alt={materialName}
                         loading="lazy"
                         sx={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' }}
                       />
@@ -234,6 +235,7 @@ const PhotoGalleryDialog: React.FC<Props> = ({
 
       <PhotoViewerDialog
         photo={viewer}
+        materialName={materialName}
         onClose={closeViewer}
         onDeleted={() => {
           void load();

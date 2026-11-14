@@ -344,7 +344,7 @@ const Home: React.FC = () => {
                     setViewerPhoto(p);
                   }
                 }}
-                title={p.comment || p.materialName}
+                title={p.materialName}
                 sx={{
                   flex: '0 0 auto',
                   width: { xs: 112, sm: 132 },
@@ -356,7 +356,7 @@ const Home: React.FC = () => {
                   <Box
                     component="img"
                     src={feedThumbs[p.id]}
-                    alt={p.comment || p.materialName}
+                    alt={p.materialName}
                     loading="lazy"
                     sx={{
                       width: '100%',
@@ -601,7 +601,11 @@ const Home: React.FC = () => {
       </Button>
 
       {/* ⭐ №230: просмотр фото из ленты (удаление здесь не нужно — только просмотр) */}
-      <PhotoViewerDialog photo={viewerPhoto} onClose={() => setViewerPhoto(null)} />
+      <PhotoViewerDialog
+        photo={viewerPhoto}
+        materialName={(viewerPhoto as PhotoFeedItem | null)?.materialName ?? null}
+        onClose={() => setViewerPhoto(null)}
+      />
     </Box>
   );
 };

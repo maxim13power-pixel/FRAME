@@ -299,8 +299,20 @@ export class ProjectsService {
     if (!project) return null;
 
     // ⭐ №204 (A#10): права на САМ ОБЪЕКТ — от них зависит, можно ли менять карточку проекта
+    const grants = userId ? await loadAccessGrants(this.prisma, userId) : [];
     const objectRole = userId
-      ? resolveObjectRole(await loadAccessGrants(this.prisma, userId), project.objectId)
+      ? resolveObjectRole(grants, project.objectId)
+      : null;
+    // ⭐ №252: права на проект и личный архив — чтобы после PATCH карточка
+    // не теряла кнопки/прогресс (фронт получает полный объект)
+    const projectRole = userId
+      ? resolveProjectAccess(grants, project.objectId, id)
+      : null;
+    const hidden = userId
+      ? await this.prisma.projectHidden.findUnique({
+          where: { userId_projectId: { userId, projectId: id } },
+          select: { id: true },
+        })
       : null;
 
     const sumSpec = project.materials.reduce(
@@ -333,6 +345,10 @@ export class ProjectsService {
           ? 'object'
           : null,
       // ⭐ №204 (A#10): карточку проекта правит/удаляет только участник всего объекта
+      // ⭐ №252: полный набор UI-полей — чтобы PATCH не обнулял прогресс/права
+      canWrite: projectRole ? projectRole.canWrite : false,
+      canManage: projectRole ? projectRole.canManage : false,
+      hiddenForMe: !!hidden,
       canEditCard: objectRole ? objectRole.hasObjectAccess && objectRole.canWrite : false,
       canDeleteCard: objectRole ? objectRole.canManage : false,
     };

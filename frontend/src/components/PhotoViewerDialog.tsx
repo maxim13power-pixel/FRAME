@@ -16,6 +16,8 @@ import { getApiErrorMessage } from '../utils/errors';
 interface Props {
   photo: MaterialPhotoData | null;
   onClose: () => void;
+  /** ⭐ №252: подпись материала для alt (комментарий больше не всплывает). */
+  materialName?: string | null;
   /** Передан — показываем удаление и вызываем после успешного удаления. */
   onDeleted?: () => void;
 }
@@ -25,7 +27,7 @@ const formatDate = (iso: string) =>
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 
-const PhotoViewerDialog: React.FC<Props> = ({ photo, onClose, onDeleted }) => {
+const PhotoViewerDialog: React.FC<Props> = ({ photo, materialName, onClose, onDeleted }) => {
   const { confirm, error: notifyError } = useFeedback();
   const [url, setUrl] = useState('');
   const urlRef = useRef('');
@@ -119,7 +121,7 @@ const PhotoViewerDialog: React.FC<Props> = ({ photo, onClose, onDeleted }) => {
           <Box
             component="img"
             src={url}
-            alt={photo?.comment ?? 'Фото'}
+            alt={materialName || 'Фото'}
             sx={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
           />
         ) : (
