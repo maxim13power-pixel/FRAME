@@ -19,8 +19,10 @@ const createPrisma = () => ({
     findUnique: jest.fn(),
     create: jest.fn(),
     delete: jest.fn(),
+    count: jest.fn(),
   },
   user: { findMany: jest.fn(), findUnique: jest.fn() },
+  $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
 });
 const createStorage = () => ({
   save: jest.fn(),
@@ -47,6 +49,7 @@ describe('PhotosService', () => {
     ]);
     prisma.user.findMany.mockResolvedValue([{ id: 7, fullName: 'Пётр' }]);
     prisma.user.findUnique.mockResolvedValue({ role: 'FOREMAN' });
+    prisma.materialPhoto.count.mockResolvedValue(0);
     // storage-моки должны возвращать промисы (сервис вызывает .catch на remove)
     storage.save.mockResolvedValue(undefined);
     storage.read.mockResolvedValue(Buffer.from(''));
@@ -339,6 +342,19 @@ describe('PhotosService', () => {
         objectId: 5,
         objectName: 'Объект А',
       });
+    });
+
+    it('recentWithTotal: точный total и лимит до 500 (№256)', async () => {
+      prisma.materialPhoto.findMany.mockResolvedValue([feedRow]);
+      prisma.materialPhoto.count.mockResolvedValue(42);
+
+      const res = await service.recentWithTotal(7, 500);
+
+      expect(res.total).toBe(42);
+      expect(res.items).toHaveLength(1);
+      expect(prisma.materialPhoto.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 500 }),
+      );
     });
 
     it('нет объектов — пустая лента, БД не дёргаем', async () => {

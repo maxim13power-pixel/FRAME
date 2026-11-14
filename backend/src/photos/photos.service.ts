@@ -189,21 +189,45 @@ export class PhotosService {
    * в ответе нет, это подтверждение объёмов.
    */
   async recent(userId: number, limit = 12): Promise<PhotoFeedItemDto[]> {
+    const page = await this.feedPage(userId, limit, 24);
+    return page.items;
+  }
+
+  /**
+   * ⭐ №256: все доступные фото + точное количество (для «Все фото · N» и галереи).
+   * Отдельный лимит до 500 — лента на Главной по-прежнему просит максимум 24.
+   */
+  async recentWithTotal(
+    userId: number,
+    limit = 200,
+  ): Promise<{ items: PhotoFeedItemDto[]; total: number }> {
+    return this.feedPage(userId, limit, 500);
+  }
+
+  private async feedPage(
+    userId: number,
+    limit: number,
+    maxLimit: number,
+  ): Promise<{ items: PhotoFeedItemDto[]; total: number }> {
     const safeLimit = Math.min(
       Math.max(Math.trunc(Number.isFinite(limit) ? limit : 12), 1),
-      24,
+      maxLimit,
     );
     const grants = await loadAccessGrants(this.prisma, userId);
     const scope = buildWorkScope(grants);
-    if (isScopeEmpty(scope)) return [];
-    const rows = await this.prisma.materialPhoto.findMany({
-      where: { material: { project: accessibleProjectWhere(scope) } },
-      orderBy: { createdAt: 'desc' },
-      take: safeLimit,
-      select: FEED_SELECT,
-    });
+    if (isScopeEmpty(scope)) return { items: [], total: 0 };
+    const where = { material: { project: accessibleProjectWhere(scope) } };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.materialPhoto.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: safeLimit,
+        select: FEED_SELECT,
+      }),
+      this.prisma.materialPhoto.count({ where }),
+    ]);
     const base = await this.withAuthors(rows as unknown as PhotoRow[]);
-    return rows.map((row, index) => ({
+    const items = rows.map((row, index) => ({
       ...base[index],
       materialId: row.materialId,
       materialName: row.material.name,
@@ -212,6 +236,7 @@ export class PhotosService {
       objectId: row.material.project.object.id,
       objectName: row.material.project.object.name,
     }));
+    return { items, total };
   }
 
   /** Загрузка фото (+ необязательная миниатюра 320 px) с комментарием. */

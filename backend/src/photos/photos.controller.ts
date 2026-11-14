@@ -47,6 +47,16 @@ export class PhotosFeedController {
       Number.isFinite(parsed) ? parsed : 12,
     );
   }
+
+  /** ⭐ №256: все доступные фото + точное количество для галереи «Все фото». */
+  @Get('library')
+  library(@Req() req: AuthedRequest, @Query('limit') limit?: string) {
+    const parsed = limit && limit.trim() !== '' ? Number(limit) : 200;
+    return this.photos.recentWithTotal(
+      req.user.userId,
+      Number.isFinite(parsed) ? parsed : 200,
+    );
+  }
 }
 
 // ⭐ №230: лента «последние фото» — отдельный маршрут /photos/recent,

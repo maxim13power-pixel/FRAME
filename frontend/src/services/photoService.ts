@@ -39,6 +39,14 @@ export const fetchRecentPhotos = async (limit = 12): Promise<PhotoFeedItem[]> =>
   return response.data;
 };
 
+/** ⭐ №256: все доступные фото + точное количество (галерея «Все фото»). */
+export const fetchPhotoLibrary = async (
+  limit = 500,
+): Promise<{ items: PhotoFeedItem[]; total: number }> => {
+  const response = await api.get('/photos/library', { params: { limit } });
+  return response.data;
+};
+
 export interface UploadPhotoPayload {
   file: Blob;
   thumb?: Blob;

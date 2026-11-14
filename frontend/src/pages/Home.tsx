@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Paper, Stack, LinearProgress, Chip, Button,
+  Box, Typography, Paper, Stack, LinearProgress, Chip, Button, ButtonBase,
   CircularProgress, Alert, Divider,
 } from '@mui/material';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
@@ -16,9 +16,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { fetchDashboardSummary, fetchNoPriceItems } from '../services/dashboardService';
 import type { DashboardSummary } from '../services/dashboardService';
-import { fetchPhotoBlob, fetchRecentPhotos } from '../services/photoService'; // ⭐ №230
+import { fetchPhotoBlob, fetchPhotoLibrary } from '../services/photoService'; // ⭐ №230 / №256
 import type { MaterialPhotoData, PhotoFeedItem } from '../services/photoService';
 import PhotoViewerDialog from '../components/PhotoViewerDialog'; // ⭐ №230
+import PhotoFeedGalleryDialog from '../components/PhotoFeedGalleryDialog'; // ⭐ №256
 import { parseDecimal } from '../utils/decimal'; // 🔒 P1-3: бэкенд отдаёт Decimal строкой
 
 // 🔒 Шаг 103 (P1-3): принимаем number | string — Decimal с бэкенда приходит строкой
@@ -81,6 +82,8 @@ const Home: React.FC = () => {
   // ⭐ №230: лента последних фото по доступным объектам
   const [feedPhotos, setFeedPhotos] = useState<PhotoFeedItem[]>([]);
   const [feedThumbs, setFeedThumbs] = useState<Record<number, string>>({});
+  const [photoTotal, setPhotoTotal] = useState(0);
+  const [photoLibraryOpen, setPhotoLibraryOpen] = useState(false);
   const [viewerPhoto, setViewerPhoto] = useState<MaterialPhotoData | null>(null);
   const feedUrlsRef = useRef<Record<number, string>>({});
   // ⭐ №231: полный список «Без расценки» (в сводке только 5 позиций)
@@ -92,7 +95,9 @@ const Home: React.FC = () => {
   // Лента не критична для Главной: ошибки глотаем, дашборд показываем в любом случае
   const loadFeed = async () => {
     try {
-      const list = await fetchRecentPhotos(FEED_LIMIT);
+      const page = await fetchPhotoLibrary(FEED_LIMIT);
+      const list = page.items;
+      setPhotoTotal(page.total);
       const pairs = await Promise.all(
         list.map(async (p) => {
           try {
@@ -113,6 +118,7 @@ const Home: React.FC = () => {
       setFeedThumbs(next);
     } catch {
       setFeedPhotos([]);
+      setPhotoTotal(0);
     }
   };
 
@@ -318,7 +324,22 @@ const Home: React.FC = () => {
               <PhotoLibraryIcon sx={{ fontSize: 20, color: '#1976d2' }} />
               <Typography variant="subtitle1" fontWeight={700}>Фото с объектов</Typography>
             </Stack>
-            <Typography variant="caption" color="text.secondary">последние {feedPhotos.length}</Typography>
+            <ButtonBase
+              onClick={() => setPhotoLibraryOpen(true)}
+              aria-label="Открыть все фото"
+              sx={{
+                color: '#1976d2',
+                borderRadius: 1,
+                px: 0.75,
+                py: 0.25,
+                '&:hover': { bgcolor: '#eaf4ff' },
+              }}
+            >
+              <Typography variant="caption" fontWeight={600}>
+                Все фото · {photoTotal}
+              </Typography>
+              <ChevronRightIcon sx={{ fontSize: 16 }} />
+            </ButtonBase>
           </Box>
           <Box
             sx={{
@@ -610,6 +631,12 @@ const Home: React.FC = () => {
         projectId={(viewerPhoto as PhotoFeedItem | null)?.projectId ?? null}
         materialId={(viewerPhoto as PhotoFeedItem | null)?.materialId ?? null}
         onClose={() => setViewerPhoto(null)}
+      />
+
+      {/* ⭐ №256: все доступные фото — галерея по клику на «Все фото · N» */}
+      <PhotoFeedGalleryDialog
+        open={photoLibraryOpen}
+        onClose={() => setPhotoLibraryOpen(false)}
       />
     </Box>
   );
