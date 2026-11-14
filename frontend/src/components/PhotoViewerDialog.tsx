@@ -4,6 +4,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Box, Button, CircularProgress, Dialog, DialogContent, DialogTitle, IconButton,
+  useMediaQuery, useTheme,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -28,6 +29,8 @@ const formatDate = (iso: string) =>
   });
 
 const PhotoViewerDialog: React.FC<Props> = ({ photo, materialName, onClose, onDeleted }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { confirm, error: notifyError } = useFeedback();
   const [url, setUrl] = useState('');
   const urlRef = useRef('');
@@ -153,7 +156,20 @@ const PhotoViewerDialog: React.FC<Props> = ({ photo, materialName, onClose, onDe
             {photo.comment.length}/500 символов
           </Box>
         )}
-        <Button onClick={onClose} sx={{ mt: 1, textTransform: 'none' }}>Закрыть</Button>
+        <Box sx={{ mt: 1, display: 'flex' }}>
+          <Button
+            variant="outlined"
+            onClick={onClose}
+            fullWidth={isMobile}
+            sx={{
+              textTransform: 'none',
+              ml: isMobile ? 0 : 'auto',
+              minWidth: isMobile ? 0 : 180,
+            }}
+          >
+            Закрыть
+          </Button>
+        </Box>
       </DialogContent>
     </Dialog>
   );
