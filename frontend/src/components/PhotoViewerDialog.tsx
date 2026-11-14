@@ -116,7 +116,7 @@ const PhotoViewerDialog: React.FC<Props> = ({ photo, materialName, onClose, onDe
           </IconButton>
         )}
       </DialogTitle>
-      <DialogContent dividers sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#111', minHeight: 240 }}>
+      <DialogContent dividers sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#eaf4ff', minHeight: 240 }}>
         {url ? (
           <Box
             component="img"
@@ -125,7 +125,7 @@ const PhotoViewerDialog: React.FC<Props> = ({ photo, materialName, onClose, onDe
             sx={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
           />
         ) : (
-          <CircularProgress sx={{ color: '#fff' }} />
+          <CircularProgress sx={{ color: '#1976d2' }} />
         )}
       </DialogContent>
       <DialogContent sx={{ maxWidth: '100%', overflowX: 'hidden' }}>
