@@ -529,7 +529,7 @@ const Home: React.FC = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
             <WarningAmberIcon sx={{ fontSize: 20, color: '#ef6c00' }} />
             <Typography variant="subtitle1" fontWeight={700}>
-              Без расценки — смета занижена • {noPriceCount}
+              Без расценки • {noPriceCount}
             </Typography>
           </Box>
           <Stack spacing={0.5} sx={{ mb: 1 }}>
