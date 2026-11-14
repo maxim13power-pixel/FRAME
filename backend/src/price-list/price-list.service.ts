@@ -9,6 +9,7 @@ import { Prisma, PriceKind, Unit, AccessRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { canWriteWithRole, loadCatalogAccess } from './catalog-access'; // ⭐ №164
+import { markupPrice, normalizeMarkup } from './catalog-copy'; // ⭐ наценка при копировании
 import {
   loadAccessGrants,
   resolveObjectRole,
@@ -248,7 +249,13 @@ export class PriceListService {
   async copyCatalog(
     sourceId: number,
     userId: number,
-    dto: { name?: string; objectId?: number; projectId?: number },
+    dto: {
+      name?: string;
+      objectId?: number;
+      projectId?: number;
+      workMarkupPercent?: number;
+      materialMarkupPercent?: number;
+    },
   ) {
     const access = await loadCatalogAccess(this.prisma, sourceId, userId);
     if (!access || !access.canRead) {
@@ -264,7 +271,17 @@ export class PriceListService {
       orderBy: { name: 'asc' },
     });
 
-    const name = dto.name?.trim() || `Копия «${access.catalog.name}»`;
+    const workPercent = normalizeMarkup(dto.workMarkupPercent);
+    const materialPercent = normalizeMarkup(dto.materialMarkupPercent);
+    const markup = { workPercent, materialPercent };
+    const suffix =
+      workPercent || materialPercent
+        ? ` (работы ${workPercent > 0 ? '+' : ''}${workPercent}%, материалы ${
+            materialPercent > 0 ? '+' : ''
+          }${materialPercent}%)`
+        : '';
+    const name =
+      dto.name?.trim() || `Копия «${access.catalog.name}»${suffix}`;
     const created = await this.createCatalog(name, userId, {
       objectId: dto.objectId,
       projectId: dto.projectId,
@@ -276,7 +293,7 @@ export class PriceListService {
           name: i.name,
           article: i.article,
           unit: i.unit,
-          price: i.price,
+          price: markupPrice(i.price, i.kind, markup),
           categoryId: i.categoryId,
           kind: i.kind,
           isActive: true,
@@ -289,9 +306,18 @@ export class PriceListService {
     await this.audit.log(userId, 'price_catalog', created.id, 'copy', {
       sourceCatalogId: sourceId,
       items: items.length,
+      workMarkupPercent: workPercent,
+      materialMarkupPercent: materialPercent,
     });
 
-    return { ...created, itemsCount: items.length };
+    return {
+      ...created,
+      itemsCount: items.length,
+      markup: {
+        workPercent,
+        materialPercent,
+      },
+    };
   }
 
   // ⭐ №151/№164: переименовать справочник — владелец, ADMIN, администратор объекта/прораб объекта

@@ -94,3 +94,87 @@ export const cancelObjectDeletion = async (
   const response = await api.delete(`/objects/${id}/deletion`);
   return response.data;
 };
+
+// ============================================================
+// ⭐ Копирование объекта
+// ============================================================
+
+export type ObjectCopyPricingMode = 'keep' | 'existing' | 'copy';
+
+export interface ObjectCopyPayload {
+  name?: string;
+  address?: string;
+  startDate?: string;
+  endDate?: string;
+  note?: string;
+  projectIds?: number[];
+  copyFacts?: boolean;
+  pricingMode: ObjectCopyPricingMode;
+  catalogId?: number;
+  sourceCatalogId?: number;
+  catalogName?: string;
+  workMarkupPercent?: number;
+  materialMarkupPercent?: number;
+  strictMatch?: boolean;
+}
+
+export interface ObjectCopySummary {
+  rows: number;
+  matchedRows: number;
+  unmatchedRows: number;
+  workUnmatched: number;
+  materialUnmatched: number;
+  priceChanges: number;
+  factsRows: number;
+}
+
+export interface ObjectCopyIssue {
+  materialId: number;
+  name: string;
+  side: 'work' | 'material';
+  reason: 'missing' | 'ambiguous';
+}
+
+export interface ObjectCopyPreview {
+  pricingMode: ObjectCopyPricingMode;
+  catalog: {
+    id: number | null;
+    name: string;
+    source: 'source' | 'selected' | 'copy';
+  } | null;
+  summary: ObjectCopySummary;
+  issueTotal: number;
+  issues: ObjectCopyIssue[];
+  warnings: string[];
+}
+
+export interface ObjectCopyStats {
+  projects: number;
+  materials: number;
+  factsCopied: boolean;
+  pricingMode: ObjectCopyPricingMode;
+  catalogId: number | null;
+  catalogName: string | null;
+  summary: ObjectCopySummary | null;
+  warnings: string[];
+}
+
+export type ObjectCopyResult = ObjectData & { copyStats: ObjectCopyStats };
+
+/** Предпросмотр: сколько строк сметы сопоставилось с выбранным справочником. */
+export const previewObjectCopy = async (
+  id: number,
+  payload: ObjectCopyPayload,
+): Promise<ObjectCopyPreview> => {
+  const response = await api.post(`/objects/${id}/copy/preview`, payload);
+  return response.data;
+};
+
+/** Создать копию объекта. Старый объект не меняется. */
+export const copyObject = async (
+  id: number,
+  payload: ObjectCopyPayload,
+): Promise<ObjectCopyResult> => {
+  const response = await api.post(`/objects/${id}/copy`, payload);
+  return response.data;
+};

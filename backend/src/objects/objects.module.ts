@@ -2,13 +2,13 @@ import { Module } from '@nestjs/common';
 import { ObjectsService } from './objects.service';
 import { ObjectsController } from './objects.controller';
 import { ObjectDeletionService } from './object-deletion.service';
+import { ObjectCopyService } from './object-copy.service';
 import { PrismaModule } from '../prisma/prisma.module'; // путь может отличаться
 
 @Module({
   imports: [PrismaModule], // обязательно!
   controllers: [ObjectsController],
-  providers: [ObjectsService, ObjectDeletionService],
-  // ⭐ №175: ObjectTemplatesService переиспользует создание объекта (доступ создателя)
+  providers: [ObjectsService, ObjectDeletionService, ObjectCopyService],
   exports: [ObjectsService, ObjectDeletionService],
 })
 export class ObjectsModule {}

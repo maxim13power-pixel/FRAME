@@ -20,7 +20,6 @@ import { EstimateTemplatesModule } from './estimate-templates/estimate-templates
 import { AuditModule } from './audit/audit.module'; // ⭐ №131
 import { EstimateRecalcModule } from './estimate-recalc/estimate-recalc.module'; // ⭐ №170
 import { AccessRequestModule } from './access-request/access-request.module'; // ⭐ №178
-import { ObjectTemplatesModule } from './object-templates/object-templates.module'; // ⭐ №175
 import { SnapshotsModule } from './snapshots/snapshots.module'; // ⭐ №194: снимок доступа
 import { ImportsModule } from './imports/imports.module'; // ⭐ №202: импорт сметы из Excel
 import { PhotosModule } from './photos/photos.module'; // ⭐ №227: фото-фиксация материалов
@@ -48,7 +47,6 @@ import { PhotosModule } from './photos/photos.module'; // ⭐ №227: фото-�
     AuditModule, // ⭐ №131: аудит-лог (global)
     EstimateRecalcModule, // ⭐ №170: пересчёт сметы по справочнику
     AccessRequestModule, // ⭐ №178: заявки на право создавать проекты
-    ObjectTemplatesModule, // ⭐ №175: шаблоны объектов
     SnapshotsModule, // ⭐ №194: снимок доступа (только чтение)
     ImportsModule, // ⭐ №202: импорт сметы из Excel
     PhotosModule, // ⭐ №227: фото-фиксация материалов

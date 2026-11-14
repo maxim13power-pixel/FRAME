@@ -22,14 +22,16 @@ import {
   Tab,
   Checkbox,
   FormControlLabel,
+  Radio,
+  RadioGroup,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddHomeIcon from '@mui/icons-material/AddHome';
 import PlaceIcon from '@mui/icons-material/Place';
 import EventIcon from '@mui/icons-material/Event';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
-import { fetchObjects, createObject } from '../services/objectService';
-import type { ObjectData } from '../services/objectService';
+import { fetchObjects, createObject, previewObjectCopy, copyObject } from '../services/objectService';
+import type { ObjectData, ObjectCopyPreview, ObjectCopyPayload } from '../services/objectService';
 import { fetchProjectsByObject } from '../services/projectService'; // ⭐ №163
 import type { ProjectData } from '../services/projectService'; // ⭐ №163
 import { useAuth } from '../contexts/AuthContext';
@@ -44,7 +46,6 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import LinkIcon from '@mui/icons-material/Link';
 import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
 import EditIcon from '@mui/icons-material/Edit';
 import { fetchAccessList, addAccess, updateAccess, removeAccess, setMyAccessHidden } from '../services/accessService';
 import { APP_URL } from '../config';
@@ -59,15 +60,6 @@ import {
   rejectAccessRequest,
 } from '../services/accessRequestService';
 import type { AccessRequestData } from '../services/accessRequestService';
-// ⭐ №175: шаблоны объектов
-import {
-  createObjectFromTemplate,
-  createObjectTemplate,
-  deleteObjectTemplate,
-  fetchObjectTemplates,
-  updateObjectTemplate,
-} from '../services/objectTemplateService';
-import type { ObjectTemplateData } from '../services/objectTemplateService';
 import { updateObject, scheduleObjectDeletion, cancelObjectDeletion } from '../services/objectService';
 import { fetchPriceCatalogs, createPriceCatalog } from '../services/priceListService'; // ⭐ №164
 import type { PriceCatalogData } from '../services/priceListService'; // ⭐ №164
@@ -142,9 +134,7 @@ const mergeObjectUpdate = (
 const Objects: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { token, user } = useAuth(); // получаем токен и профиль из контекста
-  // ⭐ №175: id текущего пользователя — чтобы понимать, «мой» ли шаблон
-  const myUserId: number | undefined = user?.id;
+  const { token } = useAuth(); // получаем токен из контекста
   const { notify, error: notifyError, confirm } = useFeedback();
   const navigate = useNavigate();
 const goBack = useBackNavigation('/');
@@ -215,22 +205,33 @@ const [linkCopied, setLinkCopied] = useState(false);
 const [accessRequests, setAccessRequests] = useState<AccessRequestData[]>([]);
 const [accessRequestBusy, setAccessRequestBusy] = useState<number | null>(null);
 const [pendingByObject, setPendingByObject] = useState<Record<number, number>>({});
-// ⭐ №175: шаблоны объектов
-const [templatesOpen, setTemplatesOpen] = useState(false);
-const [templates, setTemplates] = useState<ObjectTemplateData[]>([]);
-const [templateScope, setTemplateScope] = useState<'mine' | 'all'>('all');
-const [templatesLoading, setTemplatesLoading] = useState(false);
-const [saveTemplateObject, setSaveTemplateObject] = useState<ObjectData | null>(null);
-const [saveTemplateName, setSaveTemplateName] = useState('');
-const [saveTemplateNote, setSaveTemplateNote] = useState('');
-const [saveTemplatePublic, setSaveTemplatePublic] = useState(false);
-const [saveTemplateSaving, setSaveTemplateSaving] = useState(false);
-const [fromTemplate, setFromTemplate] = useState<ObjectTemplateData | null>(null);
-const [fromTplName, setFromTplName] = useState('');
-const [fromTplAddress, setFromTplAddress] = useState('');
-const [fromTplStart, setFromTplStart] = useState('');
-const [fromTplEnd, setFromTplEnd] = useState('');
-const [fromTplSaving, setFromTplSaving] = useState(false);
+// ⭐ Копирование объекта (вместо шаблонов): подтверждение → форма с проектами,
+// фактом и ценами. Старый объект не меняется.
+const [copySource, setCopySource] = useState<ObjectData | null>(null);
+const [copyConfirmOpen, setCopyConfirmOpen] = useState(false);
+const [copyFormOpen, setCopyFormOpen] = useState(false);
+const [copyProjects, setCopyProjects] = useState<ProjectData[]>([]);
+const [copyProjectsLoading, setCopyProjectsLoading] = useState(false);
+const [copyProjectsLoaded, setCopyProjectsLoaded] = useState(false);
+const [copyProjectIds, setCopyProjectIds] = useState<number[]>([]);
+const [copyName, setCopyName] = useState('');
+const [copyAddress, setCopyAddress] = useState('');
+const [copyStartDate, setCopyStartDate] = useState('');
+const [copyEndDate, setCopyEndDate] = useState('');
+const [copyNote, setCopyNote] = useState('');
+const [copyFacts, setCopyFacts] = useState(false);
+const [copyPricingMode, setCopyPricingMode] =
+  useState<ObjectCopyPayload['pricingMode']>('keep');
+const [copyCatalogId, setCopyCatalogId] = useState<number | ''>('');
+const [copySourceCatalogId, setCopySourceCatalogId] = useState<number | ''>('');
+const [copyCatalogName, setCopyCatalogName] = useState('');
+const [copyWorkMarkup, setCopyWorkMarkup] = useState('0');
+const [copyMaterialMarkup, setCopyMaterialMarkup] = useState('0');
+const [copyStrict, setCopyStrict] = useState(true);
+const [copyPreview, setCopyPreview] = useState<ObjectCopyPreview | null>(null);
+const [copyPreviewLoading, setCopyPreviewLoading] = useState(false);
+const [copyPreviewError, setCopyPreviewError] = useState('');
+const [copySaving, setCopySaving] = useState(false);
 
   // Загрузка объектов при монтировании
 useEffect(() => {
@@ -476,7 +477,7 @@ const canManage = accessObject?.canManage === true;
 const act = actionsObject;
 const actHasObject = act ? act.hasObjectAccess !== false : false;
 const actCanInvite = !!act && actHasObject && act.canManage === true;
-const actCanTemplate = !!act && actHasObject;
+const actCanCopy = !!act && actHasObject && act.canWrite === true && act.hidePrices !== true && act.role !== 'VIEWER';
 const actCanEdit = !!act && actHasObject && act.canWrite === true;
 const actCanArchive = !!act && act.accessId != null && act.hiddenForMe !== true;
 
@@ -612,114 +613,194 @@ const handleRejectAccessRequest = async (request: AccessRequestData) => {
 const handleOpenActions = (obj: ObjectData) => setActionsObject(obj);
 const handleCloseActions = () => setActionsObject(null);
 
-// ⭐ №175: шаблоны объектов — список, сохранение, создание объекта из шаблона
-const loadTemplates = async (scope: 'mine' | 'all') => {
-  setTemplatesLoading(true);
+// ⭐ Копирование объекта: подтверждение → форма. Старый объект не меняется.
+const nextCopyName = (sourceName: string) => {
+  const base = `${sourceName} (копия)`;
+  if (!objects.some((o) => o.name === base)) return base;
+  for (let i = 2; i <= 99; i += 1) {
+    const candidate = `${sourceName} (копия ${i})`;
+    if (!objects.some((o) => o.name === candidate)) return candidate;
+  }
+  return `${sourceName} (копия ${Date.now()})`;
+};
+
+const buildCopyPayload = (): ObjectCopyPayload => ({
+  name: copyName.trim(),
+  address: copyAddress.trim(),
+  startDate: copyStartDate,
+  endDate: copyEndDate,
+  note: copyNote.trim() || undefined,
+  projectIds: copyProjectIds,
+  copyFacts,
+  pricingMode: copyPricingMode,
+  ...(copyPricingMode === 'existing' && copyCatalogId !== ''
+    ? { catalogId: Number(copyCatalogId) }
+    : {}),
+  ...(copyPricingMode === 'copy'
+    ? {
+        ...(copySourceCatalogId !== ''
+          ? { sourceCatalogId: Number(copySourceCatalogId) }
+          : {}),
+        catalogName: copyCatalogName.trim() || undefined,
+        workMarkupPercent: Number(copyWorkMarkup) || 0,
+        materialMarkupPercent: Number(copyMaterialMarkup) || 0,
+      }
+    : {}),
+  strictMatch: copyStrict,
+});
+
+const handleOpenCopy = (obj: ObjectData) => {
+  setCopySource(obj);
+  setCopyConfirmOpen(true);
+};
+
+const handleCloseCopy = () => {
+  setCopyConfirmOpen(false);
+  setCopyFormOpen(false);
+  setCopySource(null);
+  setCopyPreview(null);
+  setCopyPreviewError('');
+  setCopyProjectsLoading(false);
+  setCopyProjectsLoaded(false);
+};
+
+const handleProceedCopy = async () => {
+  const src = copySource;
+  if (!src) return;
+  setCopyConfirmOpen(false);
+  setCopyFormOpen(true);
+  setCopyName(nextCopyName(src.name));
+  setCopyAddress(src.address);
+  setCopyStartDate(src.startDate.slice(0, 10));
+  setCopyEndDate(src.endDate.slice(0, 10));
+  setCopyNote(src.note ?? '');
+  setCopyFacts(false);
+  setCopyPricingMode('keep');
+  setCopyCatalogId(objectCatalogs[0]?.id ?? '');
+  setCopySourceCatalogId(src.catalogId ?? '');
+  setCopyCatalogName(`Копия «${src.catalog?.name ?? 'справочник'}»`);
+  setCopyWorkMarkup('0');
+  setCopyMaterialMarkup('0');
+  setCopyStrict(true);
+  setCopyPreview(null);
+  setCopyPreviewError('');
+  setCopyProjects([]);
+  setCopyProjectIds([]);
+  setCopyProjectsLoaded(false);
+  setCopyProjectsLoading(true);
   try {
-    setTemplates(await fetchObjectTemplates(scope));
+    const projects = await fetchProjectsByObject(src.id);
+    setCopyProjects(projects);
+    setCopyProjectIds(projects.map((p) => p.id));
+    setCopyProjectsLoaded(true);
   } catch (err: unknown) {
-    setTemplates([]);
-    notifyError(getApiErrorMessage(err, 'Не удалось загрузить шаблоны'));
+    notifyError(getApiErrorMessage(err, 'Не удалось загрузить проекты'));
   } finally {
-    setTemplatesLoading(false);
+    setCopyProjectsLoading(false);
   }
 };
 
-const handleOpenTemplates = () => {
-  setTemplatesOpen(true);
-  void loadTemplates(templateScope);
-};
-
-const handleOpenSaveTemplate = (obj: ObjectData) => {
-  setSaveTemplateObject(obj);
-  setSaveTemplateName(obj.name);
-  setSaveTemplateNote(obj.note ?? '');
-  setSaveTemplatePublic(false);
-};
-
-const handleSaveTemplate = async () => {
-  if (!saveTemplateObject) return;
-  setSaveTemplateSaving(true);
-  try {
-    const saved = await createObjectTemplate({
-      objectId: saveTemplateObject.id,
-      name: saveTemplateName.trim() || undefined,
-      note: saveTemplateNote.trim() || undefined,
-      isPublic: saveTemplatePublic,
-    });
-    notify(`Шаблон «${saved.name}» сохранён: проектов ${saved.projects.length}`);
-    setSaveTemplateObject(null);
-    if (templatesOpen) void loadTemplates(templateScope);
-  } catch (err: unknown) {
-    notifyError(getApiErrorMessage(err, 'Не удалось сохранить шаблон'));
-  } finally {
-    setSaveTemplateSaving(false);
+// Предпросмотр соответствия и изменений цен. Для режима «как в оригинале»
+// пересчёта нет — превью не нужно.
+useEffect(() => {
+  if (!copyFormOpen || !copySource || copyPricingMode === 'keep') {
+    setCopyPreview(null);
+    setCopyPreviewError('');
+    setCopyPreviewLoading(false);
+    return;
   }
-};
+  let cancelled = false;
+  const timer = setTimeout(() => {
+    setCopyPreviewLoading(true);
+    setCopyPreviewError('');
+    previewObjectCopy(copySource.id, buildCopyPayload())
+      .then((data) => {
+        if (!cancelled) setCopyPreview(data);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setCopyPreview(null);
+          setCopyPreviewError(
+            getApiErrorMessage(err, 'Не удалось проверить справочник'),
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCopyPreviewLoading(false);
+      });
+  }, 450);
+  return () => {
+    cancelled = true;
+    clearTimeout(timer);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [
+  copyFormOpen,
+  copySource,
+  copyPricingMode,
+  copyCatalogId,
+  copySourceCatalogId,
+  copyWorkMarkup,
+  copyMaterialMarkup,
+  copyProjectIds,
+  copyStrict,
+]);
 
-const handleOpenFromTemplate = (tpl: ObjectTemplateData) => {
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const today = new Date();
-  const inSixMonths = new Date(today);
-  inSixMonths.setMonth(inSixMonths.getMonth() + 6);
-  setFromTemplate(tpl);
-  setFromTplName(tpl.name);
-  setFromTplAddress('');
-  setFromTplStart(iso(today));
-  setFromTplEnd(iso(inSixMonths));
-};
-
-const handleCreateFromTemplate = async () => {
-  if (!fromTemplate) return;
-  if (!fromTplName.trim() || !fromTplAddress.trim() || !fromTplStart || !fromTplEnd) {
+const handleCopyObject = async () => {
+  if (!copySource) return;
+  if (copyProjectsLoading || !copyProjectsLoaded) {
+    notify('Дождитесь загрузки проектов', 'warning');
+    return;
+  }
+  if (!copyName.trim() || !copyAddress.trim() || !copyStartDate || !copyEndDate) {
     notify('Заполните название, адрес и даты', 'warning');
     return;
   }
-  setFromTplSaving(true);
-  try {
-    const created = await createObjectFromTemplate(fromTemplate.id, {
-      name: fromTplName.trim(),
-      address: fromTplAddress.trim(),
-      startDate: fromTplStart,
-      endDate: fromTplEnd,
-    });
-    setObjects((prev) => [created, ...prev]);
-    notify(`Объект «${created.name}» создан из шаблона`);
-    setFromTemplate(null);
-    setTemplatesOpen(false);
-  } catch (err: unknown) {
-    notifyError(getApiErrorMessage(err, 'Не удалось создать объект из шаблона'));
-  } finally {
-    setFromTplSaving(false);
+  if (copyProjects.length > 0 && copyProjectIds.length === 0) {
+    notify('Выберите хотя бы один проект', 'warning');
+    return;
   }
-};
-
-const handleTogglePublishTemplate = async (tpl: ObjectTemplateData) => {
-  try {
-    const updated = await updateObjectTemplate(tpl.id, { isPublic: !tpl.isPublic });
-    setTemplates((prev) =>
-      prev.map((t) => (t.id === tpl.id ? { ...t, isPublic: updated.isPublic } : t)),
+  if (new Date(copyEndDate) < new Date(copyStartDate)) {
+    notify('Дата окончания не может быть раньше даты начала', 'warning');
+    return;
+  }
+  if (copyPricingMode === 'existing' && copyCatalogId === '') {
+    notify('Выберите справочник для пересчёта', 'warning');
+    return;
+  }
+  if (copyPricingMode === 'copy' && copySourceCatalogId === '') {
+    notify('Выберите исходный справочник для копии', 'warning');
+    return;
+  }
+  if (
+    copyPricingMode !== 'keep' &&
+    copyStrict &&
+    copyPreview &&
+    copyPreview.summary.unmatchedRows > 0
+  ) {
+    notify(
+      `Не все позиции сопоставлены: ${copyPreview.summary.unmatchedRows} из ${copyPreview.summary.rows}. Снимите строгий режим или поправьте справочник.`,
+      'warning',
     );
-    notify(updated.isPublic ? 'Шаблон теперь общий' : 'Шаблон снова личный');
-  } catch (err: unknown) {
-    notifyError(getApiErrorMessage(err, 'Не удалось изменить шаблон'));
+    return;
   }
-};
-
-const handleDeleteTemplate = async (tpl: ObjectTemplateData) => {
-  const ok = await confirm({
-    title: 'Удалить шаблон?',
-    text: `«${tpl.name}» будет удалён. Объекты, уже созданные из него, не пострадают.`,
-    confirmText: 'Удалить',
-    danger: true,
-  });
-  if (!ok) return;
+  setCopySaving(true);
   try {
-    await deleteObjectTemplate(tpl.id);
-    setTemplates((prev) => prev.filter((t) => t.id !== tpl.id));
-    notify('Шаблон удалён');
+    const created = await copyObject(copySource.id, buildCopyPayload());
+    setObjects((prev) => [created, ...prev]);
+    setShowArchived(false);
+    const stats = created.copyStats;
+    const facts = stats?.factsCopied ? ' · факт перенесён' : '';
+    const prices =
+      stats?.pricingMode === 'keep'
+        ? ' · цены как в оригинале'
+        : ` · цены по справочнику «${stats?.catalogName ?? '—'}»`;
+    notify(`Копия «${created.name}» создана: проектов ${stats?.projects ?? 0}, позиций ${stats?.materials ?? 0}${facts}${prices}`, 'success');
+    handleCloseCopy();
   } catch (err: unknown) {
-    notifyError(getApiErrorMessage(err, 'Не удалось удалить шаблон'));
+    notifyError(getApiErrorMessage(err, 'Не удалось скопировать объект'));
+  } finally {
+    setCopySaving(false);
   }
 };
 
@@ -1069,7 +1150,7 @@ trailing: headerTrailing,
   {/* ⭐ №197: одноразовая подсказка раздела (закрывается крестиком) */}
   <SectionIntro id="objects" version={1}>
     <b>Объект</b> — ваша стройка. Внутри — проекты со сметами. Нажмите на карточку, чтобы открыть
-    проекты; шестерёнка ⚙ — команда, шаблон, архив и правка. «Архив» справа в шапке — личный,
+    проекты; шестерёнка ⚙ — команда, копия, архив и правка. «Архив» справа в шапке — личный,
     остальные участники его не видят.
   </SectionIntro>
 
@@ -1105,16 +1186,6 @@ trailing: headerTrailing,
           <MenuItem value="progress">По проценту %</MenuItem>
         </Select>
       </FormControl>
-      {!showArchived && (
-        <Button
-          variant="outlined"
-          startIcon={<BookmarkAddIcon />}
-          onClick={handleOpenTemplates}
-          sx={{ whiteSpace: 'nowrap' }}
-        >
-          Из шаблона
-        </Button>
-      )}
       {!showArchived && (
         <Button
           variant="contained"
@@ -1722,19 +1793,19 @@ trailing: headerTrailing,
             size="large"
             fullWidth
             variant="outlined"
-            startIcon={<BookmarkAddIcon />}
-            disabled={!actCanTemplate}
+            startIcon={<ContentCopyIcon />}
+            disabled={!actCanCopy}
             onClick={() => {
               const o = actionsObject;
               handleCloseActions();
-              if (o) handleOpenSaveTemplate(o);
+              if (o) handleOpenCopy(o);
             }}
           >
-            Сохранить как шаблон
+            Копировать объект
           </Button>
-          {!actCanTemplate && (
+          {!actCanCopy && (
             <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
-              Доступно только участнику всего объекта (не наблюдателю и не отозванному).
+              Нужны права на запись, доступ на весь объект и видимые цены.
             </Typography>
           )}
 
@@ -1804,196 +1875,8 @@ trailing: headerTrailing,
       </Paper>
     </Modal>
 
-    {/* ⭐ №175: шаблоны объектов — список */}
-    <Modal open={templatesOpen} onClose={() => setTemplatesOpen(false)}>
-      <Paper
-        sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: { xs: '94%', sm: 560 },
-          maxHeight: '85vh',
-          overflowY: 'auto',
-          p: 3,
-          borderRadius: 3,
-          outline: 'none',
-        }}
-      >
-        <Typography variant="h6" gutterBottom>
-          📋 Шаблоны объектов
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-          Шаблон — снимок структуры объекта: проекты и позиции смет. Создание объекта из
-          шаблона — разовая копия, дальше они живут независимо.
-        </Typography>
-        <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-          <Chip
-            label="Все доступные"
-            color={templateScope === 'all' ? 'primary' : 'default'}
-            onClick={() => {
-              setTemplateScope('all');
-              void loadTemplates('all');
-            }}
-          />
-          <Chip
-            label="Только мои"
-            color={templateScope === 'mine' ? 'primary' : 'default'}
-            onClick={() => {
-              setTemplateScope('mine');
-              void loadTemplates('mine');
-            }}
-          />
-        </Stack>
-
-        {templatesLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-            <CircularProgress />
-          </Box>
-        ) : templates.length === 0 ? (
-          <Alert severity="info">
-            Пока нет шаблонов. Откройте объект и нажмите 🔖 «Сохранить как шаблон».
-          </Alert>
-        ) : (
-          <Stack spacing={1}>
-            {templates.map((tpl) => {
-              const materialsCount = tpl.projects.reduce(
-                (sum, p) => sum + (p._count?.materials ?? p.materials?.length ?? 0),
-                0,
-              );
-              const isMine = tpl.authorId === myUserId;
-              return (
-                <Box key={tpl.id} sx={{ p: 1.5, bgcolor: '#f5f7fa', borderRadius: 2 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {tpl.name}
-                    {tpl.isPublic && (
-                      <Chip
-                        size="small"
-                        label="общий"
-                        color="success"
-                        sx={{ ml: 1, height: 18, fontSize: '0.65rem' }}
-                      />
-                    )}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    {tpl.projects.length} проект(ов) · {materialsCount} позиций
-                    {tpl.sourceObjectName ? ` · из объекта «${tpl.sourceObjectName}»` : ''}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    Автор: {tpl.author?.fullName || tpl.author?.email || '—'}
-                    {' · '}
-                    {new Date(tpl.updatedAt).toLocaleDateString('ru-RU')}
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <Button size="small" variant="contained" onClick={() => handleOpenFromTemplate(tpl)}>
-                      Создать объект
-                    </Button>
-                    {isMine && (
-                      <FormControlLabel
-                        sx={{ mr: 0 }}
-                        control={
-                          <Checkbox
-                            size="small"
-                            checked={tpl.isPublic}
-                            onChange={() => void handleTogglePublishTemplate(tpl)}
-                          />
-                        }
-                        label={<Typography variant="caption">общий для всех</Typography>}
-                      />
-                    )}
-                    {isMine && (
-                      <IconButton size="small" onClick={() => void handleDeleteTemplate(tpl)}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    )}
-                  </Box>
-                </Box>
-              );
-            })}
-          </Stack>
-        )}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-          <Button variant="outlined" onClick={() => setTemplatesOpen(false)}>
-            Закрыть
-          </Button>
-        </Box>
-      </Paper>
-    </Modal>
-
-
-    {/* ⭐ №175: создать объект из шаблона */}
-    <Modal open={!!fromTemplate} onClose={() => setFromTemplate(null)} disableRestoreFocus>
-      <Paper
-        sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: { xs: '92%', sm: 480 },
-          maxHeight: '88vh',
-          overflowY: 'auto',
-          p: 3,
-          borderRadius: 3,
-          outline: 'none',
-        }}
-      >
-        <Typography variant="h6" gutterBottom>
-          🏗 Объект из шаблона «{fromTemplate?.name}»
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-          Создастся объект с {fromTemplate?.projects.length ?? 0} проектом(ами) и позициями смет.
-          Дальше объект живёт отдельно от шаблона — синхронизации нет.
-        </Typography>
-        <Stack spacing={2}>
-          <TextField
-            fullWidth
-            label="Название объекта"
-            value={fromTplName}
-            onChange={(e) => setFromTplName(e.target.value)}
-            required
-          />
-          <TextField
-            fullWidth
-            label="Адрес"
-            value={fromTplAddress}
-            onChange={(e) => setFromTplAddress(e.target.value)}
-            required
-          />
-          <TextField
-            fullWidth
-            label="Дата начала"
-            type="date"
-            InputLabelProps={{ shrink: true }}
-            value={fromTplStart}
-            onChange={(e) => setFromTplStart(e.target.value)}
-            required
-          />
-          <TextField
-            fullWidth
-            label="Дата окончания"
-            type="date"
-            InputLabelProps={{ shrink: true }}
-            value={fromTplEnd}
-            onChange={(e) => setFromTplEnd(e.target.value)}
-            required
-          />
-        </Stack>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
-          <Button variant="outlined" onClick={() => setFromTemplate(null)}>
-            Отмена
-          </Button>
-          <Button
-            variant="contained"
-            disabled={fromTplSaving}
-            onClick={() => void handleCreateFromTemplate()}
-          >
-            Создать объект
-          </Button>
-        </Box>
-      </Paper>
-    </Modal>
-
-    <Modal open={!!saveTemplateObject} onClose={() => setSaveTemplateObject(null)} disableRestoreFocus>
+    {/* ⭐ Копирование объекта: шаг 1 — подтверждение */}
+    <Modal open={copyConfirmOpen} onClose={handleCloseCopy}>
       <Paper
         sx={{
           position: 'absolute',
@@ -2007,51 +1890,453 @@ trailing: headerTrailing,
         }}
       >
         <Typography variant="h6" gutterBottom>
-          🔖 Сохранить как шаблон
+          Копировать объект?
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-          Перенесутся проекты и позиции смет (наименования, объёмы по спецификации, цены).
-          Фиксации и фактический расход — нет.
+        <Typography variant="body2" sx={{ mb: 1.5 }}>
+          Будет создан новый объект «{copySource?.name}». Старый объект не изменится.
         </Typography>
-        <TextField
-          fullWidth
-          label="Название шаблона"
-          value={saveTemplateName}
-          onChange={(e) => setSaveTemplateName(e.target.value)}
-          sx={{ mb: 2 }}
-        />
-        <TextField
-          fullWidth
-          label="Описание (необязательно)"
-          multiline
-          rows={2}
-          value={saveTemplateNote}
-          onChange={(e) => setSaveTemplateNote(e.target.value)}
-          sx={{ mb: 1 }}
-        />
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={saveTemplatePublic}
-              onChange={(e) => setSaveTemplatePublic(e.target.checked)}
-            />
-          }
-          label={<Typography variant="body2">Сделать общим (виден всем авторам)</Typography>}
-        />
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
-          <Button variant="outlined" onClick={() => setSaveTemplateObject(null)}>
-            Отмена
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Перенесутся проекты и позиции смет. Команда, склад, бригады, отчёты, фото
+          и история фиксаций не копируются. Фактический расход и цены можно выбрать
+          на следующем шаге.
+        </Typography>
+        <Stack direction="row" justifyContent="flex-end" spacing={1}>
+          <Button onClick={handleCloseCopy}>Отмена</Button>
+          <Button variant="contained" onClick={() => void handleProceedCopy()}>
+            Продолжить
           </Button>
-          <Button
-            variant="contained"
-            disabled={saveTemplateSaving}
-            onClick={() => void handleSaveTemplate()}
-          >
-            Сохранить шаблон
-          </Button>
-        </Box>
+        </Stack>
       </Paper>
     </Modal>
+
+
+    {/* ⭐ Копирование объекта: шаг 2 — параметры копии */}
+    <Modal open={copyFormOpen} onClose={handleCloseCopy} disableRestoreFocus>
+      <Paper
+        sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '94%', sm: 640 },
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          p: 3,
+          borderRadius: 3,
+          outline: 'none',
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          Копия объекта «{copySource?.name}»
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+          Новый объект будет жить отдельно. Даты можно изменить — в копии они
+          предзаполнены как у оригинала.
+        </Typography>
+        <Stack spacing={2}>
+          <TextField
+            fullWidth
+            label="Название объекта"
+            value={copyName}
+            onChange={(e) => setCopyName(e.target.value)}
+            inputProps={{ maxLength: 200 }}
+            required
+          />
+          <TextField
+            fullWidth
+            label="Адрес"
+            value={copyAddress}
+            onChange={(e) => setCopyAddress(e.target.value)}
+            inputProps={{ maxLength: 500 }}
+            required
+          />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField
+              fullWidth
+              label="Дата начала"
+              type="date"
+              InputLabelProps={{ shrink: true }}
+              value={copyStartDate}
+              onChange={(e) => setCopyStartDate(e.target.value)}
+              required
+            />
+            <TextField
+              fullWidth
+              label="Дата окончания"
+              type="date"
+              InputLabelProps={{ shrink: true }}
+              value={copyEndDate}
+              onChange={(e) => setCopyEndDate(e.target.value)}
+              required
+            />
+          </Stack>
+          <TextField
+            fullWidth
+            label="Заметка (необязательно)"
+            multiline
+            rows={2}
+            value={copyNote}
+            onChange={(e) => setCopyNote(e.target.value)}
+            inputProps={{ maxLength: 1000 }}
+          />
+
+          <Divider />
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="subtitle2">
+              Проекты: {copyProjectIds.length} из {copyProjects.length}
+            </Typography>
+            <Stack direction="row" spacing={0.5}>
+              <Button
+                size="small"
+                onClick={() => setCopyProjectIds(copyProjects.map((p) => p.id))}
+              >
+                Все
+              </Button>
+              <Button size="small" onClick={() => setCopyProjectIds([])}>
+                Ничего
+              </Button>
+            </Stack>
+          </Box>
+          {copyProjectsLoading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={18} />
+              <Typography variant="caption" color="text.secondary">
+                Загружаем проекты…
+              </Typography>
+            </Box>
+          ) : !copyProjectsLoaded ? (
+            <Alert severity="error">
+              Не удалось загрузить проекты. Закройте окно и попробуйте снова.
+            </Alert>
+          ) : copyProjects.length === 0 ? (
+            <Alert severity="info">
+              У объекта нет доступных проектов — создастся пустой объект.
+            </Alert>
+          ) : (
+            <Box
+              sx={{
+                maxHeight: 190,
+                overflowY: 'auto',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 2,
+                p: 1,
+              }}
+            >
+              {copyProjects.map((project) => (
+                <FormControlLabel
+                  key={project.id}
+                  sx={{ display: 'flex', mx: 0 }}
+                  control={
+                    <Checkbox
+                      checked={copyProjectIds.includes(project.id)}
+                      onChange={(e) =>
+                        setCopyProjectIds((prev) =>
+                          e.target.checked
+                            ? [...prev, project.id]
+                            : prev.filter((id) => id !== project.id),
+                        )
+                      }
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography variant="body2">{project.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {project.materialsCount ?? 0} позиций
+                      </Typography>
+                    </Box>
+                  }
+                />
+              ))}
+            </Box>
+          )}
+          <Divider />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={copyFacts}
+                onChange={(e) => setCopyFacts(e.target.checked)}
+              />
+            }
+            label={
+              <Box>
+                <Typography variant="body2">Перенести фактический расход</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Если выключено — фактический расход и прогресс в копии будут нулевыми.
+                </Typography>
+              </Box>
+            }
+          />
+          {copyFacts && (
+            <Alert severity="info">
+              Перенесём итог фактического расхода и последнюю фиксацию. История
+              фиксаций не копируется. При пересчёте цен прогресс не изменится,
+              а фактическая стоимость будет считаться по новым ценам.
+            </Alert>
+          )}
+
+          <Divider />
+          <Typography variant="subtitle2">Цены и справочник</Typography>
+          <FormControl>
+            <RadioGroup
+              value={copyPricingMode}
+              onChange={(e) =>
+                setCopyPricingMode(
+                  e.target.value as ObjectCopyPayload['pricingMode'],
+                )
+              }
+            >
+              <FormControlLabel
+                value="keep"
+                control={<Radio />}
+                label={
+                  <Box>
+                    <Typography variant="body2">Как в оригинале — без пересчёта</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Цены и ссылки на расценки копируются как есть.
+                    </Typography>
+                  </Box>
+                }
+              />
+              <FormControlLabel
+                value="existing"
+                control={<Radio />}
+                label={
+                  <Box>
+                    <Typography variant="body2">Пересчитать по существующему справочнику</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Все строки, включая строки с фактическим расходом.
+                    </Typography>
+                  </Box>
+                }
+              />
+              <FormControlLabel
+                value="copy"
+                control={<Radio />}
+                disabled={!copySource?.catalogId && objectCatalogs.length === 0}
+                label={
+                  <Box>
+                    <Typography variant="body2">Создать копию справочника с наценкой</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Новый справочник + новые цены в копии объекта.
+                    </Typography>
+                  </Box>
+                }
+              />
+            </RadioGroup>
+          </FormControl>
+          {copyPricingMode === 'existing' && (
+            <FormControl fullWidth>
+              <InputLabel id="copy-existing-catalog-label">Справочник для пересчёта</InputLabel>
+              <Select
+                labelId="copy-existing-catalog-label"
+                label="Справочник для пересчёта"
+                value={copyCatalogId}
+                onChange={(e) =>
+                  setCopyCatalogId(
+                    e.target.value === '' ? '' : Number(e.target.value),
+                  )
+                }
+              >
+                <MenuItem value="">
+                  <em>Не выбран</em>
+                </MenuItem>
+                {objectCatalogs.map((catalog) => (
+                  <MenuItem key={catalog.id} value={catalog.id}>
+                    {catalog.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
+          {copyPricingMode === 'copy' && (
+            <>
+              <FormControl fullWidth>
+                <InputLabel id="copy-source-catalog-label">Исходный справочник</InputLabel>
+                <Select
+                  labelId="copy-source-catalog-label"
+                  label="Исходный справочник"
+                  value={copySourceCatalogId}
+                  onChange={(e) =>
+                    setCopySourceCatalogId(
+                      e.target.value === '' ? '' : Number(e.target.value),
+                    )
+                  }
+                >
+                  <MenuItem value="">
+                    <em>Не выбран</em>
+                  </MenuItem>
+                  {copySource?.catalogId != null &&
+                    !objectCatalogs.some((c) => c.id === copySource.catalogId) && (
+                      <MenuItem value={copySource.catalogId}>
+                        {copySource.catalog?.name ?? `Справочник #${copySource.catalogId}`}
+                      </MenuItem>
+                    )}
+                  {objectCatalogs.map((catalog) => (
+                    <MenuItem key={catalog.id} value={catalog.id}>
+                      {catalog.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                fullWidth
+                label="Название копии справочника"
+                value={copyCatalogName}
+                onChange={(e) => setCopyCatalogName(e.target.value)}
+                inputProps={{ maxLength: 80 }}
+              />
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Наценка на работы, %"
+                  value={copyWorkMarkup}
+                  onChange={(e) => setCopyWorkMarkup(e.target.value)}
+                  inputProps={{ min: -90, max: 500, step: 0.1 }}
+                  helperText="0 — без наценки, минус — скидка"
+                />
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Наценка на материалы, %"
+                  value={copyMaterialMarkup}
+                  onChange={(e) => setCopyMaterialMarkup(e.target.value)}
+                  inputProps={{ min: -90, max: 500, step: 0.1 }}
+                  helperText="Цены меняются только в копии"
+                />
+              </Stack>
+            </>
+          )}
+
+          {copyPricingMode !== 'keep' && (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={copyStrict}
+                  onChange={(e) => setCopyStrict(e.target.checked)}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2">Требовать полное соответствие позиций</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Если позиция не нашлась — копия не создастся, пока вы не разрешите
+                    оставить у неё старые цены.
+                  </Typography>
+                </Box>
+              }
+            />
+          )}
+          {copyPricingMode === 'keep' ? (
+            <Alert severity="info">
+              Пересчёта не будет: цены, скидки и ссылки на расценки копируются
+              как в оригинале.
+            </Alert>
+          ) : (
+            <>
+              {copyPreviewLoading && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CircularProgress size={18} />
+                  <Typography variant="caption" color="text.secondary">
+                    Проверяем соответствие справочнику…
+                  </Typography>
+                </Box>
+              )}
+              {copyPreviewError && (
+                <Alert severity="warning">{copyPreviewError}</Alert>
+              )}
+              {copyPreview && (
+                <Alert
+                  severity={
+                    copyPreview.summary.unmatchedRows > 0 ? 'warning' : 'success'
+                  }
+                >
+                  <Typography variant="body2" fontWeight={600}>
+                    {copyPreview.summary.rows === 0
+                      ? 'В выбранных проектах нет позиций'
+                      : `Совпало ${copyPreview.summary.matchedRows} из ${copyPreview.summary.rows}`}
+                  </Typography>
+                  {copyPreview.summary.rows > 0 && (
+                    <Typography variant="caption">
+                      Строк к обновлению: {copyPreview.summary.priceChanges}
+                      {' · '}
+                      строк с фактом: {copyPreview.summary.factsRows}
+                      {copyPreview.summary.unmatchedRows > 0
+                        ? ` · не сопоставлено: ${copyPreview.summary.unmatchedRows}`
+                        : ''}
+                    </Typography>
+                  )}
+                </Alert>
+              )}
+              {copyPreview && copyPreview.issues.length > 0 && (
+                <Box
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'warning.light',
+                    borderRadius: 2,
+                    p: 1.5,
+                    bgcolor: 'rgba(255, 152, 0, 0.06)',
+                  }}
+                >
+                  <Typography variant="caption" fontWeight={600} sx={{ display: 'block', mb: 0.5 }}>
+                    Не сопоставлены:
+                  </Typography>
+                  {copyPreview.issues.slice(0, 8).map((issue) => (
+                    <Typography
+                      key={`${issue.materialId}-${issue.side}`}
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block' }}
+                    >
+                      • {issue.name} —{' '}
+                      {issue.side === 'work' ? 'работа' : 'материал'}:{' '}
+                      {issue.reason === 'ambiguous' ? 'неоднозначно' : 'не найдено'}
+                    </Typography>
+                  ))}
+                  {copyPreview.issueTotal > 8 && (
+                    <Typography variant="caption" color="text.secondary">
+                      …и ещё {copyPreview.issueTotal - 8}
+                    </Typography>
+                  )}
+                </Box>
+              )}
+              {copyPreview?.warnings.map((warning) => (
+                <Alert key={warning} severity="info">
+                  {warning}
+                </Alert>
+              ))}
+            </>
+          )}
+
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
+            <Button onClick={handleCloseCopy} disabled={copySaving}>
+              Отмена
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => void handleCopyObject()}
+              disabled={
+                copySaving ||
+                copyProjectsLoading ||
+                !copyProjectsLoaded ||
+                copyPreviewLoading ||
+                (copyPricingMode !== 'keep' &&
+                  (!!copyPreviewError ||
+                    (copyStrict &&
+                      !!copyPreview &&
+                      copyPreview.summary.unmatchedRows > 0)))
+              }
+            >
+              {copySaving ? <CircularProgress size={18} /> : 'Создать копию'}
+            </Button>
+          </Box>
+        </Stack>
+      </Paper>
+    </Modal>
+
 
     <Modal open={accessModalOpen} onClose={handleCloseAccess}>
       <Paper

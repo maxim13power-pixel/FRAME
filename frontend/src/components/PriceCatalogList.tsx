@@ -79,6 +79,8 @@ const goBack = useBackNavigation('/');
   const [copyObjectId, setCopyObjectId] = useState<number | ''>('');
   const [copyProjectId, setCopyProjectId] = useState<number | ''>('');
   const [copyName, setCopyName] = useState('');
+  const [copyWorkMarkup, setCopyWorkMarkup] = useState('0');
+  const [copyMaterialMarkup, setCopyMaterialMarkup] = useState('0');
   const [copySaving, setCopySaving] = useState(false);
   // ⭐ №179: поиск по справочникам (имя / объект / проект)
   const [search, setSearch] = useState('');
@@ -263,6 +265,8 @@ const goBack = useBackNavigation('/');
   const handleOpenCopy = async (catalog: PriceCatalogData) => {
     setCopySource(catalog);
     setCopyName(`Копия «${catalog.name}»`);
+    setCopyWorkMarkup('0');
+    setCopyMaterialMarkup('0');
     setCopyObjectId('');
     setCopyProjectId('');
     setCopyProjects([]);
@@ -300,6 +304,8 @@ const goBack = useBackNavigation('/');
         name: copyName.trim() || undefined,
         objectId: copyProjectId ? undefined : Number(copyObjectId),
         projectId: copyProjectId ? Number(copyProjectId) : undefined,
+        workMarkupPercent: Number(copyWorkMarkup) || 0,
+        materialMarkupPercent: Number(copyMaterialMarkup) || 0,
       });
       success(
         `Скопировано расценок: ${created.itemsCount ?? 0} → «${created.name}»`,
@@ -743,6 +749,26 @@ const goBack = useBackNavigation('/');
               onChange={(e) => setCopyName(e.target.value)}
               inputProps={{ maxLength: 80 }}
             />
+            <Stack direction="row" spacing={2}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Работы, %"
+                value={copyWorkMarkup}
+                onChange={(e) => setCopyWorkMarkup(e.target.value)}
+                inputProps={{ min: -90, max: 500, step: 0.1 }}
+                helperText="0 — без наценки, минус — скидка"
+              />
+              <TextField
+                fullWidth
+                type="number"
+                label="Материалы, %"
+                value={copyMaterialMarkup}
+                onChange={(e) => setCopyMaterialMarkup(e.target.value)}
+                inputProps={{ min: -90, max: 500, step: 0.1 }}
+                helperText="Цены меняются только в копии"
+              />
+            </Stack>
             <FormControl fullWidth>
               <InputLabel id="catalog-copy-object-label">Объект</InputLabel>
               <Select

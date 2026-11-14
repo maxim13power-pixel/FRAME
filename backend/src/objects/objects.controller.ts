@@ -14,7 +14,9 @@ import {
 } from '@nestjs/common';
 import { ObjectsService } from './objects.service';
 import { ObjectDeletionService } from './object-deletion.service';
+import { ObjectCopyService } from './object-copy.service';
 import { CreateObjectDto } from './dto/create-object.dto';
+import { CopyObjectDto } from './dto/copy-object.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ObjectAccessGuard } from '../auth/object-access.guard';
 
@@ -24,6 +26,7 @@ export class ObjectsController {
   constructor(
     private readonly objectsService: ObjectsService,
     private readonly deletion: ObjectDeletionService,
+    private readonly copier: ObjectCopyService,
   ) {}
 
   @Post()
@@ -50,6 +53,26 @@ export class ObjectsController {
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number, @Req() req) {
     return this.objectsService.findOne(id, req.user.userId);
+  }
+
+  /** ⭐ Предпросмотр копии: сколько строк сопоставилось, какие цены изменятся. */
+  @Post(':id/copy/preview')
+  previewCopy(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CopyObjectDto,
+    @Req() req,
+  ) {
+    return this.copier.preview(id, req.user.userId, dto);
+  }
+
+  /** ⭐ Создать копию объекта (проекты + смета, опционально факт и новые цены). */
+  @Post(':id/copy')
+  copyObject(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CopyObjectDto,
+    @Req() req,
+  ) {
+    return this.copier.copy(id, req.user.userId, dto);
   }
 
   @Patch(':id/end-date')

@@ -217,7 +217,13 @@ export const createPriceCatalog = async (
 // ⭐ №164: «поделиться» = скопировать расценки в справочник объекта/проекта
 export const copyPriceCatalog = async (
   id: number,
-  data: { name?: string; objectId?: number; projectId?: number }
+  data: {
+    name?: string;
+    objectId?: number;
+    projectId?: number;
+    workMarkupPercent?: number;
+    materialMarkupPercent?: number;
+  }
 ): Promise<PriceCatalogData> => {
   const response = await api.post(`/price-list/catalogs/${id}/copy`, data);
   return response.data;

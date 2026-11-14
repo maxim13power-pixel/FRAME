@@ -102,6 +102,14 @@ export class AuditService {
       if (!access) throw new NotFoundException('Объект не найден');
       return;
     }
+    // ⭐ Копия объекта: запись в журнале привязана к новому объекту.
+    if (entity === 'object') {
+      const access = await this.prisma.objectAccess.findFirst({
+        where: { userId, objectId: entityId, revokedAt: null },
+      });
+      if (!access) throw new NotFoundException('Объект не найден');
+      return;
+    }
     throw new BadRequestException('Неизвестный тип сущности');
   }
 
