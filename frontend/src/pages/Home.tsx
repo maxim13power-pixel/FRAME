@@ -232,7 +232,7 @@ const Home: React.FC = () => {
           <Typography variant="subtitle1" fontWeight={700}>Расчёт по всем объектам</Typography>
         </Box>
         <Typography variant="caption" color="text.secondary">
-          В работе: {data.kpi.projectsCount} проектов • {data.kpi.objectsCount} объекта • {data.kpi.materialsCount} позиций
+          Объекты - {data.kpi.objectsCount} • Проекты - {data.kpi.projectsCount} • Позиций - {data.kpi.materialsCount}
         </Typography>
         {/* ⭐ №244: суммы — в сетке (на узком экране 2 колонки, не в одну кашу),
             сравнение — отдельной строкой на всю ширину */}
@@ -286,13 +286,9 @@ const Home: React.FC = () => {
           <Typography variant="caption" color="text.secondary">Объём работ</Typography>
           <Typography variant="caption" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>{pct(volumePercentRaw)}&nbsp;%</Typography>
           {volumeOverrun !== null && (
-            <Chip
-              size="small"
-              color="warning"
-              variant="outlined"
-              label={`Объём перевыполнен на ${pct(volumeOverrun)}\u00A0%`}
-              sx={{ fontWeight: 600, maxWidth: '100%' }}
-            />
+            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+              (перевыполнение {pct(volumeOverrun)}&nbsp;%)
+            </Typography>
           )}
         </Box>
         <LinearProgress
