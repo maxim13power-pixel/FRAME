@@ -2801,6 +2801,10 @@ renderInput={(params) => (
         open={Boolean(photoGalleryMaterial)}
         materialId={photoGalleryMaterial?.id ?? 0}
         materialName={photoGalleryMaterial?.name ?? ''}
+        objectId={currentObject?.id ?? Number(objectId)}
+        projectId={currentProject?.id ?? Number(projectId)}
+        objectName={currentObject?.name}
+        projectName={currentProject?.name}
         onClose={() => setPhotoGalleryMaterial(null)}
         onAddPhoto={() => {
           setPhotoCaptureMaterial(photoGalleryMaterial);

@@ -3,9 +3,10 @@
 // Комментарий переносится и скроллится (№229), картинка — через blob с JWT.
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Box, Button, CircularProgress, Dialog, DialogContent, DialogTitle, IconButton,
+  Box, Button, ButtonBase, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Typography,
   useMediaQuery, useTheme,
 } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DownloadIcon from '@mui/icons-material/Download';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -19,6 +20,12 @@ interface Props {
   onClose: () => void;
   /** ⭐ №252: подпись материала для alt (комментарий больше не всплывает). */
   materialName?: string | null;
+  /** ⭐ №255: полная карточка — объект/проект/материал + переход в смету. */
+  objectName?: string | null;
+  projectName?: string | null;
+  objectId?: number | null;
+  projectId?: number | null;
+  materialId?: number | null;
   /** Передан — показываем удаление и вызываем после успешного удаления. */
   onDeleted?: () => void;
 }
@@ -28,9 +35,20 @@ const formatDate = (iso: string) =>
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 
-const PhotoViewerDialog: React.FC<Props> = ({ photo, materialName, onClose, onDeleted }) => {
+const PhotoViewerDialog: React.FC<Props> = ({
+  photo,
+  materialName,
+  objectName,
+  projectName,
+  objectId,
+  projectId,
+  materialId,
+  onClose,
+  onDeleted,
+}) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const navigate = useNavigate();
   const { confirm, error: notifyError } = useFeedback();
   const [url, setUrl] = useState('');
   const urlRef = useRef('');
@@ -89,9 +107,23 @@ const PhotoViewerDialog: React.FC<Props> = ({ photo, materialName, onClose, onDe
     }
   };
 
+  const goToMaterial = () => {
+    if (!objectId || !projectId || !materialId) return;
+    onClose();
+    navigate(
+      `/objects/${objectId}/projects/${projectId}/materials?materialId=${materialId}`,
+    );
+  };
+
   return (
-    <Dialog open={Boolean(photo)} onClose={onClose} fullScreen maxWidth="lg">
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <Dialog
+      open={Boolean(photo)}
+      onClose={onClose}
+      fullScreen
+      maxWidth="lg"
+      sx={{ '& .MuiDialog-paper': { display: 'flex', flexDirection: 'column' } }}
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
         <IconButton onClick={onClose} aria-label="Назад"><ArrowBackIcon /></IconButton>
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <Box component="span" sx={{ fontSize: '1rem', fontWeight: 600 }}>
@@ -119,58 +151,114 @@ const PhotoViewerDialog: React.FC<Props> = ({ photo, materialName, onClose, onDe
           </IconButton>
         )}
       </DialogTitle>
-      <DialogContent dividers sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#eaf4ff', minHeight: 240 }}>
+      <DialogContent
+        dividers
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: '#eaf4ff',
+          flex: '1 1 auto',
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+      >
         {url ? (
           <Box
             component="img"
             src={url}
             alt={materialName || 'Фото'}
-            sx={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
+            sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
           />
         ) : (
           <CircularProgress sx={{ color: '#1976d2' }} />
         )}
       </DialogContent>
-      <DialogContent sx={{ maxWidth: '100%', overflowX: 'hidden' }}>
-        {photo?.authorName && (
-          <Box component="span" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-            Автор: {photo.authorName}
-          </Box>
-        )}
-        <Box sx={{ mt: 0.5, maxHeight: '30vh', overflowY: 'auto', overflowX: 'hidden', pr: 1 }}>
-          <Box
-            component="p"
-            sx={{
-              m: 0,
-              fontSize: '0.875rem',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              overflowWrap: 'anywhere',
-            }}
-          >
-            {photo?.comment || 'Без комментария'}
-          </Box>
+      <DialogContent
+        sx={{
+          maxWidth: '100%',
+          overflowX: 'hidden',
+          flex: '0 0 auto',
+          maxHeight: '42vh',
+          overflowY: 'auto',
+        }}
+      >
+        <Box sx={{ display: 'grid', gap: 0.4 }}>
+          <Typography variant="body2">
+            <b>Объект:</b> {objectName || '—'}
+          </Typography>
+          <Typography variant="body2">
+            <b>Проект:</b> {projectName || '—'}
+          </Typography>
+          <Typography variant="body2">
+            <b>Материал:</b>{' '}
+            {materialName && objectId && projectId && materialId ? (
+              <ButtonBase
+                onClick={goToMaterial}
+                sx={{
+                  color: '#1976d2',
+                  fontSize: 'inherit',
+                  fontWeight: 600,
+                  textDecoration: 'underline',
+                  textUnderlineOffset: '2px',
+                  borderRadius: 0.5,
+                  px: 0.25,
+                  '&:hover': { bgcolor: '#eaf4ff' },
+                }}
+              >
+                {materialName}
+              </ButtonBase>
+            ) : (
+              materialName || '—'
+            )}
+          </Typography>
+          <Typography variant="body2">
+            <b>Автор:</b> {photo?.authorName || '—'}
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 0.75 }}>
+            <b>Комментарий:</b>
+          </Typography>
+        </Box>
+        <Box
+          component="p"
+          sx={{
+            m: 0,
+            fontSize: '0.875rem',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {photo?.comment || 'Без комментария'}
         </Box>
         {photo?.comment && (
           <Box component="span" sx={{ display: 'block', mt: 1, fontSize: '0.75rem', color: 'text.secondary' }}>
             {photo.comment.length}/500 символов
           </Box>
         )}
-        <Box sx={{ mt: 1, display: 'flex' }}>
-          <Button
-            variant="outlined"
-            onClick={onClose}
-            fullWidth={isMobile}
-            sx={{
-              textTransform: 'none',
-              ml: isMobile ? 0 : 'auto',
-              minWidth: isMobile ? 0 : 180,
-            }}
-          >
-            Закрыть
-          </Button>
-        </Box>
       </DialogContent>
+      <DialogActions
+        sx={{
+          flexShrink: 0,
+          bgcolor: '#fff',
+          borderTop: '1px solid #e3edf8',
+          px: 2,
+          py: 1.5,
+        }}
+      >
+        <Button
+          variant="outlined"
+          onClick={onClose}
+          fullWidth={isMobile}
+          sx={{
+            textTransform: 'none',
+            ml: isMobile ? 0 : 'auto',
+            minWidth: isMobile ? 0 : 180,
+          }}
+        >
+          Закрыть
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 };

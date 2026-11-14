@@ -17,6 +17,11 @@ interface Props {
   open: boolean;
   materialId: number;
   materialName: string;
+  // ⭐ №255: контекст для полной карточки фото
+  objectId?: number | null;
+  projectId?: number | null;
+  objectName?: string | null;
+  projectName?: string | null;
   onClose: () => void;
   /** Перейти к добавлению фото (родитель закроет галерею и откроет съёмку). */
   onAddPhoto: () => void;
@@ -44,7 +49,16 @@ const dayLabel = (iso: string): string => {
 };
 
 const PhotoGalleryDialog: React.FC<Props> = ({
-  open, materialId, materialName, onClose, onAddPhoto, onChanged,
+  open,
+  materialId,
+  materialName,
+  objectId,
+  projectId,
+  objectName,
+  projectName,
+  onClose,
+  onAddPhoto,
+  onChanged,
 }) => {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
@@ -236,6 +250,11 @@ const PhotoGalleryDialog: React.FC<Props> = ({
       <PhotoViewerDialog
         photo={viewer}
         materialName={materialName}
+        objectId={objectId}
+        projectId={projectId}
+        objectName={objectName}
+        projectName={projectName}
+        materialId={materialId}
         onClose={closeViewer}
         onDeleted={() => {
           void load();

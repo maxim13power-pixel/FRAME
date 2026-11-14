@@ -604,6 +604,11 @@ const Home: React.FC = () => {
       <PhotoViewerDialog
         photo={viewerPhoto}
         materialName={(viewerPhoto as PhotoFeedItem | null)?.materialName ?? null}
+        objectName={(viewerPhoto as PhotoFeedItem | null)?.objectName ?? null}
+        projectName={(viewerPhoto as PhotoFeedItem | null)?.projectName ?? null}
+        objectId={(viewerPhoto as PhotoFeedItem | null)?.objectId ?? null}
+        projectId={(viewerPhoto as PhotoFeedItem | null)?.projectId ?? null}
+        materialId={(viewerPhoto as PhotoFeedItem | null)?.materialId ?? null}
         onClose={() => setViewerPhoto(null)}
       />
     </Box>
