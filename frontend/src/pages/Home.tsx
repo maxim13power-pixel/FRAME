@@ -338,10 +338,12 @@ const Home: React.FC = () => {
                 '&:hover': { bgcolor: '#eaf4ff' },
               }}
             >
-              <Typography variant="caption" fontWeight={600}>
+              <Typography
+                sx={{ fontSize: '0.8125rem', fontWeight: 600, lineHeight: 1.4 }}
+              >
                 Все фото · {photoTotal}
               </Typography>
-              <ChevronRightIcon sx={{ fontSize: 16 }} />
+              <ChevronRightIcon sx={{ fontSize: 20 }} />
             </ButtonBase>
           </Box>
           <Box
