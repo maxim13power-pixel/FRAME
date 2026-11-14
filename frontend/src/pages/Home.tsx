@@ -12,6 +12,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary'; // ⭐ №231
 import EditIcon from '@mui/icons-material/Edit'; // ⭐ №231
+import CheckIcon from '@mui/icons-material/Check'; // ⭐ №257
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { fetchDashboardSummary, fetchNoPriceItems } from '../services/dashboardService';
@@ -303,17 +304,20 @@ const Home: React.FC = () => {
           sx={{ height: 10, borderRadius: 5, bgcolor: '#e0e0e0', '& .MuiLinearProgress-bar': { borderRadius: 5 } }}
         />
         {/* ⭐ Срез 3: ссылка в Аналитику (не перекрываем клик по карточке → Объекты) */}
-        <Button
-          size="small"
-          variant="text"
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate('/analytics');
-          }}
-          sx={{ mt: 1, textTransform: 'none', color: '#1976d2', fontWeight: 600, alignSelf: 'flex-end' }}
-        >
-          Подробнее в Аналитике →
-        </Button>
+        <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            size="small"
+            variant="text"
+            endIcon={<CheckIcon sx={{ fontSize: 18 }} />}
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate('/analytics');
+            }}
+            sx={{ textTransform: 'none', color: '#1976d2', fontWeight: 600 }}
+          >
+            Подробнее в Аналитике
+          </Button>
+        </Box>
       </Paper>
 
       {/* ⭐ №230: последние фото по объектам — горизонтальная лента */}
@@ -431,6 +435,8 @@ const Home: React.FC = () => {
             <Typography variant="subtitle1" fontWeight={700}>
               Горит на неделе • просрочено: {overdueCount}
             </Typography>
+            <Box sx={{ flexGrow: 1 }} />
+            <CheckIcon sx={{ fontSize: 20, color: '#1976d2' }} />
           </Stack>
           <Stack spacing={0.5}>
             {data.hotProjects.map(p => {
