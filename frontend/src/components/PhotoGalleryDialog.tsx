@@ -202,7 +202,7 @@ const PhotoGalleryDialog: React.FC<Props> = ({
                         src={thumbs[photo.id]}
                         alt={materialName}
                         loading="lazy"
-                        sx={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' }}
+                        sx={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block', border: '1px solid #e0e0e0', boxSizing: 'border-box' }}
                       />
                     ) : failedThumbs.has(photo.id) ? (
                       <Box

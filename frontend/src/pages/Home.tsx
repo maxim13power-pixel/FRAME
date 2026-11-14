@@ -391,6 +391,8 @@ const Home: React.FC = () => {
                       borderRadius: 2,
                       display: 'block',
                       bgcolor: '#eceff1',
+                      border: '1px solid #e0e0e0',
+                      boxSizing: 'border-box',
                     }}
                   />
                 ) : (
@@ -400,6 +402,8 @@ const Home: React.FC = () => {
                       height: { xs: 112, sm: 132 },
                       borderRadius: 2,
                       bgcolor: '#eceff1',
+                      border: '1px solid #e0e0e0',
+                      boxSizing: 'border-box',
                     }}
                   />
                 )}

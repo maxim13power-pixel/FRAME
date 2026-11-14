@@ -196,6 +196,8 @@ const PhotoFeedGalleryDialog: React.FC<Props> = ({ open, onClose }) => {
                           aspectRatio: '1 / 1',
                           objectFit: 'cover',
                           display: 'block',
+                          border: '1px solid #e0e0e0',
+                          boxSizing: 'border-box',
                         }}
                       />
                     ) : failed.has(photo.id) ? (
