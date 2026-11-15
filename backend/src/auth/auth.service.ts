@@ -21,6 +21,7 @@ import { RequestCodeDto } from './dto/request-code.dto'; // ⭐ №122b
 import { VerifyEmailDto } from './dto/verify.dto'; // ⭐ №122b
 import * as crypto from 'crypto'; // ⭐ P0-4
 import { AccessRole, Unit } from '@prisma/client'; // ⭐ №127 онбординг
+import { createProjectCatalog } from '../price-list/project-catalog'; // ⭐ №271
 
 // ⭐ №210: код подтверждения израсходован (двойной клик/повторная отправка формы).
 // Текст вынесен наружу — его проверяет спека регистрации.
@@ -550,19 +551,6 @@ export class AuthService {
         }
       }
       // расценки для демо-позиций — уже из ЛИЧНОЙ копии
-      const workByName = new Map<string, { id: number; price: number }>();
-      const matByName = new Map<string, { id: number; price: number }>();
-      if (demoCatalogId) {
-        const copied = await tx.priceItem.findMany({
-          where: { catalogId: demoCatalogId },
-          select: { id: true, name: true, price: true, kind: true },
-        });
-        for (const item of copied) {
-          const entry = { id: item.id, price: Number(item.price) };
-          if (item.kind === 'WORK') workByName.set(normName(item.name), entry);
-          else matByName.set(normName(item.name), entry);
-        }
-      }
       const object = await tx.object.create({
         data: {
           name: 'Квартира-образец, 68 м²',
@@ -571,8 +559,6 @@ export class AuthService {
           endDate: end,
           plannedEndDate: end,
           isDemo: true,
-          // ⭐ №220: демо-объект привязан к ЛИЧНОЙ копии демо-справочника
-          catalogId: demoCatalogId,
           note: 'Демо-объект для знакомства с FRAME. Можно удалить.',
           accesses: {
             create: { userId, role: AccessRole.CUSTOMER },
@@ -581,12 +567,32 @@ export class AuthService {
       });
 
       for (const p of demoTemplate) {
+        // ⭐ №271: у каждого демо-проекта свой справочник (копия демо-каталога),
+        // чтобы цены проектов не были связаны между собой.
+        const projectCatalog = await createProjectCatalog(tx, {
+          projectName: p.name,
+          ownerId: userId,
+          sourceCatalogId: demoCatalogId,
+        });
+        const copiedItems = await tx.priceItem.findMany({
+          where: { catalogId: projectCatalog.id },
+          select: { id: true, name: true, price: true, kind: true },
+        });
+        const workByName = new Map<string, { id: number; price: number }>();
+        const matByName = new Map<string, { id: number; price: number }>();
+        for (const item of copiedItems) {
+          const entry = { id: item.id, price: Number(item.price) };
+          if (item.kind === 'WORK') workByName.set(normName(item.name), entry);
+          else matByName.set(normName(item.name), entry);
+        }
+
         const project = await tx.project.create({
           data: {
             name: p.name,
             startDate: dayAgo(14),
             endDate: end,
             objectId: object.id,
+            catalogId: projectCatalog.id,
           },
         });
         for (const m of p.materials) {

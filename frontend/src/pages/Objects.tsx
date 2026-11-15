@@ -61,7 +61,7 @@ import {
 } from '../services/accessRequestService';
 import type { AccessRequestData } from '../services/accessRequestService';
 import { updateObject, scheduleObjectDeletion, cancelObjectDeletion } from '../services/objectService';
-import { fetchPriceCatalogs, createPriceCatalog } from '../services/priceListService'; // ⭐ №164
+import { fetchPriceCatalogs } from '../services/priceListService'; // ⭐ №164
 import type { PriceCatalogData } from '../services/priceListService'; // ⭐ №164
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
@@ -168,10 +168,8 @@ const goBack = useBackNavigation('/');
   const [editAddress, setEditAddress] = useState('');
   const [editStartDate, setEditStartDate] = useState('');
   const [editEndDate, setEditEndDate] = useState('');
-  // ⭐ №164: справочник цен объекта ('' — не выбран, 'new' — создать новый)
-  const [editCatalogId, setEditCatalogId] = useState<number | '' | 'new'>('');
+  // ⭐ №164: справочники для выбора справочника объекта
   const [objectCatalogs, setObjectCatalogs] = useState<PriceCatalogData[]>([]);
-  const [catalogSaving, setCatalogSaving] = useState(false);
   const [noteModalOpen, setNoteModalOpen] = useState(false);
   const [editingNoteObject, setEditingNoteObject] = useState<ObjectData | null>(null);
   const [editNote, setEditNote] = useState('');
@@ -362,7 +360,6 @@ const filteredAndSortedObjects = useMemo(() => {
     setEditAddress(obj.address);
     setEditStartDate(obj.startDate.slice(0, 10));
     setEditEndDate(obj.endDate.slice(0, 10));
-    setEditCatalogId(obj.catalogId ?? '');
     setEditModalOpen(true);
   };
 
@@ -382,32 +379,17 @@ const handleUpdateObject = async () => {
   // ↑↑↑ КОНЕЦ ВАЛИДАЦИИ ↑↑↑
   
   try {
-    // ⭐ №164: справочник объекта — существующий, новый или «не выбран»
-    let catalogId: number | null =
-      editCatalogId === '' ? null : Number(editCatalogId);
-    if (editCatalogId === 'new') {
-      setCatalogSaving(true);
-      const created = await createPriceCatalog(
-        `Справочник «${editName.trim() || editingObject.name}»`,
-        { objectId: Number(editingObject.id) },
-      );
-      setObjectCatalogs((prev) => [...prev, created]);
-      catalogId = created.id;
-    }
     const updated = await updateObject(Number(editingObject.id), {
       name: editName,
       address: editAddress,
       startDate: editStartDate,
       endDate: editEndDate,
-      catalogId,
     });
     setObjects(prev => prev.map(obj => obj.id === updated.id ? mergeObjectUpdate(obj, updated) : obj));
     handleCloseEdit();
     void refreshObjects();
   } catch (err) {
     notifyError(getApiErrorText(err, 'Ошибка обновления'));
-  } finally {
-    setCatalogSaving(false);
   }
 };
 
@@ -1563,46 +1545,12 @@ trailing: headerTrailing,
               onChange={(e) => setEditEndDate(e.target.value)}
               required
             />
-            {/* ⭐ №164: справочник цен объекта — по умолчанию для всех проектов */}
-            <FormControl fullWidth>
-              <InputLabel id="object-catalog-label">Справочник цен объекта</InputLabel>
-              <Select
-                labelId="object-catalog-label"
-                label="Справочник цен объекта"
-                value={editCatalogId}
-                onChange={(e) =>
-                  setEditCatalogId(
-                    e.target.value === 'new'
-                      ? 'new'
-                      : e.target.value === ''
-                        ? ''
-                        : Number(e.target.value),
-                  )
-                }
-              >
-                <MenuItem value="">
-                  <em>Не выбран</em>
-                </MenuItem>
-                {objectCatalogs.map((c) => (
-                  <MenuItem key={c.id} value={c.id}>
-                    {c.name}
-                    {c.scope === 'object' ? ' (объект)' : ''}
-                    {c.scope === 'project' ? ' (проект)' : ''}
-                    {c.isSystem ? ' (демо)' : ''}
-                  </MenuItem>
-                ))}
-                <MenuItem value="new">➕ Создать справочник объекта</MenuItem>
-              </Select>
-            </FormControl>
-            <Typography variant="caption" color="text.secondary">
-              Проекты без своего справочника берут расценки из справочника объекта.
-            </Typography>
             <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 1 }}>
               <Button variant="outlined" onClick={handleCloseEdit}>
                 Отмена
               </Button>
-              <Button variant="contained" onClick={handleUpdateObject} disabled={catalogSaving}>
-                {catalogSaving ? <CircularProgress size={18} /> : 'Сохранить'}
+              <Button variant="contained" onClick={handleUpdateObject}>
+                Сохранить
               </Button>
               <IconButton
                 color="error"

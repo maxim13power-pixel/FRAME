@@ -18,6 +18,7 @@ import {
   resolveObjectRole,
   resolveProjectAccess,
 } from '../auth/access-scope'; // ⭐ №163, №193, №204
+import { createProjectCatalog } from '../price-list/project-catalog';
 
 @Injectable()
 export class ProjectsService {
@@ -157,20 +158,30 @@ export class ProjectsService {
       );
     }
 
-    // ⭐ №158: справочник проекта (если передан)
-    const catalogId =
-      dto.catalogId != null ? await this.resolveCatalogId(dto.catalogId, userId) : null;
+    // ⭐ №271: выбор каталога при создании — это ИСТОЧНИК стартовых цен.
+    // Сам проект получает отдельный справочник; цены копируются, а не шарятся.
+    const sourceCatalogId =
+      dto.catalogId != null
+        ? await this.resolveCatalogId(dto.catalogId, userId)
+        : null;
 
-    return this.prisma.project.create({
-      data: {
-        name: dto.name.trim(),
-        startDate,
-        endDate,
-        objectId: dto.objectId,
-        catalogId,
-        note: dto.note || null,
-      },
-      include: { catalog: { select: { id: true, name: true } } },
+    return this.prisma.$transaction(async (tx) => {
+      const catalog = await createProjectCatalog(tx, {
+        projectName: dto.name,
+        ownerId: userId,
+        sourceCatalogId,
+      });
+      return tx.project.create({
+        data: {
+          name: dto.name.trim(),
+          startDate,
+          endDate,
+          objectId: dto.objectId,
+          catalogId: catalog.id,
+          note: dto.note || null,
+        },
+        include: { catalog: { select: { id: true, name: true } } },
+      });
     });
   }
 
@@ -256,10 +267,10 @@ export class ProjectsService {
           sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
         // ⭐ Скрываем стоимость, если у юзера скрыты цены
         totalCost: hidePrices ? 0 : sumCost,
-        // ⭐ №164: действующий справочник проекта (свой → объекта → нет)
-        effectiveCatalogId: p.catalog?.id ?? object.catalog?.id ?? null,
-        effectiveCatalogName: p.catalog?.name ?? object.catalog?.name ?? null,
-        catalogSource: p.catalog ? 'project' : object.catalog ? 'object' : null,
+        // ⭐ №271: справочник проекта — собственный, без наследования объекта
+        effectiveCatalogId: p.catalog?.id ?? null,
+        effectiveCatalogName: p.catalog?.name ?? null,
+        catalogSource: p.catalog ? 'project' : null,
         // ⭐ №188: права на проект — для серых кнопок в меню действий на фронте
         canWrite: my.canWrite,
         canManage: my.canManage,
@@ -335,15 +346,10 @@ export class ProjectsService {
       progressPercent: sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
       // ⭐ Скрываем стоимость, если у юзера скрыты цены
       totalCost: hidePrices ? 0 : sumCost,
-      // ⭐ №164: действующий справочник проекта (свой → объекта → нет)
-      effectiveCatalogId: project.catalog?.id ?? object.catalog?.id ?? null,
-      effectiveCatalogName:
-        project.catalog?.name ?? object.catalog?.name ?? null,
-      catalogSource: project.catalog
-        ? 'project'
-        : object.catalog
-          ? 'object'
-          : null,
+      // ⭐ №271: справочник проекта — собственный, без наследования объекта
+      effectiveCatalogId: project.catalog?.id ?? null,
+      effectiveCatalogName: project.catalog?.name ?? null,
+      catalogSource: project.catalog ? 'project' : null,
       // ⭐ №204 (A#10): карточку проекта правит/удаляет только участник всего объекта
       // ⭐ №252: полный набор UI-полей — чтобы PATCH не обнулял прогресс/права
       canWrite: projectRole ? projectRole.canWrite : false,

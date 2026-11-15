@@ -23,6 +23,7 @@ import { EstimateParserService } from './estimate-parser.service';
 import { matchRow } from './price-matcher';
 import { articleHasCyrillic, normalizeText, parseNumberRu } from './name-normalizer';
 import { normalizeUnit } from './unit-normalizer';
+import { ensureProjectCatalog } from '../price-list/project-catalog'; // ⭐ №271
 import type { CatalogItem, ParsedEstimate, PreviewPayload, PreviewRow } from './imports.types';
 
 export interface PreviewInput {
@@ -175,10 +176,10 @@ export class ImportsService {
         'Файл без служебного листа `_meta` — колонки определены автоматически, проверьте шапку.',
       );
     }
-    const catalogName = pricedRowsCount > 0 ? this.catalogName(input.fileName ?? null, new Date()) : null;
+    const catalogName = pricedRowsCount > 0 ? 'справочник текущего проекта' : null;
     if (catalogName) {
       fileWarnings.push(
-        `Цены из файла (${pricedRowsCount}) сохранятся в НОВЫЙ справочник «${catalogName}». Существующие справочники не изменяются.`,
+        `Цены из файла (${pricedRowsCount}) сохранятся в ${catalogName}. Существующие строки и цены не меняются.`,
       );
     }
 
@@ -373,13 +374,8 @@ export class ImportsService {
       const workItemByRow = new Map<number, { id: number; price: number }>();
       const matItemByRow = new Map<number, { id: number; price: number }>();
       if (pricedWork.length > 0 || pricedMat.length > 0) {
-        catalog = await tx.priceCatalog.create({
-          data: {
-            name: preview.prices?.catalogName ?? this.catalogName(batch.fileName, new Date()),
-            ownerId: input.userId,
-          },
-          select: { id: true, name: true },
-        });
+        // ⭐ №271: импорт пишет цены в справочник ЭТОГО проекта, а не в отдельный каталог.
+        catalog = await ensureProjectCatalog(tx, batch.projectId, input.userId);
         // Позиция прайса живёт в категории — для импорта заводим служебные (работы и материалы)
         const workCategory = await tx.priceCategory.upsert({
           where: { name_kind: { name: 'Импорт из Excel', kind: 'WORK' } },

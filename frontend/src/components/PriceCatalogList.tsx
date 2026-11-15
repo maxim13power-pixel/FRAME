@@ -91,6 +91,8 @@ const goBack = useBackNavigation('/');
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   // ⭐ №179: сортировка списка (архив → сортировка → поиск, как в «Объектах»)
   const [sortBy, setSortBy] = useState<'name' | 'newest' | 'items'>('name');
+  // ⭐ №271: два вида справочников — библиотеки цен и рабочие справочники проектов
+  const [catalogView, setCatalogView] = useState<'all' | 'libraries' | 'projects'>('all');
   const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
   const theme = useTheme();
   // как в «Объектах»/«Бригадах»: мобильная раскладка — это < md
@@ -161,15 +163,21 @@ const goBack = useBackNavigation('/');
 
   const visibleCatalogs = useMemo(() => {
     const base = showArchived ? archivedCatalogs : activeCatalogs;
+    const scoped =
+      catalogView === 'projects'
+        ? base.filter((c) => c.scope === 'project')
+        : catalogView === 'libraries'
+          ? base.filter((c) => c.scope !== 'project')
+          : base;
     const q = search.trim().toLowerCase();
     const filtered = q
-      ? base.filter((c) =>
+      ? scoped.filter((c) =>
           [c.name, c.objectName ?? '', c.projectName ?? '']
             .join(' ')
             .toLowerCase()
             .includes(q),
         )
-      : base;
+      : scoped;
     // ⭐ №179: сортировка
     return [...filtered].sort((a, b) => {
       if (sortBy === 'items') return (b.itemsCount ?? 0) - (a.itemsCount ?? 0);
@@ -178,7 +186,7 @@ const goBack = useBackNavigation('/');
       }
       return a.name.localeCompare(b.name, 'ru');
     });
-  }, [activeCatalogs, archivedCatalogs, search, showArchived, sortBy]);
+  }, [activeCatalogs, archivedCatalogs, search, showArchived, sortBy, catalogView]);
 
   const load = useCallback(async () => {
     try {
@@ -378,6 +386,25 @@ const goBack = useBackNavigation('/');
         Нажмите на справочник, чтобы открыть расценки. Все действия — в шестерёнке ⚙ на карточке;
         архивные возвращаются через «Архив» в шапке.
       </SectionIntro>
+
+      {/* ⭐ №271: библиотеки цен vs рабочие справочники проектов */}
+      <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
+        <Chip
+          label="Все"
+          color={catalogView === 'all' ? 'primary' : 'default'}
+          onClick={() => setCatalogView('all')}
+        />
+        <Chip
+          label="Каталоги цен"
+          color={catalogView === 'libraries' ? 'primary' : 'default'}
+          onClick={() => setCatalogView('libraries')}
+        />
+        <Chip
+          label="Справочники проектов"
+          color={catalogView === 'projects' ? 'primary' : 'default'}
+          onClick={() => setCatalogView('projects')}
+        />
+      </Stack>
 
       {/* Панель поиска и создания (десктоп) — как в «Объектах»; на мобилке поиск в шапке */}
       {!isMobile && (

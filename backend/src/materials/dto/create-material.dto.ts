@@ -50,6 +50,18 @@ export class CreateMaterialDto {
   @IsInt({ message: 'materialItemId должен быть целым числом' })
   materialItemId?: number;
 
+  // ⭐ №271: inline-цены из формы сметы. Если переданы — позиция автоматически
+  // добавляется/обновляется в справочнике проекта; отдельная модалка расценки не нужна.
+  @IsOptional()
+  @IsNumber({}, { message: 'workPrice должен быть числом' })
+  @Min(0, { message: 'Цена работы не может быть отрицательной' })
+  workPrice?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'materialPrice должен быть числом' })
+  @Min(0, { message: 'Цена материала не может быть отрицательной' })
+  materialPrice?: number;
+
   @IsInt({ message: 'projectId должен быть целым числом' })
   projectId!: number;
 }

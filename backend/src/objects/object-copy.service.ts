@@ -23,6 +23,7 @@ import {
 } from '../auth/access-scope';
 import { loadCatalogAccess } from '../price-list/catalog-access';
 import { markupPrice, normalizeMarkup } from '../price-list/catalog-copy';
+import { copyCatalogWithMap } from '../price-list/project-catalog';
 import { roundMoney, RecalcPriceRef } from '../estimate-recalc/recalc-plan';
 import { CopyObjectDto } from './dto/copy-object.dto';
 import {
@@ -550,6 +551,16 @@ export class ObjectCopyService {
         let sumCost = 0;
 
         for (const project of ctx.projects) {
+          // ⭐ №271: у копии каждого проекта — свой справочник.
+          const sourceCatalogId =
+            dto.pricingMode === 'keep'
+              ? (project.catalogId ?? ctx.source.catalogId)
+              : targetCatalogId;
+          const projectCatalog = await copyCatalogWithMap(tx, {
+            projectName: project.name,
+            ownerId: userId,
+            sourceCatalogId,
+          });
           const createdProject = await tx.project.create({
             data: {
               name: project.name,
@@ -557,10 +568,7 @@ export class ObjectCopyService {
               objectId: created.id,
               startDate: project.startDate,
               endDate: project.endDate,
-              // При смене справочника проекты наследуют справочник объекта,
-              // чтобы старые проектные привязки не вернули старые цены.
-              catalogId:
-                dto.pricingMode === 'keep' ? project.catalogId : null,
+              catalogId: projectCatalog.catalog.id,
             },
             select: { id: true },
           });
@@ -578,12 +586,20 @@ export class ObjectCopyService {
                 ? planned.material.newPrice
                 : planned.material.oldPrice
               : Number(material.materialUnitPrice);
-            const priceItemId = planned
+            const targetWorkId = planned
               ? planned.work.itemId
               : material.priceItemId;
-            const materialItemId = planned
+            const targetMaterialId = planned
               ? planned.material.itemId
               : material.materialItemId;
+            const priceItemId =
+              targetWorkId != null
+                ? (projectCatalog.idMap.get(targetWorkId) ?? null)
+                : null;
+            const materialItemId =
+              targetMaterialId != null
+                ? (projectCatalog.idMap.get(targetMaterialId) ?? null)
+                : null;
             const specQuantity = Number(material.specQuantity);
             const progress =
               dto.copyFacts && specQuantity > 0

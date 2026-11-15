@@ -13,6 +13,7 @@ const UNIT_SYNONYMS: Record<string, Unit> = {
   pcs: Unit.PIECE,
   pc: Unit.PIECE,
   м: Unit.METER,
+  мтр: Unit.METER,
   метр: Unit.METER,
   метров: Unit.METER,
   погм: Unit.METER,

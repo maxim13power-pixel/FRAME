@@ -59,6 +59,15 @@ const makeService = (
       create: jest.fn().mockResolvedValue({ id: 501 }),
     },
     priceCatalog: { create: jest.fn().mockResolvedValue({ id: 77, name: 'Импорт «file»' }) },
+    project: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: 10,
+        name: 'Проект',
+        catalogId: 77,
+        catalog: { id: 77, name: 'Справочник проекта «Проект»', ownerId: 7 },
+      }),
+      update: jest.fn(),
+    },
     priceCategory: { upsert: jest.fn().mockResolvedValue({ id: 9 }) },
   };
   const prisma = {
@@ -86,13 +95,14 @@ const makeService = (
 };
 
 describe('ImportsService.commit (№202/№208)', () => {
-  it('цена из файла → позиция в НОВОМ справочнике, материал получает её цену', async () => {
+  it('цена из файла → позиция в справочнике ПРОЕКТА, материал получает её цену', async () => {
     const { service, tx } = makeService(batchWith([row()]));
 
     const result = await service.commit({ batchId: 41, userId: 7 });
 
     expect(result.created).toBe(1);
-    expect(tx.priceCatalog.create).toHaveBeenCalledTimes(1);
+    expect(tx.priceCatalog.create).not.toHaveBeenCalled();
+    expect(tx.project.findUnique).toHaveBeenCalled();
     expect(tx.priceItem.create).toHaveBeenCalledTimes(1);
     expect(tx.material.create).toHaveBeenCalledTimes(1);
     const data = tx.material.create.mock.calls[0][0].data;
@@ -126,7 +136,7 @@ describe('ImportsService.commit (№202/№208)', () => {
 
     const result = await service.commit({ batchId: 41, userId: 7 });
 
-    expect(tx.priceCatalog.create).toHaveBeenCalledTimes(1);
+    expect(tx.priceCatalog.create).not.toHaveBeenCalled();
     expect(tx.priceItem.create).toHaveBeenCalledTimes(1);
     const item = tx.priceItem.create.mock.calls[0][0].data;
     expect(item.kind).toBe('MATERIAL');
@@ -260,14 +270,14 @@ describe('ImportsService.preview (№208)', () => {
     ['Давальческий песок', 'т', '10', ''],
   ];
 
-  it('цены из файла → предложение нового справочника и пометка строк', async () => {
+  it('цены из файла → предупреждение про справочник проекта и пометка строк', async () => {
     const { service } = buildService();
 
     const preview = await service.preview({ projectId: 10, userId: 7, fileName: 'смета.xlsx', rows });
 
     expect(preview.prices.rows).toBe(1);
-    expect(preview.prices.catalogName).toContain('Импорт');
-    expect(preview.warnings.join(' ')).toContain('НОВЫЙ справочник');
+    expect(preview.prices.catalogName).toContain('справочник текущего проекта');
+    expect(preview.warnings.join(' ')).toContain('справочник текущего проекта');
     expect(preview.rows[0].hasPrice).toBe(true);
     expect(preview.rows[1].hasPrice).toBe(false);
     // строка без цены не ошибка — уйдёт с 0

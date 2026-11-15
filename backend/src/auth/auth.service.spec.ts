@@ -33,6 +33,13 @@ const makeService = () => {
         project: { create: jest.fn().mockResolvedValue({ id: 20 }) },
         material: { create: jest.fn().mockResolvedValue({ id: 30 }) },
         materialFix: { create: jest.fn().mockResolvedValue({ id: 40 }) },
+        priceCatalog: {
+          create: jest.fn().mockResolvedValue({ id: 50, name: 'Справочник проекта' }),
+        },
+        priceItem: {
+          createMany: jest.fn().mockResolvedValue({ count: 0 }),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
       }),
     ),
     // ⭐ №211: демо-объект ищет системный справочник цен

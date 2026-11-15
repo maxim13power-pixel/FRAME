@@ -117,6 +117,9 @@ export const createMaterial = async (
     projectId: number;
     priceItemId?: number;
     materialItemId?: number;
+    // ⭐ №271: inline-цены; расценка создаётся/обновляется в справочнике проекта
+    workPrice?: number;
+    materialPrice?: number;
   }
 ): Promise<MaterialData> => {
   const response = await api.post('/materials', data);

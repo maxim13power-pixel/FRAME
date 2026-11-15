@@ -374,6 +374,9 @@ const [selectedMaterialItem, setSelectedMaterialItem] = useState<PriceItemData |
 const [materialOptions, setMaterialOptions] = useState<PriceItemData[]>([]);
 const [materialLoading, setMaterialLoading] = useState(false);
 const [addMatCreatingNew, setAddMatCreatingNew] = useState(false);
+// ⭐ №271: подтверждение нулевых цен при сохранении позиции
+const [zeroConfirmOpen, setZeroConfirmOpen] = useState(false);
+const [zeroItems, setZeroItems] = useState<string[]>([]);
 const [addMatPriceName, setAddMatPriceName] = useState('');
 const [addMatPriceCategoryId, setAddMatPriceCategoryId] = useState<number | '' | '__new__'>('');
 const [addMatPriceCategoryName, setAddMatPriceCategoryName] = useState('');
@@ -732,9 +735,11 @@ const handleOpenAddModal = () => {
   setAddPriceUnit('PIECE');
   setAddPricePrice('');
   // ⭐ №177: помним последний выбранный справочник — обычно он один и тот же
+  // ⭐ №271: если у проекта есть свой справочник — по умолчанию работаем с ним,
+  // а не с последним запомненным каталогом.
   const remembered = Number(localStorage.getItem(PRICE_CATALOG_MEMO_KEY) || '');
   const initialCatalog: number | '' =
-    Number.isFinite(remembered) && remembered > 0 ? remembered : '';
+    priceCatalogId ? '' : Number.isFinite(remembered) && remembered > 0 ? remembered : '';
   setWorkCatalogChoice(initialCatalog);
   setMatCatalogChoice(initialCatalog);
   setWorkCategoryChoice('');
@@ -758,9 +763,13 @@ setNewNote('');
 setSelectedPriceItem(null);
 setPriceOptions([]);
 setAddCreatingNew(false);
+setAddPricePrice('');
 setSelectedMaterialItem(null);
 setMaterialOptions([]);
 setAddMatCreatingNew(false);
+setAddMatPricePrice('');
+setZeroConfirmOpen(false);
+setZeroItems([]);
 setWorkCategoryChoice('');
 setMatCategoryChoice('');
 };
@@ -784,81 +793,93 @@ console.error('Ошибка поиска расценок:', err);
 setPriceLoading(false);
 }
 };
-  const handleCreateMaterial = async () => {
+  const handleCreateMaterial = async (confirmedZero = false) => {
     if (!token || !projectId || !newName.trim()) {
       notify('Введите наименование', 'warning');
       return;
     }
     const specQty = parseFloat(newSpecQuantity) || 0;
     try {
-      // ⭐ Режим «новая расценка РАБОТЫ»
-      let priceItemId: number | undefined = selectedPriceItem?.id ?? undefined;
-      if (addCreatingNew) {
-        if (!addPriceName.trim()) {
-          setInfoModal({ open: true, text: 'Введите название новой расценки' });
-          return;
-        }
-        const price = parseFloat(addPricePrice);
+      // ⭐ №271: одна форма — выбрал из справочника или ввёл цену руками.
+      // Новая цена автоматически становится расценкой справочника проекта.
+      let priceItemId: number | undefined = selectedPriceItem?.id;
+      let materialItemId: number | undefined = selectedMaterialItem?.id;
+      let workPrice: number | undefined;
+      let materialPrice: number | undefined;
+
+      const workRaw = addPricePrice.trim();
+      if (workRaw !== '') {
+        const price = parseFloat(workRaw);
         if (isNaN(price) || price < 0) {
-          setInfoModal({ open: true, text: 'Введите корректную цену' });
+          setInfoModal({ open: true, text: 'Введите корректную цену работы' });
           return;
         }
-        const isNewCat = addPriceCategoryId === '__new__';
-        if (isNewCat && !addPriceCategoryName.trim()) {
-          setInfoModal({ open: true, text: 'Введите название новой категории' });
-          return;
+        if (
+          selectedPriceItem &&
+          Math.abs(price - Number(selectedPriceItem.price ?? 0)) < 0.005
+        ) {
+          priceItemId = selectedPriceItem.id;
+        } else {
+          priceItemId = undefined;
+          workPrice = price;
         }
-        if (!isNewCat && addPriceCategoryId === '') {
-          setInfoModal({ open: true, text: 'Выберите категорию для расценки' });
-          return;
-        }
-        const createdPrice = await createPriceItemForMaterial(
-          {
-            name: addPriceName.trim(),
-            unit: addPriceUnit,
-            price,
-            categoryId: isNewCat ? 0 : Number(addPriceCategoryId),
-          },
-          isNewCat ? addPriceCategoryName.trim() : undefined,
-          undefined,
-          workEffectiveCatalogId
-        );
-        priceItemId = createdPrice.id;
       }
 
-      // ⭐ Режим «новая расценка МАТЕРИАЛА» (kind MATERIAL)
-      let materialItemId: number | undefined = selectedMaterialItem?.id ?? undefined;
-      if (addMatCreatingNew) {
-        if (!addMatPriceName.trim()) {
-          setInfoModal({ open: true, text: 'Введите название новой расценки материала' });
-          return;
-        }
-        const mprice = parseFloat(addMatPricePrice);
-        if (isNaN(mprice) || mprice < 0) {
+      const matRaw = addMatPricePrice.trim();
+      if (matRaw !== '') {
+        const price = parseFloat(matRaw);
+        if (isNaN(price) || price < 0) {
           setInfoModal({ open: true, text: 'Введите корректную цену материала' });
           return;
         }
-        const isNewMatCat = addMatPriceCategoryId === '__new__';
-        if (isNewMatCat && !addMatPriceCategoryName.trim()) {
-          setInfoModal({ open: true, text: 'Введите название новой категории' });
-          return;
+        if (
+          selectedMaterialItem &&
+          Math.abs(price - Number(selectedMaterialItem.price ?? 0)) < 0.005
+        ) {
+          materialItemId = selectedMaterialItem.id;
+        } else {
+          materialItemId = undefined;
+          materialPrice = price;
         }
-        if (!isNewMatCat && addMatPriceCategoryId === '') {
-          setInfoModal({ open: true, text: 'Выберите категорию для расценки материала' });
-          return;
+      }
+
+      const zero: string[] = [];
+      if (
+        (workPrice === 0 ||
+          (priceItemId != null &&
+            Number(selectedPriceItem?.price ?? -1) === 0)) &&
+        !zero.some((x) => x.startsWith('работа'))
+      ) {
+        zero.push('работа — 0 ₽');
+      }
+      if (
+        (materialPrice === 0 ||
+          (materialItemId != null &&
+            Number(selectedMaterialItem?.price ?? -1) === 0)) &&
+        !zero.some((x) => x.startsWith('материал'))
+      ) {
+        zero.push('материал — 0 ₽');
+      }
+      const bothEmpty =
+        !workRaw &&
+        !matRaw &&
+        !selectedPriceItem &&
+        !selectedMaterialItem;
+      if (bothEmpty) {
+        zero.push('работа — 0 ₽', 'материал — 0 ₽');
+      }
+
+      if (!confirmedZero && zero.length > 0) {
+        setZeroItems([...new Set(zero)]);
+        setZeroConfirmOpen(true);
+        return;
+      }
+
+      if (confirmedZero) {
+        if (bothEmpty) {
+          workPrice = 0;
+          materialPrice = 0;
         }
-        const createdMatPrice = await createPriceItemForMaterial(
-          {
-            name: addMatPriceName.trim(),
-            unit: addMatPriceUnit,
-            price: mprice,
-            categoryId: isNewMatCat ? 0 : Number(addMatPriceCategoryId),
-          },
-          isNewMatCat ? addMatPriceCategoryName.trim() : undefined,
-          'MATERIAL',
-          matEffectiveCatalogId
-        );
-        materialItemId = createdMatPrice.id;
       }
 
       const created = await createMaterial({
@@ -870,9 +891,12 @@ setPriceLoading(false);
         projectId: parseInt(projectId),
         priceItemId,
         materialItemId,
+        workPrice,
+        materialPrice,
       });
       setMaterials(prev => [created, ...prev]);
       loadCategories();
+      setZeroConfirmOpen(false);
       handleCloseAddModal();
     } catch (err: unknown) {
       notifyError('Ошибка при создании материала: ' + getApiErrorText(err, 'неизвестная ошибка'));
@@ -2178,8 +2202,11 @@ onClose={() => setFilterAnchorEl(null)}
             setSelectedPriceItem(value);
             if (value) {
             setNewUnit(value.unit);
+            setAddPricePrice(String(value.price ?? ''));
             if (!newName.trim()) setNewName(value.name);
             if (!newArticle.trim() && value.article) setNewArticle(value.article);
+            } else {
+            setAddPricePrice('');
             }
             }}
             onInputChange={(_e, value) => handlePriceSearch(value)}
@@ -2202,9 +2229,19 @@ renderInput={(params) => (
             </Typography>
             </Box>
             )}
-            <Button size="small" variant="text" onClick={() => { setAddCreatingNew(true); setAddPriceName(newName); }}>
-              ➕ Создать новую расценку
-            </Button>
+            <TextField
+              fullWidth
+              type="number"
+              label="Цена работы, ₽"
+              value={addPricePrice}
+              onChange={(e) => setAddPricePrice(e.target.value)}
+              inputProps={{ min: 0, step: 0.01 }}
+              helperText={
+                selectedPriceItem
+                  ? 'Можно изменить — цена обновится в справочнике проекта'
+                  : 'Новая цена попадёт в справочник проекта'
+              }
+            />
             </>
             ) : (
             <>
@@ -2274,7 +2311,17 @@ renderInput={(params) => (
     options={materialOptions}
     loading={materialLoading}
     value={selectedMaterialItem}
-    onChange={(_e, value) => setSelectedMaterialItem(value)}
+    onChange={(_e, value) => {
+    setSelectedMaterialItem(value);
+    if (value) {
+    setNewUnit(value.unit);
+    setAddMatPricePrice(String(value.price ?? ''));
+    if (!newName.trim()) setNewName(value.name);
+    if (!newArticle.trim() && value.article) setNewArticle(value.article);
+    } else {
+    setAddMatPricePrice('');
+    }
+    }}
     onInputChange={(_e, value) => handleMaterialPriceSearch(value)}
     getOptionLabel={(o) => `${o.name} — ${(o.price ?? 0).toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`}
     noOptionsText="Ничего не найдено"
@@ -2292,9 +2339,19 @@ renderInput={(params) => (
     </Typography>
     </Box>
     )}
-    <Button size="small" variant="text" onClick={() => { setAddMatCreatingNew(true); setAddMatPriceName(newName); }}>
-      ➕ Создать новую расценку материала
-    </Button>
+    <TextField
+      fullWidth
+      type="number"
+      label="Цена материала, ₽"
+      value={addMatPricePrice}
+      onChange={(e) => setAddMatPricePrice(e.target.value)}
+      inputProps={{ min: 0, step: 0.01 }}
+      helperText={
+        selectedMaterialItem
+          ? 'Можно изменить — цена обновится в справочнике проекта'
+          : 'Новая цена попадёт в справочник проекта'
+      }
+    />
     </>
     ) : (
     <>
@@ -2336,11 +2393,51 @@ renderInput={(params) => (
   borderRadius: '0 0 16px 16px',
 }}>
 <Button variant="outlined" onClick={handleCloseAddModal}>Отмена</Button>
-<Button variant="contained" onClick={handleCreateMaterial}>Сохранить</Button>
+<Button variant="contained" onClick={() => void handleCreateMaterial()}>Сохранить</Button>
 </Box>
           </Stack>
         </Paper>
       </Modal>
+
+      {/* ⭐ №271: подтверждение нулевой цены */}
+      <Modal open={zeroConfirmOpen} onClose={() => setZeroConfirmOpen(false)}>
+        <Paper
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '92%', sm: 430 },
+            p: 3,
+            borderRadius: 3,
+            outline: 'none',
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Сохранить с ценой 0?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            В позиции «{newName}» нулевые цены:
+          </Typography>
+          <Stack spacing={0.5} sx={{ mb: 2 }}>
+            {zeroItems.map((item) => (
+              <Typography key={item} variant="body2">
+                • {item}
+              </Typography>
+            ))}
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+            Ноль — допустимая цена. После сохранения позиция появится в справочнике проекта.
+          </Typography>
+          <Stack direction="row" justifyContent="flex-end" spacing={1}>
+            <Button onClick={() => setZeroConfirmOpen(false)}>Вернуться</Button>
+            <Button variant="contained" onClick={() => void handleCreateMaterial(true)}>
+              Сохранить с нулём
+            </Button>
+          </Stack>
+        </Paper>
+      </Modal>
+
 
       {/* Модалка фиксации объёма */}
       <Modal open={fixModalOpen} onClose={handleCloseFixModal} disableRestoreFocus>

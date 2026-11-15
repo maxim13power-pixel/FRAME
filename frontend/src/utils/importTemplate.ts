@@ -19,6 +19,21 @@ const HEADERS: { top: string; kind: ColKind }[] = [
 /** Пустых строк в шаблоне — с запасом, лишние просто не попадут в импорт */
 const EMPTY_ROWS = 120;
 
+/** ⭐ №271: подсказка по единицам — чтобы не угадывать допустимые значения. */
+const UNIT_HINTS = [
+  'Единица',
+  'шт',
+  'м',
+  'м²',
+  'м³',
+  'кг',
+  'л',
+  'т',
+  'мешок',
+  'упак',
+  'компл',
+];
+
 const TEMPLATE_HINT = [
   'Как заполнять шаблон FRAME',
   '',
@@ -65,6 +80,11 @@ export const downloadImportTemplate = (): void => {
   const hint = XLSX.utils.aoa_to_sheet(TEMPLATE_HINT.map((line) => [line]));
   hint['!cols'] = [{ wch: 110 }];
   XLSX.utils.book_append_sheet(wb, hint, 'Как заполнять');
+
+  // ⭐ №271: отдельный лист со списком единиц (подсказка при заполнении)
+  const unitsSheet = XLSX.utils.aoa_to_sheet(UNIT_HINTS.map((u) => [u]));
+  unitsSheet['!cols'] = [{ wch: 24 }];
+  XLSX.utils.book_append_sheet(wb, unitsSheet, 'Единицы');
 
   // Скрытый служебный лист: по нему импорт узнаёт наш шаблон (projectId нет — это не выгрузка)
   const meta = XLSX.utils.aoa_to_sheet([

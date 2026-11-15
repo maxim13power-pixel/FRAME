@@ -122,7 +122,7 @@ const EstimateImportModal: React.FC<Props> = ({ open, projectId, onClose, onImpo
             <Typography variant="body2" color="text.secondary">
               Подойдёт любой файл .xlsx или .csv: шапка и колонки определяются автоматически
               («Наименование», «Ед.», «Количество», «Цена»). Если в файле есть цены, FRAME сохранит
-              их в <b>новый справочник цен</b> — существующие справочники не изменяются.
+              их в <b>справочник текущего проекта</b> — существующие строки не изменяются.
             </Typography>
             <Dropzone
               loading={loading}
@@ -131,7 +131,7 @@ const EstimateImportModal: React.FC<Props> = ({ open, projectId, onClose, onImpo
             />
             <Typography variant="caption" color="text.secondary">
               До {MAX_ROWS} строк за раз. Повторная загрузка того же файла добавит позиции ещё раз
-              (дубли не суммируются) и создаст ещё один справочник.
+              (дубли не суммируются) и обновит цены в справочнике проекта.
             </Typography>
             <input
               ref={fileRef}

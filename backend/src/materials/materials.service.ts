@@ -14,6 +14,7 @@ import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
 import { loadCatalogAccess, findVisiblePriceItem } from '../price-list/catalog-access'; // ⭐ №164, №191
+import { resolveProjectPriceItem } from '../price-list/project-catalog'; // ⭐ №271
 import { assertAccessActive, findProjectAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import {
   FIX_EDIT_WINDOW_MS,
@@ -192,9 +193,10 @@ export class MaterialsService {
     if (access.role === 'VIEWER') {
       throw new ForbiddenException('Наблюдатель не может создавать материалы');
     }
-    let unitPrice = 0;
+    const unit = (dto.unit ?? 'PIECE') as Unit;
+
+    // Проверяем выбранные расценки до транзакции: доступ + вид (работа/материал).
     if (dto.priceItemId) {
-      // ⭐ №191 (F6): расценка берётся только из справочника, который пользователь видит
       const priceItem = await findVisiblePriceItem(
         this.prisma,
         dto.priceItemId,
@@ -203,14 +205,11 @@ export class MaterialsService {
       if (!priceItem) throw new NotFoundException('Расценка не найдена');
       if (!priceItem.isActive)
         throw new BadRequestException('Выбранная расценка неактивна');
-      // ⭐ №205: работа и материал не взаимозаменяемы — сверяем PriceKind
       if (priceItem.kind !== 'WORK')
         throw new BadRequestException(
           'В поле «работа» выбрана расценка материала — выберите работу',
         );
-      unitPrice = Number(priceItem.price);
     }
-    let materialUnitPrice = 0;
     if (dto.materialItemId) {
       const materialItem = await findVisiblePriceItem(
         this.prisma,
@@ -221,29 +220,88 @@ export class MaterialsService {
         throw new NotFoundException('Расценка материала не найдена');
       if (!materialItem.isActive)
         throw new BadRequestException('Расценка материала неактивна');
-      // ⭐ №205: в поле материала должна быть расценка материала
       if (materialItem.kind !== 'MATERIAL')
         throw new BadRequestException(
           'В поле «материал» выбрана расценка работы — выберите материал',
         );
-      materialUnitPrice = Number(materialItem.price);
     }
-    const created = await this.prisma.material.create({
-      data: {
-        name: dto.name.trim(),
-        article: dto.article?.trim() || null,
-        unit: (dto.unit ?? 'PIECE') as Unit,
-        specQuantity: dto.specQuantity,
-        note: dto.note ?? null,
-        projectId: dto.projectId,
-        priceItemId: dto.priceItemId ?? null,
-        unitPrice,
-        totalCost: 0,
-        materialItemId: dto.materialItemId ?? null,
-        materialUnitPrice,
-        materialTotalCost: 0,
-      },
-      include: MATERIAL_INCLUDE,
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      let priceItemId: number | null = null;
+      let unitPrice = 0;
+      if (dto.priceItemId != null) {
+        const resolved = await resolveProjectPriceItem(tx, {
+          projectId: dto.projectId,
+          userId,
+          itemId: dto.priceItemId,
+          name: dto.name,
+          article: dto.article,
+          unit,
+          price: Number(dto.workPrice ?? 0),
+          kind: 'WORK',
+        });
+        priceItemId = resolved.item.id;
+        unitPrice = Number(resolved.item.price);
+      } else if (dto.workPrice !== undefined) {
+        const resolved = await resolveProjectPriceItem(tx, {
+          projectId: dto.projectId,
+          userId,
+          name: dto.name,
+          article: dto.article,
+          unit,
+          price: Number(dto.workPrice),
+          kind: 'WORK',
+        });
+        priceItemId = resolved.item.id;
+        unitPrice = Number(resolved.item.price);
+      }
+
+      let materialItemId: number | null = null;
+      let materialUnitPrice = 0;
+      if (dto.materialItemId != null) {
+        const resolved = await resolveProjectPriceItem(tx, {
+          projectId: dto.projectId,
+          userId,
+          itemId: dto.materialItemId,
+          name: dto.name,
+          article: dto.article,
+          unit,
+          price: Number(dto.materialPrice ?? 0),
+          kind: 'MATERIAL',
+        });
+        materialItemId = resolved.item.id;
+        materialUnitPrice = Number(resolved.item.price);
+      } else if (dto.materialPrice !== undefined) {
+        const resolved = await resolveProjectPriceItem(tx, {
+          projectId: dto.projectId,
+          userId,
+          name: dto.name,
+          article: dto.article,
+          unit,
+          price: Number(dto.materialPrice),
+          kind: 'MATERIAL',
+        });
+        materialItemId = resolved.item.id;
+        materialUnitPrice = Number(resolved.item.price);
+      }
+
+      return tx.material.create({
+        data: {
+          name: dto.name.trim(),
+          article: dto.article?.trim() || null,
+          unit,
+          specQuantity: dto.specQuantity,
+          note: dto.note ?? null,
+          projectId: dto.projectId,
+          priceItemId,
+          unitPrice,
+          totalCost: 0,
+          materialItemId,
+          materialUnitPrice,
+          materialTotalCost: 0,
+        },
+        include: MATERIAL_INCLUDE,
+      });
     });
     // ⭐ Скрываем цены в ответе, если нужно
     return this.mustHidePrices(access) ? this.stripPrices(created) : created;
