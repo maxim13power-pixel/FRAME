@@ -997,6 +997,15 @@ onBack: goBack,
                 <EditIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
               </Box>
             )}
+            {/* ⭐ Архив в шапке раздела, как в «Объектах» */}
+            <Button
+              variant={showArchived ? 'contained' : 'outlined'}
+              startIcon={showArchived ? <CheckCircleIcon /> : <ArchiveIcon />}
+              onClick={() => setShowArchived(v => !v)}
+              sx={{ whiteSpace: 'nowrap', flexShrink: 0, ml: 2 }}
+            >
+              {showArchived ? 'Активные' : 'Архив'}
+            </Button>
           </Box>
         )}
         {/* Хлебные крошки (видны и на мобилке, и на десктопе) */}
@@ -1064,15 +1073,6 @@ onBack: goBack,
               <MenuItem value="progress">По проценту %</MenuItem>
             </Select>
           </FormControl>
-          {/* ⭐ №249: личный архив проектов */}
-          <Button
-            variant={showArchived ? 'contained' : 'outlined'}
-            startIcon={showArchived ? <CheckCircleIcon /> : <ArchiveIcon />}
-            onClick={() => setShowArchived(v => !v)}
-            sx={{ whiteSpace: 'nowrap' }}
-          >
-            {showArchived ? 'Активные' : 'Архив'}
-          </Button>
           {/* ⭐ №178: если доступ только к проекту — вместо создания проекта подаём заявку */}
           {!currentObject ? (
             <Button variant="contained" startIcon={<NoteAddIcon />} disabled sx={{ minWidth: '200px' }}>
