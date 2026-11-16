@@ -96,9 +96,6 @@ const NEW_CATEGORY_VALUE = '__new__';
 const PriceListInner: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  // ⭐ №281: на средних ширинах (900–1200) вторичные кнопки — только иконки,
-  // чтобы тулбар не переносился и поиск не «уезжал» на отдельную строку
-  const compactToolbar = useMediaQuery(theme.breakpoints.down('lg'));
   const { token } = useAuth();
   const { notify, error: notifyError } = useFeedback();
   // ⭐ №151: справочник выбирается по URL (/price-list/:catalogId)
@@ -695,7 +692,7 @@ const PriceListInner: React.FC = () => {
           />
         )}
         {isMobile ? (
-          // МОБИЛКА: «Из шаблона» → «Категория»; добавление расценки — FAB `$+`
+          // МОБИЛКА: «Импорт» → «Категория»; добавление расценки — FAB `$+`
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button
               variant="outlined"
@@ -716,8 +713,8 @@ const PriceListInner: React.FC = () => {
             </Button>
           </Box>
         ) : (
-          // ДЕСКТОП: Из шаблона → Категория → Добавить (крайняя); при сужении
-          // группа кнопок переносится на новую строку и прижимается вправо
+          // ДЕСКТОП: Импорт → Категория → Добавить (крайняя); подписи всегда видны,
+          // при сужении ширину уступает поиск (кнопки не сжимаются и не переносятся)
           <Box
             sx={{
               display: 'flex',
@@ -732,31 +729,18 @@ const PriceListInner: React.FC = () => {
               startIcon={<PlaylistAddIcon />}
               onClick={(e) => setTemplateMenuAnchor(e.currentTarget)}
               disabled={!catalogId}
-              aria-label="Импорт прайса"
               title="Импорт: скачать шаблон, загрузить прайс, обновить из образца"
-              sx={{
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-                minWidth: 0,
-                px: compactToolbar ? 1.25 : 2,
-              }}
+              sx={{ whiteSpace: 'nowrap', flexShrink: 0, minWidth: 0, px: 1.5 }}
             >
-              {compactToolbar ? null : 'Импорт'}
+              Импорт
             </Button>
             <Button
               variant="outlined"
               startIcon={<CategoryIcon />}
               onClick={handleOpenCatModal}
-              aria-label="Создать категорию"
-              title="Создать категорию"
-              sx={{
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-                minWidth: 0,
-                px: compactToolbar ? 1.25 : 2,
-              }}
+              sx={{ whiteSpace: 'nowrap', flexShrink: 0, minWidth: 0, px: 1.5 }}
             >
-              {compactToolbar ? null : '+ Категория'}
+              Категория
             </Button>
             <Button
               variant="contained"
@@ -768,7 +752,7 @@ const PriceListInner: React.FC = () => {
                 whiteSpace: 'nowrap',
                 flexShrink: 0,
                 minWidth: 0,
-                px: compactToolbar ? 1.5 : 2,
+                px: 1.75,
                 '&:hover': {
                   bgcolor: '#388e3c',
                   borderColor: '#388e3c',

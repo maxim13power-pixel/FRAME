@@ -1485,7 +1485,7 @@ setSortAnchorEl(null);
       </IconButton>
       <IconButton
         onClick={(e) => setImportMenuAnchor(e.currentTarget)}
-        aria-label="Из шаблона: добавить, импорт, скачать шаблон"
+        aria-label="Импорт: из шаблона, Excel, скачать шаблон"
         sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
       >
         {applyingTemplate ? <CircularProgress size={18} /> : <PlaylistAddIcon />}
