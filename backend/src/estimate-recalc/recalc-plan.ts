@@ -12,6 +12,7 @@
 // Строки с фиксациями (totalUsed > 0) НЕ трогаем: цена — договорённость на момент работ
 // (решение владельца 10.1(4)), даже если в справочнике она уже другая.
 import { Unit } from '@prisma/client';
+import { unitFamily } from '../imports/unit-normalizer'; // ⭐ №272: «м» ↔ «пог. м»
 
 export type RecalcMatchKind =
   | 'id'
@@ -124,7 +125,8 @@ export function normalizeText(value?: string | null): string {
 }
 
 function nameKey(name: string, unit: Unit): string {
-  return `${normalizeText(name)}|${unit}`;
+  // ⭐ №272: ключ по семейству единиц — «Плинтус, м» находит строку «Плинтус, пог. м»
+  return `${normalizeText(name)}|${unitFamily(unit)}`;
 }
 
 /** Индекс расценок одного вида (работы или материалы) для быстрого поиска */

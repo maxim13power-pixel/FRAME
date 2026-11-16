@@ -3,6 +3,7 @@
 // Чистая функция: БД только поставляет каталог. Никаких «содержит» и никаких
 // автопривязок при score < 0.85 — ложная склейка дороже пропущенной строки.
 import { Unit } from '@prisma/client';
+import { sameUnitFamily } from './unit-normalizer';
 import {
   extractNumbers,
   normalizeArticle,
@@ -69,7 +70,7 @@ const scorePair = (input: MatchInput, item: CatalogItem): number => {
       aNums.length === bNums.length && [...aNums].sort().join(',') === [...bNums].sort().join(',');
     if (!same) score = Math.min(score, 0.5);
   }
-  if (input.unit && item.unit !== input.unit) score = Math.min(score, 0.4);
+  if (input.unit && !sameUnitFamily(item.unit, input.unit)) score = Math.min(score, 0.4);
   return Math.round(score * 100) / 100;
 };
 
@@ -96,7 +97,7 @@ export const matchRow = (input: MatchInput, catalog: CatalogItem[], limit = 200)
   const articleNorm = normalizeArticle(input.article);
   if (articleNorm) {
     const byArticle = catalog.find(
-      (c) => normalizeArticle(c.article) === articleNorm && (!input.unit || c.unit === input.unit),
+      (c) => normalizeArticle(c.article) === articleNorm && (!input.unit || sameUnitFamily(c.unit, input.unit)),
     );
     if (byArticle) {
       return {
@@ -114,7 +115,7 @@ export const matchRow = (input: MatchInput, catalog: CatalogItem[], limit = 200)
 
   // Шаг 1: точное совпадение названия + совместимая единица
   const exact = catalog.find(
-    (c) => normalizeText(c.name) === inputNorm && (!input.unit || c.unit === input.unit),
+    (c) => normalizeText(c.name) === inputNorm && (!input.unit || sameUnitFamily(c.unit, input.unit)),
   );
   if (exact) {
     return {
@@ -129,7 +130,7 @@ export const matchRow = (input: MatchInput, catalog: CatalogItem[], limit = 200)
   // Предфильтр: приличные кандидаты по токенам (не более `limit` штук)
   const firstToken = significantTokens(safeInput.name)[0]?.slice(0, 3);
   const pool = catalog
-    .filter((c) => (input.unit ? c.unit === input.unit : true))
+    .filter((c) => (input.unit ? sameUnitFamily(c.unit, input.unit) : true))
     .filter((c) => (firstToken ? normalizeText(c.name).includes(firstToken) : true))
     .slice(0, limit);
   const scored = (pool.length > 0 ? pool : catalog.slice(0, limit))

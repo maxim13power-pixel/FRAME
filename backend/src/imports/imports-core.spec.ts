@@ -70,13 +70,20 @@ describe('normalizeUnit (№202)', () => {
     expect(normalizeUnit('м²').unit).toBe('SQUARE_METER');
     expect(normalizeUnit('куб. м').unit).toBe('CUBIC_METER');
     expect(normalizeUnit('упак').unit).toBe('PACKAGE');
-    expect(normalizeUnit('пог.м')).toEqual({ unit: 'METER', approx: true });
+    expect(normalizeUnit('пог.м')).toEqual({ unit: 'LINEAR_METER', approx: false });
   });
 
   it('неизвестная единица — это ошибка, а не «шт» по умолчанию', () => {
-    expect(normalizeUnit('лист').unit).toBeNull();
+    expect(normalizeUnit('паллета').unit).toBeNull();
     expect(normalizeUnit('').unit).toBeNull();
     expect(normalizeUnit(null).unit).toBeNull();
+  });
+
+  // ⭐ №272: решение владельца 16.11.2026 — тарные единицы считаем штуками
+  it('«лист», «рулон», «бухта» — штука с пометкой «приблизительно»', () => {
+    expect(normalizeUnit('лист')).toEqual({ unit: 'PIECE', approx: true });
+    expect(normalizeUnit('рулон')).toEqual({ unit: 'PIECE', approx: true });
+    expect(normalizeUnit('бухта')).toEqual({ unit: 'PIECE', approx: true });
   });
 });
 

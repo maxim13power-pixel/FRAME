@@ -10,6 +10,7 @@ export interface ExportMeta {
 const UNIT_LABELS: Record<string, string> = {
   PIECE: 'шт',
   METER: 'м',
+  LINEAR_METER: 'пог. м',
   SQUARE_METER: 'м²',
   CUBIC_METER: 'м³',
   KILOGRAM: 'кг',

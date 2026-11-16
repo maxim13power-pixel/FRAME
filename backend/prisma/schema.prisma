@@ -141,6 +141,7 @@ enum PriceKind {
 enum Unit {
   PIECE          // шт
   METER          // м
+  LINEAR_METER   // ⭐ №272: погонный метр (пог. м)
   SQUARE_METER   // м²
   CUBIC_METER    // м³
   KILOGRAM       // кг
@@ -258,6 +259,13 @@ model PriceItem {
   name       String
   article    String?
   unit       Unit          @default(PIECE)
+  // ⭐ №272: что написал пользователь в файле («пог. м», «рулон») — показ и группировка ошибок
+  unitRaw            String?
+  // ⭐ №272: черновик импорта — единица не распознана, в смету не подставляется
+  needsClarification Boolean @default(false)
+  // ⭐ №272: кто и с какого объекта добавил расценку (модерация владельцем базы)
+  createdById        Int?
+  sourceObjectId     Int?
   price      Decimal       @default(0) @db.Decimal(14, 2)
   categoryId Int
   category   PriceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
@@ -273,24 +281,40 @@ model PriceItem {
 
   @@index([categoryId, ownerId])
   @@index([catalogId])
+  @@index([catalogId, needsClarification])
   @@map("price_items")
+}
+
+// ⭐ №272: назначение справочника. SYSTEM — образец (ownerId = null, правит только ADMIN);
+// USER — база пользователя. Без этого поля `ownerId = null` смешивал «образец» и
+// «бывшую личную базу удалённого пользователя» (onDelete: SetNull).
+enum PriceCatalogKind {
+  SYSTEM
+  USER
 }
 
 // ⭐ №151: справочники цен — независимые наборы расценок под разные объекты
 // (например «Квартиры/Коттеджи» с постоянной ценой и «Склад X5» со своими расценками).
 model PriceCatalog {
-  id         Int         @id @default(autoincrement())
+  id         Int              @id @default(autoincrement())
   name       String
-  ownerId    Int?        // null = системный (демо) справочник, доступен всем
-  owner      User?       @relation("CatalogOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  isArchived Boolean     @default(false)
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  ownerId    Int?             // null — только для kind = SYSTEM
+  owner      User?            @relation("CatalogOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  kind       PriceCatalogKind @default(USER)
+  // ⭐ №272: «мой рабочий» справочник — один на владельца, подставляется в новые проекты
+  isDefault  Boolean          @default(false)
+  // ⭐ №272: из какого образца сделана копия (для «обновить из образца»)
+  templateId      Int?
+  templateVersion Int?
+  isArchived Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
   items      PriceItem[]
   projects   Project[]
-  objects    Object[]    @relation("ObjectCatalog") // ⭐ №164: справочник как «объектный»
+  objects    Object[]         @relation("ObjectCatalog") // ⭐ №164: справочник как «объектный»
 
   @@index([ownerId])
+  @@index([ownerId, isDefault])
   @@map("price_catalogs")
 }
 

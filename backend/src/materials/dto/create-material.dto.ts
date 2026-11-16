@@ -11,6 +11,7 @@ import {
 export const UNIT_VALUES = [
   'PIECE',
   'METER',
+  'LINEAR_METER',
   'SQUARE_METER',
   'CUBIC_METER',
   'KILOGRAM',

@@ -67,6 +67,7 @@ import { getApiErrorText } from '../utils/errors';
 const UNIT_OPTIONS = [
   { value: 'PIECE', label: 'шт' },
   { value: 'METER', label: 'м' },
+  { value: 'LINEAR_METER', label: 'пог. м' },
   { value: 'SQUARE_METER', label: 'м²' },
   { value: 'CUBIC_METER', label: 'м³' },
   { value: 'KILOGRAM', label: 'кг' },

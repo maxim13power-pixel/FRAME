@@ -3,6 +3,7 @@
 // Каталоги цен (демо/личный/общий) — только библиотеки-источники; при создании
 // проекта их активные позиции КОПИРУЮТСЯ в новый справочник проекта.
 import { PriceCatalog, PriceItem, PriceKind, Prisma, Unit } from '@prisma/client';
+import { unitsInFamily } from '../imports/unit-normalizer'; // ⭐ №272: «м» и «пог. м» совместимы
 
 export const PROJECT_CATALOG_PREFIX = 'Справочник проекта';
 export const DEFAULT_PRICE_CATEGORY = 'Разное';
@@ -173,7 +174,7 @@ async function findTargetItem(
       catalogId,
       kind: input.kind,
       isActive: true,
-      unit: input.unit,
+      unit: { in: unitsInFamily(input.unit) },
     },
   });
   return candidates.find((item) => norm(item.name) === norm(input.name)) ?? null;
