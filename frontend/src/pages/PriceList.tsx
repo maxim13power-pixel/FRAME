@@ -666,7 +666,8 @@ const PriceListInner: React.FC = () => {
         sx={{
           display: 'flex',
           flexDirection: isMobile ? 'column' : 'row',
-          gap: isMobile ? 1 : 2,
+          flexWrap: isMobile ? 'nowrap' : 'wrap',
+          gap: isMobile ? 1 : 1.5,
           mb: 2,
           alignItems: isMobile ? 'stretch' : 'center',
         }}
@@ -677,10 +678,10 @@ const PriceListInner: React.FC = () => {
             placeholder="Поиск расценок..."
             variant="outlined"
             size="small"
-            fullWidth
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            sx={{ flexGrow: 1, minWidth: 220 }}
+            // ⭐ №281: поиск уступает место кнопкам, а не выдавливает их за край
+            sx={{ flexGrow: 1, flexBasis: 240, minWidth: 160 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -691,16 +692,8 @@ const PriceListInner: React.FC = () => {
           />
         )}
         {isMobile ? (
-          // МОБИЛКА: категория + все действия в «Из шаблона»; FAB `$+` добавляет расценку
+          // МОБИЛКА: «Из шаблона» → «Категория»; добавление расценки — FAB `$+`
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            <Button
-              variant="outlined"
-              startIcon={<CategoryIcon />}
-              onClick={handleOpenCatModal}
-              sx={{ whiteSpace: 'nowrap' }}
-            >
-              Категория
-            </Button>
             <Button
               variant="outlined"
               startIcon={<PlaylistAddIcon />}
@@ -710,18 +703,28 @@ const PriceListInner: React.FC = () => {
             >
               Из шаблона
             </Button>
-          </Box>
-        ) : (
-          // ДЕСКТОП: порядок как в сметах — Категория → Из шаблона → Добавить (крайняя)
-          <>
             <Button
               variant="outlined"
               startIcon={<CategoryIcon />}
               onClick={handleOpenCatModal}
-              sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+              sx={{ whiteSpace: 'nowrap' }}
             >
-              + Категория
+              Категория
             </Button>
+          </Box>
+        ) : (
+          // ДЕСКТОП: Из шаблона → Категория → Добавить (крайняя); при сужении
+          // группа кнопок переносится на новую строку и прижимается вправо
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 1,
+              flexWrap: 'wrap',
+              ml: 'auto',
+              justifyContent: 'flex-end',
+              maxWidth: '100%',
+            }}
+          >
             <Button
               variant="outlined"
               startIcon={<PlaylistAddIcon />}
@@ -731,6 +734,14 @@ const PriceListInner: React.FC = () => {
               title="Шаблон прайса, импорт и обновление из образца"
             >
               Из шаблона
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<CategoryIcon />}
+              onClick={handleOpenCatModal}
+              sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              + Категория
             </Button>
             <Button
               variant="contained"
@@ -752,7 +763,7 @@ const PriceListInner: React.FC = () => {
             >
               Добавить
             </Button>
-          </>
+          </Box>
         )}
       </Box>
 
