@@ -313,7 +313,11 @@ const filteredAndSortedObjects = useMemo(() => {
   return filtered;
 }, [objects, searchQuery, sortBy, showArchived]);
 
-  const handleOpenAddModal = () => setAddModalOpen(true);
+  // ⭐ №285: в архиве создание недоступно (кнопка/фаб серые) — страхуем и сам обработчик
+  const handleOpenAddModal = () => {
+    if (showArchived) return;
+    setAddModalOpen(true);
+  };
   const handleCloseAddModal = () => {
     setAddModalOpen(false);
     // очищаем форму
@@ -1173,22 +1177,27 @@ trailing: headerTrailing,
           <MenuItem value="progress">По проценту %</MenuItem>
         </Select>
       </FormControl>
-      {!showArchived && (
-        <Button
-          variant="contained"
-          startIcon={<AddHomeIcon />}
-          onClick={handleOpenAddModal}
-          sx={{
-            bgcolor: '#4caf50',
-            border: '2px solid #388e3c',
-            '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
-            transition: 'all 0.3s ease',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          Добавить объект
-        </Button>
-      )}
+      {/* ⭐ №285: в архиве создавать нельзя — кнопка серая, а не пропадает из тулбара */}
+      <Button
+        variant="contained"
+        startIcon={<AddHomeIcon />}
+        onClick={handleOpenAddModal}
+        disabled={showArchived}
+        title={showArchived ? 'В архиве создание недоступно — вернитесь в «Активные»' : undefined}
+        sx={{
+          ...(showArchived
+            ? {}
+            : {
+                bgcolor: '#4caf50',
+                border: '2px solid #388e3c',
+                '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
+                transition: 'all 0.3s ease',
+              }),
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Добавить объект
+      </Button>
     </Box>
   )}
 
@@ -1437,15 +1446,15 @@ trailing: headerTrailing,
         )}
       </Stack>
 
-      {/* Мобильная плавающая кнопка */}
-      {isMobile && !showArchived && (
+      {/* Мобильная плавающая кнопка — ⭐ №285: в архиве серая и неактивная */}
+      {isMobile && (
         <Fab
           color="primary"
+          disabled={showArchived}
           sx={{
             ...FAB_STYLE,
             bottom: 80,
-            bgcolor: '#4caf50',
-            '&:hover': { bgcolor: '#388e3c' },
+            ...(showArchived ? {} : { bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' } }),
           }}
           onClick={handleOpenAddModal}
         >

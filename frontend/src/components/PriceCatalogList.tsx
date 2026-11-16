@@ -197,6 +197,8 @@ const goBack = useBackNavigation('/');
   }, [load]);
 
   const handleOpenCreate = () => {
+    // ⭐ №285: в архиве справочник не создаём (кнопка/фаб серые, но страхуем и здесь)
+    if (showArchived) return;
     setEditing(null);
     setName(defaultNewName ?? '');
     setModalOpen(true);
@@ -413,17 +415,24 @@ const goBack = useBackNavigation('/');
             variant="contained"
             startIcon={<AddIcon />}
             onClick={handleOpenCreate}
+            // ⭐ №285: в архиве создание недоступно — кнопка серая
+            disabled={showArchived}
+            title={showArchived ? 'В архиве создание недоступно — вернитесь в «Активные»' : undefined}
             sx={{
-              bgcolor: '#4caf50',
-              border: '2px solid #388e3c',
+              ...(showArchived
+                ? {}
+                : {
+                    bgcolor: '#4caf50',
+                    border: '2px solid #388e3c',
+                    '&:hover': {
+                      bgcolor: '#388e3c',
+                      borderColor: '#388e3c',
+                      transform: 'translateY(-3px)',
+                      boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
+                    },
+                    transition: 'all 0.3s ease',
+                  }),
               whiteSpace: 'nowrap',
-              '&:hover': {
-                bgcolor: '#388e3c',
-                borderColor: '#388e3c',
-                transform: 'translateY(-3px)',
-                boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
-              },
-              transition: 'all 0.3s ease',
             }}
           >
             Создать
@@ -525,9 +534,16 @@ const goBack = useBackNavigation('/');
         )}
       </Stack>
 
-      {/* ⭐ №179: на телефоне «Создать» — FAB внизу справа, как в «Бригадах» */}
+      {/* ⭐ №179: на телефоне «Создать» — FAB внизу справа, как в «Бригадах».
+          ⭐ №285: в архиве фаб серый и неактивный — справочник не создаём */}
       {isMobile && (
-        <Fab color="primary" sx={{ ...FAB_STYLE, bottom: 80 }} onClick={handleOpenCreate} aria-label="Создать справочник">
+        <Fab
+          color="primary"
+          sx={{ ...FAB_STYLE, bottom: 80 }}
+          onClick={handleOpenCreate}
+          disabled={showArchived}
+          aria-label={showArchived ? 'В архиве создание недоступно' : 'Создать справочник'}
+        >
           <LibraryAddIcon />
         </Fab>
       )}

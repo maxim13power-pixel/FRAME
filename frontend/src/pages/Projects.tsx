@@ -431,6 +431,8 @@ const handleCancelAccessRequest = async () => {
   };
 
   const handleOpenAddModal = () => {
+    // ⭐ №285: в архиве проекты не создаём (кнопка/фаб серые, но страхуем и здесь)
+    if (showArchived) return;
     setAddModalOpen(true);
     // ⭐ Даты проекта по умолчанию — как у объекта: меньше ручного ввода
     setNewStartDate(currentObject?.startDate.slice(0, 10) ?? '');
@@ -1025,12 +1027,19 @@ onBack: goBack,
               variant="contained"
               startIcon={<NoteAddIcon />}
               onClick={handleOpenAddModal}
+              // ⭐ №285: в архиве создание недоступно — кнопка серая
+              disabled={showArchived}
+              title={showArchived ? 'В архиве создание недоступно — вернитесь в «Активные»' : undefined}
               sx={{
-                bgcolor: '#4caf50',
-                border: '2px solid #388e3c',
+                ...(showArchived
+                  ? {}
+                  : {
+                      bgcolor: '#4caf50',
+                      border: '2px solid #388e3c',
+                      '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
+                      transition: 'all 0.3s ease',
+                    }),
                 minWidth: '200px',
-                '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
-                transition: 'all 0.3s ease',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -1956,6 +1965,9 @@ onBack: goBack,
           color="primary"
           sx={{ ...FAB_STYLE, bottom: 80 }}
           onClick={handleOpenAddModal}
+          // ⭐ №285: в архиве создание недоступно — фаб серый
+          disabled={showArchived}
+          aria-label={showArchived ? 'В архиве создание недоступно' : 'Добавить проект'}
         >
           <NoteAddIcon />
         </Fab>
