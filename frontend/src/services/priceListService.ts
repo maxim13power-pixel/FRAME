@@ -27,6 +27,8 @@ export interface PriceItemData {
   category?: PriceCategoryData;
   isActive: boolean;
   kind: 'WORK' | 'MATERIAL';
+  /** ⭐ №275: черновик импорта — единица не уточнена, выбирать нельзя */
+  needsClarification?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -558,7 +558,14 @@ export class PriceListService {
     return this.prisma.priceItem.findMany({
       where: {
         AND: [
-          { isActive: true },
+          // ⭐ №275: в справочнике проекта ищем и черновики (единица не уточнена):
+          // UI покажет их серыми и не даст выбрать, пока единицу не уточнят.
+          {
+            OR: [
+              { isActive: true },
+              ...(catalogId ? [{ isActive: false, needsClarification: true }] : []),
+            ],
+          },
           ...(kind ? [{ kind: kind as PriceKind }] : []),
           ...(categoryId ? [{ categoryId }] : []),
           ...(catalogId ? [{ catalogId }] : [this.ownerFilter(userId)]),

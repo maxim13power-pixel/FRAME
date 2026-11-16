@@ -39,4 +39,16 @@ export class UpdateMaterialDto {
   @IsOptional()
   @IsInt({ message: 'materialItemId должен быть целым числом' })
   materialItemId?: number | null;
+
+  // ⭐ №275: цена, введённая прямо в смете. Меняет ТОЛЬКО строку (снапшот):
+  // справочник остаётся прежним, пока пользователь явно не изменит расценку.
+  @IsOptional()
+  @IsNumber({}, { message: 'workPrice должен быть числом' })
+  @Min(0, { message: 'Цена работы не может быть отрицательной' })
+  workPrice?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'materialPrice должен быть числом' })
+  @Min(0, { message: 'Цена материала не может быть отрицательной' })
+  materialPrice?: number;
 }

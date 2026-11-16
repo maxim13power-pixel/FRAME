@@ -35,6 +35,8 @@ import {
   Snackbar,
   Drawer,
   Badge,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
@@ -77,7 +79,7 @@ import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
 import { searchPriceItems } from '../services/priceListService';
 import type { PriceCatalogData, PriceCategoryData, PriceItemData } from '../services/priceListService';
-import { fetchCategoriesWithItems, fetchPriceCatalogs } from '../services/priceListService';
+import { fetchCategoriesWithItems, fetchPriceCatalogs, updatePriceItem } from '../services/priceListService';
 import { getApiErrorText } from '../utils/errors';
 import { applyEstimateTemplate, fetchEstimateTemplates } from '../services/estimateTemplateService';
 import type { EstimateTemplate } from '../services/estimateTemplateService';
@@ -135,6 +137,41 @@ const UNIT_OPTIONS = [
   { value: 'PACKAGE', label: 'упак' },
   { value: 'SET', label: 'компл' },
 ];
+
+/** ⭐ №275: черновик импорта (единица не уточнена) — показываем серым, выбрать нельзя */
+const isDraftPrice = (option: PriceItemData | { __new__?: boolean }): boolean =>
+  (option as PriceItemData)?.needsClarification === true;
+
+const renderPriceOption = (
+  props: React.HTMLAttributes<HTMLLIElement>,
+  option: PriceItemData | { __new__?: boolean },
+) => {
+  if ((option as { __new__?: boolean })?.__new__) {
+    return <li {...props}>➕ Создать новую расценку...</li>;
+  }
+  const item = option as PriceItemData;
+  return (
+    <Box
+      component="li"
+      {...props}
+      sx={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: 1,
+        opacity: item.needsClarification ? 0.55 : 1,
+      }}
+    >
+      <span>
+        {item.name}
+        {item.needsClarification ? ' · уточните единицу' : ''}
+      </span>
+      <span>
+        {(item.price ?? 0).toLocaleString('ru-RU')} ₽/
+        {UNIT_OPTIONS.find((u) => u.value === item.unit)?.label || item.unit}
+      </span>
+    </Box>
+  );
+};
 
 // ⭐ №177: ступени 1–2 выбора расценки — «Справочник → Категория».
 // Используется дважды: для цены работ и для цены материала (выбор независимый).
@@ -412,6 +449,20 @@ const [editMatPricePrice, setEditMatPricePrice] = useState('');
   const [settingsMaterial, setSettingsMaterial] = useState<MaterialData | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingMaterial, setDeletingMaterial] = useState<MaterialData | null>(null);
+
+  // ⭐ №275: правка цены прямо в таблице («За ед.») + подтверждение
+  const [inlinePrice, setInlinePrice] = useState<{
+    materialId: number;
+    side: 'work' | 'material';
+    value: string;
+  } | null>(null);
+  const [priceConfirm, setPriceConfirm] = useState<{
+    material: MaterialData;
+    side: 'work' | 'material';
+    value: number;
+    alsoCatalog: boolean;
+  } | null>(null);
+  const [priceSaving, setPriceSaving] = useState(false);
  
   // Правка последней фиксации («Изменить Итого»)
   const [editFixModalOpen, setEditFixModalOpen] = useState(false);
@@ -1000,6 +1051,56 @@ setPriceLoading(false);
   };
 
   // ⭐ №162: копирование строки — копия вставляется сразу под источником
+  // ⭐ №275: правка «За ед.» прямо в смете. Меняется только строка (снапшот),
+  // справочник остаётся прежним — для него есть отдельная галочка в подтверждении.
+  const handleInlinePriceStart = (material: MaterialData, side: 'work' | 'material') => {
+    if (hidePrices) return;
+    setInlinePrice({
+      materialId: material.id,
+      side,
+      value: String(side === 'work' ? material.unitPrice : material.materialUnitPrice),
+    });
+  };
+
+  const handleInlinePriceCommit = () => {
+    if (!inlinePrice) return;
+    const material = materials.find((row) => row.id === inlinePrice.materialId);
+    const raw = inlinePrice.value.trim().replace(',', '.');
+    const value = raw === '' ? 0 : Number(raw);
+    if (!material || !Number.isFinite(value) || value < 0) {
+      notify('Введите корректную цену', 'warning');
+      return;
+    }
+    setInlinePrice(null);
+    setPriceConfirm({ material, side: inlinePrice.side, value, alsoCatalog: false });
+  };
+
+  const handlePriceSave = async () => {
+    if (!priceConfirm) return;
+    const { material, side, value, alsoCatalog } = priceConfirm;
+    setPriceSaving(true);
+    try {
+      const itemId = side === 'work' ? material.priceItemId : material.materialItemId;
+      if (alsoCatalog && itemId != null) {
+        await updatePriceItem(itemId, { price: value });
+      }
+      const updated = await updateMaterial(
+        material.id,
+        side === 'work' ? { workPrice: value } : { materialPrice: value },
+      );
+      setMaterials((prev) =>
+        prev.map((m) => (m.id === updated.id ? mergeUpdatedMaterial(m, updated) : m)),
+      );
+      loadCategories();
+      setPriceConfirm(null);
+      notify('Цена обновлена в смете');
+    } catch (err) {
+      notifyError(getApiErrorText(err, 'Не удалось изменить цену'));
+    } finally {
+      setPriceSaving(false);
+    }
+  };
+
   const handleDuplicate = async (material: MaterialData) => {
     if (!token) return;
     try {
@@ -1857,9 +1958,65 @@ onClose={() => setFilterAnchorEl(null)}
               {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{m.totalCost > 0 ? rub(m.totalCost) : '—'}</TableCell>}
               {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{m.materialTotalCost > 0 ? rub(m.materialTotalCost) : '—'}</TableCell>}
               {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>{(m.totalCost + m.materialTotalCost) > 0 ? rub(m.totalCost + m.materialTotalCost) : '—'}</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9' }}>{m.unitPrice > 0 ? rub(m.unitPrice) : '—'}</TableCell>}
+              {!hidePrices && (
+                <TableCell
+                  sx={{ textAlign: 'right', whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9', cursor: 'pointer' }}
+                  onClick={() => handleInlinePriceStart(m, 'work')}
+                  title="Изменить цену работы (только в этой смете)"
+                >
+                  {inlinePrice?.materialId === m.id && inlinePrice.side === 'work' ? (
+                    <TextField
+                      size="small"
+                      autoFocus
+                      value={inlinePrice.value}
+                      onChange={(e) => setInlinePrice({ ...inlinePrice, value: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleInlinePriceCommit();
+                        if (e.key === 'Escape') setInlinePrice(null);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      inputProps={{
+                        inputMode: 'decimal',
+                        style: { textAlign: 'right', width: 72, padding: '4px 6px' },
+                      }}
+                    />
+                  ) : m.unitPrice > 0 ? (
+                    rub(m.unitPrice)
+                  ) : (
+                    '—'
+                  )}
+                </TableCell>
+              )}
               {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{(m.unitPrice * m.specQuantity) > 0 ? rub(m.unitPrice * m.specQuantity) : '—'}</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9' }}>{m.materialUnitPrice > 0 ? rub(m.materialUnitPrice) : '—'}</TableCell>}
+              {!hidePrices && (
+                <TableCell
+                  sx={{ textAlign: 'right', whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9', cursor: 'pointer' }}
+                  onClick={() => handleInlinePriceStart(m, 'material')}
+                  title="Изменить цену материала (только в этой смете)"
+                >
+                  {inlinePrice?.materialId === m.id && inlinePrice.side === 'material' ? (
+                    <TextField
+                      size="small"
+                      autoFocus
+                      value={inlinePrice.value}
+                      onChange={(e) => setInlinePrice({ ...inlinePrice, value: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleInlinePriceCommit();
+                        if (e.key === 'Escape') setInlinePrice(null);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      inputProps={{
+                        inputMode: 'decimal',
+                        style: { textAlign: 'right', width: 72, padding: '4px 6px' },
+                      }}
+                    />
+                  ) : m.materialUnitPrice > 0 ? (
+                    rub(m.materialUnitPrice)
+                  ) : (
+                    '—'
+                  )}
+                </TableCell>
+              )}
               {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{(m.materialUnitPrice * m.specQuantity) > 0 ? rub(m.materialUnitPrice * m.specQuantity) : '—'}</TableCell>}
               {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9' }}>
                 {((m.unitPrice + m.materialUnitPrice) * m.specQuantity) > 0 ? rub((m.unitPrice + m.materialUnitPrice) * m.specQuantity) : '—'}
@@ -2218,6 +2375,9 @@ noOptionsText="Ничего не найдено. Начни вводить на�
 onOpen={() => { if (priceOptions.length === 0) handlePriceSearch(''); }}
 // ⭐ №179: доверяем серверному поиску (он ищет и по цене) — клиентский фильтр по подписи мешал
 filterOptions={(opts) => opts}
+// ⭐ №275: черновики импорта видны серыми и недоступны для выбора
+renderOption={renderPriceOption}
+getOptionDisabled={isDraftPrice}
 renderInput={(params) => (
 <TextField {...params} label="Стоимость работ" placeholder="Название или цена..." />
 )}
@@ -2329,6 +2489,8 @@ renderInput={(params) => (
     onOpen={() => { if (materialOptions.length === 0) handleMaterialPriceSearch(''); }}
     // ⭐ №179: доверяем серверному поиску (он ищет и по цене)
     filterOptions={(opts) => opts}
+    renderOption={renderPriceOption}
+    getOptionDisabled={isDraftPrice}
     renderInput={(params) => (
     <TextField {...params} label="Стоимость материала" placeholder="Название или цена..." />
     )}
@@ -2700,6 +2862,8 @@ textAlign: 'center',
       noOptionsText="Ничего не найдено"
       // ⭐ №179: серверный поиск ищет и по цене — клиентский фильтр не должен его портить
       filterOptions={(opts) => opts}
+      renderOption={renderPriceOption}
+      getOptionDisabled={isDraftPrice}
       renderInput={(params) => (
         <TextField {...params} label="Работы из справочника" placeholder="Название или цена..." />
       )}
@@ -2779,6 +2943,8 @@ getOptionLabel={(o) => `${o.name} — ${(o.price ?? 0).toLocaleString('ru-RU')} 
 noOptionsText="Ничего не найдено"
 onOpen={() => { if (editMaterialOptions.length === 0) handleEditMaterialPriceSearch(''); }}
 filterOptions={(opts) => opts}
+renderOption={renderPriceOption}
+getOptionDisabled={isDraftPrice}
 renderInput={(params) => (
 <TextField {...params} label="Материал из справочника" placeholder="Название или цена..." />
 )}
@@ -2921,6 +3087,88 @@ renderInput={(params) => (
           void refreshMaterials();
         }}
       />
+
+      {/* ⭐ №275: подтверждение правки цены в смете */}
+      <Modal
+        open={Boolean(priceConfirm)}
+        onClose={() => {
+          if (!priceSaving) setPriceConfirm(null);
+        }}
+      >
+        <Paper
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '92%', sm: 440 },
+            p: 3,
+            borderRadius: 2,
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Изменить цену {priceConfirm?.side === 'work' ? 'работы' : 'материала'}?
+          </Typography>
+          {priceConfirm && (
+            <>
+              <Typography sx={{ mb: 1 }}>{priceConfirm.material.name}</Typography>
+              <Typography sx={{ mb: 2 }}>
+                {(priceConfirm.side === 'work'
+                  ? priceConfirm.material.unitPrice
+                  : priceConfirm.material.materialUnitPrice
+                ).toLocaleString('ru-RU')}{' '}
+                ₽ → <b>{priceConfirm.value.toLocaleString('ru-RU')} ₽</b>
+                {' за '}
+                {UNIT_OPTIONS.find((u) => u.value === priceConfirm.material.unit)?.label ||
+                  priceConfirm.material.unit}
+              </Typography>
+              {priceConfirm.material.totalUsed > 0 && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  В строке зафиксировано {priceConfirm.material.totalUsed}{' '}
+                  {UNIT_OPTIONS.find((u) => u.value === priceConfirm.material.unit)?.label || ''}.
+                  Фактическая стоимость строки изменится:{' '}
+                  {rub(
+                    (priceConfirm.side === 'work'
+                      ? priceConfirm.material.unitPrice
+                      : priceConfirm.material.materialUnitPrice) * priceConfirm.material.totalUsed,
+                  )}{' '}
+                  → {rub(priceConfirm.value * priceConfirm.material.totalUsed)}.
+                </Alert>
+              )}
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={priceConfirm.alsoCatalog}
+                    onChange={(e) =>
+                      setPriceConfirm({ ...priceConfirm, alsoCatalog: e.target.checked })
+                    }
+                    disabled={
+                      priceSaving ||
+                      (priceConfirm.side === 'work'
+                        ? priceConfirm.material.priceItemId == null
+                        : priceConfirm.material.materialItemId == null)
+                    }
+                  />
+                }
+                label={`Изменить цену и в справочнике${
+                  priceCatalogName ? ` «${priceCatalogName}»` : ''
+                }`}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                По умолчанию меняется только эта смета — база цен остаётся прежней.
+              </Typography>
+            </>
+          )}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button onClick={() => setPriceConfirm(null)} disabled={priceSaving}>
+              Отмена
+            </Button>
+            <Button variant="contained" onClick={() => void handlePriceSave()} disabled={priceSaving}>
+              {priceSaving ? 'Сохраняем…' : 'Сохранить'}
+            </Button>
+          </Box>
+        </Paper>
+      </Modal>
     </Box>
   );
 };

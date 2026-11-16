@@ -49,8 +49,23 @@ describe('PriceListService — поиск в справочнике проект
 
     const where = prisma.priceItem.findMany.mock.calls[0][0].where;
     expect(where.AND).toContainEqual({ catalogId: 5 });
-    expect(where.AND.some((c: any) => 'OR' in c)).toBe(false);
+    // ⭐ №275: OR теперь есть — для черновиков импорта (isActive=false + needsClarification).
+    // Проверяем, что owner-фильтра (как в общем поиске) здесь нет.
+    expect(
+      where.AND.some((c: any) => 'OR' in c && JSON.stringify(c).includes('ownerId')),
+    ).toBe(false);
     expect(prisma.project.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('⭐ №275: в справочнике проекта ищем и черновики (единица не уточнена)', async () => {
+    prisma.priceCatalog.findUnique.mockResolvedValue({ ownerId: 7 });
+
+    await service.searchItems(undefined, undefined, 'WORK', 7, 5);
+
+    const where = prisma.priceItem.findMany.mock.calls[0][0].where;
+    expect(where.AND).toContainEqual({
+      OR: [{ isActive: true }, { isActive: false, needsClarification: true }],
+    });
   });
 
   it('системный справочник доступен всем участникам', async () => {

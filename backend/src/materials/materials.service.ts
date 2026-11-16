@@ -615,6 +615,11 @@ export class MaterialsService {
 
   // ✏️ Полное редактирование (смена расценок работы и материала)
   async update(id: number, dto: UpdateMaterialDto, userId?: number) {
+    // ⭐ №275: цены «до» для журнала изменений (правка цены прямо в строке).
+    // Объект-контейнер: присваивание внутри транзакции не должно сужать тип снаружи.
+    const priceBeforeRef: {
+      value: { unitPrice: number; materialUnitPrice: number } | null;
+    } = { value: null };
     // ⭐ Проверка доступа через ObjectAccess (запоминаем access)
     let access: MaterialAccess | null = null;
     if (userId) {
@@ -630,6 +635,13 @@ export class MaterialsService {
         dto.priceItemId === null ? undefined : dto.priceItemId,
         dto.materialItemId === null ? undefined : dto.materialItemId,
       ]);
+      // ⭐ №275: править цену строки может только тот, кто видит деньги
+      if (
+        this.mustHidePrices(access) &&
+        (dto.workPrice !== undefined || dto.materialPrice !== undefined)
+      ) {
+        throw new ForbiddenException('Вам скрыты цены — менять цену строки нельзя');
+      }
     }
 
     // 🔒 P1-2 (гонки): вся логика внутри транзакции с SELECT ... FOR UPDATE на
@@ -653,6 +665,10 @@ export class MaterialsService {
           FROM "materials" WHERE id = ${id} FOR UPDATE`;
 
       if (!material) throw new NotFoundException('Материал не найден');
+      priceBeforeRef.value = {
+        unitPrice: Number(material.unitPrice),
+        materialUnitPrice: Number(material.materialUnitPrice),
+      };
 
       // 🔒 Спецификация заблокирована — менять specQuantity нельзя (409 Conflict).
       // Если клиент прислал то же значение — это не изменение, блокировать не нужно.
@@ -719,6 +735,11 @@ export class MaterialsService {
         }
       }
 
+      // ⭐ №275: цена, введённая в строке сметы, перекрывает расценку.
+      // Это снапшот строки: справочник не меняется (для него есть отдельная правка).
+      if (dto.workPrice !== undefined) unitPrice = dto.workPrice;
+      if (dto.materialPrice !== undefined) materialUnitPrice = dto.materialPrice;
+
       // ⭐ totalCost / materialTotalCost — от ЗАБЛОКИРОВАННОГО totalUsed
       const totalUsed = Number(material.totalUsed);
       const newSpecQty = dto.specQuantity ?? Number(material.specQuantity);
@@ -745,6 +766,21 @@ export class MaterialsService {
         include: MATERIAL_INCLUDE,
       });
     });
+
+    // ⭐ №275: журнал правки цены строки (в справочнике цена не менялась)
+    const priceBefore = priceBeforeRef.value;
+    if (userId && priceBefore) {
+      const after = {
+        unitPrice: Number(updated.unitPrice),
+        materialUnitPrice: Number(updated.materialUnitPrice),
+      };
+      if (
+        after.unitPrice !== priceBefore.unitPrice ||
+        after.materialUnitPrice !== priceBefore.materialUnitPrice
+      ) {
+        await this.audit.log(userId, 'material', id, 'price_change', priceBefore, after);
+      }
+    }
     return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
   }
 

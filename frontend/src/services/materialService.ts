@@ -200,6 +200,9 @@ export const updateMaterial = async (
     note?: string;
     priceItemId?: number | null;
     materialItemId?: number | null;
+    // ⭐ №275: цена прямо в смете — меняет только строку (снапшот)
+    workPrice?: number;
+    materialPrice?: number;
   }
 ): Promise<MaterialData> => {
   const response = await api.patch(`/materials/${materialId}`, data);
