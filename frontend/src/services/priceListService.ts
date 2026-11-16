@@ -41,6 +41,9 @@ export interface PriceCatalogData {
   projectsCount: number;
   // ⭐ №164: область справочника и права
   scope?: 'system' | 'object' | 'project' | 'personal';
+  // ⭐ №274: «моя рабочая база» (одна на пользователя) и вид справочника
+  isDefault?: boolean;
+  kind?: 'SYSTEM' | 'USER';
   objectId?: number | null;
   objectName?: string | null;
   projectId?: number | null;

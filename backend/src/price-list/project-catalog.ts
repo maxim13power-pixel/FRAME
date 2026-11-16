@@ -1,124 +1,12 @@
 // backend/src/price-list/project-catalog.ts
-// ⭐ Справочник проекта — единственная рабочая база цен проекта.
-// Каталоги цен (демо/личный/общий) — только библиотеки-источники; при создании
-// проекта их активные позиции КОПИРУЮТСЯ в новый справочник проекта.
-import { PriceCatalog, PriceItem, PriceKind, Prisma, Unit } from '@prisma/client';
+// ⭐ Поиск/создание расценки для строки сметы.
+// ⭐ №274 (§117): справочник проекта — это ССЫЛКА на рабочую базу (см. working-catalog.ts),
+// копий позиций больше нет.
+import { PriceItem, PriceKind, Prisma, Unit } from '@prisma/client';
 import { unitsInFamily } from '../imports/unit-normalizer'; // ⭐ №272: «м» и «пог. м» совместимы
+import { ensureProjectCatalog } from './working-catalog';
 
-export const PROJECT_CATALOG_PREFIX = 'Справочник проекта';
 export const DEFAULT_PRICE_CATEGORY = 'Разное';
-
-export function projectCatalogName(projectName: string): string {
-  const name = projectName.trim() || 'Проект';
-  return `${PROJECT_CATALOG_PREFIX} «${name.slice(0, 60)}»`;
-}
-
-/** Создать отдельный справочник проекта (owner = создатель проекта). */
-export async function createProjectCatalog(
-  tx: Prisma.TransactionClient,
-  opts: {
-    projectName: string;
-    ownerId: number;
-    sourceCatalogId?: number | null;
-  },
-): Promise<PriceCatalog> {
-  const catalog = await tx.priceCatalog.create({
-    data: {
-      name: projectCatalogName(opts.projectName),
-      ownerId: opts.ownerId,
-    },
-  });
-
-  if (opts.sourceCatalogId) {
-    const source = await tx.priceCatalog.findUnique({
-      where: { id: opts.sourceCatalogId },
-      include: { items: { where: { isActive: true } } },
-    });
-    if (source && source.items.length > 0) {
-      await tx.priceItem.createMany({
-        data: source.items.map((item) => ({
-          ownerId: opts.ownerId,
-          catalogId: catalog.id,
-          name: item.name,
-          article: item.article,
-          unit: item.unit,
-          price: item.price,
-          categoryId: item.categoryId,
-          kind: item.kind,
-          isActive: true,
-        })),
-      });
-    }
-  }
-  return catalog;
-}
-
-/** Копия каталога с картой «старый Item.id → новый Item.id» (для копии объекта). */
-export async function copyCatalogWithMap(
-  tx: Prisma.TransactionClient,
-  opts: {
-    projectName: string;
-    ownerId: number;
-    sourceCatalogId?: number | null;
-  },
-): Promise<{ catalog: PriceCatalog; idMap: Map<number, number> }> {
-  const catalog = await tx.priceCatalog.create({
-    data: { name: projectCatalogName(opts.projectName), ownerId: opts.ownerId },
-  });
-  const idMap = new Map<number, number>();
-  if (opts.sourceCatalogId) {
-    const sourceItems = await tx.priceItem.findMany({
-      where: { catalogId: opts.sourceCatalogId, isActive: true },
-    });
-    for (const item of sourceItems) {
-      const created = await tx.priceItem.create({
-        data: {
-          ownerId: opts.ownerId,
-          catalogId: catalog.id,
-          name: item.name,
-          article: item.article,
-          unit: item.unit,
-          price: item.price,
-          categoryId: item.categoryId,
-          kind: item.kind,
-          isActive: true,
-        },
-        select: { id: true },
-      });
-      idMap.set(item.id, created.id);
-    }
-  }
-  return { catalog, idMap };
-}
-
-/** Старый проект без своего справочника (переходный период). */
-export async function ensureProjectCatalog(
-  tx: Prisma.TransactionClient,
-  projectId: number,
-  userId: number,
-): Promise<{ id: number; name: string; ownerId: number | null }> {
-  const project = await tx.project.findUnique({
-    where: { id: projectId },
-    select: {
-      id: true,
-      name: true,
-      catalogId: true,
-      catalog: { select: { id: true, name: true, ownerId: true } },
-    },
-  });
-  if (!project) throw new Error('Проект не найден');
-  if (project.catalog) return project.catalog;
-
-  const catalog = await createProjectCatalog(tx, {
-    projectName: project.name,
-    ownerId: userId,
-  });
-  await tx.project.update({
-    where: { id: projectId },
-    data: { catalogId: catalog.id },
-  });
-  return { id: catalog.id, name: catalog.name, ownerId: catalog.ownerId };
-}
 
 const norm = (value?: string | null) =>
   (value ?? '')

@@ -135,13 +135,16 @@ export class PriceListService {
 
     return catalogs.map((c) => {
       const isSystem = c.ownerId === null;
+      // ⭐ №274: рабочая база остаётся «личной», даже если привязана к проектам
       const scope: 'system' | 'object' | 'project' | 'personal' = isSystem
         ? 'system'
-        : c.projects.length > 0
-          ? 'project'
-          : c.objects.length > 0
-            ? 'object'
-            : 'personal';
+        : c.isDefault
+          ? 'personal'
+          : c.projects.length > 0
+            ? 'project'
+            : c.objects.length > 0
+              ? 'object'
+              : 'personal';
       const canWrite =
         isAdmin ||
         (!!userId && c.ownerId === userId) ||
@@ -157,6 +160,9 @@ export class PriceListService {
         ownerId: c.ownerId,
         isSystem,
         scope,
+        // ⭐ №274: «моя рабочая база» — одна на владельца
+        isDefault: c.isDefault,
+        kind: c.kind,
         objectId: c.objects[0]?.id ?? null,
         objectName: c.objects[0]?.name ?? null,
         projectId: c.projects[0]?.id ?? null,

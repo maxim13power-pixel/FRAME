@@ -18,7 +18,8 @@ import {
   resolveObjectRole,
   resolveProjectAccess,
 } from '../auth/access-scope'; // ⭐ №163, №193, №204
-import { createProjectCatalog } from '../price-list/project-catalog';
+import { ensureWorkingCatalog } from '../price-list/working-catalog'; // ⭐ №274
+import { loadCatalogAccess } from '../price-list/catalog-access';
 
 @Injectable()
 export class ProjectsService {
@@ -158,26 +159,28 @@ export class ProjectsService {
       );
     }
 
-    // ⭐ №271: выбор каталога при создании — это ИСТОЧНИК стартовых цен.
-    // Сам проект получает отдельный справочник; цены копируются, а не шарятся.
-    const sourceCatalogId =
-      dto.catalogId != null
-        ? await this.resolveCatalogId(dto.catalogId, userId)
-        : null;
+    // ⭐ №274 (§117): выбранный справочник — это ПРИВЯЗКА проекта, а не источник копии.
+    // Не выбран → рабочая база создателя. Копий позиций нет: цены общие.
+    const explicitCatalogId =
+      dto.catalogId != null ? await this.resolveCatalogId(dto.catalogId, userId) : null;
+    if (explicitCatalogId != null) {
+      const catalogAccess = await loadCatalogAccess(this.prisma, explicitCatalogId, userId);
+      if (!catalogAccess?.canWrite) {
+        throw new ForbiddenException(
+          'Нет прав на изменение цен выбранного справочника — выберите свою базу',
+        );
+      }
+    }
 
     return this.prisma.$transaction(async (tx) => {
-      const catalog = await createProjectCatalog(tx, {
-        projectName: dto.name,
-        ownerId: userId,
-        sourceCatalogId,
-      });
+      const catalogId = explicitCatalogId ?? (await ensureWorkingCatalog(tx, userId)).id;
       return tx.project.create({
         data: {
           name: dto.name.trim(),
           startDate,
           endDate,
           objectId: dto.objectId,
-          catalogId: catalog.id,
+          catalogId,
           note: dto.note || null,
         },
         include: { catalog: { select: { id: true, name: true } } },
@@ -390,13 +393,25 @@ export class ProjectsService {
     if (userId) {
       await this.assertObjectCardAccess(id, userId, 'write');
     }
-    // ⭐ №158: смена справочника проекта (undefined = не трогаем, null = отвязать)
-    const nextCatalogId =
-      dto.catalogId === undefined
-        ? undefined
-        : dto.catalogId === null
-          ? null
-          : await this.resolveCatalogId(dto.catalogId, userId);
+    // ⭐ №274: смена справочника проекта. `null` → рабочая база автора изменения:
+    // отвязывать проект от цен нельзя, у сметы всегда должен быть источник.
+    let nextCatalogId: number | undefined;
+    if (dto.catalogId !== undefined) {
+      if (dto.catalogId === null) {
+        nextCatalogId = userId ? (await ensureWorkingCatalog(this.prisma, userId)).id : undefined;
+      } else {
+        const resolved = await this.resolveCatalogId(dto.catalogId, userId);
+        const access = userId
+          ? await loadCatalogAccess(this.prisma, resolved, userId)
+          : null;
+        if (!access?.canWrite) {
+          throw new ForbiddenException(
+            'Нет прав на изменение цен выбранного справочника — выберите свою базу',
+          );
+        }
+        nextCatalogId = resolved;
+      }
+    }
     await this.prisma.project.update({
       where: { id },
       data: {

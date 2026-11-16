@@ -21,7 +21,7 @@ import { RequestCodeDto } from './dto/request-code.dto'; // ⭐ №122b
 import { VerifyEmailDto } from './dto/verify.dto'; // ⭐ №122b
 import * as crypto from 'crypto'; // ⭐ P0-4
 import { AccessRole, Unit } from '@prisma/client'; // ⭐ №127 онбординг
-import { createProjectCatalog } from '../price-list/project-catalog'; // ⭐ №271
+import { ensureWorkingCatalog } from '../price-list/working-catalog'; // ⭐ №274
 
 // ⭐ №210: код подтверждения израсходован (двойной клик/повторная отправка формы).
 // Текст вынесен наружу — его проверяет спека регистрации.
@@ -526,15 +526,23 @@ export class AuthService {
     const normName = (s: string) => s.toLowerCase().replace(/ё/g, 'е').trim();
 
     await this.prismaService.$transaction(async (tx) => {
-      // ⭐ №220: личная копия демо-справочника (названия остаются, цены юзер меняет под себя)
-      let demoCatalogId: number | null = null;
+      // ⭐ №274 (§117): ОДНА рабочая база на пользователя. Демо-справочник — образец,
+      // копию делаем один раз; проекты ссылаются на неё, своих каталогов не создают.
       const sourceItems = demoCatalog?.items ?? [];
+      let workingCatalogId: number;
       if (demoCatalog) {
         const copy = await tx.priceCatalog.create({
-          data: { name: DEMO_CATALOG_COPY_NAME, ownerId: userId },
+          data: {
+            name: DEMO_CATALOG_COPY_NAME,
+            ownerId: userId,
+            kind: 'USER',
+            isDefault: true,
+            templateId: demoCatalog.id,
+            templateVersion: 1,
+          },
           select: { id: true },
         });
-        demoCatalogId = copy.id;
+        workingCatalogId = copy.id;
         if (sourceItems.length > 0) {
           await tx.priceItem.createMany({
             data: sourceItems.map((i) => ({
@@ -549,6 +557,21 @@ export class AuthService {
             })),
           });
         }
+      } else {
+        workingCatalogId = (await ensureWorkingCatalog(tx, userId)).id;
+      }
+
+      // индексы названий строим один раз на всю рабочую базу
+      const workingItems = await tx.priceItem.findMany({
+        where: { catalogId: workingCatalogId },
+        select: { id: true, name: true, price: true, kind: true },
+      });
+      const workByName = new Map<string, { id: number; price: number }>();
+      const matByName = new Map<string, { id: number; price: number }>();
+      for (const item of workingItems) {
+        const entry = { id: item.id, price: Number(item.price) };
+        if (item.kind === 'WORK') workByName.set(normName(item.name), entry);
+        else matByName.set(normName(item.name), entry);
       }
       // расценки для демо-позиций — уже из ЛИЧНОЙ копии
       const object = await tx.object.create({
@@ -567,32 +590,14 @@ export class AuthService {
       });
 
       for (const p of demoTemplate) {
-        // ⭐ №271: у каждого демо-проекта свой справочник (копия демо-каталога),
-        // чтобы цены проектов не были связаны между собой.
-        const projectCatalog = await createProjectCatalog(tx, {
-          projectName: p.name,
-          ownerId: userId,
-          sourceCatalogId: demoCatalogId,
-        });
-        const copiedItems = await tx.priceItem.findMany({
-          where: { catalogId: projectCatalog.id },
-          select: { id: true, name: true, price: true, kind: true },
-        });
-        const workByName = new Map<string, { id: number; price: number }>();
-        const matByName = new Map<string, { id: number; price: number }>();
-        for (const item of copiedItems) {
-          const entry = { id: item.id, price: Number(item.price) };
-          if (item.kind === 'WORK') workByName.set(normName(item.name), entry);
-          else matByName.set(normName(item.name), entry);
-        }
-
+        // ⭐ №274: все демо-проекты работают с одной рабочей базой
         const project = await tx.project.create({
           data: {
             name: p.name,
             startDate: dayAgo(14),
             endDate: end,
             objectId: object.id,
-            catalogId: projectCatalog.id,
+            catalogId: workingCatalogId,
           },
         });
         for (const m of p.materials) {

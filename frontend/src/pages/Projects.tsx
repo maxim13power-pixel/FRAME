@@ -436,6 +436,10 @@ const handleCancelAccessRequest = async () => {
     setNewStartDate(currentObject?.startDate.slice(0, 10) ?? '');
     setNewEndDate(currentObject?.endDate.slice(0, 10) ?? '');
     loadTemplates();
+    // ⭐ №274: по умолчанию — моя рабочая база цен
+    const preferred =
+      catalogs.find((c) => c.isDefault) ?? catalogs.find((c) => c.scope !== 'system');
+    setNewCatalogId(preferred?.id ?? '');
   };
   const handleCloseAddModal = () => {
     setAddModalOpen(false);
@@ -1333,21 +1337,22 @@ onBack: goBack,
       )}
       {!hideFinance && (
         <FormControl fullWidth>
-          <InputLabel id="project-catalog-label">Взять стартовые цены из</InputLabel>
+          <InputLabel id="project-catalog-label">Справочник цен проекта</InputLabel>
           <Select
             labelId="project-catalog-label"
-            label="Взять стартовые цены из"
+            label="Справочник цен проекта"
             value={newCatalogId}
             onChange={(e) => setNewCatalogId(e.target.value as CatalogSelectValue)}
           >
             <MenuItem value="">
-              <em>Не копировать — начать с пустого</em>
+              <em>Моя база по умолчанию</em>
             </MenuItem>
             {catalogs
-              .filter((c) => c.scope !== 'project')
+              .filter((c) => c.scope !== 'system')
               .map((c) => (
                 <MenuItem key={c.id} value={c.id}>
-                  {c.name}{c.isSystem ? ' (демо)' : ''}
+                  {c.name}
+                  {c.isDefault ? ' — моя база' : ''}
                   {c.scope === 'object' ? ' (объект)' : ''}
                 </MenuItem>
               ))}
@@ -1356,8 +1361,8 @@ onBack: goBack,
       )}
       {!hideFinance && (
         <Typography variant="caption" color="text.secondary">
-          Будет создан отдельный справочник проекта. Выбранные цены скопируются в него;
-          изменения в источнике на проект не повлияют.
+          Проект работает с выбранной базой цен: новые материалы и расценки попадают в неё.
+          Копий не создаётся — изменить выбор можно в карточке проекта.
         </Typography>
       )}
 

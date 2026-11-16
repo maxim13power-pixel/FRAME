@@ -23,7 +23,7 @@ import { EstimateParserService } from './estimate-parser.service';
 import { matchRow } from './price-matcher';
 import { articleHasCyrillic, normalizeText, parseNumberRu } from './name-normalizer';
 import { normalizeUnit } from './unit-normalizer';
-import { ensureProjectCatalog } from '../price-list/project-catalog'; // ⭐ №271
+import { ensureProjectCatalog } from '../price-list/working-catalog'; // ⭐ №274
 import type { CatalogItem, ParsedEstimate, PreviewPayload, PreviewRow } from './imports.types';
 
 export interface PreviewInput {
