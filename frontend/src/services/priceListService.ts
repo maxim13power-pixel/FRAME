@@ -414,3 +414,57 @@ export const resolvePriceClarifications = async (
   return response.data;
 };
 
+// ============================================================
+// ⭐ №278 (§122): «Обновить из образца»
+// ============================================================
+
+export interface TemplateUpdateRow {
+  templateItemId: number;
+  itemId: number | null;
+  action: 'add' | 'price';
+  name: string;
+  unit: string;
+  kind: PriceImportKind;
+  oldPrice: number | null;
+  newPrice: number;
+}
+
+export interface TemplateUpdatePreview {
+  available: boolean;
+  catalog: {
+    id: number;
+    name: string;
+    ownerId: number | null;
+    templateId: number | null;
+    templateVersion: number | null;
+  };
+  template: { id: number; name: string; version: number | null };
+  stats: { add: number; price: number };
+  rows: TemplateUpdateRow[];
+}
+
+export interface TemplateUpdateResult {
+  added: number;
+  updatedPrices: number;
+  templateVersion: number | null;
+  message: string;
+}
+
+/** Что нового в образце (ничего не меняет) */
+export const fetchTemplateUpdate = async (
+  catalogId: number,
+): Promise<TemplateUpdatePreview> => {
+  const response = await api.get(`/price-list/catalogs/${catalogId}/template-update`);
+  return response.data;
+};
+
+/** Применить обновление: только новые позиции или ещё и цены */
+export const applyTemplateUpdate = async (
+  catalogId: number,
+  mode: 'missing' | 'all',
+): Promise<TemplateUpdateResult> => {
+  const response = await api.post(`/price-list/catalogs/${catalogId}/template-update`, { mode });
+  return response.data;
+};
+
+

@@ -451,6 +451,9 @@ const MATERIAL_CATALOG: Record<string, Item[]> = {
   ],
 };
 
+/** Версия датасета. При обновлении цен/состава — увеличить (и в auth при онбординге). */
+export const PRICE_TEMPLATE_VERSION = 1;
+
 /** Легаси-префикс старого демо-справочника */
 const LEGACY_PREFIX = '[DEMO] ';
 
@@ -492,6 +495,13 @@ export async function seedSystemPriceCatalog(
     }));
   if (catalog.kind !== 'SYSTEM') {
     await prisma.priceCatalog.update({ where: { id: catalog.id }, data: { kind: 'SYSTEM' } });
+  }
+  // ⭐ №278: версия образца — по ней «Обновить из образца» видит, что есть новое
+  if (catalog.templateVersion !== PRICE_TEMPLATE_VERSION) {
+    await prisma.priceCatalog.update({
+      where: { id: catalog.id },
+      data: { templateVersion: PRICE_TEMPLATE_VERSION },
+    });
   }
 
   // 1. «[DEMO] X» → «X»

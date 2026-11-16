@@ -56,6 +56,7 @@ import {
   fetchPriceCatalogs,
   downloadPriceTemplate,
   fetchPriceClarifications,
+  fetchTemplateUpdate,
   createCategory,
   updateCategory,
   deleteCategory,
@@ -67,6 +68,8 @@ import type { PriceCategoryData, PriceCatalogData, PriceItemData } from '../serv
 import PriceCatalogList from '../components/PriceCatalogList';
 import { PriceImportDialog } from '../components/PriceImportDialog';
 import { PriceClarificationsDialog } from '../components/PriceClarificationsDialog';
+import { PriceTemplateUpdateDialog } from '../components/PriceTemplateUpdateDialog';
+import type { TemplateUpdatePreview } from '../services/priceListService';
 import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import { getApiErrorText } from '../utils/errors';
 
@@ -141,6 +144,9 @@ const PriceListInner: React.FC = () => {
   const [clarifyOpen, setClarifyOpen] = useState(false);
   const [draftCount, setDraftCount] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
+  // ⭐ №278: что нового в образце (баннер + диалог)
+  const [templateUpdate, setTemplateUpdate] = useState<TemplateUpdatePreview | null>(null);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
 
   const loadDrafts = useCallback(async () => {
     if (!catalogId) {
@@ -172,6 +178,25 @@ const PriceListInner: React.FC = () => {
     setReloadKey((key) => key + 1);
     await loadDrafts();
   }, [loadDrafts]);
+
+  // ⭐ №278: проверяем, не обновился ли образец (тихо: у справочника может не быть templateId)
+  useEffect(() => {
+    let alive = true;
+    if (!catalogId) {
+      setTemplateUpdate(null);
+      return;
+    }
+    fetchTemplateUpdate(catalogId)
+      .then((data) => {
+        if (alive) setTemplateUpdate(data.available ? data : null);
+      })
+      .catch(() => {
+        if (alive) setTemplateUpdate(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [catalogId, reloadKey]);
 
   // Настройки категории (шестерёнка): переименование + защищённое удаление
   const [catSettingsOpen, setCatSettingsOpen] = useState(false);
@@ -613,6 +638,22 @@ const PriceListInner: React.FC = () => {
         >
           Есть позиции без единицы измерения: {draftCount}. Они серые и не попадают в смету, пока
           единица не выбрана.
+        </Alert>
+      )}
+
+      {/* ⭐ №278: образец обновился — предложить подтянуть новые позиции и цены */}
+      {templateUpdate && (
+        <Alert
+          severity="info"
+          sx={{ mb: 2 }}
+          action={
+            <Button color="inherit" size="small" onClick={() => setTemplateDialogOpen(true)}>
+              Посмотреть
+            </Button>
+          }
+        >
+          Образец обновился: новых позиций {templateUpdate.stats.add}, изменены цены у{' '}
+          {templateUpdate.stats.price}. Сметы не меняются — обновляется только база цен.
         </Alert>
       )}
 
@@ -1159,6 +1200,12 @@ const PriceListInner: React.FC = () => {
             kind={activeTab}
             onClose={() => setClarifyOpen(false)}
             onResolved={loadDrafts}
+          />
+          <PriceTemplateUpdateDialog
+            open={templateDialogOpen}
+            catalogId={catalogId}
+            onClose={() => setTemplateDialogOpen(false)}
+            onApplied={handleImported}
           />
         </>
       )}

@@ -21,6 +21,7 @@ import { PriceKind, Unit } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { fixMultipartFileName } from '../imports/name-normalizer';
 import { PriceListImportService } from './price-list-import.service';
+import { PriceTemplateUpdateService } from '../price-list/price-template-update.service';
 import type { PriceUnitOverrides } from './price-list-import.types';
 
 interface UploadedXlsx {
@@ -52,7 +53,27 @@ const parseOverrides = (raw: unknown): PriceUnitOverrides => {
 @Controller('price-list')
 @UseGuards(JwtAuthGuard)
 export class PriceListImportController {
-  constructor(private readonly service: PriceListImportService) {}
+  constructor(
+    private readonly service: PriceListImportService,
+    private readonly templateUpdate: PriceTemplateUpdateService,
+  ) {}
+
+  /** ⭐ №278: что нового в образце (превью обновления из образца) */
+  @Get('catalogs/:id/template-update')
+  templateUpdatePreview(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.templateUpdate.preview(id, req.user.userId);
+  }
+
+  /** ⭐ №278: применить обновление из образца (missing | all) */
+  @Post('catalogs/:id/template-update')
+  templateUpdateApply(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { mode?: string },
+    @Req() req,
+  ) {
+    const mode = body?.mode === 'all' ? 'all' : 'missing';
+    return this.templateUpdate.apply(id, req.user.userId, mode);
+  }
 
   /** Скачать шаблон (он же выгрузка текущего справочника) */
   @Get('catalogs/:id/export')

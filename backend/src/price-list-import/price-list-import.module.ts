@@ -6,10 +6,11 @@ import { PriceListModule } from '../price-list/price-list.module';
 import { PriceListImportController } from './price-list-import.controller';
 import { PriceListImportService } from './price-list-import.service';
 import { PriceTemplateService } from './price-template.service';
+import { PriceTemplateUpdateService } from '../price-list/price-template-update.service';
 
 @Module({
   imports: [PrismaModule, PriceListModule],
   controllers: [PriceListImportController],
-  providers: [PriceListImportService, PriceTemplateService],
+  providers: [PriceListImportService, PriceTemplateService, PriceTemplateUpdateService],
 })
 export class PriceListImportModule {}
