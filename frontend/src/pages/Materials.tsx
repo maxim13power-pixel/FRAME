@@ -1729,7 +1729,7 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
       },
     }}
   >
-    Из шаблона
+    Импорт
   </Button>
 )}
 {!isMobile && (
