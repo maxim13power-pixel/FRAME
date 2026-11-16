@@ -21,6 +21,7 @@ import type { MaterialPhotoData, PhotoFeedItem } from '../services/photoService'
 import PhotoViewerDialog from '../components/PhotoViewerDialog'; // ⭐ №230
 import PhotoFeedGalleryDialog from '../components/PhotoFeedGalleryDialog'; // ⭐ №256
 import { parseDecimal } from '../utils/decimal'; // 🔒 P1-3: бэкенд отдаёт Decimal строкой
+import { getApiErrorMessage } from '../utils/errors'; // ⭐ №282: внятная причина сбоя загрузки
 
 // 🔒 Шаг 103 (P1-3): принимаем number | string — Decimal с бэкенда приходит строкой
 const fmtMoney = (v: number | string) =>
@@ -148,7 +149,14 @@ const Home: React.FC = () => {
       setError('');
     } catch (e) {
       console.error(e);
-      setError('Не удалось загрузить сводку');
+      // ⭐ №282: если ответа нет вообще (бэкенд выключен / нет сети) — говорим об этом прямо.
+      // Раньше на экране было «Не удалось загрузить сводку», и причина сбоя была непонятна.
+      const noResponse = !(e as { response?: unknown } | null)?.response;
+      setError(
+        noResponse
+          ? 'Нет связи с сервером. Проверьте подключение и нажмите «Повторить».'
+          : getApiErrorMessage(e, 'Не удалось загрузить сводку'),
+      );
     } finally {
       setLoading(false);
     }
