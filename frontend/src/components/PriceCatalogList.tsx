@@ -398,7 +398,8 @@ const goBack = useBackNavigation('/');
               ),
             }}
           />
-          <FormControl size="small" sx={{ minWidth: 180 }}>
+          {/* ⭐ №287: ширины как в «Объектах» — сортировка 150, кнопки по содержимому */}
+          <FormControl size="small" sx={{ minWidth: 150, flexShrink: 0 }}>
             <InputLabel id="catalog-sort-label">Сортировка</InputLabel>
             <Select
               labelId="catalog-sort-label"
@@ -433,6 +434,7 @@ const goBack = useBackNavigation('/');
                     transition: 'all 0.3s ease',
                   }),
               whiteSpace: 'nowrap',
+              flexShrink: 0,
             }}
           >
             Создать

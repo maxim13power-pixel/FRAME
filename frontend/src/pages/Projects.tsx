@@ -1039,7 +1039,8 @@ onBack: goBack,
             sx={{ flexGrow: 1 }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
           />
-          <FormControl size="small" sx={{ minWidth: 180 }}>
+          {/* ⭐ №287: ширины как в «Объектах» — сортировка 150, кнопки по содержимому */}
+          <FormControl size="small" sx={{ minWidth: 150, flexShrink: 0 }}>
             <InputLabel id="projects-sort-label">Сортировка</InputLabel>
             <Select
               labelId="projects-sort-label"
@@ -1055,7 +1056,7 @@ onBack: goBack,
           </FormControl>
           {/* ⭐ №178: если доступ только к проекту — вместо создания проекта подаём заявку */}
           {!currentObject ? (
-            <Button variant="contained" startIcon={<NoteAddIcon />} disabled sx={{ minWidth: '200px' }}>
+            <Button variant="contained" startIcon={<NoteAddIcon />} disabled sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
               Добавить проект
             </Button>
           ) : canCreateProjects ? (
@@ -1075,8 +1076,8 @@ onBack: goBack,
                       '&:hover': { bgcolor: '#388e3c', borderColor: '#388e3c', transform: 'translateY(-3px)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' },
                       transition: 'all 0.3s ease',
                     }),
-                minWidth: '200px',
                 whiteSpace: 'nowrap',
+                flexShrink: 0,
               }}
             >
               Добавить проект
@@ -1087,7 +1088,7 @@ onBack: goBack,
               color="inherit"
               startIcon={<LockOutlinedIcon />}
               onClick={() => setRequestModalOpen(true)}
-              sx={{ minWidth: '200px', whiteSpace: 'nowrap' }}
+              sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
             >
               {myAccessRequest ? 'Заявка отправлена' : 'Запросить право'}
             </Button>

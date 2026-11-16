@@ -1163,7 +1163,7 @@ trailing: headerTrailing,
           ),
         }}
       />
-      <FormControl size="small" sx={{ minWidth: 150 }}>
+      <FormControl size="small" sx={{ minWidth: 150, flexShrink: 0 }}>
         <InputLabel id="sort-label">Сортировка</InputLabel>
         <Select
           labelId="sort-label"
@@ -1194,6 +1194,7 @@ trailing: headerTrailing,
                 transition: 'all 0.3s ease',
               }),
           whiteSpace: 'nowrap',
+          flexShrink: 0,
         }}
       >
         Добавить объект
