@@ -41,6 +41,21 @@ export async function ensureWorkingCatalog(
 }
 
 /**
+ * Рабочая база пользователя БЕЗ создания (для чтения/предпросмотра):
+ * isDefault → самая наполненная → null. Ничего не пишет.
+ */
+export async function findWorkingCatalog(
+  db: Db,
+  userId: number,
+): Promise<{ id: number; name: string; ownerId: number | null } | null> {
+  return db.priceCatalog.findFirst({
+    where: { ownerId: userId, kind: 'USER', isArchived: false },
+    orderBy: [{ isDefault: 'desc' }, { items: { _count: 'desc' } }, { id: 'asc' }],
+    select: { id: true, name: true, ownerId: true },
+  });
+}
+
+/**
  * Справочник проекта для записи цен.
  * Есть привязка → она; нет (старый проект) → привязываем рабочую базу БЕЗ копии позиций.
  */

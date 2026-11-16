@@ -15,6 +15,7 @@ import { AccessRole, PriceKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertAccessActive, findProjectAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import { loadCatalogAccess } from '../price-list/catalog-access';
+import { findWorkingCatalog } from '../price-list/working-catalog'; // ⭐ №276
 import {
   buildRecalcPlan,
   RecalcMaterialRow,
@@ -41,6 +42,18 @@ const MATERIAL_SELECT = {
 /** Снимок ценовой части строки — то, что откатываем */
 interface PriceSnapshotRow {
   materialId: number;
+  unitPrice: number;
+  materialUnitPrice: number;
+  priceItemId: number | null;
+  materialItemId: number | null;
+  totalCost: number;
+  materialTotalCost: number;
+}
+
+/** Строка материала, заблокированная FOR UPDATE в транзакции пересчёта (№276) */
+interface LockedMaterialRow {
+  id: number;
+  totalUsed: number;
   unitPrice: number;
   materialUnitPrice: number;
   priceItemId: number | null;
@@ -135,8 +148,12 @@ export class EstimateRecalcService {
     });
     if (!project) throw new NotFoundException('Проект не найден');
 
+    // ⭐ №276: явный справочник → привязка проекта → рабочая база пользователя →
+    // (легаси) справочник объекта. Рабочую базу только ЧИТАЕМ: привязка проекта
+    // происходит при записи цен (материалы/импорт/применение пересчёта).
+    const working = await findWorkingCatalog(this.prisma, userId);
     const targetCatalogId =
-      catalogId ?? project.catalogId ?? project.object.catalogId ?? null;
+      catalogId ?? project.catalogId ?? working?.id ?? project.object.catalogId ?? null;
     if (!targetCatalogId) {
       throw new BadRequestException(
         'У проекта не выбран справочник цен — сначала привяжите его в настройках проекта',
@@ -219,7 +236,9 @@ export class EstimateRecalcService {
           ? ('manual' as const)
           : project.catalogId != null
             ? ('project' as const)
-            : ('object' as const),
+            : working?.id === targetCatalogId
+              ? ('personal' as const)
+              : ('object' as const),
       materials,
       plan,
     };
@@ -268,7 +287,6 @@ export class EstimateRecalcService {
     this.assertCanRecalc(ctx.access);
 
     const { plan, catalog } = ctx;
-    const byId = new Map(ctx.materials.map((m) => [m.id, m]));
     const rowsToApply = plan.rows.filter((r) => r.apply);
 
     if (rowsToApply.length === 0) {
@@ -288,82 +306,120 @@ export class EstimateRecalcService {
       };
     }
 
-    const beforeRows: PriceSnapshotRow[] = rowsToApply.map((r) => {
-      const m = byId.get(r.materialId);
-      return {
-        materialId: r.materialId,
-        unitPrice: Number(m?.unitPrice ?? r.work.oldPrice),
-        materialUnitPrice: Number(m?.materialUnitPrice ?? r.material.oldPrice),
-        priceItemId: m?.priceItemId ?? null,
-        materialItemId: m?.materialItemId ?? null,
-        totalCost: Number(m?.totalCost ?? 0),
-        materialTotalCost: Number(m?.materialTotalCost ?? 0),
-      };
-    });
+    // ⭐ №276: строки блокируем FOR UPDATE и считаем от ЗАБЛОКИРОВАННОГО totalUsed.
+    // Иначе параллельная фиксация теряется: пересчёт записал бы totalCost по устаревшему объёму.
+    // Снимок «до» и аудит пишем в той же транзакции — откат должен быть точным.
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        const ids = rowsToApply.map((r) => r.materialId);
+        const locked = await tx.$queryRaw<LockedMaterialRow[]>(Prisma.sql`
+          SELECT id, "totalUsed", "unitPrice", "materialUnitPrice", "priceItemId",
+                 "materialItemId", "totalCost", "materialTotalCost"
+          FROM materials WHERE id IN (${Prisma.join(ids)}) FOR UPDATE
+        `);
+        const lockedById = new Map(locked.map((row) => [row.id, row]));
 
-    const afterRows: PriceSnapshotRow[] = rowsToApply.map((r) => {
-      const used = Number(byId.get(r.materialId)?.totalUsed ?? 0);
-      return {
-        materialId: r.materialId,
-        unitPrice: r.work.newPrice,
-        materialUnitPrice: r.material.newPrice,
-        priceItemId: r.work.itemId,
-        materialItemId: r.material.itemId,
-        totalCost: roundMoney(used * r.work.newPrice),
-        materialTotalCost: roundMoney(used * r.material.newPrice),
-      };
-    });
+        const beforeRows: PriceSnapshotRow[] = [];
+        const afterRows: PriceSnapshotRow[] = [];
+        let skippedFacts = 0;
 
-    // Снимок пишем прямо в транзакции (tx.auditLog, не AuditService):
-    // без записи «до» откат невозможен, поэтому цены и аудит коммитятся вместе.
-    const entry = await this.prisma.$transaction(async (tx) => {
-      for (const row of afterRows) {
-        await tx.material.update({
-          where: { id: row.materialId },
+        for (const row of rowsToApply) {
+          const current = lockedById.get(row.materialId);
+          if (!current) continue; // строку удалили между превью и применением
+          const used = Number(current.totalUsed);
+          // Пока показывали превью, могли появиться фиксации — такую строку не трогаем
+          if (used > 0) {
+            skippedFacts += 1;
+            continue;
+          }
+          beforeRows.push({
+            materialId: row.materialId,
+            unitPrice: Number(current.unitPrice),
+            materialUnitPrice: Number(current.materialUnitPrice),
+            priceItemId: current.priceItemId,
+            materialItemId: current.materialItemId,
+            totalCost: Number(current.totalCost),
+            materialTotalCost: Number(current.materialTotalCost),
+          });
+          afterRows.push({
+            materialId: row.materialId,
+            unitPrice: row.work.newPrice,
+            materialUnitPrice: row.material.newPrice,
+            priceItemId: row.work.itemId,
+            materialItemId: row.material.itemId,
+            totalCost: roundMoney(used * row.work.newPrice),
+            materialTotalCost: roundMoney(used * row.material.newPrice),
+          });
+        }
+
+        if (afterRows.length === 0) {
+          return { entry: null, updated: 0, skippedFacts };
+        }
+
+        // ⭐ №276: старый проект мог быть без привязки — фиксируем базу, в которую пишем
+        if (ctx.project.catalogId == null) {
+          await tx.project.update({
+            where: { id: projectId },
+            data: { catalogId: catalog.id },
+          });
+        }
+
+        for (const row of afterRows) {
+          await tx.material.update({
+            where: { id: row.materialId },
+            data: {
+              unitPrice: row.unitPrice,
+              materialUnitPrice: row.materialUnitPrice,
+              priceItemId: row.priceItemId,
+              materialItemId: row.materialItemId,
+              totalCost: row.totalCost,
+              materialTotalCost: row.materialTotalCost,
+            },
+          });
+        }
+
+        const entry = await tx.auditLog.create({
           data: {
-            unitPrice: row.unitPrice,
-            materialUnitPrice: row.materialUnitPrice,
-            priceItemId: row.priceItemId,
-            materialItemId: row.materialItemId,
-            totalCost: row.totalCost,
-            materialTotalCost: row.materialTotalCost,
+            actorId: userId,
+            entity: 'project',
+            entityId: projectId,
+            action: 'price_recalc',
+            before: {
+              catalogId: catalog.id,
+              catalogName: catalog.name,
+              rows: beforeRows as unknown as Prisma.InputJsonValue,
+            },
+            after: {
+              catalogId: catalog.id,
+              catalogName: catalog.name,
+              updated: afterRows.length,
+              planOld: plan.summary.planOld,
+              planNew: plan.summary.planNew,
+              delta: plan.summary.delta,
+              rows: afterRows as unknown as Prisma.InputJsonValue,
+            },
           },
         });
-      }
-      return tx.auditLog.create({
-        data: {
-          actorId: userId,
-          entity: 'project',
-          entityId: projectId,
-          action: 'price_recalc',
-          before: {
-            catalogId: catalog.id,
-            catalogName: catalog.name,
-            rows: beforeRows as unknown as Prisma.InputJsonValue,
-          },
-          after: {
-            catalogId: catalog.id,
-            catalogName: catalog.name,
-            updated: afterRows.length,
-            planOld: plan.summary.planOld,
-            planNew: plan.summary.planNew,
-            delta: plan.summary.delta,
-            rows: afterRows as unknown as Prisma.InputJsonValue,
-          },
-        },
-      });
-    });
+        return { entry, updated: afterRows.length, skippedFacts };
+      },
+      { timeout: 30_000 },
+    );
 
+    const updated = result.updated;
+    const skipped = result.skippedFacts > 0 ? ` Пропущено с фиксациями: ${result.skippedFacts}.` : '';
     return {
-      updated: afterRows.length,
-      auditId: entry.id,
+      updated,
+      auditId: result.entry?.id ?? null,
       catalog: {
         id: catalog.id,
         name: catalog.name,
         source: ctx.source,
       },
       summary: plan.summary,
-      message: `Пересчитано строк: ${afterRows.length}. Откат — в «Истории пересчётов».`,
+      message:
+        updated === 0
+          ? 'Пока показывали превью, в строках появились фиксации — цены не меняем.'
+          : `Пересчитано строк: ${updated}.${skipped} Откат — в «Истории пересчётов».`,
     };
   }
 

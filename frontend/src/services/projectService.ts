@@ -1,5 +1,5 @@
 // frontend/src/services/projectService.ts
-// ⭐ Шаг 99: все запросы идут через единый api-инстанс — Bearer подставляет интерцептор.
+// в­ђ РЁР°Рі 99: РІСЃРµ Р·Р°РїСЂРѕСЃС‹ РёРґСѓС‚ С‡РµСЂРµР· РµРґРёРЅС‹Р№ api-РёРЅСЃС‚Р°РЅСЃ вЂ” Bearer РїРѕРґСЃС‚Р°РІР»СЏРµС‚ РёРЅС‚РµСЂС†РµРїС‚РѕСЂ.
 import api from './api';
 
 export interface ProjectData {
@@ -13,32 +13,32 @@ export interface ProjectData {
   totalCost?: number;
   createdAt?: string;
   updatedAt?: string;
-  // ⭐ №158: привязка справочника цен — новые строки сметы берут цены из него
+  // в­ђ в„–158: РїСЂРёРІСЏР·РєР° СЃРїСЂР°РІРѕС‡РЅРёРєР° С†РµРЅ вЂ” РЅРѕРІС‹Рµ СЃС‚СЂРѕРєРё СЃРјРµС‚С‹ Р±РµСЂСѓС‚ С†РµРЅС‹ РёР· РЅРµРіРѕ
   catalogId?: number | null;
   catalog?: { id: number; name: string } | null;
-  // ⭐ №164: действующий справочник = свой проекта → справочник объекта → нет
+  // в­ђ в„–164: РґРµР№СЃС‚РІСѓСЋС‰РёР№ СЃРїСЂР°РІРѕС‡РЅРёРє = СЃРІРѕР№ РїСЂРѕРµРєС‚Р° в†’ СЃРїСЂР°РІРѕС‡РЅРёРє РѕР±СЉРµРєС‚Р° в†’ РЅРµС‚
   effectiveCatalogId?: number | null;
   effectiveCatalogName?: string | null;
   catalogSource?: 'project' | 'object' | null;
-  // ⭐ №158: сколько строк уже в смете (нужно для предупреждения при смене справочника)
+  // в­ђ в„–158: СЃРєРѕР»СЊРєРѕ СЃС‚СЂРѕРє СѓР¶Рµ РІ СЃРјРµС‚Рµ (РЅСѓР¶РЅРѕ РґР»СЏ РїСЂРµРґСѓРїСЂРµР¶РґРµРЅРёСЏ РїСЂРё СЃРјРµРЅРµ СЃРїСЂР°РІРѕС‡РЅРёРєР°)
   materialsCount?: number;
-  // ⭐ №188: права на проект — для серых кнопок в меню действий
-  // (флаг revoked убран в №193: отозванный доступ проект не получает вовсе)
+  // в­ђ в„–188: РїСЂР°РІР° РЅР° РїСЂРѕРµРєС‚ вЂ” РґР»СЏ СЃРµСЂС‹С… РєРЅРѕРїРѕРє РІ РјРµРЅСЋ РґРµР№СЃС‚РІРёР№
+  // (С„Р»Р°Рі revoked СѓР±СЂР°РЅ РІ в„–193: РѕС‚РѕР·РІР°РЅРЅС‹Р№ РґРѕСЃС‚СѓРї РїСЂРѕРµРєС‚ РЅРµ РїРѕР»СѓС‡Р°РµС‚ РІРѕРІСЃРµ)
   canWrite?: boolean;
   canManage?: boolean;
-  // ⭐ №244: карточка проекта (переименование/даты/заметка) и удаление —
-  // это права на ВЕСЬ объект, участнику одного проекта они не выдаются
+  // в­ђ в„–244: РєР°СЂС‚РѕС‡РєР° РїСЂРѕРµРєС‚Р° (РїРµСЂРµРёРјРµРЅРѕРІР°РЅРёРµ/РґР°С‚С‹/Р·Р°РјРµС‚РєР°) Рё СѓРґР°Р»РµРЅРёРµ вЂ”
+  // СЌС‚Рѕ РїСЂР°РІР° РЅР° Р’Р•РЎР¬ РѕР±СЉРµРєС‚, СѓС‡Р°СЃС‚РЅРёРєСѓ РѕРґРЅРѕРіРѕ РїСЂРѕРµРєС‚Р° РѕРЅРё РЅРµ РІС‹РґР°СЋС‚СЃСЏ
   canEditCard?: boolean;
   canDeleteCard?: boolean;
-  // ⭐ №249: личный архив проекта + отложенное удаление
+  // в­ђ в„–249: Р»РёС‡РЅС‹Р№ Р°СЂС…РёРІ РїСЂРѕРµРєС‚Р° + РѕС‚Р»РѕР¶РµРЅРЅРѕРµ СѓРґР°Р»РµРЅРёРµ
   hiddenForMe?: boolean;
   deleteAfter?: string | null;
   deleteRequestedAt?: string | null;
   deleteRequestedBy?: number | null;
 }
 
-// ⭐ №172: opts.includeHidden — вернуть проекты объекта, даже если он в личном
-// архиве (карточка бригады: выбор проекта ограничен объектом бригады).
+// в­ђ в„–172: opts.includeHidden вЂ” РІРµСЂРЅСѓС‚СЊ РїСЂРѕРµРєС‚С‹ РѕР±СЉРµРєС‚Р°, РґР°Р¶Рµ РµСЃР»Рё РѕРЅ РІ Р»РёС‡РЅРѕРј
+// Р°СЂС…РёРІРµ (РєР°СЂС‚РѕС‡РєР° Р±СЂРёРіР°РґС‹: РІС‹Р±РѕСЂ РїСЂРѕРµРєС‚Р° РѕРіСЂР°РЅРёС‡РµРЅ РѕР±СЉРµРєС‚РѕРј Р±СЂРёРіР°РґС‹).
 export const fetchProjectsByObject = async (
   objectId: number,
   opts: { includeHidden?: boolean } = {},
@@ -64,7 +64,7 @@ export const deleteProject = async (id: number) => {
   return response.data;
 };
 
-/** ⭐ №249: личный архив проекта — скрыть/показать только у себя. */
+/** в­ђ в„–249: Р»РёС‡РЅС‹Р№ Р°СЂС…РёРІ РїСЂРѕРµРєС‚Р° вЂ” СЃРєСЂС‹С‚СЊ/РїРѕРєР°Р·Р°С‚СЊ С‚РѕР»СЊРєРѕ Сѓ СЃРµР±СЏ. */
 export const setProjectHidden = async (
   projectId: number,
   isHidden: boolean,
@@ -73,7 +73,7 @@ export const setProjectHidden = async (
   return response.data;
 };
 
-/** ⭐ №249: удаление проекта через 30 дней (только админ объекта). */
+/** в­ђ в„–249: СѓРґР°Р»РµРЅРёРµ РїСЂРѕРµРєС‚Р° С‡РµСЂРµР· 30 РґРЅРµР№ (С‚РѕР»СЊРєРѕ Р°РґРјРёРЅ РѕР±СЉРµРєС‚Р°). */
 export const scheduleProjectDeletion = async (
   projectId: number,
 ): Promise<{ deleteAfter: string; daysLeft: number }> => {
@@ -81,7 +81,7 @@ export const scheduleProjectDeletion = async (
   return response.data;
 };
 
-/** ⭐ №249: отменить запланированное удаление проекта. */
+/** в­ђ в„–249: РѕС‚РјРµРЅРёС‚СЊ Р·Р°РїР»Р°РЅРёСЂРѕРІР°РЅРЅРѕРµ СѓРґР°Р»РµРЅРёРµ РїСЂРѕРµРєС‚Р°. */
 export const cancelProjectDeletion = async (
   projectId: number,
 ): Promise<{ cancelled: boolean }> => {
@@ -90,10 +90,10 @@ export const cancelProjectDeletion = async (
 };
 
 // ============================================================
-// ⭐ №170: пересчёт сметы по справочнику цен
+// в­ђ в„–170: РїРµСЂРµСЃС‡С‘С‚ СЃРјРµС‚С‹ РїРѕ СЃРїСЂР°РІРѕС‡РЅРёРєСѓ С†РµРЅ
 // ============================================================
 
-/** Как расценка нашлась под строку сметы (для подсказки в превью) */
+/** РљР°Рє СЂР°СЃС†РµРЅРєР° РЅР°С€Р»Р°СЃСЊ РїРѕРґ СЃС‚СЂРѕРєСѓ СЃРјРµС‚С‹ (РґР»СЏ РїРѕРґСЃРєР°Р·РєРё РІ РїСЂРµРІСЊСЋ) */
 export type PriceRecalcMatch =
   | 'id'
   | 'article'
@@ -151,7 +151,7 @@ export interface PriceRecalcPreview {
   catalog: {
     id: number;
     name: string;
-    source: 'project' | 'object' | 'manual';
+    source: 'project' | 'object' | 'personal' | 'manual';
   };
   summary: PriceRecalcSummary;
   rows: PriceRecalcRow[];
@@ -163,7 +163,7 @@ export interface PriceRecalcApplyResult {
   catalog: {
     id: number;
     name: string;
-    source: 'project' | 'object' | 'manual';
+    source: 'project' | 'object' | 'personal' | 'manual';
   };
   summary: PriceRecalcSummary;
   message: string;

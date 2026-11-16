@@ -75,6 +75,7 @@ import {
 import type { MaterialData, MaterialFixData } from '../services/materialService';
 import { fetchProjectById } from '../services/materialService';
 import type { ProjectData } from '../services/projectService';
+import { updateProject } from '../services/projectService';
 import { fetchObjectById } from '../services/objectService';
 import type { ObjectData } from '../services/objectService';
 import { searchPriceItems } from '../services/priceListService';
@@ -94,6 +95,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import { downloadImportTemplate } from '../utils/importTemplate'; // ⭐ №208: пустой шаблон
 import PriceChangeIcon from '@mui/icons-material/PriceChange';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 // ⭐ №170: пересчёт сметы по справочнику цен (превью «было → станет» + откат)
 import { PriceRecalcModal } from '../components/PriceRecalcModal';
 import EstimateImportModal from '../components/EstimateImportModal'; // ⭐ №202: импорт сметы из Excel
@@ -497,6 +499,8 @@ const [allCategories, setAllCategories] = useState<{ id: number; name: string }[
 // Работы и материалы выбираются независимо: цена работы может быть из одного
 // справочника, цена материала — из другого.
 const [catalogOptions, setCatalogOptions] = useState<PriceCatalogData[]>([]);
+// ⭐ №276: меню смены справочника проекта прямо из сметы
+const [catalogMenuAnchor, setCatalogMenuAnchor] = useState<null | HTMLElement>(null);
 const [workCatalogChoice, setWorkCatalogChoice] = useState<number | ''>('');
 const [workCategoryChoice, setWorkCategoryChoice] = useState<number | ''>('');
 const [workCatalogCategories, setWorkCatalogCategories] = useState<PriceCategoryData[]>([]);
@@ -1101,6 +1105,22 @@ setPriceLoading(false);
     }
   };
 
+  // ⭐ №276: смена справочника проекта. Строки не меняются (снапшоты),
+  // поэтому сразу предлагаем пересчёт по новой базе — с превью.
+  const handleSwitchCatalog = async (nextCatalogId: number) => {
+    setCatalogMenuAnchor(null);
+    if (!currentProject || nextCatalogId === priceCatalogId) return;
+    try {
+      await updateProject(currentProject.id, { catalogId: nextCatalogId });
+      const refreshed = await fetchProjectById(currentProject.id);
+      setCurrentProject(refreshed);
+      notify('Справочник проекта изменён');
+      setRecalcOpen(true);
+    } catch (err) {
+      notifyError(getApiErrorText(err, 'Не удалось сменить справочник'));
+    }
+  };
+
   const handleDuplicate = async (material: MaterialData) => {
     if (!token) return;
     try {
@@ -1587,6 +1607,35 @@ setSortAnchorEl(null);
               }}
             />
           )}
+          {/* ⭐ №276: сменить справочник проекта (строки не меняются — предложим пересчёт) */}
+          {!hidePrices && currentProject && (
+            <IconButton
+              size="small"
+              title="Сменить справочник цен проекта"
+              onClick={(e) => setCatalogMenuAnchor(e.currentTarget)}
+              sx={{ ml: 0.5, height: 24, width: 24 }}
+            >
+              <SwapHorizIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          )}
+          <Menu
+            anchorEl={catalogMenuAnchor}
+            open={Boolean(catalogMenuAnchor)}
+            onClose={() => setCatalogMenuAnchor(null)}
+          >
+            {catalogOptions
+              .filter((c) => c.scope !== 'system' && !c.isArchived)
+              .map((c) => (
+                <MenuItem
+                  key={c.id}
+                  selected={c.id === priceCatalogId}
+                  onClick={() => void handleSwitchCatalog(c.id)}
+                >
+                  {c.name}
+                  {c.isDefault ? ' — моя база' : ''}
+                </MenuItem>
+              ))}
+          </Menu>
           {!hidePrices && priceCatalogId && (
             <Button
               size="small"

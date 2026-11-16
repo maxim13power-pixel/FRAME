@@ -653,6 +653,7 @@ export class MaterialsService {
       const [material] = await tx.$queryRaw<
         {
           id: number;
+          projectId: number;
           totalUsed: number;
           specQuantity: number;
           isSpecLocked: boolean;
@@ -661,7 +662,7 @@ export class MaterialsService {
           materialItemId: number | null;
           materialUnitPrice: number;
         }[]
-      >`SELECT id, "totalUsed", "specQuantity", "isSpecLocked", "priceItemId", "unitPrice", "materialItemId", "materialUnitPrice"
+      >`SELECT id, "projectId", "totalUsed", "specQuantity", "isSpecLocked", "priceItemId", "unitPrice", "materialItemId", "materialUnitPrice"
           FROM "materials" WHERE id = ${id} FOR UPDATE`;
 
       if (!material) throw new NotFoundException('Материал не найден');
@@ -702,8 +703,20 @@ export class MaterialsService {
             throw new BadRequestException(
               'В поле «работа» выбрана расценка материала — выберите работу',
             );
-          unitPrice = Number(priceItem.price);
-          priceItemId = priceItem.id;
+          // ⭐ №276: расценка всегда должна жить в справочнике проекта (как при создании).
+          // Выбранную из другого справочника копируем — иначе пересчёт не найдёт её по id.
+          const resolved = await resolveProjectPriceItem(tx, {
+            projectId: material.projectId,
+            userId: userId ?? 0,
+            itemId: priceItem.id,
+            name: priceItem.name,
+            article: priceItem.article,
+            unit: priceItem.unit,
+            price: Number(priceItem.price),
+            kind: 'WORK',
+          });
+          unitPrice = Number(resolved.item.price);
+          priceItemId = resolved.item.id;
         }
       }
 
@@ -730,8 +743,19 @@ export class MaterialsService {
             throw new BadRequestException(
               'В поле «материал» выбрана расценка работы — выберите материал',
             );
-          materialUnitPrice = Number(materialItem.price);
-          materialItemId = materialItem.id;
+          // ⭐ №276: та же логика для материала — ссылка на расценку справочника проекта
+          const resolved = await resolveProjectPriceItem(tx, {
+            projectId: material.projectId,
+            userId: userId ?? 0,
+            itemId: materialItem.id,
+            name: materialItem.name,
+            article: materialItem.article,
+            unit: materialItem.unit,
+            price: Number(materialItem.price),
+            kind: 'MATERIAL',
+          });
+          materialUnitPrice = Number(resolved.item.price);
+          materialItemId = resolved.item.id;
         }
       }
 
