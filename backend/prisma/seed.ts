@@ -7,6 +7,7 @@
 //  • Перед повторной заливкой старые seed-расценки удаляются в одной транзакции.
 //  • Демо-юзеров/демо-объекты seed БОЛЬШЕ НЕ создаёт (№128) — только каталог.
 import { PrismaClient, PriceKind, Unit } from '@prisma/client';
+import { seedSystemPriceCatalog } from './price-seed'; // ⭐ №277: рыночные цены образца
 
 const prisma = new PrismaClient();
 const SEED_TAG = '[DEMO]';
@@ -518,6 +519,13 @@ async function main() {
   }
   console.log(
     `  ✓ MATERIAL: ${MATERIAL_CATEGORIES.length} categories, ${MATERIAL_CATEGORIES.reduce((s, c) => s + c.items.length, 0)} items`,
+  );
+
+  // ⭐ №277 (§120): заменяем демо-цены рыночным датасетом (см. price-seed.ts).
+  // Позиции вне датасета деактивируются, а не удаляются.
+  const priceSeed = await seedSystemPriceCatalog(prisma);
+  console.log(
+    `  ✓ PRICE SEED: категорий ${priceSeed.categories}, создано ${priceSeed.created}, обновлено ${priceSeed.updated}, скрыто ${priceSeed.deactivated}`,
   );
 
   console.log('→ Seed done');

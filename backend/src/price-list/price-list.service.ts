@@ -398,12 +398,16 @@ export class PriceListService {
       where: { id: catalogId },
       select: {
         ownerId: true,
+        kind: true,
         objects: { select: { id: true } },
         projects: { select: { objectId: true } },
       },
     });
     if (!catalog) return false;
     if (catalog.ownerId === userId) return true;
+    // ⭐ №277: образец (SYSTEM) ни к чему не привязан — иначе его цены «исчезали»
+    // у всех, кроме админа. Показываем их тем, кто в принципе видит деньги.
+    if (catalog.kind === 'SYSTEM') return grants.some(sees);
     const objectIds = new Set<number>([
       ...(catalog.objects ?? []).map((o) => o.id),
       ...(catalog.projects ?? []).map((p) => p.objectId),
