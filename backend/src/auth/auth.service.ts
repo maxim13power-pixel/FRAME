@@ -20,7 +20,8 @@ import { LoginThrottleService } from './login-throttle.service'; // ⭐ №217
 import { RequestCodeDto } from './dto/request-code.dto'; // ⭐ №122b
 import { VerifyEmailDto } from './dto/verify.dto'; // ⭐ №122b
 import * as crypto from 'crypto'; // ⭐ P0-4
-import { AccessRole, Unit } from '@prisma/client'; // ⭐ №127 онбординг
+import { AccessRole } from '@prisma/client'; // ⭐ №127 онбординг
+import { DEMO_PROJECT_TEMPLATES, demoNameKey } from './demo-object-template'; // ⭐ №288
 import { ensureWorkingCatalog } from '../price-list/working-catalog'; // ⭐ №274
 
 // ⭐ №210: код подтверждения израсходован (двойной клик/повторная отправка формы).
@@ -32,6 +33,7 @@ export const EMAIL_CODE_ALREADY_USED =
 // ⭐ №274/№279: при регистрации создаём ОДНУ личную базу — копию образца.
 // Пользователь видит только её; системный образец в списке не показывается.
 export const DEMO_CATALOG_COPY_NAME = 'Мой справочник';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -441,69 +443,8 @@ export class AuthService {
     const dayAgo = (days: number) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     const r2 = (n: number) => Math.round(n * 100) / 100;
 
-    // ⭐ 3 проекта демо-объекта: подготовка → черновые → чистовые
-    const demoTemplate: {
-      name: string;
-      /** дни назад, за которые бригада фиксировала объёмы (для «Посменной сводки») */
-      shifts: number[];
-      materials: {
-        name: string;
-        unit: Unit;
-        spec: number;
-        used: number;
-        /** расценка материала в демо-справочнике (та же единица измерения) */
-        matItem?: string;
-      }[];
-    }[] = [
-      {
-        name: 'Демонтаж и подготовка',
-        shifts: [11, 4],
-        materials: [
-          { name: 'Демонтаж старой отделки', unit: Unit.SQUARE_METER, spec: 68, used: 68 },
-          { name: 'Грунтовка стен', unit: Unit.SQUARE_METER, spec: 180, used: 120 },
-          { name: 'Демонтаж обоев', unit: Unit.SQUARE_METER, spec: 40, used: 0 },
-        ],
-      },
-      {
-        name: 'Черновые работы',
-        shifts: [8, 3],
-        materials: [
-          { name: 'Заливка стяжки пола', unit: Unit.SQUARE_METER, spec: 68, used: 68 },
-          { name: 'Шпаклёвка стен', unit: Unit.SQUARE_METER, spec: 120, used: 84 },
-          {
-            name: 'Прокладка кабеля в штробе',
-            unit: Unit.METER,
-            spec: 120,
-            used: 60,
-            matItem: 'Кабель ВВГнг-LS 3×1.5',
-          },
-          {
-            name: 'Монтаж труб водоснабжения полипропилен',
-            unit: Unit.METER,
-            spec: 30,
-            used: 12,
-            matItem: 'Труба полипропилен PN20 25мм',
-          },
-        ],
-      },
-      {
-        name: 'Чистовая отделка',
-        shifts: [2],
-        materials: [
-          { name: 'Укладка ламината', unit: Unit.SQUARE_METER, spec: 68, used: 0 },
-          { name: 'Укладка керамогранита', unit: Unit.SQUARE_METER, spec: 18, used: 18 },
-          { name: 'Покраска стен', unit: Unit.SQUARE_METER, spec: 120, used: 24 },
-          {
-            // ⚠️ имя ровно как в демо-справочнике («встроенной», не «встроенная»)
-            name: 'Установка розетки встроенной',
-            unit: Unit.PIECE,
-            spec: 24,
-            used: 0,
-            matItem: 'Розетка встроенная Legrand',
-          },
-        ],
-      },
-    ];
+    // ⭐ №288: смета демо-объекта — константа модуля (её сверяет тест с образцом цен)
+    const demoTemplate = DEMO_PROJECT_TEMPLATES;
 
     // ⭐ №211/№220: «пример» берём из системного справочника (ownerId = null), но юзеру
     // создаём ЛИЧНУЮ копию — её можно править под свои цены, не задевая остальных.
@@ -525,7 +466,9 @@ export class AuthService {
         },
       },
     });
-    const normName = (s: string) => s.toLowerCase().replace(/ё/g, 'е').trim();
+    // ⭐ №288: ключ сравнения терпимее — «3×1.5» и «3х1.5», «25мм» и «25 мм» это одна позиция.
+    // Раньше из-за этого демо-позиции оставались без цены (в смете прочерки).
+    const normName = demoNameKey;
 
     await this.prismaService.$transaction(async (tx) => {
       // ⭐ №274 (§117): ОДНА рабочая база на пользователя. Демо-справочник — образец,
@@ -606,8 +549,9 @@ export class AuthService {
           const work = workByName.get(normName(m.name));
           const mat = m.matItem ? matByName.get(normName(m.matItem)) : undefined;
           const used = Math.min(m.used, m.spec);
-          const workPrice = work?.price ?? 0;
-          const matPrice = mat?.price ?? 0;
+          // ⭐ №288: цена из справочника, иначе резервная из шаблона — прочерков в демо быть не должно
+          const workPrice = work?.price ?? m.workPrice;
+          const matPrice = mat?.price ?? m.matPrice ?? 0;
           const shifts = p.shifts;
           const material = await tx.material.create({
             data: {

@@ -11,7 +11,8 @@ type Item = [name: string, unit: Unit, price: number];
 const { PIECE: P, METER: M, LINEAR_METER: LM, SQUARE_METER: M2, CUBIC_METER: M3 } = Unit;
 const { KILOGRAM: KG, LITER: L, TON: T, BAG: BAG, PACKAGE: PKG, SET: SET } = Unit;
 
-const WORK_CATALOG: Record<string, Item[]> = {
+// ⭐ №288: экспортируем датасет — по нему тест сверяет названия демо-сметы
+export const WORK_CATALOG: Record<string, Item[]> = {
   'Демонтажные работы': [
     ['Демонтаж обоев', M2, 90],
     ['Демонтаж плитки', M2, 250],
@@ -254,7 +255,8 @@ const WORK_CATALOG: Record<string, Item[]> = {
   ],
 };
 
-const MATERIAL_CATALOG: Record<string, Item[]> = {
+// ⭐ №288: экспортируем датасет — по нему тест сверяет названия демо-сметы
+export const MATERIAL_CATALOG: Record<string, Item[]> = {
   'Сухие смеси и штукатурки': [
     ['Цемент М500 (50 кг)', BAG, 550],
     ['Цемент М400 (50 кг)', BAG, 500],
