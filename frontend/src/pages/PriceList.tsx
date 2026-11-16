@@ -46,6 +46,8 @@ import PriceCheckIcon from '@mui/icons-material/PriceCheck';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
+import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
+import SyncIcon from '@mui/icons-material/Sync';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { useAuth } from '../contexts/AuthContext';
 import { FAB_STYLE } from '../theme';
@@ -147,6 +149,8 @@ const PriceListInner: React.FC = () => {
   // ⭐ №278: что нового в образце (баннер + диалог)
   const [templateUpdate, setTemplateUpdate] = useState<TemplateUpdatePreview | null>(null);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  // ⭐ №280: одно меню «Из шаблона» — шаблон, импорт и обновление из образца
+  const [templateMenuAnchor, setTemplateMenuAnchor] = useState<null | HTMLElement>(null);
 
   const loadDrafts = useCallback(async () => {
     if (!catalogId) {
@@ -657,9 +661,17 @@ const PriceListInner: React.FC = () => {
         </Alert>
       )}
 
-      {/* Поиск и кнопки добавления */}
-      <Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 2, mb: 2 }}>
-        {/* На мобилке поиск теперь в шапке — скрываем его здесь */}
+      {/* ⭐ №280: тулбар как в сметах — поиск слева, действия справа, «Добавить» крайняя */}
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: isMobile ? 1 : 2,
+          mb: 2,
+          alignItems: isMobile ? 'stretch' : 'center',
+        }}
+      >
+        {/* На мобилке поиск в шапке — здесь скрыт */}
         {!isMobile && (
           <TextField
             placeholder="Поиск расценок..."
@@ -667,8 +679,8 @@ const PriceListInner: React.FC = () => {
             size="small"
             fullWidth
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            sx={{ flexGrow: 1 }}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            sx={{ flexGrow: 1, minWidth: 220 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -679,7 +691,7 @@ const PriceListInner: React.FC = () => {
           />
         )}
         {isMobile ? (
-          // ⭐ МОБИЛКА: категория + шаблон/импорт (FAB `$+` справляется с расценками)
+          // МОБИЛКА: категория + все действия в «Из шаблона»; FAB `$+` добавляет расценку
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button
               variant="outlined"
@@ -687,29 +699,20 @@ const PriceListInner: React.FC = () => {
               onClick={handleOpenCatModal}
               sx={{ whiteSpace: 'nowrap' }}
             >
-              Создать категорию
+              Категория
             </Button>
             <Button
               variant="outlined"
-              startIcon={<FileDownloadIcon />}
-              onClick={() => void handleDownloadTemplate()}
+              startIcon={<PlaylistAddIcon />}
+              onClick={(e) => setTemplateMenuAnchor(e.currentTarget)}
               disabled={!catalogId}
               sx={{ whiteSpace: 'nowrap' }}
             >
-              Шаблон
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<UploadFileIcon />}
-              onClick={() => setImportOpen(true)}
-              disabled={!catalogId}
-              sx={{ whiteSpace: 'nowrap' }}
-            >
-              Импорт
+              Из шаблона
             </Button>
           </Box>
         ) : (
-          // ДЕСКТОП: кнопки не сжимаются (flexShrink: 0) → текст больше не вылезает
+          // ДЕСКТОП: порядок как в сметах — Категория → Из шаблона → Добавить (крайняя)
           <>
             <Button
               variant="outlined"
@@ -718,6 +721,16 @@ const PriceListInner: React.FC = () => {
               sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
             >
               + Категория
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<PlaylistAddIcon />}
+              onClick={(e) => setTemplateMenuAnchor(e.currentTarget)}
+              disabled={!catalogId}
+              sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+              title="Шаблон прайса, импорт и обновление из образца"
+            >
+              Из шаблона
             </Button>
             <Button
               variant="contained"
@@ -737,31 +750,48 @@ const PriceListInner: React.FC = () => {
                 transition: 'all 0.3s ease',
               }}
             >
-              Добавить расценку
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<FileDownloadIcon />}
-              onClick={() => void handleDownloadTemplate()}
-              disabled={!catalogId}
-              sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-              title="Скачать прайс: лист = категория, с выпадающим списком единиц"
-            >
-              Шаблон
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<UploadFileIcon />}
-              onClick={() => setImportOpen(true)}
-              disabled={!catalogId}
-              sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-              title="Загрузить заполненный шаблон"
-            >
-              Импорт
+              Добавить
             </Button>
           </>
         )}
       </Box>
+
+      {/* ⭐ №280: шаблон/импорт/обновление из образца — в одном меню, как в сметах */}
+      <Menu
+        anchorEl={templateMenuAnchor}
+        open={Boolean(templateMenuAnchor)}
+        onClose={() => setTemplateMenuAnchor(null)}
+      >
+        <MenuItem
+          onClick={() => {
+            setTemplateMenuAnchor(null);
+            void handleDownloadTemplate();
+          }}
+        >
+          <FileDownloadIcon fontSize="small" style={{ marginRight: 8 }} />
+          Скачать шаблон
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setTemplateMenuAnchor(null);
+            setImportOpen(true);
+          }}
+        >
+          <UploadFileIcon fontSize="small" style={{ marginRight: 8 }} />
+          Импорт из Excel
+        </MenuItem>
+        {templateUpdate && (
+          <MenuItem
+            onClick={() => {
+              setTemplateMenuAnchor(null);
+              setTemplateDialogOpen(true);
+            }}
+          >
+            <SyncIcon fontSize="small" style={{ marginRight: 8 }} />
+            Обновить из образца ({templateUpdate.stats.add + templateUpdate.stats.price})
+          </MenuItem>
+        )}
+      </Menu>
 
         {categories.length === 0 && (
           <Paper sx={{ p: 4, textAlign: 'center' }}>
