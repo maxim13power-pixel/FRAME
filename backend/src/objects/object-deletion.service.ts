@@ -143,6 +143,21 @@ export class ObjectDeletionService implements OnModuleInit, OnModuleDestroy {
     return { cancelled: true };
   }
 
+  /**
+   * ⭐ №284: удалить объект СРАЗУ, без 30-дневного ожидания.
+   * «Убрать в архив» больше не назначает удаление — пользователь сам решает,
+   * когда чистить (это же освобождает место в тарифе, а не через месяц).
+   * Копии остальным участникам делает тот же purgeObject, что и плановая уборка.
+   */
+  async purgeNow(
+    objectId: number,
+    userId: number,
+  ): Promise<{ deleted: boolean; copied: number }> {
+    await this.assertAdmin(objectId, userId);
+    const result = await this.purgeObject(objectId, userId);
+    return { deleted: true, copied: result.copied };
+  }
+
   private async assertAdmin(objectId: number, userId: number): Promise<void> {
     const access = await this.prisma.objectAccess.findFirst({
       where: {

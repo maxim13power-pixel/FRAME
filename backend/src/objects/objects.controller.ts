@@ -95,4 +95,13 @@ export class ObjectsController {
   cancelDeletion(@Param('id', ParseIntPipe) id: number, @Req() req) {
     return this.deletion.cancel(id, req.user.userId);
   }
+
+  /**
+   * ⭐ №284: удалить объект окончательно и СРАЗУ (кнопка «Удалить окончательно»).
+   * Только администратор объекта; участники получают личные копии без фото.
+   */
+  @Delete(':id')
+  purgeNow(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.deletion.purgeNow(id, req.user.userId);
+  }
 }

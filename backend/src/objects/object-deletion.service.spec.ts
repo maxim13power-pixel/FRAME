@@ -11,7 +11,7 @@ import {
 } from './object-deletion.service';
 
 const mockPrisma = () => ({
-  objectAccess: { findFirst: jest.fn() },
+  objectAccess: { findFirst: jest.fn(), findMany: jest.fn() },
   object: {
     findUnique: jest.fn(),
     findMany: jest.fn(),
@@ -19,6 +19,11 @@ const mockPrisma = () => ({
     updateMany: jest.fn(),
     delete: jest.fn(),
   },
+  project: { findMany: jest.fn() },
+  warehouseItem: { findMany: jest.fn() },
+  brigade: { findMany: jest.fn() },
+  report: { findMany: jest.fn() },
+  materialPhoto: { findMany: jest.fn() },
   $transaction: jest.fn(),
 });
 
@@ -98,5 +103,57 @@ describe('ObjectDeletionService — права и срок', () => {
       failed: 0,
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  // ⭐ №284: «Удалить окончательно» — сразу, без 30-дневного ожидания
+  it('purgeNow не админ объекта → 403, объект не удаляется', async () => {
+    prisma.objectAccess.findFirst.mockResolvedValue(null);
+    await expect(service.purgeNow(5, 7)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('purgeNow удаляет объект сразу и не ставит срок', async () => {
+    prisma.objectAccess.findFirst.mockResolvedValue({ id: 1 });
+    prisma.object.findUnique
+      .mockResolvedValueOnce({ id: 5 }) // assertAdmin
+      .mockResolvedValueOnce({
+        name: 'Объект',
+        address: 'Адрес',
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-12-01'),
+        plannedEndDate: null,
+        note: null,
+      }); // purgeObject
+    // единственный участник — сам инициатор, значит копий никому не делаем
+    prisma.objectAccess.findMany.mockResolvedValue([
+      {
+        userId: 7,
+        projectId: null,
+        role: AccessRole.CUSTOMER,
+        hidePrices: false,
+        isHidden: false,
+        revokedAt: null,
+      },
+    ]);
+    prisma.project.findMany.mockResolvedValue([]);
+    prisma.warehouseItem.findMany.mockResolvedValue([]);
+    prisma.brigade.findMany.mockResolvedValue([]);
+    prisma.report.findMany.mockResolvedValue([]);
+    prisma.materialPhoto.findMany.mockResolvedValue([]);
+
+    const tx = {
+      warehouseItem: { deleteMany: jest.fn() },
+      brigade: { deleteMany: jest.fn() },
+      object: { delete: jest.fn() },
+    };
+    prisma.$transaction.mockImplementation(async (cb: (client: unknown) => unknown) => cb(tx));
+
+    await expect(service.purgeNow(5, 7)).resolves.toEqual({
+      deleted: true,
+      copied: 0,
+    });
+    expect(tx.object.delete).toHaveBeenCalledWith({ where: { id: 5 } });
+    // срок удаления не назначаем — объект удаляется сразу
+    expect(prisma.object.update).not.toHaveBeenCalled();
   });
 });

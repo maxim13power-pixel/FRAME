@@ -95,6 +95,18 @@ export const cancelObjectDeletion = async (
   return response.data;
 };
 
+/**
+ * ⭐ №284: удалить объект окончательно и сразу (без 30-дневного ожидания).
+ * Доступно только администратору объекта; участники получают личные копии без фото.
+ * `copied` — сколько участников получили личные копии.
+ */
+export const deleteObjectPermanently = async (
+  id: number,
+): Promise<{ deleted: boolean; copied: number }> => {
+  const response = await api.delete(`/objects/${id}`);
+  return response.data;
+};
+
 // ============================================================
 // ⭐ Копирование объекта
 // ============================================================

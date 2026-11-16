@@ -60,7 +60,7 @@ import {
   rejectAccessRequest,
 } from '../services/accessRequestService';
 import type { AccessRequestData } from '../services/accessRequestService';
-import { updateObject, scheduleObjectDeletion, cancelObjectDeletion } from '../services/objectService';
+import { updateObject, deleteObjectPermanently } from '../services/objectService';
 import { fetchPriceCatalogs } from '../services/priceListService'; // ⭐ №164
 import type { PriceCatalogData } from '../services/priceListService'; // ⭐ №164
 import Select from '@mui/material/Select';
@@ -401,43 +401,46 @@ const refreshObjects = async () => {
   }
 };
 
-// ⭐ №246: безвозвратное удаление через 30 дней. Только админ объекта.
-const handleScheduleDeletion = async (obj: ObjectData) => {
+// ⭐ №284: «Убрать в архив» — только скрыть объект у себя. Удаление больше НЕ назначается:
+// раньше после «В архив» сразу выскакивал второй диалог «Удалить безвозвратно?».
+const handleArchiveObject = async (obj: ObjectData) => {
+  if (!obj.accessId) return;
+  try {
+    await setMyAccessHidden(obj.accessId, true);
+    await refreshObjects();
+    notify(`Объект «${obj.name}» убран в архив`);
+  } catch (err) {
+    notifyError(getApiErrorMessage(err, 'Не удалось убрать объект в архив'));
+  }
+};
+
+// ⭐ №284: удаление СРАЗУ, без 30-дневного ожидания. Юзер сам решает, когда чистить —
+// объект не висит месяц в архиве (и не занимает место в тарифе). Копии участникам делает бэк.
+const handlePurgeObject = async (obj: ObjectData) => {
   const ok = await confirm({
-    title: 'Удалить объект безвозвратно?',
-    text: `«${obj.name}» будет удалён через 30 дней. До этого его можно вернуть. Другие участники получат личные копии объекта (проекты, сметы, фиксации, склад, бригады, отчёты) — без фото.`,
-    confirmText: 'Удалить',
+    title: 'Удалить объект окончательно?',
+    text: obj.isDemo
+      ? `Демо-объект «${obj.name}» и все его данные удалятся сразу и безвозвратно — отменить это нельзя.`
+      : `«${obj.name}» и все его данные (проекты, сметы, фиксации, склад, бригады, отчёты) удалятся сразу и безвозвратно — отменить это нельзя. Остальные участники получат личные копии объекта, но без фото.`,
+    confirmText: 'Удалить окончательно',
     danger: true,
   });
   if (!ok) return;
   try {
-    await scheduleObjectDeletion(obj.id);
-    // Удаление «живёт» в архиве: сразу убираем объект в личный архив.
-    if (!obj.hiddenForMe && obj.accessId) {
-      await setMyAccessHidden(obj.accessId, true);
-    }
+    await deleteObjectPermanently(obj.id);
     await refreshObjects();
-    notify('Удаление назначено: объект будет удалён через 30 дней', 'warning');
+    notify(`Объект «${obj.name}» удалён окончательно`);
   } catch (err) {
-    notifyError(getApiErrorMessage(err, 'Не удалось назначить удаление'));
-  }
-};
-
-const handleCancelDeletion = async (obj: ObjectData) => {
-  try {
-    await cancelObjectDeletion(obj.id);
-    await refreshObjects();
-    notify('Удаление отменено');
-  } catch (err) {
-    notifyError(getApiErrorMessage(err, 'Не удалось отменить удаление'));
+    notifyError(getApiErrorMessage(err, 'Не удалось удалить объект'));
   }
 };
 
 const handleDeleteObject = async () => {
   if (!deletingObject) return;
-  await handleScheduleDeletion(deletingObject);
+  const target = deletingObject;
   setDeleteConfirmOpen(false);
   setDeletingObject(null); // очищаем
+  await handleArchiveObject(target);
 };
 
 // ⭐ Вернуть объект из личного архива (бэкенд заодно снимает мой срок удаления)
@@ -462,6 +465,8 @@ const actCanInvite = !!act && actHasObject && act.canManage === true;
 const actCanCopy = !!act && actHasObject && act.canWrite === true && act.hidePrices !== true && act.role !== 'VIEWER';
 const actCanEdit = !!act && actHasObject && act.canWrite === true;
 const actCanArchive = !!act && act.accessId != null && act.hiddenForMe !== true;
+// ⭐ №284: окончательное удаление — только администратор объекта (как и на бэке)
+const actCanPurge = !!act && actHasObject && act.canManage === true;
 
 // ⭐ №197: «Команда проекта» — отдельные участники проекта vs участники всего объекта.
 // Участник всего объекта видит все проекты, поэтому в команду проекта он входит неявно.
@@ -1222,47 +1227,49 @@ trailing: headerTrailing,
                     severity="info"
                     onClick={(e) => e.stopPropagation()}
                     sx={{ mb: 1, borderRadius: 2 }}
+                    // ⭐ №284: у демо-объекта снова есть кнопка удаления — сразу и безвозвратно
+                    action={
+                      obj.canManage ? (
+                        <Button
+                          size="small"
+                          color="error"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handlePurgeObject(obj);
+                          }}
+                        >
+                          Удалить
+                        </Button>
+                      ) : undefined
+                    }
                   >
                     Это демо-данные.
                   </Alert>
                 )}
-                {/* ⭐ №246: удаление объекта — таймер 30 дней; назначает/отменяет только админ */}
-                {(obj.deleteAfter || (obj.hiddenForMe && obj.canManage)) && (
+                {/* ⭐ №284: срок удаления остался только у объектов, помеченных раньше —
+                    вместо «Отменить» даём сразу добить объект, чтобы не ждать 30 дней */}
+                {obj.deleteAfter && (
                   <Alert
                     severity="error"
                     onClick={(e) => e.stopPropagation()}
                     sx={{ mb: 1, borderRadius: 2 }}
                     action={
                       obj.canManage ? (
-                        obj.deleteAfter ? (
-                          <Button
-                            size="small"
-                            color="inherit"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleCancelDeletion(obj);
-                            }}
-                          >
-                            Отменить удаление
-                          </Button>
-                        ) : (
-                          <Button
-                            size="small"
-                            color="error"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleScheduleDeletion(obj);
-                            }}
-                          >
-                            Удалить
-                          </Button>
-                        )
+                        <Button
+                          size="small"
+                          color="error"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handlePurgeObject(obj);
+                          }}
+                          sx={{ whiteSpace: 'nowrap' }}
+                        >
+                          {isMobile ? 'Удалить' : 'Удалить окончательно'}
+                        </Button>
                       ) : undefined
                     }
                   >
-                    {obj.deleteAfter
-                      ? `Объект будет удалён безвозвратно ${deletionPhrase(obj.deleteAfter)}. Остальные участники получат личные копии (без фото).`
-                      : 'Удалить объект безвозвратно? Он будет удалён через 30 дней — до этого можно вернуть.'}
+                    {`Объект помечен на удаление ${deletionPhrase(obj.deleteAfter)}. Остальные участники получат личные копии (без фото).`}
                   </Alert>
                 )}
                 {obj.hiddenForMe && (
@@ -1271,16 +1278,33 @@ trailing: headerTrailing,
                     onClick={(e) => e.stopPropagation()}
                     sx={{ mb: 1, borderRadius: 2 }}
                     action={
-                      <Button
-                        size="small"
-                        color="primary"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRestoreObject(obj);
-                        }}
-                      >
-                        Вернуть
-                      </Button>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Button
+                          size="small"
+                          color="primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRestoreObject(obj);
+                          }}
+                        >
+                          Вернуть
+                        </Button>
+                        {/* ⭐ №284: красная кнопка вместо «Отменить удаление»:
+                            объект не висит 30 дней в архиве — юзер удаляет сам */}
+                        {obj.canManage && (
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handlePurgeObject(obj);
+                            }}
+                            sx={{ whiteSpace: 'nowrap' }}
+                          >
+                            {isMobile ? 'Удалить' : 'Удалить окончательно'}
+                          </Button>
+                        )}
+                      </Box>
                     }
                   >
                     Объект в вашем архиве — виден только вам.
@@ -1554,11 +1578,13 @@ trailing: headerTrailing,
               </Button>
               <IconButton
                 color="error"
-                aria-label="Удалить объект"
+                aria-label="Удалить объект окончательно"
+                title="Удалить объект окончательно"
                 onClick={() => {
-                  setDeletingObject(editingObject); // запоминаем объект для удаления
+                  // ⭐ №284: корзина в редактировании удаляет сразу (раньше отправляла в архив)
+                  const target = editingObject;
                   handleCloseEdit(); // закрываем модалку редактирования
-                  setDeleteConfirmOpen(true);
+                  if (target) void handlePurgeObject(target);
                 }}
                 sx={{
                   border: '1px solid rgba(211, 47, 47, 0.35)',
@@ -1813,6 +1839,29 @@ trailing: headerTrailing,
           {!actCanArchive && (
             <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
               Объект уже в архиве — верните его кнопкой «Вернуть» на карточке.
+            </Typography>
+          )}
+
+          {/* ⭐ №284: окончательное удаление сразу — без 30 дней в архиве */}
+          <Button
+            size="large"
+            fullWidth
+            variant="contained"
+            color="error"
+            startIcon={<DeleteIcon />}
+            disabled={!actCanPurge}
+            onClick={() => {
+              const o = actionsObject;
+              handleCloseActions();
+              if (o) void handlePurgeObject(o);
+            }}
+            sx={{ mt: 1 }}
+          >
+            Удалить окончательно
+          </Button>
+          {!actCanPurge && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
+              Удалить объект окончательно может только его администратор.
             </Typography>
           )}
 
