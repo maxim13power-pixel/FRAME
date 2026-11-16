@@ -91,8 +91,6 @@ const goBack = useBackNavigation('/');
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   // ⭐ №179: сортировка списка (архив → сортировка → поиск, как в «Объектах»)
   const [sortBy, setSortBy] = useState<'name' | 'newest' | 'items'>('name');
-  // ⭐ №271: два вида справочников — библиотеки цен и рабочие справочники проектов
-  const [catalogView, setCatalogView] = useState<'all' | 'libraries' | 'projects'>('all');
   const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
   const theme = useTheme();
   // как в «Объектах»/«Бригадах»: мобильная раскладка — это < md
@@ -163,21 +161,15 @@ const goBack = useBackNavigation('/');
 
   const visibleCatalogs = useMemo(() => {
     const base = showArchived ? archivedCatalogs : activeCatalogs;
-    const scoped =
-      catalogView === 'projects'
-        ? base.filter((c) => c.scope === 'project')
-        : catalogView === 'libraries'
-          ? base.filter((c) => c.scope !== 'project')
-          : base;
     const q = search.trim().toLowerCase();
     const filtered = q
-      ? scoped.filter((c) =>
+      ? base.filter((c) =>
           [c.name, c.objectName ?? '', c.projectName ?? '']
             .join(' ')
             .toLowerCase()
             .includes(q),
         )
-      : scoped;
+      : base;
     // ⭐ №179: сортировка
     return [...filtered].sort((a, b) => {
       if (sortBy === 'items') return (b.itemsCount ?? 0) - (a.itemsCount ?? 0);
@@ -186,7 +178,7 @@ const goBack = useBackNavigation('/');
       }
       return a.name.localeCompare(b.name, 'ru');
     });
-  }, [activeCatalogs, archivedCatalogs, search, showArchived, sortBy, catalogView]);
+  }, [activeCatalogs, archivedCatalogs, search, showArchived, sortBy]);
 
   const load = useCallback(async () => {
     try {
@@ -380,31 +372,12 @@ const goBack = useBackNavigation('/');
       )}
 
       {/* ⭐ №199: подсказка — сразу под заголовком, перед поиском и списком */}
-      <SectionIntro id="price-catalogs" version={4}>
-        <b>Справочник</b> — отдельный набор расценок под конкретный объект или тип работ
-        («Квартиры/Коттеджи», «Склад X5»). Внутри — свои категории, работы и материалы.
-        Нажмите на справочник, чтобы открыть расценки. Все действия — в шестерёнке ⚙ на карточке;
-        архивные возвращаются через «Архив» в шапке.
+      <SectionIntro id="price-catalogs" version={5}>
+        <b>Моя база цен</b> — один справочник для всех объектов и комнат: работы и материалы
+        с вашими ценами. Дополнительный справочник нужен, только если цены должны отличаться
+        (например, крупный объект с наценкой или прайс отдельного поставщика). Открыть расценки —
+        нажатие на карточку; действия — шестерёнка ⚙.
       </SectionIntro>
-
-      {/* ⭐ №271: библиотеки цен vs рабочие справочники проектов */}
-      <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
-        <Chip
-          label="Все"
-          color={catalogView === 'all' ? 'primary' : 'default'}
-          onClick={() => setCatalogView('all')}
-        />
-        <Chip
-          label="Каталоги цен"
-          color={catalogView === 'libraries' ? 'primary' : 'default'}
-          onClick={() => setCatalogView('libraries')}
-        />
-        <Chip
-          label="Справочники проектов"
-          color={catalogView === 'projects' ? 'primary' : 'default'}
-          onClick={() => setCatalogView('projects')}
-        />
-      </Stack>
 
       {/* Панель поиска и создания (десктоп) — как в «Объектах»; на мобилке поиск в шапке */}
       {!isMobile && (
@@ -523,7 +496,12 @@ const goBack = useBackNavigation('/');
                 />
               )}
               {catalog.scope === 'personal' && (
-                <Chip label="личный" size="small" variant="outlined" />
+                <Chip
+                  label={catalog.isDefault ? 'моя база' : 'дополнительный'}
+                  size="small"
+                  variant="outlined"
+                  color={catalog.isDefault ? 'primary' : 'default'}
+                />
               )}
               {catalog.canWrite === false && (
                 <Chip label="только чтение" size="small" variant="outlined" />

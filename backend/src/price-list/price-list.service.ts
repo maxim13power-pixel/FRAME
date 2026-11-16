@@ -121,6 +121,9 @@ export class PriceListService {
     });
 
     const isAdmin = await this.isAdmin(userId);
+    // ⭐ №279: образец (SYSTEM) — техническая библиотека-источник, а не «мой справочник».
+    // Пользователю показываем только его базы; админу — всё (поддержка образца).
+    const visible = isAdmin ? catalogs : catalogs.filter((c) => c.kind !== 'SYSTEM');
     const grants = userId
       ? await this.prisma.objectAccess.findMany({
           where: { userId },
@@ -133,7 +136,7 @@ export class PriceListService {
         })
       : [];
 
-    return catalogs.map((c) => {
+    return visible.map((c) => {
       const isSystem = c.ownerId === null;
       // ⭐ №274: рабочая база остаётся «личной», даже если привязана к проектам
       const scope: 'system' | 'object' | 'project' | 'personal' = isSystem
