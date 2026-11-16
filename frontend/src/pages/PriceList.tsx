@@ -214,17 +214,32 @@ const PriceListInner: React.FC = () => {
   const headerTitle = catalogName ?? 'Справочник цен';
 
   const headerTrailing = useMemo(() => isMobile ? (
-    <IconButton
-      onClick={(e) => setSortAnchorEl(e.currentTarget)}
-      sx={{
-        bgcolor: priceSortBy ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
-        color: priceSortBy ? '#1976d2' : '#424242',
-        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
-      }}
-    >
-      <SortIcon />
-    </IconButton>
-  ) : undefined, [isMobile, priceSortBy]);
+    <>
+      {/* ⭐ №281: на мобилке «Импорт» живёт в шапке (в тулбаре кнопок больше нет) */}
+      <IconButton
+        onClick={(e) => setTemplateMenuAnchor(e.currentTarget)}
+        disabled={!catalogId}
+        aria-label="Импорт: из шаблона, Excel, скачать шаблон"
+        sx={{
+          bgcolor: 'rgba(0, 0, 0, 0.06)',
+          color: '#1976d2',
+          '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+        }}
+      >
+        <PlaylistAddIcon />
+      </IconButton>
+      <IconButton
+        onClick={(e) => setSortAnchorEl(e.currentTarget)}
+        sx={{
+          bgcolor: priceSortBy ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0,0,0,0.06)',
+          color: priceSortBy ? '#1976d2' : '#424242',
+          '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' },
+        }}
+      >
+        <SortIcon />
+      </IconButton>
+    </>
+  ) : undefined, [isMobile, priceSortBy, catalogId]);
 
   useMobileHeader({
     title: headerTitle,
@@ -661,19 +676,19 @@ const PriceListInner: React.FC = () => {
         </Alert>
       )}
 
-      {/* ⭐ №280: тулбар как в сметах — поиск слева, действия справа, «Добавить» крайняя */}
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: isMobile ? 'column' : 'row',
-          flexWrap: 'nowrap',
-          gap: isMobile ? 1 : 1.5,
-          mb: 2,
-          alignItems: isMobile ? 'stretch' : 'center',
-        }}
-      >
-        {/* На мобилке поиск в шапке — здесь скрыт */}
-        {!isMobile && (
+      {/* ⭐ №280/№281: тулбар только на десктопе — на мобилке поиск и «Импорт» живут
+          в шапке, а расценка добавляется кнопкой FAB `$+`.
+          ⭐ №281: подписи кнопок видны всегда, ширину уступает поиск */}
+      {!isMobile && (
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'nowrap',
+            gap: 1.5,
+            mb: 2,
+            alignItems: 'center',
+          }}
+        >
           <TextField
             placeholder="Поиск расценок..."
             variant="outlined"
@@ -690,31 +705,6 @@ const PriceListInner: React.FC = () => {
               ),
             }}
           />
-        )}
-        {isMobile ? (
-          // МОБИЛКА: «Импорт» → «Категория»; добавление расценки — FAB `$+`
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            <Button
-              variant="outlined"
-              startIcon={<PlaylistAddIcon />}
-              onClick={(e) => setTemplateMenuAnchor(e.currentTarget)}
-              disabled={!catalogId}
-              sx={{ whiteSpace: 'nowrap' }}
-            >
-              Импорт
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<CategoryIcon />}
-              onClick={handleOpenCatModal}
-              sx={{ whiteSpace: 'nowrap' }}
-            >
-              Категория
-            </Button>
-          </Box>
-        ) : (
-          // ДЕСКТОП: Импорт → Категория → Добавить (крайняя); подписи всегда видны,
-          // при сужении ширину уступает поиск (кнопки не сжимаются и не переносятся)
           <Box
             sx={{
               display: 'flex',
@@ -765,8 +755,8 @@ const PriceListInner: React.FC = () => {
               Добавить
             </Button>
           </Box>
-        )}
-      </Box>
+        </Box>
+      )}
 
       {/* ⭐ №280: шаблон/импорт/обновление из образца — в одном меню, как в сметах */}
       <Menu
