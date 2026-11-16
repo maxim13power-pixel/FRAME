@@ -54,6 +54,34 @@ export const createProject = async (data: Omit<ProjectData, 'id' | 'createdAt' |
   return response.data;
 };
 
+/** ⭐ №286: проект, из которого можно скопировать смету при создании нового */
+export interface AvailableProject {
+  id: number;
+  name: string;
+  objectId: number;
+  objectName: string;
+  materialsCount: number;
+}
+
+/** ⭐ №286: список доступных пользователю проектов (только с позициями) */
+export const fetchAvailableProjects = async (): Promise<AvailableProject[]> => {
+  const response = await api.get('/projects/available');
+  return response.data;
+};
+
+/**
+ * ⭐ №286: скопировать смету другого проекта в этот (только в пустой).
+ * Переносятся позиции и цены; прогресс/факт — нет.
+ * `zeroQuantities` — количества обнулить (остаются названия и единицы).
+ */
+export const copyEstimateFromProject = async (
+  targetProjectId: number,
+  payload: { sourceProjectId: number; zeroQuantities?: boolean },
+): Promise<{ created: number }> => {
+  const response = await api.post(`/projects/${targetProjectId}/copy-estimate`, payload);
+  return response.data;
+};
+
 export const updateProject = async (id: number, data: Partial<Omit<ProjectData, 'id' | 'createdAt' | 'updatedAt'>>) => {
   const response = await api.patch(`/projects/${id}`, data);
   return response.data;

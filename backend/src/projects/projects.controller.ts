@@ -15,6 +15,7 @@ import {
 import { ProjectsService } from './projects.service';
 import { ProjectDeletionService } from './project-deletion.service';
 import { CreateProjectDto } from './dto/create-project.dto';
+import { CopyEstimateDto } from './dto/copy-estimate.dto'; // ⭐ №286
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ObjectAccessGuard } from '../auth/object-access.guard';
 
@@ -33,6 +34,25 @@ export class ProjectsController {
   @Post()
   create(@Body() createProjectDto: CreateProjectDto, @Req() req) {
     return this.projectsService.create(createProjectDto, req.user.userId);
+  }
+
+  /**
+   * ⭐ №286: проекты, из которых можно скопировать смету при создании нового.
+   * ВАЖНО: объявлен ДО `@Get(':id')`, иначе «available» уйдёт в ParseIntPipe.
+   */
+  @Get('available')
+  listAvailable(@Req() req) {
+    return this.projectsService.listAvailableForCopy(req.user.userId);
+  }
+
+  /** ⭐ №286: скопировать смету другого проекта в этот (только в пустой). */
+  @Post(':id/copy-estimate')
+  copyEstimate(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CopyEstimateDto,
+    @Req() req,
+  ) {
+    return this.projectsService.copyEstimate(id, dto, req.user.userId);
   }
 
   @Get('object/:objectId')

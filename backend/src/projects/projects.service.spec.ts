@@ -1,6 +1,6 @@
 // backend/src/projects/projects.service.spec.ts
 // ⭐ №204 (A#10): карточка проекта — объектное право, а не проектное.
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 
 const grant = (over: Record<string, unknown> = {}) => ({
@@ -82,3 +82,110 @@ describe('ProjectsService — карточка проекта (№204, A#10)', (
     expect(prisma.project.delete).toHaveBeenCalled();
   });
 });
+describe('ProjectsService — смета из другого проекта (№286)', () => {
+  const prisma = {
+    project: { findUnique: jest.fn(), findMany: jest.fn() },
+    objectAccess: { findMany: jest.fn() },
+    material: { count: jest.fn(), findMany: jest.fn(), createMany: jest.fn() },
+  };
+  const audit = { log: jest.fn() };
+  let service: ProjectsService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // цель (29) и источник (12) лежат в объекте 15
+    prisma.project.findUnique.mockResolvedValue({ objectId: 15 });
+    prisma.objectAccess.findMany.mockResolvedValue([grant({ role: 'CUSTOMER' })]);
+    prisma.material.count.mockResolvedValue(0);
+    prisma.material.createMany.mockResolvedValue({ count: 1 });
+    service = new ProjectsService(prisma as never, audit as never);
+  });
+
+  it('копирует позиции и цены, количества — как в источнике', async () => {
+    prisma.material.findMany.mockResolvedValue([
+      {
+        name: 'Стена',
+        article: 'A-1',
+        unit: 'SQUARE_METER',
+        specQuantity: 12.5,
+        unitPrice: 300,
+        materialUnitPrice: 200,
+        priceItemId: 5,
+        materialItemId: 6,
+      },
+    ]);
+
+    await expect(
+      service.copyEstimate(29, { sourceProjectId: 12 }, 7),
+    ).resolves.toEqual({ created: 1 });
+
+    const data = prisma.material.createMany.mock.calls[0][0].data[0];
+    expect(data).toMatchObject({
+      specQuantity: 12.5,
+      unitPrice: 300,
+      materialUnitPrice: 200,
+      priceItemId: 5,
+      materialItemId: 6,
+      projectId: 29,
+      isSpecLocked: true,
+    });
+  });
+
+  it('zeroQuantities обнуляет количества, названия и единицы остаются', async () => {
+    prisma.material.findMany.mockResolvedValue([
+      {
+        name: 'Стена',
+        article: null,
+        unit: 'PIECE',
+        specQuantity: 7,
+        unitPrice: 10,
+        materialUnitPrice: 0,
+        priceItemId: null,
+        materialItemId: null,
+      },
+    ]);
+
+    await service.copyEstimate(29, { sourceProjectId: 12, zeroQuantities: true }, 7);
+
+    const data = prisma.material.createMany.mock.calls[0][0].data[0];
+    expect(data.specQuantity).toBe(0);
+    expect(data.name).toBe('Стена');
+  });
+
+  it('в проект с позициями не копирует ⇒ BadRequest', async () => {
+    prisma.material.count.mockResolvedValue(3);
+
+    await expect(
+      service.copyEstimate(29, { sourceProjectId: 12 }, 7),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.material.createMany).not.toHaveBeenCalled();
+  });
+
+  it('наблюдатель смету копировать не может ⇒ Forbidden', async () => {
+    prisma.objectAccess.findMany.mockResolvedValue([grant({ role: 'VIEWER' })]);
+
+    await expect(
+      service.copyEstimate(29, { sourceProjectId: 12 }, 7),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.material.createMany).not.toHaveBeenCalled();
+  });
+
+  it('список для копирования: без пустых смет и объектов в личном архиве', async () => {
+    prisma.objectAccess.findMany.mockResolvedValue([
+      grant({ projectId: null, isHidden: false }),
+      grant({ objectId: 16, projectId: null, isHidden: true }),
+    ]);
+    prisma.project.findMany.mockResolvedValue([
+      { id: 29, name: 'Смета A', objectId: 15, object: { name: 'Объект' }, _count: { materials: 4 } },
+      { id: 30, name: 'Пустой', objectId: 15, object: { name: 'Объект' }, _count: { materials: 0 } },
+      { id: 31, name: 'Из архива', objectId: 16, object: { name: 'Архив' }, _count: { materials: 2 } },
+    ]);
+
+    const rows = await service.listAvailableForCopy(7);
+
+    expect(rows).toEqual([
+      { id: 29, name: 'Смета A', objectId: 15, objectName: 'Объект', materialsCount: 4 },
+    ]);
+  });
+});
+

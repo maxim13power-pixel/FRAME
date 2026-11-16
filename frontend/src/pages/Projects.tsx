@@ -21,15 +21,16 @@ import {
   MenuItem, 
   Checkbox,
   FormControlLabel,
+  ListSubheader,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
-import { fetchProjectsByObject, createProject, updateProject, setProjectHidden, scheduleProjectDeletion, cancelProjectDeletion } from '../services/projectService';
+import { fetchProjectsByObject, createProject, updateProject, setProjectHidden, scheduleProjectDeletion, cancelProjectDeletion, fetchAvailableProjects, copyEstimateFromProject } from '../services/projectService';
 import { fetchPriceCatalogs } from '../services/priceListService';
 import type { PriceCatalogData } from '../services/priceListService';
 
-import type { ProjectData } from '../services/projectService';
+import type { ProjectData, AvailableProject } from '../services/projectService';
 import { fetchEstimateTemplates, createEstimateTemplate, applyEstimateTemplate } from '../services/estimateTemplateService';
 import type { EstimateTemplate } from '../services/estimateTemplateService';
 import NoteAddIcon from '@mui/icons-material/NoteAdd';
@@ -207,9 +208,13 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [editingNoteProject, setEditingNoteProject] = useState<ProjectData | null>(null);
   const [editNote, setEditNote] = useState('');
 
-  // ⭐ №129: шаблоны смет
+  // ⭐ №129: шаблоны смет (снимки доступа остаются доступны)
   const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<number | ''>('');
+  // ⭐ №286: смета из другого проекта — вместо «глупого» списка шаблонов.
+  // В одном селекте: проекты (копия сметы) + шаблоны/снимки доступа.
+  const [estimateSource, setEstimateSource] = useState<string>(''); // '' | 'proj:12' | 'tpl:3'
+  const [availableProjects, setAvailableProjects] = useState<AvailableProject[]>([]);
+  const [zeroQuantities, setZeroQuantities] = useState(false);
   const [saveTemplateModalOpen, setSaveTemplateModalOpen] = useState(false);
   const [savingTemplateProject, setSavingTemplateProject] = useState<ProjectData | null>(null);
   const [templateName, setTemplateName] = useState('');
@@ -354,12 +359,21 @@ const handleCancelAccessRequest = async () => {
   }
 };
 
-  // ⭐ №129: загрузить свои шаблоны (для селекта «Из шаблона»)
+  // ⭐ №129: загрузить свои шаблоны (второй блок селекта «Смета из другого проекта»)
   const loadTemplates = async () => {
     try {
       setTemplates(await fetchEstimateTemplates());
     } catch {
       // шаблоны не критичны — оставляем пустой список
+    }
+  };
+
+  // ⭐ №286: все доступные пользователю проекты со сметами (копирование при создании)
+  const loadAvailableProjects = async () => {
+    try {
+      setAvailableProjects(await fetchAvailableProjects());
+    } catch {
+      setAvailableProjects([]);
     }
   };
 
@@ -378,18 +392,37 @@ const handleCancelAccessRequest = async () => {
       .catch(() => setCatalogs([]));
   }, [token]);
 
-  // ⭐ №129: применить выбранный шаблон после создания проекта
-  const applyTemplateIfNeeded = async (projectId: number) => {
-    if (!selectedTemplateId) return;
+  // ⭐ №286: смета нового проекта — копия из выбранного проекта (или шаблона).
+  // Проект уже создан; копируем позиции и цены. Прогресс/факт не переносятся.
+  const applyEstimateIfNeeded = async (projectId: number) => {
+    if (!estimateSource) return;
+    const [kind, rawId] = estimateSource.split(':');
+    const sourceId = Number(rawId);
+    if (!sourceId) return;
     try {
-      const res = await applyEstimateTemplate(selectedTemplateId, projectId);
+      if (kind === 'proj') {
+        const res = await copyEstimateFromProject(projectId, {
+          sourceProjectId: sourceId,
+          zeroQuantities,
+        });
+        if (!res?.created) {
+          notify('В проекте-источнике нет позиций — смета нового проекта пустая.', 'warning');
+        } else {
+          success(
+            `Смета скопирована: ${res.created} поз. Прогресс — 0 %.` +
+              (zeroQuantities ? ' Количества обнулены.' : ''),
+          );
+        }
+        return;
+      }
+      const res = await applyEstimateTemplate(sourceId, projectId);
       if (!res?.created) {
         notify('Шаблон применён, но в нём нет позиций — смета нового проекта пустая.', 'warning');
       }
     } catch (err) {
       // ⭐ Раньше ошибка проглатывалась в console.warn — пользователь видел «не работает» без причины
       notifyError(
-        'Проект создан, но шаблон применить не удалось:\n' +
+        'Проект создан, но смету скопировать не удалось:\n' +
           getApiErrorText(err, 'неизвестная ошибка'),
       );
     }
@@ -438,6 +471,8 @@ const handleCancelAccessRequest = async () => {
     setNewStartDate(currentObject?.startDate.slice(0, 10) ?? '');
     setNewEndDate(currentObject?.endDate.slice(0, 10) ?? '');
     loadTemplates();
+    // ⭐ №286: список проектов, из которых можно взять смету
+    void loadAvailableProjects();
     // ⭐ №274: по умолчанию — моя рабочая база цен
     const preferred =
       catalogs.find((c) => c.isDefault) ?? catalogs.find((c) => c.scope !== 'system');
@@ -450,7 +485,8 @@ const handleCancelAccessRequest = async () => {
     setNewEndDate('');
     setNewCatalogId('');
     setPendingProject(null);
-    setSelectedTemplateId('');
+    setEstimateSource(''); // ⭐ №286
+    setZeroQuantities(false);
   };
 
   // ⭐ №158: значение селекта «Справочник цен» -> catalogId для API ('' и «создать новый» = не выбран)
@@ -519,7 +555,7 @@ const createProjectAction = async (projectData?: {
       catalogId: data.catalogId ?? null,
       objectId: parseInt(objectId!),
     });
-    await applyTemplateIfNeeded(created.id);
+    await applyEstimateIfNeeded(created.id);
     setProjects(prev => [created, ...prev]);
     handleCloseAddModal();
     setPendingProject(null); // очищаем
@@ -645,7 +681,7 @@ const handleConfirmDateUpdate = async () => {
         catalogId: catalogIdFromSelect(pendingProject.catalogId ?? ''),
         objectId: parseInt(objectId!),
       });
-      await applyTemplateIfNeeded(created.id);
+      await applyEstimateIfNeeded(created.id);
       setProjects(prev => [created, ...prev]);
       handleCloseAddModal();
       setPendingProject(null);
@@ -1324,26 +1360,59 @@ onBack: goBack,
           min: newStartDate || (currentObject ? currentObject.startDate.slice(0, 10) : undefined),
                   }}
       />
+      {/* ⭐ №286: вместо «шаблонов» — выбор любого доступного проекта.
+          Смета копируется без прогресса (0 %), цены и спецификация сохраняются. */}
       <FormControl fullWidth>
-        <InputLabel id="template-select-label">Из шаблона (опционально)</InputLabel>
+        <InputLabel id="estimate-source-label">Смета из другого проекта</InputLabel>
         <Select
-          labelId="template-select-label"
-          label="Из шаблона (опционально)"
-          value={selectedTemplateId}
-          onChange={(e) => setSelectedTemplateId(e.target.value as number | '')}
+          labelId="estimate-source-label"
+          label="Смета из другого проекта"
+          value={estimateSource}
+          onChange={(e) => setEstimateSource(e.target.value)}
         >
-          <MenuItem value="">Без шаблона</MenuItem>
+          <MenuItem value="">
+            <em>Пустой проект — смету заполню сам</em>
+          </MenuItem>
+          {availableProjects.length > 0 && (
+            <ListSubheader>Проекты — копия сметы (0 %)</ListSubheader>
+          )}
+          {availableProjects.map((p) => (
+            <MenuItem key={`proj:${p.id}`} value={`proj:${p.id}`}>
+              {p.name} — {p.objectName} · {p.materialsCount} поз.
+            </MenuItem>
+          ))}
+          {templates.length > 0 && (
+            <ListSubheader>Шаблоны и снимки доступа</ListSubheader>
+          )}
           {templates.map((t) => (
-            <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+            <MenuItem key={`tpl:${t.id}`} value={`tpl:${t.id}`} disabled={t.items.length === 0}>
+              {t.name}
+              {t.items.length > 0 ? ` · ${t.items.length} поз.` : ' · пусто'}
+            </MenuItem>
           ))}
         </Select>
       </FormControl>
-      {templates.length === 0 && (
-        <Typography variant="caption" color="text.secondary">
-          Шаблонов пока нет. Сохраните смету любого проекта как шаблон (меню проекта → «Сохранить
-          шаблон») — он появится в этом списке.
+      <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+        Можно вставить смету существующего проекта: позиции, единицы и цены скопируются,
+        а прогресс начнётся с 0 % (факт, фиксации и фото не переносятся).
+      </Typography>
+      {availableProjects.length === 0 && templates.length === 0 && (
+        <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+          Пока нечего копировать: у доступных проектов нет позиций. Сначала заполните смету
+          любого проекта — он появится здесь.
         </Typography>
       )}
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={zeroQuantities}
+            onChange={(e) => setZeroQuantities(e.target.checked)}
+            // ⭐ №286: имеет смысл только для копии проекта (у шаблонов свои количества)
+            disabled={!estimateSource.startsWith('proj:')}
+          />
+        }
+        label="Обнулить количества — оставить названия и единицы измерения"
+      />
       {!hideFinance && (
         <FormControl fullWidth>
           <InputLabel id="project-catalog-label">Справочник цен проекта</InputLabel>

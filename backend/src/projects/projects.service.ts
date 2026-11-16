@@ -9,9 +9,12 @@ import { AccessRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service'; // ⭐ №168: журнал удалений
 import { CreateProjectDto } from './dto/create-project.dto';
+import { CopyEstimateDto } from './dto/copy-estimate.dto'; // ⭐ №286
 import {
   REVOKED_ACCESS_MESSAGE,
   assertAccessActive,
+  accessibleProjectWhere, // ⭐ №286: список доступных проектов
+  buildAccessScope, // ⭐ №286: список доступных проектов
   findLiveAccess,
   findProjectAccess,
   loadAccessGrants,
@@ -186,6 +189,112 @@ export class ProjectsService {
         include: { catalog: { select: { id: true, name: true } } },
       });
     });
+  }
+
+  /**
+   * ⭐ №286: проекты, из которых можно взять смету при создании нового.
+   * Отдаём всё, что видит пользователь (объектный или точечный доступ), кроме объектов
+   * в личном архиве и пустых смет — копировать из них нечего.
+   */
+  async listAvailableForCopy(userId: number) {
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const scope = buildAccessScope(grants);
+    const hiddenObjectIds = new Set(
+      grants
+        .filter((g) => g.projectId == null && g.isHidden)
+        .map((g) => g.objectId),
+    );
+    const rows = await this.prisma.project.findMany({
+      // ⭐ общий where «доступные проекты» — правила доступа не дублируем
+      where: accessibleProjectWhere(scope),
+      select: {
+        id: true,
+        name: true,
+        objectId: true,
+        object: { select: { name: true } },
+        _count: { select: { materials: true } },
+      },
+      orderBy: [{ objectId: 'asc' }, { createdAt: 'desc' }],
+    });
+    return rows
+      .filter((p) => !hiddenObjectIds.has(p.objectId) && p._count.materials > 0)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        objectId: p.objectId,
+        objectName: p.object.name,
+        materialsCount: p._count.materials,
+      }));
+  }
+
+  /**
+   * ⭐ №286: скопировать смету из другого проекта в ПУСТОЙ проект.
+   * Переносим только спецификацию и цены (снимок): название, артикул, единицу, количество,
+   * цену работы/материала и ссылки на позиции справочника. Прогресс, факт, фиксации и фото
+   * не переносятся — новый проект начинается с 0 %.
+   * `zeroQuantities` = true → количества обнуляем (остаются названия и единицы).
+   */
+  async copyEstimate(
+    targetProjectId: number,
+    dto: CopyEstimateDto,
+    userId: number,
+  ) {
+    if (dto.sourceProjectId === targetProjectId) {
+      throw new BadRequestException(
+        'Нельзя скопировать смету проекта в него же',
+      );
+    }
+    // Цель: право записи (наблюдатель и отозванный доступ — нельзя)
+    const targetAccess = await this.checkProjectAccess(targetProjectId, userId);
+    this.assertWritable(targetAccess, 'копировать смету в проект');
+    // Источник: должен быть виден пользователю, а цены — не скрыты его ролью
+    const sourceAccess = await this.checkProjectAccess(dto.sourceProjectId, userId);
+    if (this.mustHidePrices(sourceAccess)) {
+      throw new ForbiddenException(
+        'Цены проекта-источника скрыты для вашей роли — смету скопировать нельзя',
+      );
+    }
+
+    const existing = await this.prisma.material.count({
+      where: { projectId: targetProjectId },
+    });
+    if (existing > 0) {
+      throw new BadRequestException(
+        'В проекте уже есть позиции — смету можно копировать только в пустой проект',
+      );
+    }
+
+    const rows = await this.prisma.material.findMany({
+      where: { projectId: dto.sourceProjectId },
+      orderBy: { id: 'asc' },
+      select: {
+        name: true,
+        article: true,
+        unit: true,
+        specQuantity: true,
+        unitPrice: true,
+        materialUnitPrice: true,
+        priceItemId: true,
+        materialItemId: true,
+      },
+    });
+    if (rows.length === 0) return { created: 0 };
+
+    await this.prisma.material.createMany({
+      data: rows.map((m) => ({
+        name: m.name,
+        article: m.article,
+        unit: m.unit,
+        specQuantity: dto.zeroQuantities ? 0 : m.specQuantity,
+        unitPrice: m.unitPrice,
+        materialUnitPrice: m.materialUnitPrice,
+        priceItemId: m.priceItemId,
+        materialItemId: m.materialItemId,
+        projectId: targetProjectId,
+        isSpecLocked: true, // защита спецификации, как у обычных позиций
+      })),
+    });
+    return { created: rows.length };
   }
 
   async findAllByObject(objectId: number, userId: number, includeHidden = false) {
