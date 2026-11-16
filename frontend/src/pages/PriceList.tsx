@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
@@ -44,6 +44,9 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import CategoryIcon from '@mui/icons-material/Category';
 import PriceCheckIcon from '@mui/icons-material/PriceCheck';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { useAuth } from '../contexts/AuthContext';
 import { FAB_STYLE } from '../theme';
 import { useFeedback } from '../contexts/FeedbackContext';
@@ -51,6 +54,8 @@ import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import {
   fetchCategoriesWithItems,
   fetchPriceCatalogs,
+  downloadPriceTemplate,
+  fetchPriceClarifications,
   createCategory,
   updateCategory,
   deleteCategory,
@@ -60,6 +65,8 @@ import {
 } from '../services/priceListService';
 import type { PriceCategoryData, PriceCatalogData, PriceItemData } from '../services/priceListService';
 import PriceCatalogList from '../components/PriceCatalogList';
+import { PriceImportDialog } from '../components/PriceImportDialog';
+import { PriceClarificationsDialog } from '../components/PriceClarificationsDialog';
 import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import { getApiErrorText } from '../utils/errors';
 
@@ -128,6 +135,43 @@ const PriceListInner: React.FC = () => {
   // Подтверждение удаления расценки
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingItem, setDeletingItem] = useState<PriceItemData | null>(null);
+
+  // ⭐ №273: импорт/выгрузка прайса и черновики без единицы измерения
+  const [importOpen, setImportOpen] = useState(false);
+  const [clarifyOpen, setClarifyOpen] = useState(false);
+  const [draftCount, setDraftCount] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const loadDrafts = useCallback(async () => {
+    if (!catalogId) {
+      setDraftCount(0);
+      return;
+    }
+    try {
+      const data = await fetchPriceClarifications(catalogId, activeTab);
+      setDraftCount(data.total);
+    } catch {
+      setDraftCount(0);
+    }
+  }, [catalogId, activeTab]);
+
+  useEffect(() => {
+    void loadDrafts();
+  }, [loadDrafts]);
+
+  const handleDownloadTemplate = async () => {
+    if (!catalogId) return;
+    try {
+      await downloadPriceTemplate(catalogId, activeTab);
+    } catch (err) {
+      notifyError(getApiErrorText(err, 'Не удалось скачать шаблон'));
+    }
+  };
+
+  const handleImported = useCallback(async () => {
+    setReloadKey((key) => key + 1);
+    await loadDrafts();
+  }, [loadDrafts]);
 
   // Настройки категории (шестерёнка): переименование + защищённое удаление
   const [catSettingsOpen, setCatSettingsOpen] = useState(false);
@@ -202,7 +246,7 @@ const PriceListInner: React.FC = () => {
       }
     };
     loadData();
-  }, [token, activeTab, catalogId]);
+  }, [token, activeTab, catalogId, reloadKey]);
 
   // ============================================================
   // ФИЛЬТРАЦИЯ ПО ПОИСКУ (локально, как в Materials)
@@ -556,6 +600,22 @@ const PriceListInner: React.FC = () => {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
+      {draftCount > 0 && (
+        <Alert
+          severity="warning"
+          icon={<WarningAmberIcon />}
+          sx={{ mb: 2 }}
+          action={
+            <Button color="inherit" size="small" onClick={() => setClarifyOpen(true)}>
+              Уточнить
+            </Button>
+          }
+        >
+          Есть позиции без единицы измерения: {draftCount}. Они серые и не попадают в смету, пока
+          единица не выбрана.
+        </Alert>
+      )}
+
       {/* Поиск и кнопки добавления */}
       <Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 2, mb: 2 }}>
         {/* На мобилке поиск теперь в шапке — скрываем его здесь */}
@@ -578,15 +638,35 @@ const PriceListInner: React.FC = () => {
           />
         )}
         {isMobile ? (
-          // ⭐ МОБИЛКА: только кнопка "Категория" (FAB `$+` справляется с расценками)
-          <Button
-            variant="outlined"
-            startIcon={<CategoryIcon />}
-            onClick={handleOpenCatModal}
-            sx={{ whiteSpace: 'nowrap' }}
-          >
-            Создать категорию
-          </Button>
+          // ⭐ МОБИЛКА: категория + шаблон/импорт (FAB `$+` справляется с расценками)
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              startIcon={<CategoryIcon />}
+              onClick={handleOpenCatModal}
+              sx={{ whiteSpace: 'nowrap' }}
+            >
+              Создать категорию
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<FileDownloadIcon />}
+              onClick={() => void handleDownloadTemplate()}
+              disabled={!catalogId}
+              sx={{ whiteSpace: 'nowrap' }}
+            >
+              Шаблон
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<UploadFileIcon />}
+              onClick={() => setImportOpen(true)}
+              disabled={!catalogId}
+              sx={{ whiteSpace: 'nowrap' }}
+            >
+              Импорт
+            </Button>
+          </Box>
         ) : (
           // ДЕСКТОП: кнопки не сжимаются (flexShrink: 0) → текст больше не вылезает
           <>
@@ -617,6 +697,26 @@ const PriceListInner: React.FC = () => {
               }}
             >
               Добавить расценку
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<FileDownloadIcon />}
+              onClick={() => void handleDownloadTemplate()}
+              disabled={!catalogId}
+              sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+              title="Скачать прайс: лист = категория, с выпадающим списком единиц"
+            >
+              Шаблон
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<UploadFileIcon />}
+              onClick={() => setImportOpen(true)}
+              disabled={!catalogId}
+              sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+              title="Загрузить заполненный шаблон"
+            >
+              Импорт
             </Button>
           </>
         )}
@@ -1041,6 +1141,27 @@ const PriceListInner: React.FC = () => {
           </Box>
         </Paper>
       </Modal>
+
+      {/* ⭐ №273: импорт прайса и уточнение единиц (черновики) */}
+      {catalogId != null && (
+        <>
+          <PriceImportDialog
+            open={importOpen}
+            catalogId={catalogId}
+            kind={activeTab}
+            catalogName={catalogName}
+            onClose={() => setImportOpen(false)}
+            onImported={handleImported}
+          />
+          <PriceClarificationsDialog
+            open={clarifyOpen}
+            catalogId={catalogId}
+            kind={activeTab}
+            onClose={() => setClarifyOpen(false)}
+            onResolved={loadDrafts}
+          />
+        </>
+      )}
     </Box>
   );
 };

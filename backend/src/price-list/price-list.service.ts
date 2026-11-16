@@ -667,6 +667,30 @@ export class PriceListService {
     });
   }
 
+  /**
+   * ⭐ №273: можно ли менять расценки этого справочника (импорт/выгрузка прайса).
+   * Нужны: доступ на чтение, отсутствие архива, право записи и видимые цены
+   * (иначе выгрузка/импорт стали бы способом увидеть скрытые деньги).
+   */
+  async assertCanEditCatalog(catalogId: number, userId?: number) {
+    const access = await loadCatalogAccess(this.prisma, catalogId, userId);
+    if (!access || !access.canRead) {
+      throw new NotFoundException('Справочник не найден или нет доступа');
+    }
+    if (access.catalog.isArchived) {
+      throw new BadRequestException('Справочник в архиве — выберите активный');
+    }
+    if (!access.canWrite) {
+      throw new ForbiddenException('Нет прав на изменение расценок этого справочника');
+    }
+    if (!(await this.pricesVisibleFor(catalogId, userId))) {
+      throw new ForbiddenException(
+        'У вас скрыты цены — импорт и выгрузка прайса недоступны. Попросите администратора объекта открыть цены.',
+      );
+    }
+    return access;
+  }
+
   // ⭐ №164: право менять расценку определяет справочник, в котором она лежит:
   // системный — ADMIN, личный — владелец, объектный/проектный — администратор объекта/прораб.
   private async assertCanEditItem(catalogId: number, userId?: number) {

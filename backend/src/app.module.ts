@@ -23,6 +23,7 @@ import { AccessRequestModule } from './access-request/access-request.module'; //
 import { SnapshotsModule } from './snapshots/snapshots.module'; // ⭐ №194: снимок доступа
 import { ImportsModule } from './imports/imports.module'; // ⭐ №202: импорт сметы из Excel
 import { PhotosModule } from './photos/photos.module'; // ⭐ №227: фото-фиксация материалов
+import { PriceListImportModule } from './price-list-import/price-list-import.module'; // ⭐ №273: импорт/выгрузка прайса
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -49,6 +50,7 @@ import { PhotosModule } from './photos/photos.module'; // ⭐ №227: фото-�
     AccessRequestModule, // ⭐ №178: заявки на право создавать проекты
     SnapshotsModule, // ⭐ №194: снимок доступа (только чтение)
     ImportsModule, // ⭐ №202: импорт сметы из Excel
+    PriceListImportModule, // ⭐ №273: импорт/выгрузка прайса
     PhotosModule, // ⭐ №227: фото-фиксация материалов
   ],
   controllers: [AppController],

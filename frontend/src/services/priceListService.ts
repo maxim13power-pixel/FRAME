@@ -242,3 +242,170 @@ export const archivePriceCatalog = async (id: number): Promise<PriceCatalogData>
   const response = await api.delete(`/price-list/catalogs/${id}`);
   return response.data;
 };
+
+// ============================================================
+// ⭐ №273 (§121): ИМПОРТ И ВЫГРУЗКА ПРАЙСА
+// ============================================================
+
+export type PriceImportKind = 'WORK' | 'MATERIAL';
+
+export interface PriceImportRow {
+  key: string;
+  sheet: string;
+  row: number;
+  id: number | null;
+  name: string;
+  article: string | null;
+  unitRaw: string | null;
+  unit: string | null;
+  unitApprox: boolean;
+  price: number | null;
+  note: string | null;
+  category: string;
+  action: 'create' | 'update' | 'unchanged';
+  matchedBy: 'id' | 'article' | 'name' | null;
+  needsUnit: boolean;
+  changes: string[];
+  warnings: string[];
+}
+
+export interface PriceUnitGroup {
+  raw: string;
+  key: string;
+  count: number;
+  suggestion: string | null;
+  approx: boolean;
+}
+
+export interface PriceImportPreview {
+  fileName: string | null;
+  kind: PriceImportKind;
+  catalog: { id: number; name: string };
+  template: boolean;
+  sheets: {
+    sheet: string;
+    category: string;
+    rows: number;
+    newCategory: boolean;
+    skipped: boolean;
+  }[];
+  rows: PriceImportRow[];
+  unitGroups: PriceUnitGroup[];
+  stats: {
+    total: number;
+    create: number;
+    update: number;
+    unchanged: number;
+    needsUnit: number;
+    warnings: number;
+  };
+  warnings: string[];
+}
+
+export interface PriceImportResult {
+  created: number;
+  updated: number;
+  unchanged: number;
+  drafts: number;
+  categoriesCreated: number;
+  message: string;
+}
+
+export interface PriceClarificationGroup {
+  raw: string;
+  key: string;
+  count: number;
+  items: {
+    id: number;
+    name: string;
+    price: number;
+    category: string | null;
+    kind: PriceImportKind;
+  }[];
+}
+
+/** Скачать шаблон — он же выгрузка текущего справочника (лист = категория) */
+export const downloadPriceTemplate = async (
+  catalogId: number,
+  kind: PriceImportKind,
+): Promise<void> => {
+  const response = await api.get(`/price-list/catalogs/${catalogId}/export`, {
+    params: { kind },
+    responseType: 'blob',
+  });
+  const disposition = String(response.headers['content-disposition'] ?? '');
+  const match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  const fileName = match
+    ? decodeURIComponent(match[1])
+    : `Прайс — ${kind === 'WORK' ? 'работы' : 'материалы'}.xlsx`;
+
+  const blob = new Blob([response.data], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+};
+
+const priceImportForm = (
+  kind: PriceImportKind,
+  file: File,
+  units: Record<string, string>,
+): FormData => {
+  const form = new FormData();
+  form.append('kind', kind);
+  form.append('file', file);
+  form.append('units', JSON.stringify(units));
+  return form;
+};
+
+export const previewPriceImport = async (
+  catalogId: number,
+  kind: PriceImportKind,
+  file: File,
+  units: Record<string, string> = {},
+): Promise<PriceImportPreview> => {
+  const response = await api.post(
+    `/price-list/catalogs/${catalogId}/import/preview`,
+    priceImportForm(kind, file, units),
+  );
+  return response.data;
+};
+
+export const commitPriceImport = async (
+  catalogId: number,
+  kind: PriceImportKind,
+  file: File,
+  units: Record<string, string> = {},
+): Promise<PriceImportResult> => {
+  const response = await api.post(
+    `/price-list/catalogs/${catalogId}/import/commit`,
+    priceImportForm(kind, file, units),
+  );
+  return response.data;
+};
+
+/** Черновики: единица не распознана (позиции сохранены, но неактивны) */
+export const fetchPriceClarifications = async (
+  catalogId: number,
+  kind?: PriceImportKind,
+): Promise<{ total: number; groups: PriceClarificationGroup[] }> => {
+  const response = await api.get(`/price-list/catalogs/${catalogId}/clarifications`, {
+    params: kind ? { kind } : undefined,
+  });
+  return response.data;
+};
+
+export const resolvePriceClarifications = async (
+  catalogId: number,
+  payload: { raw?: string; ids?: number[]; unit: string },
+): Promise<{ updated: number }> => {
+  const response = await api.post(`/price-list/catalogs/${catalogId}/clarifications`, payload);
+  return response.data;
+};
+
