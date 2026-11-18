@@ -8,6 +8,7 @@ import theme from './theme';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { FeedbackProvider } from './contexts/FeedbackContext';
 import AccessRevokedModal from './components/AccessRevokedModal'; // ⭐ №168
+import AccessRequestWatcher from './components/AccessRequestWatcher'; // ⭐ №309: уведомления о заявках
 import { PENDING_INVITE_KEY, safeGetString } from './utils/storage';
 
 // ⭐ Шаг 99 (P1-6): React.lazy — каждая страница грузится своим чанком.
@@ -140,6 +141,8 @@ function App() {
           <FeedbackProvider>
             {/* ⭐ №168: модалка «Доступ отозван» (403 от бэкенда) */}
             <AccessRevokedModal />
+            {/* ⭐ №309: всплывающие уведомления о заявках на доступ к объектам */}
+            <AccessRequestWatcher />
             {/* ⭐ Suspense для lazy-страниц */}
             <Suspense fallback={<PageLoader />}>
               <AppRoutes />

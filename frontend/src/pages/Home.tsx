@@ -14,8 +14,16 @@ import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary'; // ⭐ №231
 import EditIcon from '@mui/icons-material/Edit'; // ⭐ №231
 import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
+import { useFeedback } from '../contexts/FeedbackContext'; // ⭐ №309: одобрение заявок
 import { fetchDashboardSummary, fetchNoPriceItems } from '../services/dashboardService';
 import type { DashboardSummary } from '../services/dashboardService';
+// ⭐ №309: входящие заявки на право создавать проекты
+import {
+  approveAccessRequest,
+  fetchIncomingAccessRequests,
+  rejectAccessRequest,
+} from '../services/accessRequestService';
+import type { AccessRequestData } from '../services/accessRequestService';
 import { fetchPhotoBlob, fetchPhotoLibrary } from '../services/photoService'; // ⭐ №230 / №256
 import type { MaterialPhotoData, PhotoFeedItem } from '../services/photoService';
 import PhotoViewerDialog from '../components/PhotoViewerDialog'; // ⭐ №230
@@ -92,6 +100,10 @@ const Home: React.FC = () => {
   // ⭐ №231: полный список «Без расценки» (в сводке только 5 позиций)
   const [noPriceAll, setNoPriceAll] = useState<DashboardSummary['noPrice'] | null>(null);
   const [noPriceLoading, setNoPriceLoading] = useState(false);
+  // ⭐ №309: заявки на право создавать проекты — показываем админу объекта
+  const [requests, setRequests] = useState<AccessRequestData[]>([]);
+  const [requestBusyId, setRequestBusyId] = useState<number | null>(null);
+  const feedback = useFeedback();
 
   useMobileHeader({ title: 'Главная' });
 
@@ -141,11 +153,24 @@ const Home: React.FC = () => {
     }
   };
 
+  // ⭐ №309: входящие заявки — не критично для Главной, ошибки глотаем
+  const loadRequests = async () => {
+    try {
+      setRequests(await fetchIncomingAccessRequests('PENDING'));
+    } catch {
+      // нет прав/сети — просто не показываем блок
+    }
+  };
+
   const load = async () => {
     if (!token) return;
     try {
       setLoading(true);
-      const [summary] = await Promise.all([fetchDashboardSummary(), loadFeed()]);
+      const [summary] = await Promise.all([
+        fetchDashboardSummary(),
+        loadFeed(),
+        loadRequests(),
+      ]);
       setData(summary);
       setNoPriceAll(null);
       setError('');
@@ -175,7 +200,40 @@ const Home: React.FC = () => {
         // сеть пропала — оставляем то, что уже показано
       });
     void loadFeed();
+    void loadRequests(); // ⭐ №309: новая заявка видна сразу после возврата в окно
   });
+
+  // ⭐ №309: одобрить/отклонить заявку прямо с Главной (без перехода в «Объекты»)
+  const requestSubject = (req: AccessRequestData) =>
+    `${req.requester?.fullName || req.requester?.email || 'Участник'} — объект «${req.object?.name ?? '—'}»`;
+
+  const handleApproveRequest = async (req: AccessRequestData) => {
+    setRequestBusyId(req.id);
+    try {
+      await approveAccessRequest(req.id);
+      feedback.success(`Доступ выдан: ${requestSubject(req)}`);
+      setRequests((prev) => prev.filter((r) => r.id !== req.id));
+      // Одобрение добавляет объектную запись — суммы и объекты могли измениться
+      void fetchDashboardSummary().then(setData).catch(() => {});
+    } catch (e) {
+      feedback.error(getApiErrorMessage(e, 'Не удалось одобрить заявку'));
+    } finally {
+      setRequestBusyId(null);
+    }
+  };
+
+  const handleRejectRequest = async (req: AccessRequestData) => {
+    setRequestBusyId(req.id);
+    try {
+      await rejectAccessRequest(req.id);
+      feedback.notify(`Заявка отклонена: ${requestSubject(req)}`, 'info');
+      setRequests((prev) => prev.filter((r) => r.id !== req.id));
+    } catch (e) {
+      feedback.error(getApiErrorMessage(e, 'Не удалось отклонить заявку'));
+    } finally {
+      setRequestBusyId(null);
+    }
+  };
 
   useEffect(() => {
     load();
@@ -337,6 +395,68 @@ const Home: React.FC = () => {
           </Button>
         </Box>
       </Paper>
+
+      {/* ⭐ №309: заявки на доступ — сразу под «Расчётом по всем объектам» */}
+      {requests.length > 0 && (
+        <Paper sx={{ p: 2, borderRadius: 2, mb: 2, borderLeft: '4px solid #ed6c02' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+            <Typography variant="subtitle1" fontWeight={700}>
+              📨 Заявки на доступ ({requests.length})
+            </Typography>
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+            Просят право создавать проекты. Одобрение открывает весь объект и даёт
+            право создавать в нём проекты.
+          </Typography>
+          <Stack spacing={1}>
+            {requests.map((req) => (
+              <Box
+                key={req.id}
+                sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(237, 108, 2, 0.08)' }}
+              >
+                <Typography variant="body2" fontWeight={600}>
+                  {req.requester?.fullName || req.requester?.email || 'Участник'}
+                </Typography>
+                {(req.requester?.email || req.requester?.phone) && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    {req.requester?.email || req.requester?.phone}
+                  </Typography>
+                )}
+                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                  просит право создавать проекты в объекте «{req.object?.name ?? '—'}»
+                </Typography>
+                {req.comment && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    «{req.comment}»
+                  </Typography>
+                )}
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                  {new Date(req.createdAt).toLocaleString('ru-RU')}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={requestBusyId === req.id}
+                    onClick={() => void handleApproveRequest(req)}
+                  >
+                    Одобрить
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="error"
+                    disabled={requestBusyId === req.id}
+                    onClick={() => void handleRejectRequest(req)}
+                  >
+                    Отклонить
+                  </Button>
+                </Box>
+              </Box>
+            ))}
+          </Stack>
+        </Paper>
+      )}
 
       {/* ⭐ №230: последние фото по объектам — горизонтальная лента */}
       {feedPhotos.length > 0 && (
