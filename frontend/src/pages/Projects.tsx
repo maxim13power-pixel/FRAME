@@ -26,7 +26,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
-import { fetchProjectsByObject, createProject, updateProject, setProjectHidden, scheduleProjectDeletion, cancelProjectDeletion, fetchAvailableProjects, copyEstimateFromProject } from '../services/projectService';
+import { fetchProjectsByObject, createProject, updateProject, setProjectHidden, deleteProject, fetchAvailableProjects, copyEstimateFromProject } from '../services/projectService';
 import { fetchPriceCatalogs } from '../services/priceListService';
 import type { PriceCatalogData } from '../services/priceListService';
 
@@ -166,8 +166,8 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [newEndDate, setNewEndDate] = useState('');
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectData | null>(null);
-  const [deletingProject, setDeletingProject] = useState<ProjectData | null>(null);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  // ⭐ №299: отдельные состояния/модалка подтверждения удаления убраны —
+  // удаление спрашивает общий confirm() (как у объектов)
   // ⭐ №188: меню действий с проектом (шестерёнка на карточке)
   const [actionsProject, setActionsProject] = useState<ProjectData | null>(null);
   // ⭐ №249: личный архив проектов + модалка участников проекта
@@ -840,44 +840,23 @@ const handleSaveNote = async () => {
     }
   };
 
-  // ⭐ №249: удаление через 30 дней. Другие участники получат личные копии проекта.
-  const handleScheduleProjectDeletion = async (proj: ProjectData) => {
+  // ⭐ №299: удаление проекта — как у объектов: «Удалить окончательно» сразу, без 30 дней.
+  // Архив (handleToggleProjectArchive выше) — только личное скрытие, удаление не назначает.
+  const handlePurgeProject = async (proj: ProjectData) => {
     const ok = await confirm({
-      title: 'Удалить проект безвозвратно?',
-      text: `«${proj.name}» будет удалён через 30 дней. До этого его можно вернуть. Другие участники получат личные копии проекта (смета, фиксации, склад, бригады и отчёты по этому проекту) — без фото.`,
-      confirmText: 'Удалить',
+      title: 'Удалить проект окончательно?',
+      text: `«${proj.name}» и все его данные (смета, фиксации, склад, отчёты, выходы бригад) удалятся сразу и безвозвратно — отменить это нельзя. Остальные участники получат личные копии проекта, но без фото.`,
+      confirmText: 'Удалить окончательно',
       danger: true,
     });
     if (!ok) return;
     try {
-      await scheduleProjectDeletion(proj.id);
-      // Удаление живёт в архиве: сразу убираем проект в личный архив.
-      await setProjectHidden(proj.id, true);
+      await deleteProject(proj.id);
       await reloadProjects();
-      notify(
-        `Удаление проекта «${proj.name}» назначено через 30 дней`,
-        'warning',
-      );
+      notify(`Проект «${proj.name}» удалён окончательно`);
     } catch (err) {
-      notifyError(getApiErrorText(err, 'Не удалось назначить удаление'));
+      notifyError(getApiErrorText(err, 'Не удалось удалить проект'));
     }
-  };
-
-  const handleCancelProjectDeletion = async (proj: ProjectData) => {
-    try {
-      await cancelProjectDeletion(proj.id);
-      await reloadProjects();
-      notify('Удаление проекта отменено');
-    } catch (err) {
-      notifyError(getApiErrorText(err, 'Не удалось отменить удаление'));
-    }
-  };
-
-  const handleDeleteProject = async () => {
-    if (!deletingProject) return;
-    await handleScheduleProjectDeletion(deletingProject);
-    setDeleteConfirmOpen(false);
-    setDeletingProject(null);
   };
   // ⭐ trailing в useMemo — стабильная ссылка, нет бесконечного цикла (как в Materials)
   const headerTrailing = useMemo(() => isMobile ? (
@@ -1118,43 +1097,29 @@ onBack: goBack,
     },
   }}
 >
-{/* ⭐ №249: удаление проекта — таймер 30 дней, только админ объекта */}
-{(proj.deleteAfter || (proj.hiddenForMe && proj.canDeleteCard)) && (
+{/* ⭐ №299: как у объектов — «Удалить окончательно» сразу, только админ объекта */}
+{proj.deleteAfter && (
   <Alert
     severity="error"
     onClick={(e) => e.stopPropagation()}
     sx={{ mb: 1, borderRadius: 2 }}
     action={
       proj.canDeleteCard ? (
-        proj.deleteAfter ? (
-          <Button
-            size="small"
-            color="inherit"
-            onClick={(e) => {
-              e.stopPropagation();
-              void handleCancelProjectDeletion(proj);
-            }}
-          >
-            Отменить удаление
-          </Button>
-        ) : (
-          <Button
-            size="small"
-            color="error"
-            onClick={(e) => {
-              e.stopPropagation();
-              void handleScheduleProjectDeletion(proj);
-            }}
-          >
-            Удалить
-          </Button>
-        )
+        <Button
+          size="small"
+          color="error"
+          onClick={(e) => {
+            e.stopPropagation();
+            void handlePurgeProject(proj);
+          }}
+          sx={{ whiteSpace: 'nowrap' }}
+        >
+          {isMobile ? 'Удалить' : 'Удалить окончательно'}
+        </Button>
       ) : undefined
     }
   >
-    {proj.deleteAfter
-      ? `Проект будет удалён безвозвратно ${deletionPhrase(proj.deleteAfter)}. Участники получат личные копии (без фото).`
-      : 'Удалить проект безвозвратно? Он будет удалён через 30 дней — до этого можно вернуть.'}
+    {`Проект помечен на удаление ${deletionPhrase(proj.deleteAfter)}. Участники получат личные копии (без фото).`}
   </Alert>
 )}
 {proj.hiddenForMe && (
@@ -1163,16 +1128,31 @@ onBack: goBack,
     onClick={(e) => e.stopPropagation()}
     sx={{ mb: 1, borderRadius: 2 }}
     action={
-      <Button
-        size="small"
-        color="primary"
-        onClick={(e) => {
-          e.stopPropagation();
-          void handleToggleProjectArchive(proj);
-        }}
-      >
-        Вернуть
-      </Button>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Button
+          size="small"
+          color="primary"
+          onClick={(e) => {
+            e.stopPropagation();
+            void handleToggleProjectArchive(proj);
+          }}
+        >
+          Вернуть
+        </Button>
+        {proj.canDeleteCard && (
+          <Button
+            size="small"
+            color="error"
+            onClick={(e) => {
+              e.stopPropagation();
+              void handlePurgeProject(proj);
+            }}
+            sx={{ whiteSpace: 'nowrap' }}
+          >
+            {isMobile ? 'Удалить' : 'Удалить окончательно'}
+          </Button>
+        )}
+      </Box>
     }
   >
     Проект в вашем архиве — виден только вам.
@@ -1582,21 +1562,22 @@ onBack: goBack,
             {actionsProject?.hiddenForMe ? 'Вернуть из архива' : 'Убрать в архив'}
           </Button>
 
-          {/* ⭐ №249: удаление проекта через 30 дней */}
+          {/* ⭐ №299: удаление проекта окончательно и сразу — как у объектов */}
           <Button
             size="large"
             fullWidth
-            variant="outlined"
+            variant="contained"
             color="error"
             startIcon={<DeleteIcon />}
             disabled={!canDeleteProjectCard(actionsProject)}
             onClick={() => {
               const p = actionsProject;
               handleCloseActions();
-              if (p) void handleScheduleProjectDeletion(p);
+              if (p) void handlePurgeProject(p);
             }}
+            sx={{ mt: 1 }}
           >
-            Удалить проект
+            Удалить окончательно
           </Button>
 
           {!canEditProjectCard(actionsProject) && (
@@ -1739,13 +1720,15 @@ onBack: goBack,
               </Button>
               <IconButton
                 color="error"
-                aria-label="Удалить проект"
+                aria-label="Удалить проект окончательно"
+                title="Удалить проект окончательно"
                 // ⭐ №204 (A#10): удаление карточки — право администратора объекта
                 disabled={!canDeleteProjectCard(editingProject)}
                 onClick={() => {
-                  setDeletingProject(editingProject);
+                  // ⭐ №299: корзина в редактировании удаляет сразу (как у объектов)
+                  const target = editingProject;
                   handleCloseEdit();
-                  setDeleteConfirmOpen(true);
+                  if (target) void handlePurgeProject(target);
                 }}
                 sx={{
                   border: '1px solid rgba(211, 47, 47, 0.35)',
@@ -1847,46 +1830,8 @@ onBack: goBack,
         }}
       />
 
-      {/* Модалка подтверждения удаления */}
-      <Modal
-        open={deleteConfirmOpen}
-        onClose={() => {
-          setDeleteConfirmOpen(false);
-          setDeletingProject(null);
-        }}
-        disableRestoreFocus={true}
-      >
-        <Paper sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: { xs: '90%', sm: 360 },
-          p: 3,
-          borderRadius: 2,
-        }}>
-          <Typography variant="h6" gutterBottom>Удалить проект?</Typography>
-          <Typography sx={{ mb: 3 }}>
-            Проект <b>"{deletingProject?.name}"</b> будет удалён безвозвратно
-            через 30 дней. До этого его можно вернуть из архива. Другие участники
-            получат личные копии проекта (без фото).
-          </Typography>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-            <Button
-              variant="outlined"
-              onClick={() => {
-                setDeleteConfirmOpen(false);
-                setDeletingProject(null);
-              }}
-            >
-              Отмена
-            </Button>
-            <Button variant="contained" color="error" onClick={handleDeleteProject}>
-              Удалить
-            </Button>
-          </Box>
-        </Paper>
-      </Modal>
+      {/* ⭐ №299: отдельная модалка «Удалить проект?» больше не нужна —
+          подтверждение даёт общий диалог в handlePurgeProject (как у объектов) */}
 
       <ConfirmDialog
         open={dateConflictDialog.open}

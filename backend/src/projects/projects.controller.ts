@@ -84,9 +84,13 @@ export class ProjectsController {
     return this.projectsService.update(id, dto, req.user.userId);
   }
 
+  /**
+   * ⭐ №299: удаление проекта окончательно и СРАЗУ (как у объектов).
+   * Только администратор объекта; участники получают личные копии проекта без фото.
+   */
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req) {
-    return this.projectsService.remove(id, req.user.userId);
+  purgeNow(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.deletion.purgeNow(id, req.user.userId);
   }
 
   /** ⭐ №249: удаление проекта через 30 дней (только админ объекта). */

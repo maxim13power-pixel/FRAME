@@ -34,6 +34,51 @@ describe('ProjectDeletionService', () => {
     expect(prisma.project.update).not.toHaveBeenCalled();
   });
 
+  // ⭐ №299: «Удалить окончательно» — сразу, без 30-дневного ожидания
+  it('purgeNow не админ объекта → 403, проект не удаляется', async () => {
+    prisma.objectAccess.findFirst.mockResolvedValue(null);
+    await expect(service.purgeNow(10, 7)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(prisma.project.delete).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('purgeNow удаляет проект сразу, срок не назначается', async () => {
+    prisma.objectAccess.findFirst.mockResolvedValue({ id: 1 });
+    // purgeProject: объект проекта + доступы + связанные данные
+    prisma.project.findUnique.mockResolvedValue({
+      id: 10,
+      name: 'Проект',
+      objectId: 3,
+      materials: [],
+      object: {
+        name: 'Объект',
+        address: 'Адрес',
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-12-01'),
+        plannedEndDate: null,
+      },
+    });
+    prisma.objectAccess.findMany = jest.fn().mockResolvedValue([]);
+    prisma.warehouseItem = { findMany: jest.fn().mockResolvedValue([]) };
+    prisma.brigade = { findMany: jest.fn().mockResolvedValue([]) };
+    prisma.report = { findMany: jest.fn().mockResolvedValue([]) };
+    prisma.materialPhoto = { findMany: jest.fn().mockResolvedValue([]) };
+    const tx = { project: { delete: jest.fn() } };
+    prisma.$transaction.mockImplementation(
+      async (cb: (client: unknown) => unknown) => cb(tx),
+    );
+
+    await expect(service.purgeNow(10, 7)).resolves.toEqual({
+      deleted: true,
+      copied: 0,
+    });
+    expect(tx.project.delete).toHaveBeenCalledWith({ where: { id: 10 } });
+    // срок удаления не назначаем — проект удалён сразу
+    expect(prisma.project.update).not.toHaveBeenCalled();
+  });
+
   it('админ ставит удаление ровно на 30 дней', async () => {
     prisma.objectAccess.findFirst.mockResolvedValue({
       id: 1,

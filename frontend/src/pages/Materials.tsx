@@ -1954,10 +1954,13 @@ setSortAnchorEl(null);
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-   {/* ⭐ №197: одноразовая подсказка раздела */}
-   <SectionIntro id="materials" version={1}>
+   {/* ⭐ №197: одноразовая подсказка раздела (закрывается крестиком) */}
+   <SectionIntro id="materials" version={2}>
      <b>Смета проекта</b>: «План» — спецификация, «Факт» — сумма фиксаций. Процент и стоимость
      считаются по факту. Фиксацию можно исправить 72 часа, остальное фиксируется навсегда.
+     <br />
+     <b>Выделить несколько строк</b>: на телефоне — долгое нажатие на карточку; на компьютере —
+     чекбокс в колонке «№», Shift+Click для диапазона или зажать и провести мышью.
    </SectionIntro>
 
    {/* ⭐ №208: импорт/шаблон — в одном меню «Из шаблона» (мобилка: иконка в шапке) */}
@@ -2602,12 +2605,8 @@ onClose={() => setFilterAnchorEl(null)}
   {/* Карточки для мобилки */}
   {isMobile && (
     <Stack spacing={1} sx={{ pb: selectedIds.size > 0 ? '150px' : direction === 'none' ? 0 : `${SUMMARY_LIST_CLEARANCE_PX}px` }}>
-      {/* ⭐ №294: подсказка о жесте — иначе о выделении на мобилке никто не догадается */}
-      {selectedIds.size === 0 && sortedMaterials.length > 3 && (
-        <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-          Долгое нажатие на карточку — выбрать несколько строк (дублировать, удалить)
-        </Typography>
-      )}
+      {/* ⭐ №294/№299: подсказка о жесте переехала в сворачиваемое пояснение раздела
+          (SectionIntro выше), чтобы не занимать место в списке */}
       {sortedMaterials.length > 0 ? (
         sortedMaterials.map((m) => (
             <Paper

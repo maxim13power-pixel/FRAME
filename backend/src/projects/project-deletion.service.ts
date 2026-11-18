@@ -90,6 +90,19 @@ export class ProjectDeletionService implements OnModuleInit, OnModuleDestroy {
     return { cancelled: true };
   }
 
+  /**
+   * ⭐ №299: удалить проект СРАЗУ, без 30-дневного ожидания — та же механика, что у объектов
+   * («Удалить окончательно»): только админ объекта, участники получают личные копии без фото.
+   */
+  async purgeNow(
+    projectId: number,
+    userId: number,
+  ): Promise<{ deleted: boolean; copied: number }> {
+    await this.assertAdmin(projectId, userId);
+    const result = await this.purgeProject(projectId, userId);
+    return { deleted: true, copied: result.copied };
+  }
+
   private async assertAdmin(projectId: number, userId: number): Promise<void> {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },

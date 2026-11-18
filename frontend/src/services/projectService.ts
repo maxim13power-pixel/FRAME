@@ -87,6 +87,7 @@ export const updateProject = async (id: number, data: Partial<Omit<ProjectData, 
   return response.data;
 };
 
+/** ⭐ №299: удалить проект окончательно и сразу (бэкенд делает копии участникам). */
 export const deleteProject = async (id: number) => {
   const response = await api.delete(`/projects/${id}`);
   return response.data;
