@@ -500,7 +500,10 @@ const goBack = useBackNavigation(`/objects/${objectId}/projects`);
   const [addPriceCategoryName, setAddPriceCategoryName] = useState('');
   const [addPriceUnit, setAddPriceUnit] = useState('PIECE');
   const [addPricePrice, setAddPricePrice] = useState('');
-  // ⭐ Материал из справочника (цена за материал)
+  // ⭐ №319: режим «своя цена» — справочник и категории скрываются, остаётся ручной ввод
+const [addManualWork, setAddManualWork] = useState(false);
+const [addManualMaterial, setAddManualMaterial] = useState(false);
+// ⭐ Материал из справочника (цена за материал)
 const [selectedMaterialItem, setSelectedMaterialItem] = useState<PriceItemData | null>(null);
 // ⭐ №318: норма расхода материала на 1 единицу строки (когда материал продаётся упаковкой)
 const [addConsumption, setAddConsumption] = useState('');
@@ -945,6 +948,9 @@ setSelectedMaterialItem(null);
 setMaterialOptions([]);
 setAddMatCreatingNew(false);
 setAddMatPricePrice('');
+// ⭐ №319: ручной режим сбрасывается вместе с формой
+setAddManualWork(false);
+setAddManualMaterial(false);
 // ⭐ №318: норма расхода сбрасывается вместе с формой
 setAddConsumption('');
 setZeroConfirmOpen(false);
@@ -3089,6 +3095,30 @@ onClose={() => setFilterAnchorEl(null)}
           onChange={e => setNewNote(e.target.value)}
         />
         <Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена работ</Typography></Divider>
+        {/* ⭐ №319: два режима — «из справочника» и «своя цена». В ручном режиме
+            справочник и категории скрыты, чтобы не путать: вводится одна цифра. */}
+        {addManualWork ? (
+          <>
+            <TextField
+              fullWidth
+              type="number"
+              label="Новая цена работы, ₽"
+              value={addPricePrice}
+              onChange={(e) => setAddPricePrice(e.target.value)}
+              inputProps={{ min: 0, step: 0.01 }}
+              helperText="Рукописная цена: станет расценкой в справочнике проекта"
+            />
+            <Button
+              size="small"
+              variant="text"
+              onClick={() => setAddManualWork(false)}
+              sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
+            >
+              ← Выбрать из справочника
+            </Button>
+          </>
+        ) : (
+        <>
         {/* ⭐ №177: ступени 1–2 — справочник и категория (ступень 3 — расценка ниже) */}
         <PriceStepSelects
           catalogChoice={workCatalogChoice}
@@ -3165,6 +3195,19 @@ renderInput={(params) => (
                   : 'Новая цена попадёт в справочник проекта'
               }
             />
+            {/* ⭐ №319: переход в ручной режим — справочник и категории скрываются */}
+            <Button
+              size="small"
+              variant="text"
+              onClick={() => {
+                setAddManualWork(true);
+                setSelectedPriceItem(null);
+                setPriceOptions([]);
+              }}
+              sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
+            >
+              ✏️ Указать свою цену работы
+            </Button>
             </>
             ) : (
             <>
@@ -3203,8 +3246,33 @@ renderInput={(params) => (
             </Button>
             </>
             )}
+            </>
+            )}
             
     <Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена материала</Typography></Divider>
+    {/* ⭐ №319: режим «своя цена материала» — справочник скрыт, вводится одна цифра */}
+    {addManualMaterial ? (
+      <>
+        <TextField
+          fullWidth
+          type="number"
+          label="Новая цена материала, ₽"
+          value={addMatPricePrice}
+          onChange={(e) => setAddMatPricePrice(e.target.value)}
+          inputProps={{ min: 0, step: 0.01 }}
+          helperText="Рукописная цена за 1 единицу строки — станет расценкой в справочнике проекта"
+        />
+        <Button
+          size="small"
+          variant="text"
+          onClick={() => setAddManualMaterial(false)}
+          sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
+        >
+          ← Выбрать из справочника
+        </Button>
+      </>
+    ) : (
+    <>
     {/* ⭐ №177: у материала свой справочник и своя категория — можно взять из другого справочника */}
     <PriceStepSelects
       catalogChoice={matCatalogChoice}
@@ -3293,6 +3361,20 @@ renderInput={(params) => (
           : 'Новая цена попадёт в справочник проекта'
       }
     />
+    {/* ⭐ №319: переход в ручной режим — справочник и категории скрываются */}
+    <Button
+      size="small"
+      variant="text"
+      onClick={() => {
+        setAddManualMaterial(true);
+        setSelectedMaterialItem(null);
+        setAddConsumption('');
+        setMaterialOptions([]);
+      }}
+      sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
+    >
+      ✏️ Указать свою цену материала
+    </Button>
     </>
     ) : (
     <>
@@ -3324,7 +3406,35 @@ renderInput={(params) => (
           ← Выбрать из существующих
         </Button>
         </>
-        )}  
+        )}
+        </>
+        )}
+{/* ⭐ №319: цена за 1 единицу строки — всегда на виду, чтобы не путаться в ценах */}
+{(() => {
+  const workPerUnit = Number(addPricePrice.replace(',', '.')) || 0;
+  const packPrice =
+    Number(addMatPricePrice.replace(',', '.')) ||
+    Number(selectedMaterialItem?.price ?? 0);
+  const materialPerUnit = packUnitPrice(
+    packPrice,
+    Number(selectedMaterialItem?.packSize ?? 0),
+    Number(addConsumption.replace(',', '.')) || 0,
+  );
+  return (
+    <Box sx={{ bgcolor: 'rgba(25, 118, 210, 0.06)', p: 1.5, borderRadius: 1 }}>
+      <Typography variant="caption" color="text.secondary">
+        За 1 {unitLabelOf(newUnit)} (работа + материал)
+      </Typography>
+      <Typography variant="body1" fontWeight={700}>
+        {(workPerUnit + materialPerUnit).toLocaleString('ru-RU')} ₽
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        работа {workPerUnit.toLocaleString('ru-RU')} ₽ + материал{' '}
+        {materialPerUnit.toLocaleString('ru-RU')} ₽
+      </Typography>
+    </Box>
+  );
+})()}
 <Box sx={{
   display: 'flex', justifyContent: 'flex-end', gap: 2,
   position: 'sticky', bottom: 0, zIndex: 2,
