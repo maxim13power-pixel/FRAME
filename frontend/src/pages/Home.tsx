@@ -365,20 +365,21 @@ const Home: React.FC = () => {
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ mb: 1.5, textAlign: 'center' }}>
-          <Typography variant="caption" color="text.secondary">Факт vs смета</Typography>
-          {/* ⭐ №225: деньги показываем только сравнением факта со сметой */}
-          <Typography
-            variant="h6"
-            fontWeight={700}
-            color={moneyOverBudget ? 'error.main' : 'success.main'}
-            sx={{ fontSize: { xs: '0.95rem', sm: '1.15rem' }, lineHeight: 1.3 }}
-          >
-            {moneyOverBudget
-              ? `Факт больше сметы на ${rub(moneyDiff)}${data.money.overPercent != null ? ` (${pct(data.money.overPercent)}\u00A0%)` : ''}`
-              : 'В пределах сметы'}
-          </Typography>
-        </Box>
+        {/* ⭐ №316: «Факт vs смета» показываем ТОЛЬКО при перерасходе.
+            «В пределах сметы» больше не выводим — лишняя строка на каждый объект. */}
+        {moneyOverBudget && (
+          <Box sx={{ mb: 1.5, textAlign: 'center' }}>
+            <Typography variant="caption" color="text.secondary">Факт vs смета</Typography>
+            <Typography
+              variant="h6"
+              fontWeight={700}
+              color="error.main"
+              sx={{ fontSize: { xs: '0.95rem', sm: '1.15rem' }, lineHeight: 1.3 }}
+            >
+              {`Факт больше сметы на ${rub(moneyDiff)}${data.money.overPercent != null ? ` (${pct(data.money.overPercent)}\u00A0%)` : ''}`}
+            </Typography>
+          </Box>
+        )}
         {/* ⭐ №225: прогресс ОБЪЁМОВ — не деньги, красным не красим */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
           <Typography variant="caption" color="text.secondary">Объём работ</Typography>
