@@ -2295,6 +2295,17 @@ onClose={() => setFilterAnchorEl(null)}
               boxShadow: '0 6px 16px rgba(0,0,0,0.12)',
             }}
           >
+            {/* ⭐ №298: «выбрать все» прямо в панели — как в шапке таблицы,
+                чтобы не тянуться наверх после первого выделения */}
+            <Checkbox
+              size="small"
+              checked={allVisibleSelected}
+              indeterminate={someVisibleSelected}
+              onChange={toggleSelectAll}
+              title="Выбрать все видимые строки / снять выделение"
+              inputProps={{ 'aria-label': 'Выбрать все строки' }}
+              sx={{ p: 0.25, ml: -0.75, mr: 0.25, alignSelf: 'center' }}
+            />
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
               Выбрано: {selectedIds.size}
               {!hidePrices && selectedTotals.count > 0 && (
@@ -2841,6 +2852,16 @@ onClose={() => setFilterAnchorEl(null)}
     }}
   >
     <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.75 }}>
+      {/* ⭐ №298: «выбрать все» в панели — не нужно возвращаться к шапке таблицы */}
+      <Checkbox
+        size="small"
+        checked={allVisibleSelected}
+        indeterminate={someVisibleSelected}
+        onChange={toggleSelectAll}
+        title="Выбрать все видимые строки / снять выделение"
+        inputProps={{ 'aria-label': 'Выбрать все строки' }}
+        sx={{ p: 0.25, ml: -0.75, mr: 0.25 }}
+      />
       <Typography variant="body2" sx={{ fontWeight: 700, flex: 1 }}>
         Выбрано: {selectedIds.size}
         {!hidePrices && selectedTotals.count > 0 && (
