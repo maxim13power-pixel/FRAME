@@ -317,6 +317,30 @@ export class ProjectsService {
     }
     const hidePrices = my.hidePrices;
 
+    // ⭐ №306: команда проекта — для подписи кнопки «Участники проекта · N».
+    // Считаем людей, которые видят проект: участники всего объекта (они видны
+    // во всех проектах) + точечно приглашённые в этот проект. Отозванные не в счёте.
+    // Счётчик отдаём только администратору объекта — как participantsCount у объектов.
+    const objectWideUsers = new Set<number>();
+    const projectOnlyUsers = new Map<number, Set<number>>();
+    if (my.canManage) {
+      const rows = await this.prisma.objectAccess.findMany({
+        where: { objectId, revokedAt: null },
+        select: { userId: true, projectId: true },
+      });
+      for (const row of rows) {
+        if (row.userId == null) continue;
+        if (row.projectId == null) {
+          objectWideUsers.add(row.userId);
+        } else {
+          const set =
+            projectOnlyUsers.get(row.projectId) ?? new Set<number>();
+          set.add(row.userId);
+          projectOnlyUsers.set(row.projectId, set);
+        }
+      }
+    }
+
     // ⭐ №249: личный архив проектов — скрываем только у этого пользователя.
     // includeHidden=1 нужен странице «Проекты» (режим «Архив») и карточке бригады.
     const hiddenRows = await this.prisma.projectHidden.findMany({
@@ -394,6 +418,13 @@ export class ProjectsService {
         canDeleteCard: my.canManage,
         // ⭐ №249: личный архив проекта + срок удаления
         hiddenForMe: hiddenSet.has(p.id),
+        // ⭐ №306: сколько людей видит проект (подпись кнопки «Участники проекта»)
+        participantsCount: my.canManage
+          ? new Set<number>([
+              ...objectWideUsers,
+              ...(projectOnlyUsers.get(p.id) ?? []),
+            ]).size
+          : null,
       };
     });
   }

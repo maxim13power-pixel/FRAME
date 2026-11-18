@@ -210,3 +210,56 @@ describe('ProjectsService — смета из другого проекта (№
   });
 });
 
+// ⭐ №306: счётчик у кнопки «Участники проекта · N»
+describe('ProjectsService — счётчик команды проекта (№306)', () => {
+  const prisma = {
+    project: { findMany: jest.fn(), findUnique: jest.fn() },
+    projectHidden: { findMany: jest.fn() },
+    objectAccess: { findMany: jest.fn() },
+  };
+  const audit = { log: jest.fn() };
+  let service: ProjectsService;
+
+  const project = (id: number) => ({
+    id,
+    name: `Проект ${id}`,
+    objectId: 15,
+    materials: [],
+    catalog: null,
+    object: { catalogId: null, catalog: null },
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.projectHidden.findMany.mockResolvedValue([]);
+    prisma.project.findMany.mockResolvedValue([project(29), project(30)]);
+    service = new ProjectsService(prisma as never, audit as never);
+  });
+
+  it('администратор объекта видит, сколько людей открыто в проект', async () => {
+    // 1-й вызов — доступы САМОГО пользователя, 2-й — команда объекта
+    prisma.objectAccess.findMany
+      .mockResolvedValueOnce([grant({ role: 'CUSTOMER' })])
+      .mockResolvedValueOnce([
+        { userId: 1, projectId: null }, // админ — видит все проекты
+        { userId: 2, projectId: 29 },
+        { userId: 3, projectId: 29 },
+        { userId: 2, projectId: 30 },
+      ]);
+
+    const rows = await service.findAllByObject(15, 1);
+
+    expect(rows.find((p) => p.id === 29)?.participantsCount).toBe(3);
+    expect(rows.find((p) => p.id === 30)?.participantsCount).toBe(2);
+  });
+
+  it('точечный участник счётчик не получает и лишний запрос не делается', async () => {
+    prisma.objectAccess.findMany.mockResolvedValue([grant({ projectId: 29 })]);
+
+    const rows = await service.findAllByObject(15, 7);
+
+    expect(rows.every((p) => p.participantsCount === null)).toBe(true);
+    expect(prisma.objectAccess.findMany).toHaveBeenCalledTimes(1);
+  });
+});
+

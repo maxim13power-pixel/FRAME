@@ -151,6 +151,8 @@ const mergeProjectUpdate = (
   canWrite: updated.canWrite ?? prev.canWrite,
   canManage: updated.canManage ?? prev.canManage,
   hiddenForMe: updated.hiddenForMe ?? prev.hiddenForMe,
+  // ⭐ №306: PATCH проекта не отдаёт счётчик команды — иначе «· N» пропадёт до перезагрузки
+  participantsCount: updated.participantsCount ?? prev.participantsCount,
 });
 
 const Projects: React.FC = () => {
@@ -737,6 +739,8 @@ const handleReminderSave = async () => {
         `${chosen.length === 1 ? 'участнику' : 'участникам'}.`,
     );
     closeAccessReminder();
+    // ⭐ №306: счётчик «Участники проекта · N» должен обновиться сразу
+    void reloadProjects();
   } catch (err) {
     notifyError(
       'Проект создан, но доступ выдать не удалось: ' +
@@ -1653,6 +1657,26 @@ onBack: goBack,
         )}
 
         <Stack spacing={1}>
+          {/* ⭐ №306: «Участники проекта» — первой строкой меню, как «Участники» в объектах,
+              и со счётчиком команды в подписи */}
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<PeopleIcon />}
+            disabled={currentObject?.canManage !== true}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) setTeamProject(p);
+            }}
+          >
+            Участники проекта
+            {actionsProject?.participantsCount != null
+              ? ` · ${actionsProject.participantsCount}`
+              : ''}
+          </Button>
+
           <Button
             size="large"
             fullWidth
@@ -1710,22 +1734,6 @@ onBack: goBack,
             }}
           >
             Заметка к проекту
-          </Button>
-
-          {/* ⭐ №249: участники ИМЕННО проекта */}
-          <Button
-            size="large"
-            fullWidth
-            variant="outlined"
-            startIcon={<PeopleIcon />}
-            disabled={currentObject?.canManage !== true}
-            onClick={() => {
-              const p = actionsProject;
-              handleCloseActions();
-              if (p) setTeamProject(p);
-            }}
-          >
-            Участники проекта
           </Button>
 
           {/* ⭐ №249/№300: личный архив проекта — цвет как у «Убрать в архив» в объектах */}

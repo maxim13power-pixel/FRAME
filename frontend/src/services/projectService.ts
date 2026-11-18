@@ -35,6 +35,9 @@ export interface ProjectData {
   deleteAfter?: string | null;
   deleteRequestedAt?: string | null;
   deleteRequestedBy?: number | null;
+  // ⭐ №306: сколько людей видит проект — подпись кнопки «Участники проекта · N».
+  // null/undefined — счётчик не показываем (пользователь не админ объекта).
+  participantsCount?: number | null;
 }
 
 // в­ђ в„–172: opts.includeHidden вЂ” РІРµСЂРЅСѓС‚СЊ РїСЂРѕРµРєС‚С‹ РѕР±СЉРµРєС‚Р°, РґР°Р¶Рµ РµСЃР»Рё РѕРЅ РІ Р»РёС‡РЅРѕРј
