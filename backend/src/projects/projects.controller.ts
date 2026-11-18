@@ -16,6 +16,7 @@ import { ProjectsService } from './projects.service';
 import { ProjectDeletionService } from './project-deletion.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CopyEstimateDto } from './dto/copy-estimate.dto'; // ⭐ №286
+import { CopyProjectDto } from './dto/copy-project.dto'; // ⭐ №307
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ObjectAccessGuard } from '../auth/object-access.guard';
 
@@ -53,6 +54,16 @@ export class ProjectsController {
     @Req() req,
   ) {
     return this.projectsService.copyEstimate(id, dto, req.user.userId);
+  }
+
+  /** ⭐ №307: копия проекта — как «Копировать объект», только внутри одного объекта. */
+  @Post(':id/copy')
+  copy(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CopyProjectDto,
+    @Req() req,
+  ) {
+    return this.projectsService.copyProject(id, dto, req.user.userId);
   }
 
   @Get('object/:objectId')

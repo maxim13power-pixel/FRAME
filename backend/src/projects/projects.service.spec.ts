@@ -210,6 +210,162 @@ describe('ProjectsService — смета из другого проекта (№
   });
 });
 
+// ⭐ №307: копия проекта внутри объекта
+describe('ProjectsService — копия проекта (№307)', () => {
+  const prisma = {
+    project: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+    },
+    material: { createMany: jest.fn() },
+    projectHidden: { findUnique: jest.fn() },
+    objectAccess: { findFirst: jest.fn(), findMany: jest.fn() },
+    $transaction: jest.fn(),
+  };
+  const audit = { log: jest.fn() };
+  let service: ProjectsService;
+
+  const sourceProject = {
+    id: 29,
+    name: 'Смета A',
+    objectId: 15,
+    startDate: new Date('2026-11-01'),
+    endDate: new Date('2026-12-01'),
+    catalogId: 4,
+    note: 'старая заметка',
+    materials: [
+      {
+        name: 'Стяжка',
+        article: 'A-1',
+        unit: 'SQUARE_METER',
+        specQuantity: 10,
+        totalUsed: 5,
+        lastEntry: 2,
+        lastEntryDate: new Date('2026-11-10'),
+        note: 'комментарий',
+        progressPercent: 50,
+        isSpecLocked: true,
+        priceItemId: 7,
+        unitPrice: 100,
+        materialItemId: 8,
+        materialUnitPrice: 40,
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.project.findUnique.mockResolvedValue(sourceProject);
+    prisma.project.create.mockResolvedValue({ id: 99 });
+    prisma.material.createMany.mockResolvedValue({ count: 1 });
+    prisma.projectHidden.findUnique.mockResolvedValue(null);
+    // Доступ к проекту (findProjectAccess) и к объекту (findLiveAccess)
+    prisma.objectAccess.findMany.mockResolvedValue([
+      grant({ projectId: 29, role: 'CUSTOMER' }),
+    ]);
+    prisma.objectAccess.findFirst.mockResolvedValue(grant({ role: 'CUSTOMER' }));
+    // Транзакция просто прогоняет колбэк на тех же моках
+    prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({ project: prisma.project, material: prisma.material }),
+    );
+    service = new ProjectsService(prisma as never, audit as never);
+    jest.spyOn(service, 'findOne').mockResolvedValue({ id: 99, name: 'Копия' } as never);
+  });
+
+  it('без copyFacts копия «чистая»: план и цены есть, факт и прогресс = 0', async () => {
+    const result = await service.copyProject(29, { name: 'Смета A (копия)' }, 7);
+
+    const rows = prisma.material.createMany.mock.calls[0][0].data;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      name: 'Стяжка',
+      specQuantity: 10,
+      totalUsed: 0,
+      totalCost: 0,
+      progressPercent: 0,
+      lastEntry: null,
+      lastEntryDate: null,
+      unitPrice: 100,
+      materialUnitPrice: 40,
+      priceItemId: 7,
+      materialItemId: 8,
+      projectId: 99,
+    });
+    expect(prisma.project.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'Смета A (копия)',
+        objectId: 15,
+        catalogId: 4,
+        note: 'старая заметка',
+      }),
+    });
+    expect(result.copyStats).toEqual({
+      sourceProjectId: 29,
+      materials: 1,
+      factsCopied: false,
+    });
+  });
+
+  it('copyFacts переносит расход, прогресс и последнюю фиксацию', async () => {
+    await service.copyProject(29, { copyFacts: true }, 7);
+
+    const rows = prisma.material.createMany.mock.calls[0][0].data;
+    expect(rows[0]).toMatchObject({
+      totalUsed: 5,
+      progressPercent: 50,
+      totalCost: 500,
+      materialTotalCost: 200,
+      lastEntry: 2,
+      lastEntryDate: new Date('2026-11-10'),
+    });
+  });
+
+  it('название по умолчанию — «X (копия)», заметку можно стереть', async () => {
+    await service.copyProject(29, { note: '' }, 7);
+
+    expect(prisma.project.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ name: 'Смета A (копия)', note: null }),
+    });
+  });
+
+  it('наблюдатель копию создать не может ⇒ Forbidden', async () => {
+    prisma.objectAccess.findMany.mockResolvedValue([
+      grant({ projectId: 29, role: 'VIEWER' }),
+    ]);
+
+    await expect(service.copyProject(29, {}, 7)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(prisma.project.create).not.toHaveBeenCalled();
+  });
+
+  it('скрытые цены ⇒ копия запрещена (иначе деньги открылись бы молча)', async () => {
+    prisma.objectAccess.findMany.mockResolvedValue([
+      grant({ projectId: 29, hidePrices: true }),
+    ]);
+
+    await expect(service.copyProject(29, {}, 7)).rejects.toThrow(
+      /Цены проекта скрыты/,
+    );
+  });
+
+  it('прораб без права создавать проекты ⇒ Forbidden', async () => {
+    prisma.objectAccess.findFirst.mockResolvedValue(
+      grant({ role: 'FOREMAN', canCreateProjects: false }),
+    );
+
+    await expect(service.copyProject(29, {}, 7)).rejects.toThrow(
+      /Создавать проекты может администратор объекта/,
+    );
+    expect(prisma.project.create).not.toHaveBeenCalled();
+  });
+
+  it('дата окончания раньше начала ⇒ BadRequest', async () => {
+    await expect(
+      service.copyProject(29, { startDate: '2026-12-10', endDate: '2026-12-01' }, 7),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
 // ⭐ №306: счётчик у кнопки «Участники проекта · N»
 describe('ProjectsService — счётчик команды проекта (№306)', () => {
   const prisma = {

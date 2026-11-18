@@ -10,6 +10,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service'; // ⭐ №168: журнал удалений
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CopyEstimateDto } from './dto/copy-estimate.dto'; // ⭐ №286
+import { CopyProjectDto } from './dto/copy-project.dto'; // ⭐ №307
+import { roundMoney } from '../estimate-recalc/recalc-plan'; // ⭐ №307: суммы копии
 import {
   REVOKED_ACCESS_MESSAGE,
   assertAccessActive,
@@ -297,6 +299,129 @@ export class ProjectsService {
       })),
     });
     return { created: rows.length };
+  }
+
+  /**
+   * ⭐ №307: копия проекта внутри того же объекта — как «Копировать объект», только проще.
+   * Переносим карточку (название/даты/заметку) и смету: позиции, единицы, количества,
+   * цены-снимки и ссылки на расценки. Факт (расход/прогресс/последнюю фиксацию) —
+   * только по галочке copyFacts. Фото, история фиксаций, скрытие и участники НЕ копируются.
+   */
+  async copyProject(sourceId: number, dto: CopyProjectDto, userId: number) {
+    // Источник: должен быть виден, доступ не отозван, и цены не должны быть скрыты —
+    // иначе копия молча открыла бы деньги, которых пользователь не видит.
+    const sourceAccess = await this.checkProjectAccess(sourceId, userId);
+    this.assertWritable(sourceAccess, 'копировать проект');
+    if (this.mustHidePrices(sourceAccess)) {
+      throw new ForbiddenException(
+        'Цены проекта скрыты для вашей роли — копию создать нельзя',
+      );
+    }
+
+    const source = await this.prisma.project.findUnique({
+      where: { id: sourceId },
+      include: { materials: { orderBy: { id: 'asc' } } },
+    });
+    if (!source) throw new NotFoundException('Проект не найден');
+
+    // Новый проект создаём по тем же правилам, что обычное создание: админ объекта
+    // или прораб с правом создания проектов.
+    const objectAccess = await this.checkObjectAccess(source.objectId, userId);
+    if (
+      objectAccess.role !== AccessRole.CUSTOMER &&
+      objectAccess.canCreateProjects !== true
+    ) {
+      throw new ForbiddenException(
+        'Создавать проекты может администратор объекта. Отправьте заявку — администратор объекта её одобрит.',
+      );
+    }
+
+    const startDate = dto.startDate ? new Date(dto.startDate) : source.startDate;
+    const endDate = dto.endDate ? new Date(dto.endDate) : source.endDate;
+    if (isNaN(startDate.getTime())) {
+      throw new BadRequestException('Невалидная дата начала');
+    }
+    if (isNaN(endDate.getTime())) {
+      throw new BadRequestException('Невалидная дата окончания');
+    }
+    if (endDate < startDate) {
+      throw new BadRequestException(
+        'Дата окончания не может быть раньше даты начала',
+      );
+    }
+
+    const name = dto.name?.trim() || `${source.name} (копия)`;
+    const note = dto.note !== undefined ? dto.note.trim() || null : source.note;
+    const copyFacts = dto.copyFacts === true;
+
+    const created = await this.prisma.$transaction(
+      async (tx) => {
+        const project = await tx.project.create({
+          data: {
+            name,
+            startDate,
+            endDate,
+            objectId: source.objectId,
+            // ⭐ №274: справочник-привязку переносим как есть (может быть null)
+            catalogId: source.catalogId,
+            note,
+          },
+        });
+        if (source.materials.length > 0) {
+          await tx.material.createMany({
+            data: source.materials.map((m) => {
+              const specQuantity = Number(m.specQuantity);
+              const unitPrice = Number(m.unitPrice);
+              const materialUnitPrice = Number(m.materialUnitPrice);
+              // Без факта копия «чистая»: расход 0, суммы 0, прогресс 0
+              const used = copyFacts ? Number(m.totalUsed) : 0;
+              return {
+                name: m.name,
+                article: m.article,
+                unit: m.unit,
+                specQuantity,
+                totalUsed: used,
+                lastEntry: copyFacts ? m.lastEntry : null,
+                lastEntryDate: copyFacts ? m.lastEntryDate : null,
+                note: m.note,
+                progressPercent:
+                  copyFacts && specQuantity > 0
+                    ? Math.round((used / specQuantity) * 100)
+                    : 0,
+                isSpecLocked: m.isSpecLocked,
+                priceItemId: m.priceItemId,
+                unitPrice,
+                totalCost: roundMoney(used * unitPrice),
+                materialItemId: m.materialItemId,
+                materialUnitPrice,
+                materialTotalCost: roundMoney(used * materialUnitPrice),
+                projectId: project.id,
+              };
+            }),
+          });
+        }
+        return project;
+      },
+      { timeout: 30_000, maxWait: 10_000 },
+    );
+
+    // ⭐ №131: журнал копирования
+    await this.audit.log(userId, 'project', created.id, 'copy', {
+      sourceProjectId: sourceId,
+      name,
+      copyFacts,
+      materials: source.materials.length,
+    });
+
+    const card = await this.findOne(created.id, userId);
+    return {
+      ...card,
+      copyStats: {
+        sourceProjectId: sourceId,
+        materials: source.materials.length,
+        factsCopied: copyFacts,
+      },
+    };
   }
 
   async findAllByObject(objectId: number, userId: number, includeHidden = false) {

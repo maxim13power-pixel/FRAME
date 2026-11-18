@@ -25,7 +25,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
-import { fetchProjectsByObject, createProject, updateProject, setProjectHidden, deleteProject, fetchAvailableProjects, copyEstimateFromProject } from '../services/projectService';
+import { fetchProjectsByObject, createProject, updateProject, setProjectHidden, deleteProject, fetchAvailableProjects, copyEstimateFromProject, copyProject } from '../services/projectService';
 import { fetchPriceCatalogs } from '../services/priceListService';
 import type { PriceCatalogData } from '../services/priceListService';
 
@@ -120,6 +120,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ProjectTeamDialog from '../components/ProjectTeamDialog'; // ⭐ №249
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import PeopleIcon from '@mui/icons-material/People'; // ⭐ №207: команда объекта из карточки проекта
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'; // ⭐ №307: копия проекта
 import { FAB_STYLE } from '../theme';
 
 // ⭐ №158: значение селекта справочника — id, «не выбран» или «создать новый»
@@ -254,6 +255,16 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [noteModalOpen, setNoteModalOpen] = useState(false);
   const [editingNoteProject, setEditingNoteProject] = useState<ProjectData | null>(null);
   const [editNote, setEditNote] = useState('');
+
+  // ⭐ №307: копия проекта (как «Копировать объект», только внутри объекта)
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copySource, setCopySource] = useState<ProjectData | null>(null);
+  const [copyName, setCopyName] = useState('');
+  const [copyStartDate, setCopyStartDate] = useState('');
+  const [copyEndDate, setCopyEndDate] = useState('');
+  const [copyNote, setCopyNote] = useState('');
+  const [copyFacts, setCopyFacts] = useState(false);
+  const [copySaving, setCopySaving] = useState(false);
 
   // ⭐ №129: шаблоны смет (снимки доступа остаются доступны)
   const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
@@ -903,6 +914,25 @@ const canEditProject = (p: ProjectData | null) => !!p && p.canWrite === true;
 const canEditProjectCard = (p: ProjectData | null) => !!p && p.canEditCard === true;
 const canDeleteProjectCard = (p: ProjectData | null) => !!p && p.canDeleteCard === true;
 
+// ⭐ №307: «Копировать проект» — как у объектов: нужны право записи в проекте,
+// видимые цены и право создавать проекты (админ объекта или прораб с флагом).
+const canCopyProject = (p: ProjectData | null): boolean =>
+  !!p &&
+  p.canWrite === true &&
+  currentObject?.hidePrices !== true &&
+  (currentObject?.canManage === true || currentObject?.canCreateProjects === true);
+
+/** ⭐ №307: имя копии как у объектов — «X (копия)», «X (копия 2)», … */
+const nextProjectCopyName = (sourceName: string) => {
+  const base = `${sourceName} (копия)`;
+  if (!projects.some((p) => p.name === base)) return base;
+  for (let i = 2; i <= 99; i += 1) {
+    const candidate = `${sourceName} (копия ${i})`;
+    if (!projects.some((p) => p.name === candidate)) return candidate;
+  }
+  return `${sourceName} (копия ${Date.now()})`;
+};
+
 // ⭐ №192: сохранение проекта как шаблона объекта удалено —
 // вместо него в «Объектах» работает «Копировать объект».
 
@@ -932,6 +962,68 @@ const handleSaveNote = async () => {
   }
 };
 
+
+// ⭐ №307: открыть диалог копии — поля предзаполнены как у оригинала
+const handleOpenCopy = (proj: ProjectData) => {
+  if (!canCopyProject(proj)) return;
+  setCopySource(proj);
+  setCopyName(nextProjectCopyName(proj.name));
+  setCopyStartDate((proj.startDate ?? '').slice(0, 10));
+  setCopyEndDate((proj.endDate ?? '').slice(0, 10));
+  setCopyNote(proj.note ?? '');
+  setCopyFacts(false); // по умолчанию копия «чистая»: расход и прогресс = 0
+  setCopyOpen(true);
+};
+
+const handleCloseCopy = () => {
+  setCopyOpen(false);
+  setCopySource(null);
+  setCopyName('');
+  setCopyStartDate('');
+  setCopyEndDate('');
+  setCopyNote('');
+  setCopyFacts(false);
+};
+
+const handleCopyProject = async () => {
+  if (!copySource) return;
+  if (!copyName.trim()) {
+    notify('Введите название копии', 'warning');
+    return;
+  }
+  if (!copyStartDate || !copyEndDate) {
+    notify('Заполните даты начала и окончания', 'warning');
+    return;
+  }
+  if (new Date(copyEndDate) < new Date(copyStartDate)) {
+    notify('Дата окончания не может быть раньше даты начала', 'warning');
+    return;
+  }
+  setCopySaving(true);
+  try {
+    const created = await copyProject(copySource.id, {
+      name: copyName.trim(),
+      startDate: copyStartDate,
+      endDate: copyEndDate,
+      note: copyNote.trim(),
+      copyFacts,
+    });
+    setProjects((prev) => [created, ...prev]);
+    const stats = created.copyStats;
+    notify(
+      `Копия «${created.name}» создана: позиций ${stats?.materials ?? 0}` +
+        (stats?.factsCopied ? ' · факт перенесён' : ' · без факта и прогресса'),
+      'success',
+    );
+    handleCloseCopy();
+  } catch (err: unknown) {
+    notifyError(
+      'Не удалось скопировать проект: ' + getApiErrorText(err, 'неизвестная ошибка'),
+    );
+  } finally {
+    setCopySaving(false);
+  }
+};
 
   const reloadProjects = async () => {
     if (!objectId) return;
@@ -1706,6 +1798,27 @@ onBack: goBack,
             Сохранить шаблон сметы
           </Button>
 
+          {/* ⭐ №307: копия проекта — как «Копировать объект» у объектов */}
+          <Button
+            size="large"
+            fullWidth
+            variant="outlined"
+            startIcon={<ContentCopyIcon />}
+            disabled={!canCopyProject(actionsProject)}
+            onClick={() => {
+              const p = actionsProject;
+              handleCloseActions();
+              if (p) handleOpenCopy(p);
+            }}
+          >
+            Копировать проект
+          </Button>
+          {!canCopyProject(actionsProject) && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
+              Нужны права на запись, видимые цены и право создавать проекты в объекте.
+            </Typography>
+          )}
+
           <Button
             size="large"
             fullWidth
@@ -2076,6 +2189,98 @@ onBack: goBack,
               </Button>
             </Box>
           </Stack>
+        </Paper>
+      </Modal>
+
+      {/* ⭐ №307: копия проекта — как «Копировать объект» у объектов */}
+      <Modal open={copyOpen} onClose={() => !copySaving && handleCloseCopy()} disableRestoreFocus>
+        <Paper
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '94%', sm: 520 },
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            p: 3,
+            borderRadius: 3,
+            outline: 'none',
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Копировать проект?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Будет создан новый проект «{copySource?.name}» в этом же объекте.
+            Оригинал не изменится. Переносятся позиции сметы с ценами; фото,
+            история фиксаций и участники не копируются.
+          </Typography>
+          <Stack spacing={2}>
+            <TextField
+              fullWidth
+              label="Название копии"
+              value={copyName}
+              onChange={(e) => setCopyName(e.target.value)}
+              inputProps={{ maxLength: 200 }}
+              required
+            />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                fullWidth
+                label="Дата начала"
+                type="date"
+                InputLabelProps={{ shrink: true }}
+                value={copyStartDate}
+                onChange={(e) => setCopyStartDate(e.target.value)}
+                required
+              />
+              <TextField
+                fullWidth
+                label="Дата окончания"
+                type="date"
+                InputLabelProps={{ shrink: true }}
+                value={copyEndDate}
+                onChange={(e) => setCopyEndDate(e.target.value)}
+                required
+              />
+            </Stack>
+            <TextField
+              fullWidth
+              label="Заметка (необязательно)"
+              multiline
+              rows={2}
+              value={copyNote}
+              onChange={(e) => setCopyNote(e.target.value)}
+              inputProps={{ maxLength: 1000 }}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={copyFacts}
+                  onChange={(e) => setCopyFacts(e.target.checked)}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2">Перенести фактический расход</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {copyFacts
+                      ? 'Объёмы, прогресс и последняя фиксация перейдут в копию.'
+                      : 'Копия начнётся с нуля: факт и прогресс = 0, останется только план.'}
+                  </Typography>
+                </Box>
+              }
+            />
+          </Stack>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 3 }}>
+            <Button onClick={handleCloseCopy} disabled={copySaving}>
+              Отмена
+            </Button>
+            <Button variant="contained" onClick={() => void handleCopyProject()} disabled={copySaving}>
+              {copySaving ? 'Копируем…' : 'Создать копию'}
+            </Button>
+          </Box>
         </Paper>
       </Modal>
 

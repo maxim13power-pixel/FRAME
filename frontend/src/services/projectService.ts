@@ -90,6 +90,32 @@ export const updateProject = async (id: number, data: Partial<Omit<ProjectData, 
   return response.data;
 };
 
+/** ⭐ №307: копия проекта внутри того же объекта (карточка + смета). */
+export interface CopyProjectPayload {
+  name?: string;
+  startDate?: string;
+  endDate?: string;
+  note?: string;
+  /** Перенести фактический расход, прогресс и последнюю фиксацию. */
+  copyFacts?: boolean;
+}
+
+export interface CopyProjectResult extends ProjectData {
+  copyStats?: {
+    sourceProjectId: number;
+    materials: number;
+    factsCopied: boolean;
+  };
+}
+
+export const copyProject = async (
+  sourceId: number,
+  payload: CopyProjectPayload,
+): Promise<CopyProjectResult> => {
+  const response = await api.post(`/projects/${sourceId}/copy`, payload);
+  return response.data;
+};
+
 /** ⭐ №299: удалить проект окончательно и сразу (бэкенд делает копии участникам). */
 export const deleteProject = async (id: number) => {
   const response = await api.delete(`/projects/${id}`);
