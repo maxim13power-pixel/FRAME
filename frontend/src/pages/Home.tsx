@@ -597,6 +597,8 @@ const Home: React.FC = () => {
               Горит на неделе • просрочено: {overdueCount}
             </Typography>
           </Stack>
+          {/* ⭐ №314: линии-разделители не только между строками, но и над первой / под последней */}
+          <Box sx={{ borderTop: '1px solid', borderBottom: '1px solid', borderColor: 'divider', py: 1 }}>
           <Stack divider={<Divider />} spacing={1}>
             {hotVisible.map(p => {
               const d = daysLeft(p.endDate);
@@ -645,6 +647,7 @@ const Home: React.FC = () => {
               );
             })}
           </Stack>
+          </Box>
           {/* ⭐ №312: сначала 5 проектов, остальные — по кнопке внизу справа */}
           {data.hotProjects.length > HOME_VISIBLE_ROWS && (
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
@@ -729,6 +732,8 @@ const Home: React.FC = () => {
           <EditIcon sx={{ fontSize: 20, color: '#1976d2' }} />
           <Typography variant="subtitle1" fontWeight={700}>Последние фиксации</Typography>
         </Stack>
+        {/* ⭐ №314: линии над первой и под последней фиксацией */}
+        <Box sx={{ borderTop: '1px solid', borderBottom: '1px solid', borderColor: 'divider', py: 1 }}>
         <Stack divider={<Divider />} spacing={1}>
           {fixesVisible.map(f => (
             <Box
@@ -753,6 +758,7 @@ const Home: React.FC = () => {
             </Box>
           ))}
         </Stack>
+        </Box>
         {/* ⭐ №310/№311: сначала 5 фиксаций, остальные — по кнопке внизу справа */}
         {data.recentFixes.length > HOME_VISIBLE_ROWS && (
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
@@ -786,7 +792,9 @@ const Home: React.FC = () => {
               Без расценки • {noPriceCount}
             </Typography>
           </Box>
-          <Stack divider={<Divider />} spacing={1} sx={{ mb: 1 }}>
+          {/* ⭐ №314: линии над первой и под последней позицией */}
+          <Box sx={{ borderTop: '1px solid', borderBottom: '1px solid', borderColor: 'divider', py: 1 }}>
+          <Stack divider={<Divider />} spacing={1}>
             {noPriceVisible.map(m => (
               <Box
                 key={m.id}
@@ -802,7 +810,8 @@ const Home: React.FC = () => {
                 sx={{
                   cursor: 'pointer',
                   borderRadius: 1,
-                  '&:hover': { bgcolor: 'rgba(255, 152, 0, 0.06)' },
+                  // ⭐ №315: подсветка та же, что у «Горит на неделе» и «Последних фиксаций»
+                  '&:hover': { bgcolor: 'rgba(25,118,210,0.06)' },
                 }}
               >
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
@@ -821,8 +830,9 @@ const Home: React.FC = () => {
               </Box>
             ))}
           </Stack>
+          </Box>
           {noPriceCount > HOME_VISIBLE_ROWS && (
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
               <Button
                 size="small"
                 variant="text"
