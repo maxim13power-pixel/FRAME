@@ -22,6 +22,8 @@ import PhotoViewerDialog from '../components/PhotoViewerDialog'; // ⭐ №230
 import PhotoFeedGalleryDialog from '../components/PhotoFeedGalleryDialog'; // ⭐ №256
 import { parseDecimal } from '../utils/decimal'; // 🔒 P1-3: бэкенд отдаёт Decimal строкой
 import { getApiErrorMessage } from '../utils/errors'; // ⭐ №282: внятная причина сбоя загрузки
+// ⭐ №305: фото/фиксации с других устройств подтягиваем без F5
+import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus';
 
 // 🔒 Шаг 103 (P1-3): принимаем number | string — Decimal с бэкенда приходит строкой
 const fmtMoney = (v: number | string) =>
@@ -161,6 +163,19 @@ const Home: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // ⭐ №305: после фиксации объёма или нового фото на другом устройстве
+  // прогресс и лента приходят только с сервером — подтягиваем их, когда
+  // возвращаемся в окно (тихо, без спиннера и без сброса ошибок).
+  useRefreshOnFocus(() => {
+    if (!token) return;
+    void fetchDashboardSummary()
+      .then(setData)
+      .catch(() => {
+        // сеть пропала — оставляем то, что уже показано
+      });
+    void loadFeed();
+  });
 
   useEffect(() => {
     load();

@@ -36,6 +36,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useBackNavigation } from '../hooks/useBackNavigation';
+// ⭐ №305: свежие данные при возврате в окно (без F5)
+import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -398,6 +400,10 @@ const refreshObjects = async () => {
     // список обновится при следующем входе — не роняем страницу
   }
 };
+
+// ⭐ №305: прогресс объектов подтягиваем при возврате в окно — фиксации
+// и новые проекты второго участника видны без перезагрузки страницы.
+useRefreshOnFocus(() => void refreshObjects(), { minIntervalMs: 10_000 });
 
 // ⭐ №284: «Убрать в архив» — только скрыть объект у себя. Удаление больше НЕ назначается:
 // раньше после «В архив» сразу выскакивал второй диалог «Удалить безвозвратно?».

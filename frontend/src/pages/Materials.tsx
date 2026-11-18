@@ -108,6 +108,8 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 // ⭐ №170: пересчёт сметы по справочнику цен (превью «было → станет» + откат)
 import { PriceRecalcModal } from '../components/PriceRecalcModal';
 import EstimateImportModal from '../components/EstimateImportModal'; // ⭐ №202: импорт сметы из Excel
+// ⭐ №305: свежие фото/фиксации с других устройств — без F5
+import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus';
 import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 
 // ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено».
@@ -858,6 +860,10 @@ useEffect(() => {
       console.error(err);
     }
   }, [projectId]);
+
+  // ⭐ №305: вернулись в окно/вкладку — тихо обновляем смету (бейджи фото,
+  // факт и проценты). Без этого правки второго участника видны только после F5.
+  useRefreshOnFocus(refreshMaterials, { minIntervalMs: 10_000 });
 
   // ⭐ №161: подсветка строки, на которую перешли из виджета «Без расценки»
   useEffect(() => {

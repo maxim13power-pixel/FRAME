@@ -56,7 +56,53 @@ const PROJECTS_TITLE_DEFAULT = 'Проекты (виды работ)';
 const TITLE_CHANGED_EVENT = 'frame:title-changed';
 // ⭐ №163: напоминание о доступе к новому проекту
 import { fetchAccessList, addAccess } from '../services/accessService';
-import type { AccessMember } from '../services/accessService';
+import type { AccessMember, AccessRole } from '../services/accessService';
+// ⭐ №305: свежие данные при возврате в окно (без F5)
+import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus';
+
+/**
+ * ⭐ №305: человек в модалке «Кому открыть проект?».
+ * Раньше строка шла на каждую ВЫДАЧУ доступа: прораб с доступом к четырём
+ * проектам выглядел как «Петька • Прораб • доступ к другому проекту» ×4.
+ * Теперь строка одна на человека, а роль и видимость цен выбираются прямо
+ * здесь: в разных проектах у него могут быть разные роли.
+ */
+interface ReminderCandidate {
+  userId: number;
+  name: string;
+  /** Логин — показываем, если в списке есть тёзки (иначе «Петька» ×2 не различить) */
+  email: string;
+  /** Сколько других проектов объекта он уже видит */
+  projectsCount: number;
+  /** Роли, которые у него уже есть в этих проектах (для подсказки) */
+  roles: AccessRole[];
+  /** В скольких проектах ему скрыты цены */
+  hiddenCount: number;
+  /** Что выдаём в СОЗДАННОМ проекте (по умолчанию — его самая частая роль) */
+  role: AccessRole;
+  /** И с какой видимостью цен (по умолчанию — скрыты, если у него везде скрыты) */
+  hidePrices: boolean;
+  checked: boolean;
+}
+
+const REMINDER_ROLE_LABEL: Record<AccessRole, string> = {
+  CUSTOMER: 'Администратор',
+  FOREMAN: 'Прораб',
+  VIEWER: 'Наблюдатель',
+};
+const REMINDER_ROLE_ICON: Record<AccessRole, string> = {
+  CUSTOMER: '👑',
+  FOREMAN: '👷',
+  VIEWER: '👁',
+};
+/** «1 проект / 2 проекта / 5 проектов» */
+const projectsWord = (n: number): string => {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'проект';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'проекта';
+  return 'проектов';
+};
 import ConfirmDialog from '../components/ConfirmDialog';
 import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import { updateObjectEndDate } from '../services/objectService';
@@ -172,11 +218,11 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   // ⭐ №249: личный архив проектов + модалка участников проекта
   const [showArchived, setShowArchived] = useState(false);
   const [teamProject, setTeamProject] = useState<ProjectData | null>(null);
-  // ⭐ №163: после создания проекта предлагаем выдать доступ команде (по умолчанию — только администратор объекта)
+  // ⭐ №163: после создания проекта предлагаем выдать доступ команде
   const [reminderOpen, setReminderOpen] = useState(false);
   const [reminderProject, setReminderProject] = useState<ProjectData | null>(null);
-  const [reminderMembers, setReminderMembers] = useState<AccessMember[]>([]);
-  const [reminderSelected, setReminderSelected] = useState<number[]>([]);
+  // ⭐ №305: одна строка на ЧЕЛОВЕКА + выбранные для этого проекта роль и цены
+  const [reminderMembers, setReminderMembers] = useState<ReminderCandidate[]>([]);
   const [reminderLoading, setReminderLoading] = useState(false);
   const [reminderSaving, setReminderSaving] = useState(false);
   const [editName, setEditName] = useState('');
@@ -596,9 +642,9 @@ const createProjectAction = async (projectData?: {
   }
 };
 
-// ⭐ №163: напоминание о доступе. Показываем участников объекта, у которых ещё
-// нет доступа к новому проекту (объектные записи и участники этого проекта исключены).
-// По умолчанию отмечен только администратор объекта — решение владельца 10.1(1).
+// ⭐ №163: напоминание о доступе. Показываем участников объекта, которых ещё
+// нет в новом проекте (объектные записи и доступы к нему исключены).
+// ⭐ №305: одна строка на человека — роль и видимость цен выбираются в модалке.
 const openAccessReminder = async (project: ProjectData) => {
   if (!objectId) return;
   // ⭐ №207: список участников и выдачу доступа делает только администратор объекта.
@@ -608,16 +654,45 @@ const openAccessReminder = async (project: ProjectData) => {
   setReminderOpen(true);
   setReminderLoading(true);
   setReminderMembers([]);
-  setReminderSelected([]);
   try {
-    const members = await fetchAccessList(parseInt(objectId));
-    const candidates = members.filter(
-      (m) => m.projectId !== null && m.projectId !== project.id,
+    const rows = (await fetchAccessList(parseInt(objectId))).filter(
+      // projectId = null — доступ на весь объект: такие видят проект сами
+      (m) => m.projectId !== null && m.projectId !== project.id && m.revokedAt == null,
     );
+    // Один человек может иметь доступ к нескольким проектам — склеиваем по userId
+    const byUser = new Map<number, AccessMember[]>();
+    rows.forEach((row) => {
+      const list = byUser.get(row.userId);
+      if (list) list.push(row);
+      else byUser.set(row.userId, [row]);
+    });
+    // При равенстве голосов предпочитаем «рабочие» роли проекта
+    const order: AccessRole[] = ['FOREMAN', 'VIEWER', 'CUSTOMER'];
+    const candidates: ReminderCandidate[] = Array.from(byUser.values()).map((list) => {
+      const counts = new Map<AccessRole, number>();
+      list.forEach((row) => counts.set(row.role, (counts.get(row.role) ?? 0) + 1));
+      const roles = Array.from(counts.keys()).sort(
+        (a, b) =>
+          (counts.get(b) ?? 0) - (counts.get(a) ?? 0) ||
+          order.indexOf(a) - order.indexOf(b),
+      );
+      const hiddenCount = list.filter((row) => row.hidePrices).length;
+      const user = list[0].user;
+      return {
+        userId: list[0].userId,
+        name: user.fullName || user.email || user.phone || 'Без имени',
+        email: user.email ?? '',
+        projectsCount: list.length,
+        roles,
+        hiddenCount,
+        role: roles[0],
+        // Открывать цены молча нельзя: если у него везде скрыты, оставляем скрытыми
+        hidePrices: hiddenCount === list.length,
+        checked: false,
+      };
+    });
+    candidates.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
     setReminderMembers(candidates);
-    setReminderSelected(
-      candidates.filter((m) => m.role === 'CUSTOMER').map((m) => m.id),
-    );
   } catch {
     // Список не критичен: проект уже создан, просто не показываем чекбоксы
     setReminderMembers([]);
@@ -630,12 +705,18 @@ const closeAccessReminder = () => {
   setReminderOpen(false);
   setReminderProject(null);
   setReminderMembers([]);
-  setReminderSelected([]);
+};
+
+/** ⭐ №305: точечно меняем выбор человека (роль / цены / галочка) */
+const updateReminderMember = (userId: number, patch: Partial<ReminderCandidate>) => {
+  setReminderMembers((prev) =>
+    prev.map((m) => (m.userId === userId ? { ...m, ...patch } : m)),
+  );
 };
 
 const handleReminderSave = async () => {
   if (!objectId || !reminderProject) return;
-  const chosen = reminderMembers.filter((m) => reminderSelected.includes(m.id));
+  const chosen = reminderMembers.filter((m) => m.checked);
   if (chosen.length === 0) {
     closeAccessReminder();
     return;
@@ -643,9 +724,11 @@ const handleReminderSave = async () => {
   setReminderSaving(true);
   try {
     for (const member of chosen) {
+      // ⭐ №305: роль и видимость цен — из модалки, а не «как повезёт»
       await addAccess(parseInt(objectId), {
         userId: member.userId,
         role: member.role,
+        hidePrices: member.hidePrices,
         projectId: reminderProject.id,
       });
     }
@@ -663,6 +746,17 @@ const handleReminderSave = async () => {
     setReminderSaving(false);
   }
 };
+
+// ⭐ №305: есть ли в списке тёзки — тогда показываем логин, чтобы людей различить
+const reminderDuplicateNames = useMemo(() => {
+  const counts = new Map<string, number>();
+  reminderMembers.forEach((m) => counts.set(m.name, (counts.get(m.name) ?? 0) + 1));
+  return new Set(
+    Array.from(counts.entries())
+      .filter(([, count]) => count > 1)
+      .map(([name]) => name),
+  );
+}, [reminderMembers]);
 
 // Обработчик подтверждения замены даты объекта
 const handleConfirmDateUpdate = async () => {
@@ -846,6 +940,10 @@ const handleSaveNote = async () => {
       // список обновится при следующем входе — страницу не роняем
     }
   };
+
+  // ⭐ №305: прогресс на карточках обновляем при возврате в окно —
+  // иначе фиксации прораба видны только после перезагрузки страницы.
+  useRefreshOnFocus(() => void reloadProjects(), { minIntervalMs: 10_000 });
 
   // ⭐ №249: личный архив проекта (скрыт только у меня)
   const handleToggleProjectArchive = async (proj: ProjectData) => {
@@ -1993,9 +2091,9 @@ onBack: goBack,
             👥 Кому открыть проект?
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Проект «{reminderProject?.name}» создан. Отметьте, кто из команды объекта
-            должен его видеть. По умолчанию отмечен только администратор объекта — остальных
-            можно добавить позже в карточке объекта.
+            Проект «{reminderProject?.name}» создан. Отметьте, кому из команды объекта
+            открыть доступ именно к этому проекту, и выберите роль. Участники с доступом
+            на весь объект видят новый проект автоматически.
           </Typography>
 
           {reminderLoading ? (
@@ -2008,38 +2106,106 @@ onBack: goBack,
               Объектные участники видят новые проекты автоматически.
             </Alert>
           ) : (
-            <Stack spacing={0.5}>
+            <Stack spacing={1}>
               {reminderMembers.map((member) => (
-                <FormControlLabel
-                  key={member.id}
-                  control={
-                    <Checkbox
-                      checked={reminderSelected.includes(member.id)}
-                      onChange={(e) =>
-                        setReminderSelected((prev) =>
-                          e.target.checked
-                            ? [...prev, member.id]
-                            : prev.filter((id) => id !== member.id),
-                        )
-                      }
-                    />
-                  }
-                  label={
-                    <Box>
-                      <Typography variant="body2">
-                        {member.user.fullName || member.user.email || member.user.phone || 'Без имени'}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {member.role === 'CUSTOMER'
-                          ? '👑 Администратор объекта'
-                          : member.role === 'FOREMAN'
-                            ? '👷 Прораб'
-                            : '👁 Наблюдатель'}
-                        {member.projectId ? ' • доступ к другому проекту' : ''}
-                      </Typography>
-                    </Box>
-                  }
-                />
+                <Box
+                  key={member.userId}
+                  sx={{
+                    border: '1px solid',
+                    borderColor: member.checked ? 'primary.light' : 'divider',
+                    bgcolor: member.checked ? 'action.hover' : 'transparent',
+                    borderRadius: 2,
+                    px: 1,
+                    py: 0.5,
+                  }}
+                >
+                  <FormControlLabel
+                    sx={{ m: 0, alignItems: 'flex-start' }}
+                    control={
+                      <Checkbox
+                        checked={member.checked}
+                        onChange={(e) =>
+                          updateReminderMember(member.userId, { checked: e.target.checked })
+                        }
+                      />
+                    }
+                    label={
+                      <Box sx={{ py: 0.75 }}>
+                        <Typography variant="body2" fontWeight={600}>
+                          {member.name}
+                        </Typography>
+                        {reminderDuplicateNames.has(member.name) && member.email && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {member.email}
+                          </Typography>
+                        )}
+                        <Typography variant="caption" color="text.secondary">
+                          {/* ⭐ №305: роль и цены в других проектах — чтобы было видно,
+                              откуда взялись значения по умолчанию */}
+                          {member.projectsCount} {projectsWord(member.projectsCount)} •{' '}
+                          {member.roles
+                            .map(
+                              (r) => `${REMINDER_ROLE_ICON[r]} ${REMINDER_ROLE_LABEL[r]}`,
+                            )
+                            .join(', ')}
+                          {member.hiddenCount > 0
+                            ? ` • 🙈 цены скрыты в ${member.hiddenCount}`
+                            : ''}
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                  {member.checked && (
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      flexWrap="wrap"
+                      sx={{ pl: { xs: 0, sm: 5 }, pb: 1 }}
+                    >
+                      <FormControl size="small" sx={{ minWidth: 190 }}>
+                        <InputLabel id={`reminder-role-${member.userId}`}>
+                          Роль в этом проекте
+                        </InputLabel>
+                        <Select
+                          labelId={`reminder-role-${member.userId}`}
+                          value={member.role}
+                          label="Роль в этом проекте"
+                          onChange={(e) =>
+                            updateReminderMember(member.userId, {
+                              role: e.target.value as AccessRole,
+                            })
+                          }
+                        >
+                          <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
+                          <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
+                          {member.roles.includes('CUSTOMER') && (
+                            <MenuItem value="CUSTOMER">👑 Администратор</MenuItem>
+                          )}
+                        </Select>
+                      </FormControl>
+                      <FormControlLabel
+                        sx={{ m: 0 }}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={member.hidePrices}
+                            onChange={(e) =>
+                              updateReminderMember(member.userId, {
+                                hidePrices: e.target.checked,
+                              })
+                            }
+                          />
+                        }
+                        label={
+                          <Typography variant="caption" color="text.secondary">
+                            🙈 не показывать цены
+                          </Typography>
+                        }
+                      />
+                    </Stack>
+                  )}
+                </Box>
               ))}
             </Stack>
           )}
@@ -2051,9 +2217,14 @@ onBack: goBack,
             <Button
               variant="contained"
               onClick={handleReminderSave}
-              disabled={reminderSaving || reminderLoading || reminderMembers.length === 0}
+              // ⭐ №305: пока никого не отметили — доступ выдавать нечего
+              disabled={
+                reminderSaving ||
+                reminderLoading ||
+                !reminderMembers.some((m) => m.checked)
+              }
             >
-              Выдать доступ
+              {reminderSaving ? 'Выдаём…' : 'Выдать доступ'}
             </Button>
           </Box>
         </Paper>
