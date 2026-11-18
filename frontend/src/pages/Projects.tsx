@@ -21,7 +21,6 @@ import {
   MenuItem, 
   Checkbox,
   FormControlLabel,
-  ListSubheader,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
@@ -31,7 +30,7 @@ import { fetchPriceCatalogs } from '../services/priceListService';
 import type { PriceCatalogData } from '../services/priceListService';
 
 import type { ProjectData, AvailableProject } from '../services/projectService';
-import { fetchEstimateTemplates, createEstimateTemplate, applyEstimateTemplate } from '../services/estimateTemplateService';
+import { fetchEstimateTemplates, createEstimateTemplate, applyEstimateTemplate, deleteEstimateTemplate } from '../services/estimateTemplateService';
 import type { EstimateTemplate } from '../services/estimateTemplateService';
 import NoteAddIcon from '@mui/icons-material/NoteAdd';
 import SearchIcon from '@mui/icons-material/Search';
@@ -215,6 +214,7 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   const [estimateSource, setEstimateSource] = useState<string>(''); // '' | 'proj:12' | 'tpl:3'
   const [availableProjects, setAvailableProjects] = useState<AvailableProject[]>([]);
   const [zeroQuantities, setZeroQuantities] = useState(false);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<number | null>(null); // ⭐ №300
   const [saveTemplateModalOpen, setSaveTemplateModalOpen] = useState(false);
   const [savingTemplateProject, setSavingTemplateProject] = useState<ProjectData | null>(null);
   const [templateName, setTemplateName] = useState('');
@@ -429,6 +429,28 @@ const handleCancelAccessRequest = async () => {
   };
 
   // ⭐ №129: сохранить проект как шаблон
+  // ⭐ №300: удаление шаблона прямо из окна «Добавить проект» (раньше нельзя было)
+  const handleDeleteTemplate = async (template: EstimateTemplate) => {
+    const ok = await confirm({
+      title: 'Удалить шаблон?',
+      text: `Шаблон «${template.name}» (${template.items?.length ?? 0} поз.) будет удалён безвозвратно. Уже созданные по нему сметы не изменятся.`,
+      confirmText: 'Удалить',
+      danger: true,
+    });
+    if (!ok) return;
+    setDeletingTemplateId(template.id);
+    try {
+      await deleteEstimateTemplate(template.id);
+      setTemplates((prev) => prev.filter((t) => t.id !== template.id));
+      if (estimateSource === `tpl:${template.id}`) setEstimateSource('');
+      success(`Шаблон «${template.name}» удалён`);
+    } catch (err) {
+      notifyError('Не удалось удалить шаблон: ' + getApiErrorText(err, 'неизвестная ошибка'));
+    } finally {
+      setDeletingTemplateId(null);
+    }
+  };
+
   const handleOpenSaveTemplate = (proj: ProjectData) => {
     setSavingTemplateProject(proj);
     setTemplateName('');
@@ -1273,9 +1295,12 @@ onBack: goBack,
     top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
-    width: { xs: '90%', sm: 450 },
+    width: { xs: '92%', sm: 480 },
     p: 4,
     borderRadius: 2,
+    // ⭐ №300: список смет со своим скроллом — окно не должно вылезать за экран
+    maxHeight: '92vh',
+    overflowY: 'auto',
   }}>
     <Typography variant="h6" gutterBottom>Добавить проект</Typography>
     
@@ -1341,48 +1366,106 @@ onBack: goBack,
           min: newStartDate || (currentObject ? currentObject.startDate.slice(0, 10) : undefined),
                   }}
       />
-      {/* ⭐ №286: вместо «шаблонов» — выбор любого доступного проекта.
-          Смета копируется без прогресса (0 %), цены и спецификация сохраняются. */}
-      <FormControl fullWidth>
-        <InputLabel id="estimate-source-label">Смета из другого проекта</InputLabel>
-        <Select
-          labelId="estimate-source-label"
-          label="Смета из другого проекта"
-          value={estimateSource}
-          onChange={(e) => setEstimateSource(e.target.value)}
-        >
-          <MenuItem value="">
-            <em>Пустой проект — смету заполню сам</em>
-          </MenuItem>
+      {/* ⭐ №286/№300: выбор сметы — как в «Добавить в смету»: скроллируемый список
+          кнопкой-строкой, выбранная строка подсвечена, у шаблонов есть корзинка */}
+      <Box>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+          Смета из другого проекта
+        </Typography>
+        <Box sx={{ maxHeight: 300, overflowY: 'auto', mt: 0.5, pr: 0.5 }}>
+          <Button
+            fullWidth
+            variant={estimateSource === '' ? 'contained' : 'outlined'}
+            onClick={() => setEstimateSource('')}
+            sx={{ justifyContent: 'flex-start', textTransform: 'none', mb: 1 }}
+          >
+            {estimateSource === '' ? '✓ ' : ''}Пустой проект — смету заполню сам
+          </Button>
+
           {availableProjects.length > 0 && (
-            <ListSubheader>Проекты — копия сметы (0 %)</ListSubheader>
+            <>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                Сметы ваших проектов
+              </Typography>
+              <Stack spacing={1} sx={{ mt: 0.5, mb: 1 }}>
+                {availableProjects.map((p) => {
+                  const value = `proj:${p.id}`;
+                  const selected = estimateSource === value;
+                  return (
+                    <Button
+                      key={value}
+                      fullWidth
+                      variant={selected ? 'contained' : 'outlined'}
+                      onClick={() => setEstimateSource(selected ? '' : value)}
+                      sx={{ justifyContent: 'space-between', textTransform: 'none', py: 1 }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {selected ? '✓ ' : ''}{p.name} — {p.objectName}
+                      </span>
+                      <span style={{ opacity: 0.7, flexShrink: 0, marginLeft: 8 }}>
+                        {p.materialsCount} поз.
+                      </span>
+                    </Button>
+                  );
+                })}
+              </Stack>
+            </>
           )}
-          {availableProjects.map((p) => (
-            <MenuItem key={`proj:${p.id}`} value={`proj:${p.id}`}>
-              {p.name} — {p.objectName} · {p.materialsCount} поз.
-            </MenuItem>
-          ))}
+
           {templates.length > 0 && (
-            <ListSubheader>Шаблоны и снимки доступа</ListSubheader>
+            <>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                Шаблоны и снимки доступа
+              </Typography>
+              <Stack spacing={1} sx={{ mt: 0.5 }}>
+                {templates.map((t) => {
+                  const value = `tpl:${t.id}`;
+                  const selected = estimateSource === value;
+                  const empty = t.items.length === 0;
+                  return (
+                    <Box key={value} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Button
+                        fullWidth
+                        variant={selected ? 'contained' : 'outlined'}
+                        disabled={empty}
+                        onClick={() => setEstimateSource(selected ? '' : value)}
+                        sx={{ flex: 1, minWidth: 0, justifyContent: 'space-between', textTransform: 'none', py: 1 }}
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {selected ? '✓ ' : ''}{t.name}
+                        </span>
+                        <span style={{ opacity: 0.7, flexShrink: 0, marginLeft: 8 }}>
+                          {empty ? 'пусто' : `${t.items.length} поз.`}
+                        </span>
+                      </Button>
+                      <IconButton
+                        aria-label={`Удалить шаблон ${t.name}`}
+                        title="Удалить шаблон"
+                        color="error"
+                        disabled={deletingTemplateId === t.id}
+                        onClick={() => { void handleDeleteTemplate(t); }}
+                      >
+                        {deletingTemplateId === t.id ? <CircularProgress size={18} /> : <DeleteIcon />}
+                      </IconButton>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </>
           )}
-          {templates.map((t) => (
-            <MenuItem key={`tpl:${t.id}`} value={`tpl:${t.id}`} disabled={t.items.length === 0}>
-              {t.name}
-              {t.items.length > 0 ? ` · ${t.items.length} поз.` : ' · пусто'}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+
+          {availableProjects.length === 0 && templates.length === 0 && (
+            <Typography variant="caption" color="text.secondary">
+              Пока нечего копировать: у доступных проектов нет позиций. Сначала заполните смету
+              любого проекта — он появится здесь.
+            </Typography>
+          )}
+        </Box>
+      </Box>
       <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
         Можно вставить смету существующего проекта: позиции, единицы и цены скопируются,
         а прогресс начнётся с 0 % (факт, фиксации и фото не переносятся).
       </Typography>
-      {availableProjects.length === 0 && templates.length === 0 && (
-        <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-          Пока нечего копировать: у доступных проектов нет позиций. Сначала заполните смету
-          любого проекта — он появится здесь.
-        </Typography>
-      )}
       <FormControlLabel
         control={
           <Checkbox
@@ -1547,11 +1630,12 @@ onBack: goBack,
             Участники проекта
           </Button>
 
-          {/* ⭐ №249: личный архив проекта */}
+          {/* ⭐ №249/№300: личный архив проекта — цвет как у «Убрать в архив» в объектах */}
           <Button
             size="large"
             fullWidth
             variant="outlined"
+            color="warning"
             startIcon={<ArchiveIcon />}
             onClick={() => {
               const p = actionsProject;
