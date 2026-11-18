@@ -535,6 +535,105 @@ describe('MaterialsService — окно фиксации (№174)', () => {
     ).rejects.toThrow(BadRequestException);
   });
 });
+describe('MaterialsService — цена в справочник из сметы (№302)', () => {
+  const prisma = {
+    objectAccess: { findMany: jest.fn() },
+    material: { findUnique: jest.fn(), update: jest.fn() },
+    priceCatalog: { findUnique: jest.fn() },
+    priceItem: { findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
+    priceCategory: { findFirst: jest.fn(), create: jest.fn() },
+  };
+  const audit = { log: jest.fn() };
+  let service: MaterialsService;
+
+  const grant = (over: Record<string, unknown> = {}) => ({
+    objectId: 15,
+    projectId: null as number | null,
+    role: 'FOREMAN',
+    hidePrices: false,
+    isHidden: false,
+    revokedAt: null as Date | null,
+    ...over,
+  });
+
+  beforeEach(() => {
+    // resetAllMocks, а не clearAllMocks: у findUnique очередь «Once»-значений,
+    // иначе неиспользованное значение из предыдущего теста уезжает в следующий
+    jest.resetAllMocks();
+    prisma.objectAccess.findMany.mockResolvedValue([grant()]);
+    // 1-й вызов — checkMaterialAccess, 2-й — данные строки
+    prisma.material.findUnique
+      .mockResolvedValueOnce({ projectId: 29, project: { objectId: 15 } })
+      .mockResolvedValueOnce({
+        id: 10,
+        name: 'Демонтаж обоев',
+        unit: 'SQUARE_METER',
+        totalUsed: 5,
+        priceItemId: null,
+        materialItemId: null,
+        project: { catalogId: 3 },
+      });
+    prisma.priceCatalog.findUnique.mockResolvedValue({
+      id: 3,
+      ownerId: 7,
+      isArchived: false,
+    });
+    prisma.priceItem.update.mockResolvedValue({ id: 500 });
+    prisma.material.update.mockResolvedValue({ id: 10, name: 'Демонтаж обоев' });
+    service = new MaterialsService(prisma as never, audit as never);
+  });
+
+  it('наблюдателю нельзя менять цену в справочнике ⇒ Forbidden', async () => {
+    prisma.objectAccess.findMany.mockResolvedValue([grant({ role: 'VIEWER' })]);
+
+    await expect(
+      service.syncPriceToCatalog(10, 'material', 12, 7),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.priceItem.update).not.toHaveBeenCalled();
+  });
+
+  it('находит позицию по названию, ставит цену и связывает строку', async () => {
+    prisma.priceItem.findMany.mockResolvedValue([
+      { id: 501, name: 'демонтаж  обоев', kind: 'MATERIAL' },
+    ]);
+
+    await service.syncPriceToCatalog(10, 'material', 12, 7);
+
+    expect(prisma.priceItem.create).not.toHaveBeenCalled();
+    expect(prisma.priceItem.update).toHaveBeenCalledWith({
+      where: { id: 501 },
+      data: { price: 12 },
+    });
+    const updated = callArg<{ data: Record<string, unknown> }>(prisma.material.update);
+    expect(updated.data).toMatchObject({
+      materialItemId: 501,
+      materialUnitPrice: 12,
+      materialTotalCost: 60,
+    });
+  });
+
+  it('если позиции нет — создаёт её в категории «Разное» (работа и материал одинаково)', async () => {
+    prisma.priceItem.findMany.mockResolvedValue([]);
+    prisma.priceCategory.findFirst.mockResolvedValue({ id: 77 });
+    prisma.priceItem.create.mockResolvedValue({ id: 502 });
+
+    await service.syncPriceToCatalog(10, 'material', 12, 7);
+
+    expect(prisma.priceCategory.findFirst).toHaveBeenCalledWith({
+      where: { name: 'Разное', kind: 'MATERIAL' },
+      select: { id: true },
+    });
+    expect(callArg<{ data: Record<string, unknown> }>(prisma.priceItem.create).data).toMatchObject({
+      name: 'Демонтаж обоев',
+      kind: 'MATERIAL',
+      catalogId: 3,
+      categoryId: 77,
+      price: 12,
+    });
+    expect(prisma.material.update).toHaveBeenCalled();
+  });
+});
+
 describe('MaterialsService — массовые операции над строками (№292)', () => {
   const prisma = {
     material: {

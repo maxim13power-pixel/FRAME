@@ -76,6 +76,7 @@ import {
   duplicateMaterial,
   duplicateMaterialsBulk,
   deleteMaterialsBulk,
+  syncMaterialPrice,
 } from '../services/materialService';
 import type { MaterialData, MaterialFixData } from '../services/materialService';
 import { fetchProjectById } from '../services/materialService';
@@ -1183,6 +1184,18 @@ setPriceLoading(false);
     setPriceSaving(true);
     try {
       const itemId = side === 'work' ? material.priceItemId : material.materialItemId;
+      // ⭐ №302: строки без привязки — работа и материал одинаково: позиция ищется
+      // по названию (или создаётся), цена ставится и в справочнике, и в строке
+      if (alsoCatalog && itemId == null) {
+        const updated = await syncMaterialPrice(material.id, { side, price: value });
+        setMaterials((prev) =>
+          prev.map((m) => (m.id === updated.id ? mergeUpdatedMaterial(m, updated) : m)),
+        );
+        loadCategories();
+        setPriceConfirm(null);
+        notify('Цена обновлена и в смете, и в справочнике');
+        return;
+      }
       if (alsoCatalog && itemId != null) {
         await updatePriceItem(itemId, { price: value });
       }
@@ -1195,7 +1208,11 @@ setPriceLoading(false);
       );
       loadCategories();
       setPriceConfirm(null);
-      notify('Цена обновлена в смете');
+      notify(
+        alsoCatalog
+          ? 'Цена обновлена и в смете, и в справочнике'
+          : 'Цена обновлена в смете',
+      );
     } catch (err) {
       notifyError(getApiErrorText(err, 'Не удалось изменить цену'));
     } finally {
@@ -3849,26 +3866,20 @@ renderInput={(params) => (
                     onChange={(e) =>
                       setPriceConfirm({ ...priceConfirm, alsoCatalog: e.target.checked })
                     }
-                    disabled={
-                      priceSaving ||
-                      (priceConfirm.side === 'work'
-                        ? priceConfirm.material.priceItemId == null
-                        : priceConfirm.material.materialItemId == null)
-                    }
+                    // ⭐ №302: работа и материал равны — галочка доступна всегда,
+                    // при отсутствии привязки позиция найдётся по названию или создастся
+                    disabled={priceSaving}
                   />
                 }
                 label={`Изменить цену и в справочнике${
                   priceCatalogName ? ` «${priceCatalogName}»` : ''
                 }`}
               />
-              {/* ⭐ №301: объясняем, ПОЧЕМУ галочка недоступна — раньше это было неочевидно */}
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
                 {(priceConfirm.side === 'work'
                   ? priceConfirm.material.priceItemId == null
                   : priceConfirm.material.materialItemId == null)
-                  ? priceConfirm.side === 'work'
-                    ? 'Строка не связана с расценкой справочника — обновлять в базе нечего. Цена изменится только в этой смете.'
-                    : 'К строке не привязан материал из справочника — обновлять в базе нечего. Цена изменится только в этой смете (у работ такая привязка есть, у материалов — нет).'
+                  ? 'Позиции пока нет в справочнике — при сохранении она будет найдена по названию или создана в категории «Разное». Без галочки изменится только эта смета.'
                   : 'По умолчанию меняется только эта смета — база цен остаётся прежней. Поставьте галочку, если новую цену нужно сохранить и в справочнике.'}
               </Typography>
             </>

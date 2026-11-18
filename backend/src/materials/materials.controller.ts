@@ -20,6 +20,7 @@ import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { UpdateSpecQtyDto } from './dto/update-spec-qty.dto';
 import { BulkIdsDto } from './dto/bulk-ids.dto'; // ⭐ №292: массовые операции
+import { SyncCatalogPriceDto } from './dto/sync-catalog-price.dto'; // ⭐ №302
 //import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
 import { CreatePriceItemWithCategoryDto } from './dto/create-price-item-with-category.dto';
 @Controller('materials')
@@ -55,6 +56,25 @@ export class MaterialsController {
     @Req() req,
   ) {
     return this.materialsService.addFix(id, dto, req.user.userId);
+  }
+
+  /**
+   * ⭐ №302: «Изменить цену и в справочнике» для строки без привязки к расценке.
+   * Работа и материал обрабатываются одинаково: позиция ищется по названию или создаётся.
+   */
+  @Post(':id/sync-price')
+  syncPrice(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ValidationPipe({ whitelist: true, transform: true }))
+    dto: SyncCatalogPriceDto,
+    @Req() req,
+  ) {
+    return this.materialsService.syncPriceToCatalog(
+      id,
+      dto.side,
+      dto.price,
+      req.user.userId,
+    );
   }
 
   /**

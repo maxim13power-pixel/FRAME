@@ -223,6 +223,15 @@ export const deleteMaterial = async (
   await api.delete(`/materials/${materialId}`);
 };
 
+/** ⭐ №302: сохранить цену строки и в справочнике проекта — позиция ищется или создаётся. */
+export const syncMaterialPrice = async (
+  materialId: number,
+  payload: { side: 'work' | 'material'; price: number },
+): Promise<MaterialData> => {
+  const response = await api.post(`/materials/${materialId}/sync-price`, payload);
+  return normalizeMaterial(response.data);
+};
+
 /** ⭐ №292: массовое дублирование строк сметы (выделение чекбоксами) */
 export const duplicateMaterialsBulk = async (
   ids: number[],

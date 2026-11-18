@@ -16,6 +16,7 @@ import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
 import { loadCatalogAccess, findVisiblePriceItem } from '../price-list/catalog-access'; // ⭐ №164, №191
 import { resolveProjectPriceItem } from '../price-list/project-catalog'; // ⭐ №271
 import { assertAccessActive, findProjectAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
+import { normalizeText } from '../imports/name-normalizer'; // ⭐ №302: поиск позиции по названию
 import {
   FIX_EDIT_WINDOW_MS,
   FIX_WINDOW_DAYS,
@@ -927,6 +928,136 @@ export class MaterialsService {
       },
       include: { category: true },
     });
+  }
+
+  /**
+   * ⭐ №302: сохранить цену строки И в справочнике проекта, даже если строка ещё не привязана
+   * к расценке. Работа и материал — одинаково: ищем позицию по названию (как импорт),
+   * если не нашли — создаём в категории «Разное», затем ставим цену и связываем строку.
+   * Возвращает обновлённую строку сметы (как `update`).
+   */
+  async syncPriceToCatalog(
+    materialId: number,
+    side: 'work' | 'material',
+    price: number,
+    userId: number,
+  ) {
+    if (!Number.isFinite(price) || price < 0) {
+      throw new BadRequestException('Некорректная цена');
+    }
+    const access = await this.checkMaterialAccess(materialId, userId);
+    if (access.role === 'VIEWER') {
+      throw new ForbiddenException('Наблюдатель не может менять цены');
+    }
+    const material = await this.prisma.material.findUnique({
+      where: { id: materialId },
+      select: {
+        id: true,
+        name: true,
+        unit: true,
+        totalUsed: true,
+        priceItemId: true,
+        materialItemId: true,
+        project: { select: { catalogId: true } },
+      },
+    });
+    if (!material) throw new NotFoundException('Материал не найден');
+
+    const catalogId = material.project.catalogId;
+    if (!catalogId) {
+      throw new BadRequestException(
+        'У проекта не выбран справочник цен — выберите его в шапке сметы',
+      );
+    }
+    const catalog = await this.prisma.priceCatalog.findUnique({
+      where: { id: catalogId },
+      select: { id: true, ownerId: true, isArchived: true },
+    });
+    if (!catalog) throw new NotFoundException('Справочник цен не найден');
+    if (catalog.isArchived) {
+      throw new BadRequestException('Справочник в архиве — выберите активный');
+    }
+
+    const kind: PriceKind = side === 'work' ? 'WORK' : 'MATERIAL';
+    let itemId = side === 'work' ? material.priceItemId : material.materialItemId;
+
+    // 1. Привязки нет → ищем позицию по названию, иначе создаём
+    if (itemId == null) {
+      const key = normalizeText(material.name);
+      const items = await this.prisma.priceItem.findMany({
+        where: { catalogId },
+        select: { id: true, name: true, kind: true },
+      });
+      const hit = items.find(
+        (item) => item.kind === kind && normalizeText(item.name) === key,
+      );
+      if (hit) {
+        itemId = hit.id;
+      } else {
+        const categoryId = await this.ensureMiscCategory(kind);
+        const created = await this.prisma.priceItem.create({
+          data: {
+            name: material.name.trim(),
+            unit: material.unit,
+            price,
+            categoryId,
+            kind,
+            catalogId,
+            ownerId: catalog.ownerId,
+          },
+          select: { id: true },
+        });
+        itemId = created.id;
+      }
+    }
+
+    // 2. Цена в справочнике + цена и привязка в строке сметы
+    await this.prisma.priceItem.update({
+      where: { id: itemId },
+      data: { price },
+    });
+    const used = Number(material.totalUsed) || 0;
+    const total = Math.round(used * price * 100) / 100;
+    const updated = await this.prisma.material.update({
+      where: { id: materialId },
+      data:
+        side === 'work'
+          ? { priceItemId: itemId, unitPrice: price, totalCost: total }
+          : {
+              materialItemId: itemId,
+              materialUnitPrice: price,
+              materialTotalCost: total,
+            },
+      include: MATERIAL_INCLUDE,
+    });
+    return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
+  }
+
+  /** Категория «Разное» нужного вида — для новых позиций из сметы (⭐ №302). */
+  private async ensureMiscCategory(kind: PriceKind): Promise<number> {
+    const name = 'Разное';
+    const existing = await this.prisma.priceCategory.findFirst({
+      where: { name, kind },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+    try {
+      const created = await this.prisma.priceCategory.create({
+        data: { name, kind, sortOrder: 0 },
+        select: { id: true },
+      });
+      return created.id;
+    } catch (e) {
+      // параллельное создание категории — перечитываем существующую
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const raced = await this.prisma.priceCategory.findFirst({
+          where: { name, kind },
+          select: { id: true },
+        });
+        if (raced) return raced.id;
+      }
+      throw e;
+    }
   }
 
   // ⭐ №162: копирование строки материала.

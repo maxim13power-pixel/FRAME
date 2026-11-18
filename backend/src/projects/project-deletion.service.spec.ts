@@ -11,7 +11,12 @@ const mockPrisma = () => ({
     update: jest.fn(),
     delete: jest.fn(),
   },
-  objectAccess: { findFirst: jest.fn() },
+  objectAccess: { findFirst: jest.fn(), findMany: jest.fn() },
+  // ⭐ №299: purgeNow идёт тем же путём, что плановая уборка
+  warehouseItem: { findMany: jest.fn() },
+  brigade: { findMany: jest.fn() },
+  report: { findMany: jest.fn() },
+  materialPhoto: { findMany: jest.fn() },
   $transaction: jest.fn(),
 });
 
@@ -60,11 +65,11 @@ describe('ProjectDeletionService', () => {
         plannedEndDate: null,
       },
     });
-    prisma.objectAccess.findMany = jest.fn().mockResolvedValue([]);
-    prisma.warehouseItem = { findMany: jest.fn().mockResolvedValue([]) };
-    prisma.brigade = { findMany: jest.fn().mockResolvedValue([]) };
-    prisma.report = { findMany: jest.fn().mockResolvedValue([]) };
-    prisma.materialPhoto = { findMany: jest.fn().mockResolvedValue([]) };
+    prisma.objectAccess.findMany.mockResolvedValue([]);
+    prisma.warehouseItem.findMany.mockResolvedValue([]);
+    prisma.brigade.findMany.mockResolvedValue([]);
+    prisma.report.findMany.mockResolvedValue([]);
+    prisma.materialPhoto.findMany.mockResolvedValue([]);
     const tx = { project: { delete: jest.fn() } };
     prisma.$transaction.mockImplementation(
       async (cb: (client: unknown) => unknown) => cb(tx),
