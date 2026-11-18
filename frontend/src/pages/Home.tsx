@@ -43,7 +43,8 @@ const pct = (v: number) => v.toLocaleString('ru-RU', { maximumFractionDigits: 1 
 const DAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 /** ⭐ №231: сколько последних фото показываем на Главной */
 const FEED_LIMIT = 12;
-// ⭐ №310/№311: «Без расценки» и «Последние фиксации» — 5 строк, остальное по кнопке «Показать все»
+// ⭐ №310–№312: «Горит на неделе», «Последние фиксации» и «Без расценки» —
+// по 5 строк, остальное по кнопке «Показать все»
 const HOME_VISIBLE_ROWS = 5;
 // ⭐ №173: дату из API («YYYY-MM-DD») разбираем как UTC-полночь и берём UTC-день:
 // new Date('2026-10-19') в западных зонах даёт 18-е число и подпись «съезжает».
@@ -104,6 +105,8 @@ const Home: React.FC = () => {
   const [noPriceLoading, setNoPriceLoading] = useState(false);
   // ⭐ №310/№311: «Последние фиксации» — 5 на экране, остальное по кнопке (данные уже в сводке)
   const [fixesExpanded, setFixesExpanded] = useState(false);
+  // ⭐ №312: «Горит на неделе» — та же логика: 5 строк и кнопка «Показать все»
+  const [hotExpanded, setHotExpanded] = useState(false);
   // ⭐ №309: заявки на право создавать проекты — показываем админу объекта
   const [requests, setRequests] = useState<AccessRequestData[]>([]);
   const [requestBusyId, setRequestBusyId] = useState<number | null>(null);
@@ -284,6 +287,10 @@ const Home: React.FC = () => {
   const fixesVisible = fixesExpanded
     ? data.recentFixes
     : data.recentFixes.slice(0, HOME_VISIBLE_ROWS);
+  // ⭐ №312: «Горит на неделе» — 5 строк, остальное по кнопке
+  const hotVisible = hotExpanded
+    ? data.hotProjects
+    : data.hotProjects.slice(0, HOME_VISIBLE_ROWS);
   const maxWeek = Math.max(...data.weekChart.map(w => w.count), 1);
   // ⭐ №173: неделя Пн→Вс — сегодняшнюю колонку подсвечиваем (локальная дата)
   const now = new Date();
@@ -591,7 +598,7 @@ const Home: React.FC = () => {
             </Typography>
           </Stack>
           <Stack divider={<Divider />} spacing={1}>
-            {data.hotProjects.map(p => {
+            {hotVisible.map(p => {
               const d = daysLeft(p.endDate);
               const openProject = () =>
                 navigate(`/objects/${p.objectId}/projects/${p.id}/materials`);
@@ -638,6 +645,28 @@ const Home: React.FC = () => {
               );
             })}
           </Stack>
+          {/* ⭐ №312: сначала 5 проектов, остальные — по кнопке внизу справа */}
+          {data.hotProjects.length > HOME_VISIBLE_ROWS && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => setHotExpanded((v) => !v)}
+                endIcon={
+                  <ChevronRightIcon
+                    sx={{
+                      fontSize: 20,
+                      transform: hotExpanded ? 'rotate(-90deg)' : 'none',
+                      transition: 'transform 0.2s',
+                    }}
+                  />
+                }
+                sx={{ textTransform: 'none', color: '#1976d2', fontWeight: 600 }}
+              >
+                {hotExpanded ? 'Свернуть' : 'Показать все'}
+              </Button>
+            </Box>
+          )}
         </Paper>
       )}
 
