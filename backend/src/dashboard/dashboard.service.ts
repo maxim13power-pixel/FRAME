@@ -23,9 +23,9 @@ interface MoneyRow {
   spec_quantity: number;
 }
 
-// ⭐ №310: на Главной «Без расценки» и «Последние фиксации» показывают по 7 строк,
+// ⭐ №310/№311: «Без расценки» и «Последние фиксации» на Главной показывают по 5 строк,
 // остальное раскрывается кнопкой «Показать все» уже из этого ответа (без лишних запросов).
-const HOME_VISIBLE_ROWS = 7;
+const HOME_VISIBLE_ROWS = 5;
 /** «Без расценки» в сводке — ровно столько, сколько видно до раскрытия */
 const NO_PRICE_TOP = HOME_VISIBLE_ROWS;
 /** «Последние фиксации»: 7 показываем, остальное — по кнопке (без второго запроса) */
@@ -223,7 +223,7 @@ export class DashboardService {
           orderBy: { endDate: 'asc' },
           include: { object: { select: { id: true, name: true } } },
         }),
-        // 3b. NoPrice — 7 без расценок (столько видно на Главной до «Показать все»)
+        // 3b. NoPrice — 5 без расценок (столько видно на Главной до «Показать все»)
         this.prisma.material.findMany({
           where: {
             OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],

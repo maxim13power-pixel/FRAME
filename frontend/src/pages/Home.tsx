@@ -43,8 +43,8 @@ const pct = (v: number) => v.toLocaleString('ru-RU', { maximumFractionDigits: 1 
 const DAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 /** ⭐ №231: сколько последних фото показываем на Главной */
 const FEED_LIMIT = 12;
-// ⭐ №310: «Без расценки» и «Последние фиксации» — 7 строк, остальное по кнопке «Показать все»
-const HOME_VISIBLE_ROWS = 7;
+// ⭐ №310/№311: «Без расценки» и «Последние фиксации» — 5 строк, остальное по кнопке «Показать все»
+const HOME_VISIBLE_ROWS = 5;
 // ⭐ №173: дату из API («YYYY-MM-DD») разбираем как UTC-полночь и берём UTC-день:
 // new Date('2026-10-19') в западных зонах даёт 18-е число и подпись «съезжает».
 const dayLabel = (iso: string) => {
@@ -99,10 +99,10 @@ const Home: React.FC = () => {
   const [photoLibraryOpen, setPhotoLibraryOpen] = useState(false);
   const [viewerPhoto, setViewerPhoto] = useState<MaterialPhotoData | null>(null);
   const feedUrlsRef = useRef<Record<number, string>>({});
-  // ⭐ №231: полный список «Без расценки» (в сводке только 7 позиций)
+  // ⭐ №231: полный список «Без расценки» (в сводке только 5 позиций)
   const [noPriceAll, setNoPriceAll] = useState<DashboardSummary['noPrice'] | null>(null);
   const [noPriceLoading, setNoPriceLoading] = useState(false);
-  // ⭐ №310: «Последние фиксации» — 7 на экране, остальное по кнопке (данные уже в сводке)
+  // ⭐ №310/№311: «Последние фиксации» — 5 на экране, остальное по кнопке (данные уже в сводке)
   const [fixesExpanded, setFixesExpanded] = useState(false);
   // ⭐ №309: заявки на право создавать проекты — показываем админу объекта
   const [requests, setRequests] = useState<AccessRequestData[]>([]);
@@ -275,12 +275,12 @@ const Home: React.FC = () => {
   const volumeOverrun = data.volume.overrunPercent; // null — перевыполнения нет
   const moneyOverBudget = data.money.overBudget;
   const moneyDiff = data.money.difference;
-  // ⭐ №231: «Без расценки» — 7 из сводки или полный список после раскрытия
+  // ⭐ №231/№311: «Без расценки» — 5 из сводки или полный список после раскрытия
   const noPriceItems = noPriceAll?.items ?? data.noPrice.items;
   const noPriceCount = noPriceAll?.count ?? data.noPrice.count;
-  // ⭐ №310: пока не раскрыто — ровно 7 строк
+  // ⭐ №310/№311: пока не раскрыто — ровно 5 строк
   const noPriceVisible = noPriceAll ? noPriceItems : noPriceItems.slice(0, HOME_VISIBLE_ROWS);
-  // ⭐ №310: фиксации — 7 строк, остальное по кнопке (приходит до 50 из сводки)
+  // ⭐ №310/№311: фиксации — 5 строк, остальное по кнопке (приходит до 50 из сводки)
   const fixesVisible = fixesExpanded
     ? data.recentFixes
     : data.recentFixes.slice(0, HOME_VISIBLE_ROWS);
@@ -590,7 +590,7 @@ const Home: React.FC = () => {
               Горит на неделе • просрочено: {overdueCount}
             </Typography>
           </Stack>
-          <Stack spacing={0.5}>
+          <Stack divider={<Divider />} spacing={1}>
             {data.hotProjects.map(p => {
               const d = daysLeft(p.endDate);
               const openProject = () =>
@@ -607,24 +607,33 @@ const Home: React.FC = () => {
                       openProject();
                     }
                   }}
+                  // ⭐ №311: разметка как у «Последних фиксаций» и «Без расценки»:
+                  // название + чип в первой строке, объект — второй строкой, без шеврона
                   sx={{
-                    p: 0.75,
-                    borderRadius: 1,
                     cursor: 'pointer',
+                    borderRadius: 1,
                     '&:hover': { bgcolor: 'rgba(25,118,210,0.06)' },
                   }}
                 >
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="body2" fontWeight={600} noWrap sx={{ flexGrow: 1 }}>{p.name}</Typography>
+                    <Typography
+                      variant="body2"
+                      fontWeight={600}
+                      sx={{ minWidth: 0, wordBreak: 'break-word' }}
+                    >
+                      {p.name}
+                    </Typography>
                     <Chip
                       size="small"
                       color={d < 0 ? 'error' : d < 7 ? 'warning' : 'success'}
                       variant="outlined"
                       label={d < 0 ? `Просрочено ${Math.abs(d)} дн` : `${d} дн`}
+                      sx={{ height: 20, fontSize: '0.7rem', flexShrink: 0 }}
                     />
-                    <ChevronRightIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
                   </Box>
-                  <Typography variant="caption" color="text.secondary">{p.objectName}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {p.objectName}
+                  </Typography>
                 </Box>
               );
             })}
@@ -685,7 +694,56 @@ const Home: React.FC = () => {
         </Box>
       </Paper>
 
-      {/* ─── 4. БЕЗ РАСЦЕНКИ ─── */}
+      {/* ─── 4. ЛЕНТА ФИКСАЦИЙ (⭐ №311: блок поднят выше «Без расценки») ─── */}
+      <Paper sx={{ p: 2, borderRadius: 2, mb: 2 }}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+          <EditIcon sx={{ fontSize: 20, color: '#1976d2' }} />
+          <Typography variant="subtitle1" fontWeight={700}>Последние фиксации</Typography>
+        </Stack>
+        <Stack divider={<Divider />} spacing={1}>
+          {fixesVisible.map(f => (
+            <Box
+              key={f.id}
+              onClick={() => navigate(`/objects/${f.material.project.object.id}/projects/${f.material.project.id}/materials`)}
+              sx={{ cursor: 'pointer' }}
+            >
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="body2" fontWeight={600}>
+                  {f.material.name} • +{f.amount}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">{timeAgo(f.fixedAt)}</Typography>
+              </Box>
+              <Typography variant="caption" color="text.secondary">
+                {f.material.project.name} • {f.material.project.object.name}
+              </Typography>
+            </Box>
+          ))}
+        </Stack>
+        {/* ⭐ №310/№311: сначала 5 фиксаций, остальные — по кнопке внизу справа */}
+        {data.recentFixes.length > HOME_VISIBLE_ROWS && (
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
+            <Button
+              size="small"
+              variant="text"
+              onClick={() => setFixesExpanded((v) => !v)}
+              endIcon={
+                <ChevronRightIcon
+                  sx={{
+                    fontSize: 20,
+                    transform: fixesExpanded ? 'rotate(-90deg)' : 'none',
+                    transition: 'transform 0.2s',
+                  }}
+                />
+              }
+              sx={{ textTransform: 'none', color: '#1976d2', fontWeight: 600 }}
+            >
+              {fixesExpanded ? 'Свернуть' : 'Показать все'}
+            </Button>
+          </Box>
+        )}
+      </Paper>
+
+      {/* ─── 5. БЕЗ РАСЦЕНКИ ─── */}
       {noPriceCount > 0 && (
         <Paper sx={{ p: 2, borderRadius: 2, mb: 2, border: '1px solid #ffe0b2' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
@@ -753,55 +811,6 @@ const Home: React.FC = () => {
           )}
         </Paper>
       )}
-
-      {/* ─── 5. ЛЕНТА ФИКСАЦИЙ ─── */}
-      <Paper sx={{ p: 2, borderRadius: 2, mb: 2 }}>
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-          <EditIcon sx={{ fontSize: 20, color: '#1976d2' }} />
-          <Typography variant="subtitle1" fontWeight={700}>Последние фиксации</Typography>
-        </Stack>
-        <Stack divider={<Divider />} spacing={1}>
-          {fixesVisible.map(f => (
-            <Box
-              key={f.id}
-              onClick={() => navigate(`/objects/${f.material.project.object.id}/projects/${f.material.project.id}/materials`)}
-              sx={{ cursor: 'pointer' }}
-            >
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" fontWeight={600}>
-                  {f.material.name} • +{f.amount}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">{timeAgo(f.fixedAt)}</Typography>
-              </Box>
-              <Typography variant="caption" color="text.secondary">
-                {f.material.project.name} • {f.material.project.object.name}
-              </Typography>
-            </Box>
-          ))}
-        </Stack>
-        {/* ⭐ №310: сначала 7 фиксаций, остальные — по кнопке внизу справа */}
-        {data.recentFixes.length > HOME_VISIBLE_ROWS && (
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
-            <Button
-              size="small"
-              variant="text"
-              onClick={() => setFixesExpanded((v) => !v)}
-              endIcon={
-                <ChevronRightIcon
-                  sx={{
-                    fontSize: 20,
-                    transform: fixesExpanded ? 'rotate(-90deg)' : 'none',
-                    transition: 'transform 0.2s',
-                  }}
-                />
-              }
-              sx={{ textTransform: 'none', color: '#1976d2', fontWeight: 600 }}
-            >
-              {fixesExpanded ? 'Свернуть' : 'Показать все'}
-            </Button>
-          </Box>
-        )}
-      </Paper>
 
       {/* ─── Быстрое действие ─── */}
       <Button
