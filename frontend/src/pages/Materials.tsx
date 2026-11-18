@@ -41,6 +41,8 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import CheckIcon from '@mui/icons-material/Check';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CancelIcon from '@mui/icons-material/Cancel';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import SearchIcon from '@mui/icons-material/Search';
@@ -362,6 +364,72 @@ const PriceStepSelects: React.FC<PriceStepSelectsProps> = ({
   );
 };
 
+/**
+ * ⭐ №301: ключи сортировки сметы. `lastFix` — по дате последней фиксации
+ * (новые/старые; строки без фиксаций всегда в конце).
+ */
+type MaterialSortKey = 'name' | 'specQuantity' | 'totalPrice' | 'percentage' | 'lastFix';
+
+/**
+ * ⭐ №301: инлайн-правка «За ед.» с явными кнопками сохранения и отмены —
+ * по Enter ориентироваться было неочевидно. Enter/Esc по-прежнему работают.
+ */
+interface InlinePriceEditorProps {
+  value: string;
+  onChange: (value: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+}
+
+const InlinePriceEditor: React.FC<InlinePriceEditorProps> = ({
+  value,
+  onChange,
+  onCommit,
+  onCancel,
+}) => (
+  <Box
+    sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }}
+    onClick={(e) => e.stopPropagation()}
+  >
+    <TextField
+      size="small"
+      autoFocus
+      value={value}
+      placeholder="0"
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onCommit();
+        if (e.key === 'Escape') onCancel();
+      }}
+      onFocus={(e) => e.target.select()}
+      inputProps={{
+        inputMode: 'decimal',
+        style: { textAlign: 'right', width: 64, padding: '4px 6px' },
+      }}
+    />
+    <IconButton
+      size="small"
+      color="success"
+      aria-label="Сохранить цену"
+      title="Сохранить (Enter)"
+      onClick={onCommit}
+      sx={{ p: 0.25 }}
+    >
+      <CheckCircleIcon fontSize="small" />
+    </IconButton>
+    <IconButton
+      size="small"
+      color="error"
+      aria-label="Отменить правку цены"
+      title="Отмена (Esc)"
+      onClick={onCancel}
+      sx={{ p: 0.25 }}
+    >
+      <CancelIcon fontSize="small" />
+    </IconButton>
+  </Box>
+);
+
 const Materials: React.FC = () => {
   const { objectId, projectId } = useParams<{ objectId: string; projectId: string }>();
   const navigate = useNavigate();
@@ -387,7 +455,7 @@ const goBack = useBackNavigation(`/objects/${objectId}/projects`);
   const [recalcOpen, setRecalcOpen] = useState(false);
 
   // Состояния для сортировки
-  const [sortBy, setSortBy] = useState<'name' | 'specQuantity' | 'totalPrice' | 'percentage' | null>(null);
+  const [sortBy, setSortBy] = useState<MaterialSortKey | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>('asc');
 // Мобилка: компактный поиск и меню сортировки
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -712,6 +780,16 @@ useEffect(() => {
         case 'percentage':
           comparison = a.progressPercent - b.progressPercent;
           break;
+        // ⭐ №301: по дате последней фиксации; строки без фиксаций — всегда в конце
+        case 'lastFix': {
+          const at = a.lastEntryDate ? Date.parse(a.lastEntryDate) : null;
+          const bt = b.lastEntryDate ? Date.parse(b.lastEntryDate) : null;
+          if (at === null && bt === null) return 0;
+          if (at === null) return 1;
+          if (bt === null) return -1;
+          comparison = at - bt;
+          break;
+        }
         default:
           return 0;
       }
@@ -1077,10 +1155,12 @@ setPriceLoading(false);
   // справочник остаётся прежним — для него есть отдельная галочка в подтверждении.
   const handleInlinePriceStart = (material: MaterialData, side: 'work' | 'material') => {
     if (hidePrices) return;
+    const current = side === 'work' ? material.unitPrice : material.materialUnitPrice;
     setInlinePrice({
       materialId: material.id,
       side,
-      value: String(side === 'work' ? material.unitPrice : material.materialUnitPrice),
+      // ⭐ №301: ноль не подставляем — поле пустое, чтобы не стирать его вручную
+      value: current > 0 ? String(current) : '',
     });
   };
 
@@ -1606,7 +1686,7 @@ const handleSaveEdit = async () => {
 };
 // Применение сортировки из мобильного меню
 const applyMobileSort = (
-col: 'name' | 'specQuantity' | 'totalPrice' | 'percentage' | null,
+col: MaterialSortKey | null,
 dir: 'asc' | 'desc' | null
 ) => {
 setSortBy(col);
@@ -1615,7 +1695,7 @@ setSortAnchorEl(null);
 };
 
   // Обработчик клика по заголовку таблицы для сортировки
-  const handleSortClick = (sortByColumn: 'name' | 'specQuantity' | 'totalPrice' | 'percentage') => {
+  const handleSortClick = (sortByColumn: MaterialSortKey) => {
     if (sortBy === sortByColumn) {
       // Если уже сортируем по этой колонке → переключаем направление или сбрасываем
       if (sortDirection === 'asc') {
@@ -1633,7 +1713,7 @@ setSortAnchorEl(null);
   };
 
   // Отображение иконки сортировки
-  const renderSortIcon = (column: 'name' | 'specQuantity' | 'totalPrice' | 'percentage') => {
+  const renderSortIcon = (column: MaterialSortKey) => {
     if (sortBy !== column) return null;
     return sortDirection === 'asc' ? (
       <ArrowUpwardIcon sx={{ fontSize: 16, ml: 0.5 }} />
@@ -2257,6 +2337,9 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
       <MenuItem onClick={() => applyMobileSort('totalPrice', 'desc')}>По итогу (убывание)</MenuItem>
       <MenuItem onClick={() => applyMobileSort('percentage', 'asc')}>По % (возрастание)</MenuItem>
       <MenuItem onClick={() => applyMobileSort('percentage', 'desc')}>По % (убывание)</MenuItem>
+      {/* ⭐ №301: сортировка по дате последней фиксации */}
+      <MenuItem onClick={() => applyMobileSort('lastFix', 'desc')}>По фиксации (сначала новые)</MenuItem>
+      <MenuItem onClick={() => applyMobileSort('lastFix', 'asc')}>По фиксации (сначала старые)</MenuItem>
       </Menu>
 
 {/* Меню фильтра по категориям (мобилка) */}
@@ -2380,7 +2463,9 @@ onClose={() => setFilterAnchorEl(null)}
 <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center', cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }} onClick={() => handleSortClick('totalPrice')}>
 Итого на тек. момент, ед.{renderSortIcon('totalPrice')}
 </TableCell>
-<TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center' }}>Посл. фикс., ед.</TableCell>
+<TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center', cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }} onClick={() => handleSortClick('lastFix')}>
+Посл. фикс., ед.{renderSortIcon('lastFix')}
+</TableCell>
 <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center', cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }} onClick={() => handleSortClick('percentage')}>
 % выполн.{renderSortIcon('percentage')}
 </TableCell>
@@ -2492,20 +2577,11 @@ onClose={() => setFilterAnchorEl(null)}
                   title="Изменить цену работы (только в этой смете)"
                 >
                   {inlinePrice?.materialId === m.id && inlinePrice.side === 'work' ? (
-                    <TextField
-                      size="small"
-                      autoFocus
+                    <InlinePriceEditor
                       value={inlinePrice.value}
-                      onChange={(e) => setInlinePrice({ ...inlinePrice, value: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleInlinePriceCommit();
-                        if (e.key === 'Escape') setInlinePrice(null);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      inputProps={{
-                        inputMode: 'decimal',
-                        style: { textAlign: 'right', width: 72, padding: '4px 6px' },
-                      }}
+                      onChange={(v) => setInlinePrice({ ...inlinePrice, value: v })}
+                      onCommit={handleInlinePriceCommit}
+                      onCancel={() => setInlinePrice(null)}
                     />
                   ) : m.unitPrice > 0 ? (
                     rub(m.unitPrice)
@@ -2522,20 +2598,11 @@ onClose={() => setFilterAnchorEl(null)}
                   title="Изменить цену материала (только в этой смете)"
                 >
                   {inlinePrice?.materialId === m.id && inlinePrice.side === 'material' ? (
-                    <TextField
-                      size="small"
-                      autoFocus
+                    <InlinePriceEditor
                       value={inlinePrice.value}
-                      onChange={(e) => setInlinePrice({ ...inlinePrice, value: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleInlinePriceCommit();
-                        if (e.key === 'Escape') setInlinePrice(null);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      inputProps={{
-                        inputMode: 'decimal',
-                        style: { textAlign: 'right', width: 72, padding: '4px 6px' },
-                      }}
+                      onChange={(v) => setInlinePrice({ ...inlinePrice, value: v })}
+                      onCommit={handleInlinePriceCommit}
+                      onCancel={() => setInlinePrice(null)}
                     />
                   ) : m.materialUnitPrice > 0 ? (
                     rub(m.materialUnitPrice)
@@ -3794,8 +3861,15 @@ renderInput={(params) => (
                   priceCatalogName ? ` «${priceCatalogName}»` : ''
                 }`}
               />
+              {/* ⭐ №301: объясняем, ПОЧЕМУ галочка недоступна — раньше это было неочевидно */}
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-                По умолчанию меняется только эта смета — база цен остаётся прежней.
+                {(priceConfirm.side === 'work'
+                  ? priceConfirm.material.priceItemId == null
+                  : priceConfirm.material.materialItemId == null)
+                  ? priceConfirm.side === 'work'
+                    ? 'Строка не связана с расценкой справочника — обновлять в базе нечего. Цена изменится только в этой смете.'
+                    : 'К строке не привязан материал из справочника — обновлять в базе нечего. Цена изменится только в этой смете (у работ такая привязка есть, у материалов — нет).'
+                  : 'По умолчанию меняется только эта смета — база цен остаётся прежней. Поставьте галочку, если новую цену нужно сохранить и в справочнике.'}
               </Typography>
             </>
           )}
