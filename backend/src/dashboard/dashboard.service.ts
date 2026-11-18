@@ -23,6 +23,14 @@ interface MoneyRow {
   spec_quantity: number;
 }
 
+// ⭐ №310: на Главной «Без расценки» и «Последние фиксации» показывают по 7 строк,
+// остальное раскрывается кнопкой «Показать все» уже из этого ответа (без лишних запросов).
+const HOME_VISIBLE_ROWS = 7;
+/** «Без расценки» в сводке — ровно столько, сколько видно до раскрытия */
+const NO_PRICE_TOP = HOME_VISIBLE_ROWS;
+/** «Последние фиксации»: 7 показываем, остальное — по кнопке (без второго запроса) */
+const RECENT_FIXES_TAKE = 50;
+
 // ── ⭐ №173: календарная неделя Пн→Вс ────────────────────────────────────────
 // Раньше неделя считалась как «сегодня − 6 дней … сегодня», причём границы
 // вычисляла БД: `(today::timestamptz)::date` в UTC давал ВЧЕРАШНЮЮ дату
@@ -215,21 +223,29 @@ export class DashboardService {
           orderBy: { endDate: 'asc' },
           include: { object: { select: { id: true, name: true } } },
         }),
-        // 3b. NoPrice — топ-5 без расценок (только «денежно-видимые» проекты)
+        // 3b. NoPrice — 7 без расценок (столько видно на Главной до «Показать все»)
         this.prisma.material.findMany({
           where: {
             OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
             project: moneyVisibleProject,
           },
           orderBy: { updatedAt: 'desc' },
-          take: 5,
+          take: NO_PRICE_TOP,
           select: {
             id: true,
             name: true,
             unitPrice: true,
             materialUnitPrice: true,
             // ⭐ №161: objectId нужен фронту для deep-link «Без расценки» → строка сметы
-            project: { select: { id: true, name: true, objectId: true } },
+            // ⭐ №310: object.name — вторая строка, как у «Последних фиксаций»
+            project: {
+              select: {
+                id: true,
+                name: true,
+                objectId: true,
+                object: { select: { id: true, name: true } },
+              },
+            },
           },
         }),
         // 3c. NoPrice — total count (для бейджа)
@@ -239,11 +255,11 @@ export class DashboardService {
             project: moneyVisibleProject,
           },
         }),
-        // 3d. RecentFixes — 10 последних с names material → project → object
+        // 3d. RecentFixes — 50 последних (7 на экране, остальное по кнопке, №310)
         this.prisma.materialFix.findMany({
           where: { material: { project: accessibleProject } },
           orderBy: { fixedAt: 'desc' },
-          take: 10,
+          take: RECENT_FIXES_TAKE,
           select: {
             id: true,
             amount: true,
@@ -330,8 +346,16 @@ export class DashboardService {
           name: true,
           unitPrice: true,
           materialUnitPrice: true,
-          // objectId нужен фронту для deep-link в строку сметы
-          project: { select: { id: true, name: true, objectId: true } },
+          // objectId нужен фронту для deep-link в строку сметы,
+          // ⭐ №310: object.name — вторая строка, как у «Последних фиксаций»
+          project: {
+            select: {
+              id: true,
+              name: true,
+              objectId: true,
+              object: { select: { id: true, name: true } },
+            },
+          },
         },
       }),
       this.prisma.material.count({ where }),

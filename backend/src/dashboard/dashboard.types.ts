@@ -70,7 +70,13 @@ export interface DashboardNoPriceItemDto {
   unitPrice: number;
   materialUnitPrice: number;
   /** objectId — для перехода на страницу сметы конкретного проекта (№161). */
-  project: { id: number; name: string; objectId: number };
+  project: {
+    id: number;
+    name: string;
+    objectId: number;
+    /** ⭐ №310: название объекта — вторая строка строки, как у «Последних фиксаций» */
+    object: { id: number; name: string };
+  };
 }
 
 export interface DashboardNoPriceDto {

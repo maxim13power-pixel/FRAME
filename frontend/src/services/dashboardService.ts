@@ -49,7 +49,13 @@ export interface DashboardSummary {
       name: string;
       unitPrice: number;
       materialUnitPrice: number;
-      project: { id: number; name: string; objectId: number };
+      // ⭐ №310: object — вторая строка, как у «Последних фиксаций»
+      project: {
+        id: number;
+        name: string;
+        objectId: number;
+        object: { id: number; name: string };
+      };
     }[];
     count: number;
   };
