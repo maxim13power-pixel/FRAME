@@ -475,6 +475,10 @@ const actCanPurge = !!act && actHasObject && act.canManage === true;
 // ⭐ №197: «Команда проекта» — отдельные участники проекта vs участники всего объекта.
 // Участник всего объекта видит все проекты, поэтому в команду проекта он входит неявно.
 const objectWideMembers = accessMembers.filter((m) => m.projectId == null);
+// ⭐ №308: в пояснениях считаем только ЖИВЫЕ записи — отозванный доступ живых данных
+// не видит, поэтому «видят проект» про него говорить нельзя (в списке он остаётся
+// с плашкой «Доступ отозван»).
+const objectWideActiveCount = objectWideMembers.filter((m) => !m.revokedAt).length;
 const scopedAccessMembers =
   memberScopeFilter === 'all'
     ? accessMembers
@@ -2403,6 +2407,8 @@ trailing: headerTrailing,
                     variant={memberScopeFilter === 'all' ? 'filled' : 'outlined'}
                     color={memberScopeFilter === 'all' ? 'primary' : 'default'}
                     onClick={() => setMemberScopeFilter('all')}
+                    // ⭐ №308: подсказка, что именно в счёте
+                    title="Все записи доступа объекта, включая отозванные"
                     sx={{ cursor: 'pointer' }}
                   />
                   <Chip
@@ -2413,6 +2419,7 @@ trailing: headerTrailing,
                     onClick={() => {
                       setMemberScopeFilter('object');
                     }}
+                    title="Доступ на весь объект: эти люди видят все проекты, включая новые"
                     sx={{ cursor: 'pointer' }}
                   />
                   {accessProjects.map((project) => (
@@ -2425,20 +2432,23 @@ trailing: headerTrailing,
                       onClick={() => {
                         setMemberScopeFilter(project.id);
                       }}
+                      title={`Сколько людей приглашены ОТДЕЛЬНО в проект «${project.name}». Участники всего объекта видят его и без отдельного приглашения`}
                       sx={{ cursor: 'pointer' }}
                     />
                   ))}
                 </Box>
 
+                {/* ⭐ №308: одно понятное пояснение вместо двух канцелярских.
+                    Смысл: «0» у проекта ≠ «никто не видит» — его видят все, у кого
+                    доступ на весь объект (и админ объекта в их числе). */}
                 {scopedProject && (
                   <Alert severity="info" icon={false} sx={{ mb: 1.5 }}>
-                    Команда проекта «{scopedProject.name}». Участники всего объекта
-                    ({objectWideMembers.length}) тоже видят этот проект — они в разделе «Весь объект».
-                  </Alert>
-                )}
-                {scopedAccessMembers.length === 0 && (
-                  <Alert severity="info" sx={{ mb: 1.5 }}>
-                    Отдельных участников у проекта нет — доступ есть у участников всего объекта.
+                    {scopedAccessMembers.filter((m) => !m.revokedAt).length === 0
+                      ? `Проект «${scopedProject.name}» отдельно никому не открывали.`
+                      : `В проект «${scopedProject.name}» отдельно приглашены: ${scopedAccessMembers.filter((m) => !m.revokedAt).length} чел. (список ниже).`}
+                    {objectWideActiveCount > 0
+                      ? ` Но он всё равно виден участникам всего объекта — их ${objectWideActiveCount} чел. (раздел «🏗 Весь объект»), и вы как администратор в их числе.`
+                      : ' Участников с доступом на весь объект нет.'}
                   </Alert>
                 )}
 
