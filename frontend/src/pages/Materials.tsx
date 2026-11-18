@@ -1154,17 +1154,10 @@ setPriceLoading(false);
     setSelectedIds(new Set());
   }, []);
 
-  // ⭐ №295: Shift+Click — выделить диапазон от прошлой отмеченной строки до текущей.
-  // Ctrl/Cmd+A не делаем: намеренно, чтобы «выделить всё» не срабатывало случайно.
-  const handleRowSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>, index: number, id: number) => {
-      const shift = (e.nativeEvent as MouseEvent).shiftKey;
-      const anchor = lastSelectedIndexRef.current;
-      if (!shift || anchor === null) {
-        lastSelectedIndexRef.current = index;
-        toggleSelected(id);
-        return;
-      }
+  // ⭐ №295/№297: выделение диапазона — Shift+Click и «протяжка» мышью.
+  // Ctrl/Cmd+A намеренно не делаем (риск случайного «выделить всё»).
+  const applyRangeSelect = useCallback(
+    (anchor: number, index: number) => {
       const from = Math.min(anchor, index);
       const to = Math.max(anchor, index);
       const rangeIds = sortedMaterials.slice(from, to + 1).map((m) => m.id);
@@ -1173,9 +1166,20 @@ setPriceLoading(false);
         rangeIds.forEach((rid) => next.add(rid));
         return next;
       });
+    },
+    [sortedMaterials],
+  );
+
+  // Чекбокс: сюда приходит только клавиатура (мышь обрабатывает ячейка, см. startDragSelect)
+  const handleRowSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>, index: number, id: number) => {
+      const shift = (e.nativeEvent as MouseEvent).shiftKey;
+      const anchor = lastSelectedIndexRef.current;
+      if (shift && anchor !== null) applyRangeSelect(anchor, index);
+      else toggleSelected(id);
       lastSelectedIndexRef.current = index;
     },
-    [sortedMaterials, toggleSelected],
+    [applyRangeSelect, toggleSelected],
   );
 
   // ⭐ №294: долгое нажатие на карточку (мобилка) — 500 мс, с вибро-откликом.
@@ -1239,7 +1243,57 @@ setPriceLoading(false);
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedIds.size, clearSelection]);
 
-  // ⭐ №295: суммы по выделенным (факт — то, что уже выполнено; план — для сверки)
+  // ⭐ №297: «зажал и провёл» мышью по колонке «№» — выделяется диапазон от нажатой строки.
+  // Клик без движения — обычное переключение строки; Shift+Click — диапазон от якоря.
+  const dragStateRef = useRef<{ anchor: number; id: number; dragged: boolean } | null>(null);
+  const [dragSelecting, setDragSelecting] = useState(false);
+
+  const startDragSelect = useCallback(
+    (index: number, id: number) => (e: React.MouseEvent) => {
+      if (e.button !== 0 || bulkBusy) return;
+      // отключаем выделение текста и нативное переключение чекбокса
+      e.preventDefault();
+      if (e.shiftKey) {
+        const anchor = lastSelectedIndexRef.current;
+        if (anchor === null) toggleSelected(id);
+        else applyRangeSelect(anchor, index);
+        lastSelectedIndexRef.current = index;
+        return;
+      }
+      dragStateRef.current = { anchor: index, id, dragged: false };
+      setDragSelecting(true);
+    },
+    [applyRangeSelect, bulkBusy, toggleSelected],
+  );
+
+  const hoverDragSelect = useCallback(
+    (index: number) => () => {
+      const state = dragStateRef.current;
+      if (!state || state.anchor === index) return;
+      state.dragged = true;
+      applyRangeSelect(state.anchor, index);
+    },
+    [applyRangeSelect],
+  );
+
+  // Отпускание мыши в любом месте страницы завершает «протяжку»
+  useEffect(() => {
+    if (!dragSelecting) return;
+    const finish = () => {
+      const state = dragStateRef.current;
+      dragStateRef.current = null;
+      setDragSelecting(false);
+      // не протянули ни одной строки → это обычный клик: переключаем строку
+      if (state && !state.dragged) {
+        toggleSelected(state.id);
+        lastSelectedIndexRef.current = state.anchor;
+      }
+    };
+    window.addEventListener('mouseup', finish);
+    return () => window.removeEventListener('mouseup', finish);
+  }, [dragSelecting, toggleSelected]);
+
+
   const selectedTotals = useMemo(() => {
     const rows = materials.filter((m) => selectedIds.has(m.id));
     let fact = 0;
@@ -2282,7 +2336,7 @@ onClose={() => setFilterAnchorEl(null)}
           </Paper>
         )}
         <TableContainer component={Paper} sx={{ mb: 2 }}>
-          <Table sx={{ minWidth: 1500 }}>
+          <Table sx={{ minWidth: 1500, ...(dragSelecting ? { userSelect: 'none' } : {}) }}>
 <TableHead sx={{ bgcolor: '#f5f5f5' }}>
 <TableRow>
 <TableCell rowSpan={2} sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -2340,22 +2394,29 @@ onClose={() => setFilterAnchorEl(null)}
   key={m.id}
   hover
   id={`material-row-${m.id}`}
+  // ⭐ №297: тянем мышь по строкам — выделяется диапазон от нажатой строки
+  onMouseEnter={hoverDragSelect(idx)}
   sx={(highlightId === m.id && highlightVisible) || flashId === m.id
     ? { bgcolor: '#fff8e1', transition: 'background-color 0.3s' }
     : selectedIds.has(m.id)
       ? { bgcolor: 'rgba(25, 118, 210, 0.08)' }
       : undefined}
 >
-{/* ⭐ №292: чекбокс + номер — выделение строк для массовых действий */}
-<TableCell sx={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+{/* ⭐ №292/№297: чекбокс + номер — клик, Shift+Click и «протяжка» мышью */}
+<TableCell
+  onMouseDown={startDragSelect(idx, m.id)}
+  title="Клик — выбрать, Shift+Click — диапазон, зажать и провести — несколько подряд"
+  sx={{ textAlign: 'center', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}
+>
   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
     <Checkbox
       size="small"
       checked={selectedIds.has(m.id)}
       onChange={(e) => handleRowSelect(e, idx, m.id)}
       inputProps={{ 'aria-label': `Выбрать строку ${idx + 1}` }}
-      title="Shift+Click — выделить диапазон"
-      sx={{ p: 0.25 }}
+      // ⭐ №297: мышь обрабатывает ячейка (иначе браузер переключит чекбокс дважды),
+      // клавиатура (Tab + пробел) работает как обычно
+      sx={{ p: 0.25, pointerEvents: 'none' }}
     />
     {idx + 1}
   </Box>
