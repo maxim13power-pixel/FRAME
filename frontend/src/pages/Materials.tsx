@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
@@ -562,6 +562,9 @@ const [deletingTemplateId, setDeletingTemplateId] = useState<number | null>(null
 // ⭐ №292: массовое выделение строк сметы (чекбокс в колонке «№»)
 const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 const [bulkBusy, setBulkBusy] = useState(false);
+// ⭐ №294: мобилка — долгое нажатие на карточку включает выделение
+const longPressTimerRef = useRef<number | null>(null);
+const longPressFiredRef = useRef(false);
 const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
   open: false,
   message: '',
@@ -1145,6 +1148,34 @@ setPriceLoading(false);
   }, []);
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  // ⭐ №294: долгое нажатие на карточку (мобилка) — 500 мс, с вибро-откликом.
+  // Тапы по кнопкам внутри карточки (шестерёнка, «+ Фикс», фото) не перехватываем.
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const startLongPress = useCallback(
+    (id: number) => (e: React.TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('button, a, input, [role="button"]')) return;
+      cancelLongPress();
+      longPressFiredRef.current = false;
+      longPressTimerRef.current = window.setTimeout(() => {
+        longPressTimerRef.current = null;
+        longPressFiredRef.current = true;
+        toggleSelected(id);
+        navigator.vibrate?.(10);
+      }, 500);
+    },
+    [cancelLongPress, toggleSelected],
+  );
+
+  // таймер не должен «выстрелить» после ухода со страницы
+  useEffect(() => cancelLongPress, [cancelLongPress]);
 
   // «Выбрать все» работает по видимым строкам (с учётом поиска/фильтра/сортировки)
   const allVisibleSelected =
@@ -2436,21 +2467,61 @@ onClose={() => setFilterAnchorEl(null)}
 
   {/* Карточки для мобилки */}
   {isMobile && (
-    <Stack spacing={1} sx={{ pb: direction === 'none' ? 0 : `${SUMMARY_LIST_CLEARANCE_PX}px` }}>
+    <Stack spacing={1} sx={{ pb: selectedIds.size > 0 ? '150px' : direction === 'none' ? 0 : `${SUMMARY_LIST_CLEARANCE_PX}px` }}>
+      {/* ⭐ №294: подсказка о жесте — иначе о выделении на мобилке никто не догадается */}
+      {selectedIds.size === 0 && sortedMaterials.length > 3 && (
+        <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
+          Долгое нажатие на карточку — выбрать несколько строк (дублировать, удалить)
+        </Typography>
+      )}
       {sortedMaterials.length > 0 ? (
         sortedMaterials.map((m) => (
             <Paper
               key={m.id}
               id={`material-row-${m.id}`}
+              // ⭐ №294: долгое нажатие включает выделение; тап по карточке в режиме
+              // выделения переключает выбор (обычный тап ничего не открывает и раньше)
+              onTouchStart={startLongPress(m.id)}
+              onTouchEnd={cancelLongPress}
+              onTouchCancel={cancelLongPress}
+              onTouchMove={cancelLongPress}
+              onClick={(e) => {
+                if (longPressFiredRef.current) {
+                  longPressFiredRef.current = false; // это был long-press, не считаем как тап
+                  return;
+                }
+                if (selectedIds.size === 0) return;
+                // тапы по кнопкам внутри карточки (шестерёнка, «+ Фикс», фото) не считаем выбором
+                const target = e.target as HTMLElement | null;
+                if (target?.closest('button, a, input, [role="button"]')) return;
+                toggleSelected(m.id);
+              }}
               sx={{
                 p: 1.5,
                 borderRadius: 2,
+                // ⭐ №294: на iOS долгое нажатие не должно вызывать меню/выделение текста
+                WebkitTouchCallout: 'none',
+                WebkitUserSelect: 'none',
+                userSelect: 'none',
                 ...((highlightId === m.id && highlightVisible) || flashId === m.id
                   ? { bgcolor: '#fff8e1', transition: 'background-color 0.3s' }
+                  : {}),
+                ...(selectedIds.has(m.id)
+                  ? { border: '2px solid #1976d2', bgcolor: 'rgba(25, 118, 210, 0.06)' }
                   : {}),
               }}
             >
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              {/* ⭐ №294: в режиме выделения у карточек появляются чекбоксы */}
+              {selectedIds.size > 0 && (
+                <Checkbox
+                  size="small"
+                  checked={selectedIds.has(m.id)}
+                  onChange={() => toggleSelected(m.id)}
+                  inputProps={{ 'aria-label': `Выбрать ${m.name}` }}
+                  sx={{ p: 0.25, ml: -0.75, mr: 0.5 }}
+                />
+              )}
               <InventoryIcon sx={{ color: '#1976d2', mr: 1, fontSize: 22 }} />
               <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>
                 {m.name}
@@ -2560,8 +2631,9 @@ onClose={() => setFilterAnchorEl(null)}
         </Stack>
       )}
 
-{/* ⭐ 6.7 Липкая плашка итогов — деньги скрыты при hidePrices, процент остаётся */}
-{isMobile && (
+{/* ⭐ 6.7 Липкая плашка итогов — деньги скрыты при hidePrices, процент остаётся.
+    ⭐ №294: в режиме выделения её место занимает панель массовых действий */}
+{isMobile && selectedIds.size === 0 && (
   <Paper
     elevation={8}
     sx={{
@@ -2616,8 +2688,9 @@ onClose={() => setFilterAnchorEl(null)}
     )}
   </Paper>
 )}
-{/* FAB для мобилки (поднят выше плашки итогов) — скрыт при hidePrices */}
-{isMobile && !hidePrices && (
+{/* FAB для мобилки (поднят выше плашки итогов) — скрыт при hidePrices.
+    ⭐ №294: в режиме выделения прячем, чтобы не мешал панели действий */}
+{isMobile && !hidePrices && selectedIds.size === 0 && (
   <Fab
     color="primary"
     sx={{ ...FAB_STYLE, bottom: 130 }}
@@ -2625,6 +2698,57 @@ onClose={() => setFilterAnchorEl(null)}
   >
     <AddIcon />
   </Fab>
+)}
+
+{/* ⭐ №294: массовые действия на мобилке — панель над нижним меню */}
+{isMobile && selectedIds.size > 0 && (
+  <Paper
+    elevation={8}
+    sx={{
+      position: 'fixed',
+      left: 8,
+      right: 8,
+      bottom: SUMMARY_BAR_BOTTOM,
+      zIndex: 9,
+      borderRadius: 2,
+      border: '1px solid #90caf9',
+      bgcolor: '#e3f2fd',
+      px: 1.5,
+      py: 1,
+    }}
+  >
+    <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.75 }}>
+      <Typography variant="body2" sx={{ fontWeight: 700, flex: 1 }}>
+        Выбрано: {selectedIds.size}
+      </Typography>
+      <Button size="small" onClick={clearSelection} disabled={bulkBusy}>
+        Отмена
+      </Button>
+    </Box>
+    <Box sx={{ display: 'flex', gap: 1 }}>
+      <Button
+        size="small"
+        variant="outlined"
+        startIcon={<ContentCopyIcon />}
+        onClick={() => void handleBulkDuplicate()}
+        disabled={bulkBusy}
+        sx={{ flex: 1 }}
+      >
+        Дублировать
+      </Button>
+      <Button
+        size="small"
+        variant="contained"
+        color="error"
+        startIcon={<DeleteIcon />}
+        onClick={() => void handleBulkDelete()}
+        disabled={bulkBusy}
+        sx={{ flex: 1 }}
+      >
+        Удалить
+      </Button>
+    </Box>
+  </Paper>
 )}
 
       {/* Модалка добавления материала */}
