@@ -2140,10 +2140,14 @@ onClose={() => setFilterAnchorEl(null)}
       {/* Таблица для десктопа */}
       {!isMobile && (
         <>
-        {/* ⭐ №292: панель массовых действий появляется только при выделении */}
+        {/* ⭐ №292/№293: панель массовых действий — sticky, иначе при 300 строках
+            после выделения внизу приходится скроллить в самое начало сметы */}
         {selectedIds.size > 0 && (
           <Paper
             sx={{
+              position: 'sticky',
+              top: 8,
+              zIndex: 5,
               display: 'flex',
               alignItems: 'center',
               gap: 1,
@@ -2154,6 +2158,7 @@ onClose={() => setFilterAnchorEl(null)}
               borderRadius: 2,
               border: '1px solid #90caf9',
               bgcolor: '#e3f2fd',
+              boxShadow: '0 6px 16px rgba(0,0,0,0.12)',
             }}
           >
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
