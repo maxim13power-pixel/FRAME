@@ -565,6 +565,8 @@ const [bulkBusy, setBulkBusy] = useState(false);
 // ⭐ №294: мобилка — долгое нажатие на карточку включает выделение
 const longPressTimerRef = useRef<number | null>(null);
 const longPressFiredRef = useRef(false);
+// ⭐ №295: якорь для Shift+Click (индекс последней отмеченной строки)
+const lastSelectedIndexRef = useRef<number | null>(null);
 const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
   open: false,
   message: '',
@@ -1147,7 +1149,34 @@ setPriceLoading(false);
     });
   }, []);
 
-  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+  const clearSelection = useCallback(() => {
+    lastSelectedIndexRef.current = null;
+    setSelectedIds(new Set());
+  }, []);
+
+  // ⭐ №295: Shift+Click — выделить диапазон от прошлой отмеченной строки до текущей.
+  // Ctrl/Cmd+A не делаем: намеренно, чтобы «выделить всё» не срабатывало случайно.
+  const handleRowSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>, index: number, id: number) => {
+      const shift = (e.nativeEvent as MouseEvent).shiftKey;
+      const anchor = lastSelectedIndexRef.current;
+      if (!shift || anchor === null) {
+        lastSelectedIndexRef.current = index;
+        toggleSelected(id);
+        return;
+      }
+      const from = Math.min(anchor, index);
+      const to = Math.max(anchor, index);
+      const rangeIds = sortedMaterials.slice(from, to + 1).map((m) => m.id);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        rangeIds.forEach((rid) => next.add(rid));
+        return next;
+      });
+      lastSelectedIndexRef.current = index;
+    },
+    [sortedMaterials, toggleSelected],
+  );
 
   // ⭐ №294: долгое нажатие на карточку (мобилка) — 500 мс, с вибро-откликом.
   // Тапы по кнопкам внутри карточки (шестерёнка, «+ Фикс», фото) не перехватываем.
@@ -1210,10 +1239,30 @@ setPriceLoading(false);
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedIds.size, clearSelection]);
 
-  // ⭐ №292: дублировать выделенные строки (план без факта, как одиночное копирование)
+  // ⭐ №295: суммы по выделенным (факт — то, что уже выполнено; план — для сверки)
+  const selectedTotals = useMemo(() => {
+    const rows = materials.filter((m) => selectedIds.has(m.id));
+    let fact = 0;
+    let plan = 0;
+    for (const m of rows) {
+      fact += (Number(m.totalCost) || 0) + (Number(m.materialTotalCost) || 0);
+      const qty = Number(m.specQuantity) || 0;
+      plan +=
+        (Number(m.unitPrice) || 0) * qty + (Number(m.materialUnitPrice) || 0) * qty;
+    }
+    return { count: rows.length, fact, plan };
+  }, [materials, selectedIds]);
+
+  // ⭐ №295: дублирование — тоже через подтверждение (защита от случайного нажатия)
   const handleBulkDuplicate = useCallback(async () => {
     if (!projectId || selectedIds.size === 0) return;
     const ids = [...selectedIds];
+    const ok = await confirm({
+      title: `Дублировать строки: ${ids.length}?`,
+      text: 'Копии добавятся в конец сметы с именами «… (копия)»: позиции, объёмы и цены скопируются, факт и фиксации — нет.',
+      confirmText: 'Дублировать',
+    });
+    if (!ok) return;
     setBulkBusy(true);
     try {
       const res = await duplicateMaterialsBulk(ids);
@@ -1225,7 +1274,7 @@ setPriceLoading(false);
     } finally {
       setBulkBusy(false);
     }
-  }, [projectId, selectedIds, clearSelection, notify, notifyError]);
+  }, [projectId, selectedIds, confirm, clearSelection, notify, notifyError]);
 
   // ⭐ №292: удалить выделенные строки (с подтверждением — фиксации уходят вместе со строками)
   const handleBulkDelete = useCallback(async () => {
@@ -2194,17 +2243,20 @@ onClose={() => setFilterAnchorEl(null)}
           >
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
               Выбрано: {selectedIds.size}
+              {!hidePrices && selectedTotals.fact > 0 && (
+                <Typography
+                  component="span"
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ ml: 1 }}
+                  title={`План по выделенным: ${rub(selectedTotals.plan)}`}
+                >
+                  · факт {rub(selectedTotals.fact)}
+                </Typography>
+              )}
             </Typography>
             <Box sx={{ flex: 1 }} />
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<ContentCopyIcon />}
-              onClick={() => void handleBulkDuplicate()}
-              disabled={bulkBusy}
-            >
-              Дублировать
-            </Button>
+            {/* ⭐ №295: «Удалить» левее — подальше от «Отмены», чтобы не промахнуться */}
             <Button
               size="small"
               variant="contained"
@@ -2214,6 +2266,15 @@ onClose={() => setFilterAnchorEl(null)}
               disabled={bulkBusy}
             >
               Удалить
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={() => void handleBulkDuplicate()}
+              disabled={bulkBusy}
+            >
+              Дублировать
             </Button>
             <Button size="small" onClick={clearSelection} disabled={bulkBusy}>
               Отмена
@@ -2291,8 +2352,9 @@ onClose={() => setFilterAnchorEl(null)}
     <Checkbox
       size="small"
       checked={selectedIds.has(m.id)}
-      onChange={() => toggleSelected(m.id)}
+      onChange={(e) => handleRowSelect(e, idx, m.id)}
       inputProps={{ 'aria-label': `Выбрать строку ${idx + 1}` }}
+      title="Shift+Click — выделить диапазон"
       sx={{ p: 0.25 }}
     />
     {idx + 1}
@@ -2720,22 +2782,25 @@ onClose={() => setFilterAnchorEl(null)}
     <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.75 }}>
       <Typography variant="body2" sx={{ fontWeight: 700, flex: 1 }}>
         Выбрано: {selectedIds.size}
+        {!hidePrices && selectedTotals.fact > 0 && (
+          <Typography
+            component="span"
+            variant="caption"
+            color="text.secondary"
+            sx={{ ml: 1 }}
+            title={`План по выделенным: ${rub(selectedTotals.plan)}`}
+          >
+            · факт {rub(selectedTotals.fact)}
+          </Typography>
+        )}
       </Typography>
       <Button size="small" onClick={clearSelection} disabled={bulkBusy}>
         Отмена
       </Button>
     </Box>
+    {/* ⭐ №295: «Удалить» слева — на мобилке «Отмена» стоит прямо над правой кнопкой,
+        поэтому права́я кнопка теперь безопасное «Дублировать» */}
     <Box sx={{ display: 'flex', gap: 1 }}>
-      <Button
-        size="small"
-        variant="outlined"
-        startIcon={<ContentCopyIcon />}
-        onClick={() => void handleBulkDuplicate()}
-        disabled={bulkBusy}
-        sx={{ flex: 1 }}
-      >
-        Дублировать
-      </Button>
       <Button
         size="small"
         variant="contained"
@@ -2746,6 +2811,16 @@ onClose={() => setFilterAnchorEl(null)}
         sx={{ flex: 1 }}
       >
         Удалить
+      </Button>
+      <Button
+        size="small"
+        variant="outlined"
+        startIcon={<ContentCopyIcon />}
+        onClick={() => void handleBulkDuplicate()}
+        disabled={bulkBusy}
+        sx={{ flex: 1 }}
+      >
+        Дублировать
       </Button>
     </Box>
   </Paper>
