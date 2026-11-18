@@ -15,6 +15,7 @@ import { UpdateMaterialDto } from './dto/update-material.dto';
 import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
 import { loadCatalogAccess, findVisiblePriceItem } from '../price-list/catalog-access'; // ⭐ №164, №191
 import { resolveProjectPriceItem } from '../price-list/project-catalog'; // ⭐ №271
+import { materialPricePerUnit } from '../estimate-recalc/consumption'; // ⭐ №318
 import { assertAccessActive, findProjectAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import { normalizeText } from '../imports/name-normalizer'; // ⭐ №302: поиск позиции по названию
 import {
@@ -259,6 +260,8 @@ export class MaterialsService {
 
       let materialItemId: number | null = null;
       let materialUnitPrice = 0;
+      // ⭐ №318: норма расхода на 1 единицу строки (для материалов в упаковке)
+      const consumption = dto.consumption ?? null;
       if (dto.materialItemId != null) {
         const resolved = await resolveProjectPriceItem(tx, {
           projectId: dto.projectId,
@@ -271,7 +274,12 @@ export class MaterialsService {
           kind: 'MATERIAL',
         });
         materialItemId = resolved.item.id;
-        materialUnitPrice = Number(resolved.item.price);
+        // ⭐ №318: банка 9 кг за 1000 ₽ и расход 0.2 кг/м² → 22.22 ₽/м²
+        materialUnitPrice = materialPricePerUnit(
+          Number(resolved.item.price),
+          resolved.item.packSize,
+          consumption,
+        );
       } else if (dto.materialPrice !== undefined) {
         const resolved = await resolveProjectPriceItem(tx, {
           projectId: dto.projectId,
@@ -283,7 +291,11 @@ export class MaterialsService {
           kind: 'MATERIAL',
         });
         materialItemId = resolved.item.id;
-        materialUnitPrice = Number(resolved.item.price);
+        materialUnitPrice = materialPricePerUnit(
+          Number(resolved.item.price),
+          resolved.item.packSize,
+          consumption,
+        );
       }
 
       return tx.material.create({
@@ -300,6 +312,8 @@ export class MaterialsService {
           materialItemId,
           materialUnitPrice,
           materialTotalCost: 0,
+          // ⭐ №318: норма расхода материала (если задана)
+          consumption,
         },
         include: MATERIAL_INCLUDE,
       });
@@ -662,8 +676,9 @@ export class MaterialsService {
           unitPrice: number;
           materialItemId: number | null;
           materialUnitPrice: number;
+          consumption: number | null;
         }[]
-      >`SELECT id, "projectId", "totalUsed", "specQuantity", "isSpecLocked", "priceItemId", "unitPrice", "materialItemId", "materialUnitPrice"
+      >`SELECT id, "projectId", "totalUsed", "specQuantity", "isSpecLocked", "priceItemId", "unitPrice", "materialItemId", "materialUnitPrice", "consumption"
           FROM "materials" WHERE id = ${id} FOR UPDATE`;
 
       if (!material) throw new NotFoundException('Материал не найден');
@@ -765,6 +780,29 @@ export class MaterialsService {
       if (dto.workPrice !== undefined) unitPrice = dto.workPrice;
       if (dto.materialPrice !== undefined) materialUnitPrice = dto.materialPrice;
 
+      // ⭐ №318: норма расхода. Если цену материала не задали вручную — считаем её
+      // по упаковке из справочника: цена упаковки / объём × расход.
+      let consumption =
+        dto.consumption !== undefined
+          ? dto.consumption
+          : (material.consumption ?? null);
+      if (dto.consumption !== undefined && Number(consumption) <= 0) {
+        // 0 = «норма не нужна» → храним null, цена материала снова «за единицу»
+        consumption = null;
+      }
+      if (dto.materialPrice === undefined && materialItemId != null) {
+        const item = await tx.priceItem.findUnique({
+          where: { id: materialItemId },
+          select: { price: true, packSize: true },
+        });
+        // Если норму сбросили (null) — helper вернёт цену расценки «за единицу строки»
+        materialUnitPrice = materialPricePerUnit(
+          Number(item?.price ?? 0),
+          item?.packSize,
+          consumption,
+        );
+      }
+
       // ⭐ totalCost / materialTotalCost — от ЗАБЛОКИРОВАННОГО totalUsed
       const totalUsed = Number(material.totalUsed);
       const newSpecQty = dto.specQuantity ?? Number(material.specQuantity);
@@ -787,6 +825,8 @@ export class MaterialsService {
           materialItemId,
           materialUnitPrice,
           materialTotalCost: totalUsed * materialUnitPrice,
+          // ⭐ №318: норма расхода (null — цена материала уже за единицу строки)
+          consumption,
         },
         include: MATERIAL_INCLUDE,
       });
@@ -1088,6 +1128,8 @@ export class MaterialsService {
         materialItemId: source.materialItemId,
         materialUnitPrice: source.materialUnitPrice,
         materialTotalCost: 0,
+        // ⭐ №318: норма расхода переезжает вместе со строкой
+        consumption: source.consumption,
         isSpecLocked: source.isSpecLocked,
       },
       include: MATERIAL_INCLUDE,

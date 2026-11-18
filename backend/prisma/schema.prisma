@@ -176,6 +176,11 @@ model Material {
   materialItem    PriceItem?     @relation("MaterialPrice", fields: [materialItemId], references: [id], onDelete: SetNull)
   materialUnitPrice Decimal      @default(0) @db.Decimal(14, 2) // SNAPSHOT цены материала
   materialTotalCost Decimal      @default(0) @db.Decimal(14, 2) // totalUsed × materialUnitPrice (материалы на тек. момент)
+  // ⭐ №318: норма расхода материала на 1 единицу строки (в единицах упаковки).
+  // Пример: строка «Покраска стен» в м², краска 9 кг за 1000 ₽, расход 0.2 кг/м²
+  // → materialUnitPrice = 1000 / 9 × 0.2 = 22.22 ₽/м². null — цена материала уже
+  // за единицу строки (прежнее поведение).
+  consumption     Float?
 
   projectId       Int
   project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -267,6 +272,10 @@ model PriceItem {
   createdById        Int?
   sourceObjectId     Int?
   price      Decimal       @default(0) @db.Decimal(14, 2)
+  // ⭐ №318: «в упаковке N единиц» (кг/л/шт). Нужно для позиций, которые продаются
+  // упаковкой: банка краски 9 кг, мешок 25 кг. Цена в `price` — за упаковку.
+  // Если null — цена уже за единицу измерения строки (прежнее поведение).
+  packSize   Float?
   categoryId Int
   category   PriceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   isActive   Boolean       @default(true)

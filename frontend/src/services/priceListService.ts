@@ -27,6 +27,8 @@ export interface PriceItemData {
   category?: PriceCategoryData;
   isActive: boolean;
   kind: 'WORK' | 'MATERIAL';
+  /** ⭐ №318: «в упаковке N единиц» (кг/л/шт); цена — за упаковку */
+  packSize?: number | null;
   /** ⭐ №275: черновик импорта — единица не уточнена, выбирать нельзя */
   needsClarification?: boolean;
   createdAt?: string;
@@ -155,6 +157,8 @@ export const createPriceItem = async (
     article?: string;
     unit?: string;
     price: number;
+    /** ⭐ №318: объём упаковки (кг/л/шт), необязательно */
+    packSize?: number | null;
     categoryId: number;
     kind?: 'WORK' | 'MATERIAL';
     catalogId?: number;
@@ -173,6 +177,8 @@ export const updatePriceItem = async (
     article: string;
     unit: string;
     price: number;
+    /** ⭐ №318: null — цена снова «за единицу измерения» */
+    packSize: number | null;
   }>
 ): Promise<PriceItemData> => {
   const response = await api.patch(`/price-list/items/${id}`, data);

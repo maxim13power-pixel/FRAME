@@ -13,6 +13,7 @@
 // (решение владельца 10.1(4)), даже если в справочнике она уже другая.
 import { Unit } from '@prisma/client';
 import { unitFamily } from '../imports/unit-normalizer'; // ⭐ №272: «м» ↔ «пог. м»
+import { materialPricePerUnit } from './consumption'; // ⭐ №318: материал в упаковке
 
 export type RecalcMatchKind =
   | 'id'
@@ -28,6 +29,8 @@ export interface RecalcPriceRef {
   article: string | null;
   unit: Unit;
   price: number;
+  /** ⭐ №318: «в упаковке N единиц» (кг/л/шт); null — цена уже за единицу строки */
+  packSize?: number | null;
 }
 
 /** Строка сметы (Material) — только поля, влияющие на пересчёт */
@@ -42,6 +45,8 @@ export interface RecalcMaterialRow {
   unitPrice: number;
   materialItemId: number | null;
   materialUnitPrice: number;
+  /** ⭐ №318: норма расхода материала на 1 единицу строки (в единицах упаковки) */
+  consumption?: number | null;
 }
 
 export interface RecalcPriceIndex {
@@ -186,10 +191,15 @@ function buildSide(
   article: string | null,
   unit: Unit,
   index: RecalcPriceIndex,
+  consumption?: number | null, // ⭐ №318: только для материала (норма расхода)
 ): RecalcSide {
   const { match, item } = resolvePriceRef(refId, name, article, unit, index);
   const before = roundMoney(oldPrice);
-  const after = item ? roundMoney(item.price) : before;
+  // ⭐ №318: материал в упаковке + норма расхода → цена на единицу строки
+  // считается как «цена упаковки / объём × расход» (без них — как раньше).
+  const after = item
+    ? materialPricePerUnit(item.price, item.packSize, consumption)
+    : before;
   return {
     oldPrice: before,
     newPrice: after,
@@ -231,6 +241,8 @@ export function buildRecalcPlan(
       row.article,
       row.unit,
       materialIndex,
+      // ⭐ №318: норма расхода строки — для материалов в упаковке
+      row.consumption ?? null,
     );
 
     const changed = work.changed || material.changed;

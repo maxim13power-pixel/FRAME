@@ -37,4 +37,11 @@ export class CreatePriceItemDto {
   @IsOptional()
   @IsInt({ message: 'catalogId должен быть целым числом' })
   catalogId?: number;
+
+  // ⭐ №318: «в упаковке N единиц» (кг/л/шт) для материалов, которые продаются
+  // упаковкой: банка краски 9 кг, мешок 25 кг. Цена `price` — за упаковку.
+  @IsOptional()
+  @IsNumber({}, { message: 'packSize должен быть числом' })
+  @Min(0, { message: 'Объём упаковки не может быть отрицательным' })
+  packSize?: number | null;
 }

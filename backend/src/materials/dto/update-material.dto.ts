@@ -51,4 +51,11 @@ export class UpdateMaterialDto {
   @IsNumber({}, { message: 'materialPrice должен быть числом' })
   @Min(0, { message: 'Цена материала не может быть отрицательной' })
   materialPrice?: number;
+
+  // ⭐ №318: норма расхода материала на 1 единицу строки (в единицах упаковки).
+  // null — сбросить норму и вернуться к цене «за единицу строки».
+  @IsOptional()
+  @IsNumber({}, { message: 'consumption должен быть числом' })
+  @Min(0, { message: 'Расход не может быть отрицательным' })
+  consumption?: number | null;
 }

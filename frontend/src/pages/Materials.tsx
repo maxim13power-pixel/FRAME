@@ -155,6 +155,20 @@ const UNIT_OPTIONS = [
 const isDraftPrice = (option: PriceItemData | { __new__?: boolean }): boolean =>
   (option as PriceItemData)?.needsClarification === true;
 
+/** ⭐ №318: цена материала на 1 единицу строки по упаковке и норме расхода */
+const packUnitPrice = (
+  packPrice: number,
+  packSize: number,
+  consumption: number,
+): number => {
+  if (!(packSize > 0) || !(consumption > 0)) return packPrice;
+  return Math.round((packPrice / packSize) * consumption * 100) / 100;
+};
+
+/** Подпись единицы измерения по её коду (м², м, шт…) */
+const unitLabelOf = (value: string): string =>
+  UNIT_OPTIONS.find((u) => u.value === value)?.label ?? value;
+
 const renderPriceOption = (
   props: React.HTMLAttributes<HTMLLIElement>,
   option: PriceItemData | { __new__?: boolean },
@@ -488,6 +502,8 @@ const goBack = useBackNavigation(`/objects/${objectId}/projects`);
   const [addPricePrice, setAddPricePrice] = useState('');
   // ⭐ Материал из справочника (цена за материал)
 const [selectedMaterialItem, setSelectedMaterialItem] = useState<PriceItemData | null>(null);
+// ⭐ №318: норма расхода материала на 1 единицу строки (когда материал продаётся упаковкой)
+const [addConsumption, setAddConsumption] = useState('');
 const [materialOptions, setMaterialOptions] = useState<PriceItemData[]>([]);
 const [materialLoading, setMaterialLoading] = useState(false);
 const [addMatCreatingNew, setAddMatCreatingNew] = useState(false);
@@ -504,6 +520,8 @@ const [materialCategories, setMaterialCategories] = useState<{ id: number; name:
 // Редактирование: материал из справочника
 const [editMaterialItemId, setEditMaterialItemId] = useState<number | null>(null);
 const [editSelectedMaterialItem, setEditSelectedMaterialItem] = useState<PriceItemData | null>(null);
+// ⭐ №318: норма расхода материала при редактировании строки
+const [editConsumption, setEditConsumption] = useState('');
 const [editMaterialOptions, setEditMaterialOptions] = useState<PriceItemData[]>([]);
 const [editMaterialLoading, setEditMaterialLoading] = useState(false);
 const [editMatCreatingNew, setEditMatCreatingNew] = useState(false);
@@ -927,6 +945,8 @@ setSelectedMaterialItem(null);
 setMaterialOptions([]);
 setAddMatCreatingNew(false);
 setAddMatPricePrice('');
+// ⭐ №318: норма расхода сбрасывается вместе с формой
+setAddConsumption('');
 setZeroConfirmOpen(false);
 setZeroItems([]);
 setWorkCategoryChoice('');
@@ -1052,6 +1072,10 @@ setPriceLoading(false);
         materialItemId,
         workPrice,
         materialPrice,
+        // ⭐ №318: норма расхода — сервер посчитает цену материала по упаковке
+        consumption: addConsumption.trim() === ''
+          ? null
+          : Number(addConsumption.replace(',', '.')),
       });
       setMaterials(prev => [created, ...prev]);
       loadCategories();
@@ -1536,6 +1560,10 @@ const handleOpenEdit = async () => {
   setEditSelectedPriceItem(settingsMaterial.priceItem ?? null);
   setEditMaterialItemId(settingsMaterial.materialItemId ?? null);
   setEditSelectedMaterialItem(settingsMaterial.materialItem ?? null);
+  // ⭐ №318: норма расхода (пусто — цена материала «за единицу строки»)
+  setEditConsumption(
+    settingsMaterial.consumption == null ? '' : String(settingsMaterial.consumption),
+  );
   setEditMatCreatingNew(false);
   setEditMatPriceName('');
   setEditMatPriceCategoryId('');
@@ -1699,6 +1727,10 @@ const handleSaveEdit = async () => {
       note: editNote,
       priceItemId: priceItemIdToSend,
       materialItemId: materialItemIdToSend,
+      // ⭐ №318: норма расхода (сервер пересчитает цену материала по упаковке)
+      consumption: editConsumption.trim() === ''
+        ? null
+        : Number(editConsumption.replace(',', '.')),
     });
     setMaterials(prev => prev.map(m => m.id === updated.id ? mergeUpdatedMaterial(m, updated) : m));
     loadCategories(); // ⭐ обновить категории фильтра
@@ -3232,6 +3264,22 @@ renderInput={(params) => (
     </Typography>
     </Box>
     )}
+    {/* ⭐ №318: материал продаётся упаковкой (краска, мешок) → спрашиваем норму расхода */}
+    {((selectedMaterialItem?.packSize ?? 0) > 0 || addConsumption !== '') && (
+    <TextField
+      fullWidth
+      type="number"
+      label={`Расход материала на 1 ${unitLabelOf(newUnit)}`}
+      value={addConsumption}
+      onChange={(e) => setAddConsumption(e.target.value)}
+      inputProps={{ min: 0, step: 0.01 }}
+      helperText={
+        (selectedMaterialItem?.packSize ?? 0) > 0 && Number(addConsumption.replace(',', '.')) > 0
+          ? `Упаковка ${selectedMaterialItem?.packSize} ${unitLabelOf(selectedMaterialItem?.unit ?? 'PIECE')} за ${(selectedMaterialItem?.price ?? 0).toLocaleString('ru-RU')} ₽ → ${packUnitPrice(Number(selectedMaterialItem?.price ?? 0), Number(selectedMaterialItem?.packSize), Number(addConsumption.replace(',', '.'))).toLocaleString('ru-RU')} ₽ за 1 ${unitLabelOf(newUnit)}`
+          : 'Сколько материала нужно на 1 единицу строки (кг/л/шт). Пусто — цена считается за единицу строки.'
+      }
+    />
+    )}
     <TextField
       fullWidth
       type="number"
@@ -3686,6 +3734,22 @@ renderInput={(params) => (
 </Typography>
 <Button size="small" onClick={() => { setEditSelectedMaterialItem(null); setEditMaterialItemId(null); }}>Сбросить</Button>
 </Box>
+)}
+{/* ⭐ №318: норма расхода, если материал продаётся упаковкой (краска, мешок) */}
+{((editSelectedMaterialItem?.packSize ?? 0) > 0 || editConsumption !== '') && (
+<TextField
+  fullWidth
+  type="number"
+  label={`Расход материала на 1 ${unitLabelOf(editUnit)}`}
+  value={editConsumption}
+  onChange={(e) => setEditConsumption(e.target.value)}
+  inputProps={{ min: 0, step: 0.01 }}
+  helperText={
+    (editSelectedMaterialItem?.packSize ?? 0) > 0 && Number(editConsumption.replace(',', '.')) > 0
+      ? `Упаковка ${editSelectedMaterialItem?.packSize} ${unitLabelOf(editSelectedMaterialItem?.unit ?? 'PIECE')} за ${(editSelectedMaterialItem?.price ?? 0).toLocaleString('ru-RU')} ₽ → ${packUnitPrice(Number(editSelectedMaterialItem?.price ?? 0), Number(editSelectedMaterialItem?.packSize), Number(editConsumption.replace(',', '.'))).toLocaleString('ru-RU')} ₽ за 1 ${unitLabelOf(editUnit)}`
+      : 'Сколько материала нужно на 1 единицу строки (кг/л/шт). Пусто — цена считается за единицу строки.'
+  }
+/>
 )}
 {!editSelectedMaterialItem && (
 <Button size="small" variant="text" onClick={() => { setEditMatCreatingNew(true); setEditMatPriceName(editName); }}>

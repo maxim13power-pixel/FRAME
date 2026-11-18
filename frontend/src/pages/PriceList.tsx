@@ -133,6 +133,8 @@ const PriceListInner: React.FC = () => {
   const [itemArticle, setItemArticle] = useState('');
   const [itemUnit, setItemUnit] = useState('PIECE');
   const [itemPrice, setItemPrice] = useState('');
+  // ⭐ №318: «в упаковке N кг/л/шт» — для материалов, которые продаются упаковкой
+  const [itemPackSize, setItemPackSize] = useState('');
   const [itemCategoryId, setItemCategoryId] = useState<number | string>('');
   // ⭐ Название новой категории (если выбран пункт "__new__")
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -358,6 +360,7 @@ const PriceListInner: React.FC = () => {
     setItemArticle('');
     setItemUnit('PIECE');
     setItemPrice('');
+    setItemPackSize('');
     setNewCategoryName('');
     // Если категорий ещё нет — сразу предлагаем создать новую
     setItemCategoryId(
@@ -372,6 +375,7 @@ const PriceListInner: React.FC = () => {
     setItemArticle(item.article || '');
     setItemUnit(item.unit);
     setItemPrice(item.price == null ? '' : String(item.price));
+    setItemPackSize(item.packSize == null ? '' : String(item.packSize));
     setItemCategoryId(item.categoryId);
     setNewCategoryName('');
     setItemModalOpen(true);
@@ -403,6 +407,13 @@ const PriceListInner: React.FC = () => {
       notify('Введите название новой категории', 'warning');
       return;
     }
+    // ⭐ №318: объём упаковки (необязателен; 0/пусто = цена за единицу измерения)
+    const packRaw = itemPackSize.replace(',', '.').trim();
+    const packSize = packRaw === '' ? null : Number(packRaw);
+    if (packSize !== null && (!Number.isFinite(packSize) || packSize < 0)) {
+      notify('Объём упаковки должен быть числом ≥ 0', 'warning');
+      return;
+    }
     try {
       if (editingItem) {
         // ===== РЕДАКТИРОВАНИЕ =====
@@ -411,6 +422,7 @@ const PriceListInner: React.FC = () => {
           article: itemArticle.trim(), // '' = очистить артикул; отсутствие ключа = не трогать
           unit: itemUnit,
           price,
+          packSize,
         });
         setCategories(prev =>
           prev.map(cat => ({
@@ -438,6 +450,7 @@ const PriceListInner: React.FC = () => {
           article: itemArticle.trim() || undefined,
           unit: itemUnit,
           price,
+          packSize, // ⭐ №318: упаковка (для красок/смесей)
           categoryId,
           kind: activeTab,
           catalogId, // ⭐ №151: расценка попадает в текущий справочник
@@ -1121,6 +1134,18 @@ const PriceListInner: React.FC = () => {
              </Select>
            </FormControl>
          </Stack>
+            {/* ⭐ №318: упаковка — только для материалов (краска 9 л, мешок 25 кг) */}
+            {(editingItem?.kind ?? activeTab) === 'MATERIAL' && (
+              <TextField
+                fullWidth
+                label="В упаковке, кг/л/шт (необязательно)"
+                type="number"
+                placeholder="например 9"
+                value={itemPackSize}
+                onChange={e => setItemPackSize(e.target.value)}
+                helperText="Цена выше — за упаковку. В смете цена на единицу работ считается по норме расхода: цена упаковки ÷ объём × расход."
+              />
+            )}
             <FormControl fullWidth>
               <InputLabel>Категория</InputLabel>
               <Select

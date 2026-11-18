@@ -35,6 +35,8 @@ const MATERIAL_SELECT = {
   unitPrice: true,
   materialItemId: true,
   materialUnitPrice: true,
+  // ⭐ №318: норма расхода материала (для материалов в упаковке)
+  consumption: true,
   totalCost: true,
   materialTotalCost: true,
 } as const;
@@ -193,6 +195,8 @@ export class EstimateRecalcService {
           article: true,
           unit: true,
           price: true,
+          // ⭐ №318: объём упаковки — чтобы посчитать цену на единицу строки
+          packSize: true,
           kind: true,
         },
         orderBy: { id: 'asc' },
@@ -205,6 +209,7 @@ export class EstimateRecalcService {
       article: item.article,
       unit: item.unit,
       price: Number(item.price),
+      packSize: item.packSize,
     });
 
     const works = items.filter((i) => i.kind === PriceKind.WORK).map(toRef);

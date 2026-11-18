@@ -14,6 +14,12 @@ export interface DemoEstimateRow {
   /** расценка материала в демо-справочнике (та же единица измерения) */
   matItem?: string;
   /**
+   * ⭐ №318: норма расхода материала на 1 единицу строки (в единицах упаковки).
+   * Пример: «Покраска стен» в м², краска 9 л за 3200 ₽, расход 0.2 л/м²
+   * → цена материала = 3200 / 9 × 0.2 ≈ 71.11 ₽/м².
+   */
+  consumption?: number;
+  /**
    * Резервная цена, если позиции нет в справочнике (её переименовали/удалили).
    * Демо не должно показывать прочерки вместо денег — это выглядит как поломка.
    */
@@ -52,7 +58,17 @@ export const DEMO_PROJECT_TEMPLATES: DemoProjectTemplate[] = [
     shifts: [11, 4],
     materials: [
       { name: 'Демонтаж штукатурки', unit: Unit.SQUARE_METER, spec: 68, used: 68, workPrice: 220 },
-      { name: 'Грунтовка стен', unit: Unit.SQUARE_METER, spec: 180, used: 120, workPrice: 70 },
+      // ⭐ №318: грунтовка продаётся упаковкой 10 л — цена считается по расходу
+      {
+        name: 'Грунтовка стен',
+        unit: Unit.SQUARE_METER,
+        spec: 180,
+        used: 120,
+        matItem: 'Грунтовка для стен (10 л)',
+        consumption: 0.1,
+        workPrice: 70,
+        matPrice: 7.5,
+      },
       { name: 'Демонтаж обоев', unit: Unit.SQUARE_METER, spec: 40, used: 0, workPrice: 90 },
     ],
   },
@@ -60,8 +76,26 @@ export const DEMO_PROJECT_TEMPLATES: DemoProjectTemplate[] = [
     name: 'Черновые работы',
     shifts: [8, 3],
     materials: [
-      { name: 'Устройство полусухой стяжки', unit: Unit.SQUARE_METER, spec: 68, used: 68, workPrice: 650 },
-      { name: 'Шпаклёвка стен', unit: Unit.SQUARE_METER, spec: 120, used: 84, workPrice: 380 },
+      {
+        name: 'Устройство полусухой стяжки',
+        unit: Unit.SQUARE_METER,
+        spec: 68,
+        used: 68,
+        matItem: 'Стяжка самовыравнивающаяся (25 кг)',
+        consumption: 1.8,
+        workPrice: 650,
+        matPrice: 37.44,
+      },
+      {
+        name: 'Шпаклёвка стен',
+        unit: Unit.SQUARE_METER,
+        spec: 120,
+        used: 84,
+        matItem: 'Шпаклёвка стартовая (20 кг)',
+        consumption: 1.2,
+        workPrice: 380,
+        matPrice: 36,
+      },
       {
         name: 'Прокладка кабеля в штробе',
         unit: Unit.METER,
@@ -86,9 +120,35 @@ export const DEMO_PROJECT_TEMPLATES: DemoProjectTemplate[] = [
     name: 'Чистовая отделка',
     shifts: [2],
     materials: [
-      { name: 'Укладка ламината', unit: Unit.SQUARE_METER, spec: 68, used: 0, workPrice: 550 },
-      { name: 'Укладка керамогранита на пол', unit: Unit.SQUARE_METER, spec: 18, used: 18, workPrice: 1300 },
-      { name: 'Покраска стен', unit: Unit.SQUARE_METER, spec: 120, used: 24, workPrice: 280 },
+      {
+        name: 'Укладка ламината',
+        unit: Unit.SQUARE_METER,
+        spec: 68,
+        used: 0,
+        matItem: 'Ламинат 32 класс (8 мм)',
+        workPrice: 550,
+        matPrice: 900,
+      },
+      {
+        name: 'Укладка керамогранита на пол',
+        unit: Unit.SQUARE_METER,
+        spec: 18,
+        used: 18,
+        matItem: 'Керамогранит 600х600',
+        workPrice: 1300,
+        matPrice: 1500,
+      },
+      {
+        name: 'Покраска стен',
+        unit: Unit.SQUARE_METER,
+        spec: 120,
+        used: 24,
+        // ⭐ №318: краска 9 л за 3200 ₽ и расход 0.2 л/м² → ≈ 71.11 ₽/м²
+        matItem: 'Краска для стен моющаяся (9 л)',
+        consumption: 0.2,
+        workPrice: 280,
+        matPrice: 71.11,
+      },
       {
         // ⚠️ имя ровно как в демо-справочнике («встроенной», не «встроенная»)
         name: 'Установка розетки встроенной',

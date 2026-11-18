@@ -679,6 +679,8 @@ export class PriceListService {
         article: dto.article?.trim() || null,
         unit: (dto.unit ?? 'PIECE') as Unit,
         price: dto.price,
+        // ⭐ №318: объём упаковки (кг/л/шт) — для материалов, которые продаются упаковкой
+        packSize: dto.packSize ?? null,
         categoryId: dto.categoryId,
         kind: (dto.kind as PriceKind) ?? 'WORK',
         catalogId: catalog.id, // ⭐ №151
@@ -744,6 +746,10 @@ export class PriceListService {
         }),
         ...(dto.unit != null && { unit: dto.unit as Unit }),
         ...(dto.price !== undefined && { price: dto.price }),
+        // ⭐ №318: объём упаковки. null — «цена за единицу строки» (прежнее поведение)
+        ...(dto.packSize !== undefined && {
+          packSize: dto.packSize != null && Number(dto.packSize) > 0 ? dto.packSize : null,
+        }),
       },
     });
 

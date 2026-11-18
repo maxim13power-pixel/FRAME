@@ -14,6 +14,8 @@ export interface PriceItemSnapshot {
   article?: string | null;
   unit: string;
   price: number;
+  /** ⭐ №318: «в упаковке N единиц» (кг/л/шт) — для расчёта по норме расхода */
+  packSize?: number | null;
   categoryId: number;
   isActive: boolean;
   kind: 'WORK' | 'MATERIAL';
@@ -48,6 +50,11 @@ export interface MaterialData {
   materialItem?: PriceItemSnapshot | null;
   materialUnitPrice: number;
   materialTotalCost: number;
+  /**
+   * ⭐ №318: норма расхода материала на 1 единицу строки (в единицах упаковки).
+   * Пример: «Покраска стен» (м²) + краска 9 кг за 1000 ₽ + 0.2 кг/м² → 22.22 ₽/м².
+   */
+  consumption?: number | null;
 
   projectId: number;
   createdAt?: string;
@@ -120,6 +127,8 @@ export const createMaterial = async (
     // ⭐ №271: inline-цены; расценка создаётся/обновляется в справочнике проекта
     workPrice?: number;
     materialPrice?: number;
+    /** ⭐ №318: норма расхода материала (для упаковки) */
+    consumption?: number | null;
   }
 ): Promise<MaterialData> => {
   const response = await api.post('/materials', data);
@@ -203,6 +212,8 @@ export const updateMaterial = async (
     // ⭐ №275: цена прямо в смете — меняет только строку (снапшот)
     workPrice?: number;
     materialPrice?: number;
+    /** ⭐ №318: норма расхода материала (null — сбросить) */
+    consumption?: number | null;
   }
 ): Promise<MaterialData> => {
   const response = await api.patch(`/materials/${materialId}`, data);

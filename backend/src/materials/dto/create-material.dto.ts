@@ -64,5 +64,13 @@ export class CreateMaterialDto {
   materialPrice?: number;
 
   @IsInt({ message: 'projectId должен быть целым числом' })
+  @IsInt({ message: 'projectId должен быть целым числом' })
   projectId!: number;
+
+  // ⭐ №318: норма расхода материала на 1 единицу строки (в единицах упаковки).
+  // Нужна, когда материал продаётся упаковкой: краска 9 кг, мешок 25 кг.
+  @IsOptional()
+  @IsNumber({}, { message: 'consumption должен быть числом' })
+  @Min(0, { message: 'Расход не может быть отрицательным' })
+  consumption?: number | null;
 }
