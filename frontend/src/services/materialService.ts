@@ -223,6 +223,22 @@ export const deleteMaterial = async (
   await api.delete(`/materials/${materialId}`);
 };
 
+/** ⭐ №292: массовое дублирование строк сметы (выделение чекбоксами) */
+export const duplicateMaterialsBulk = async (
+  ids: number[],
+): Promise<{ copied: number }> => {
+  const response = await api.post('/materials/bulk/duplicate', { ids });
+  return response.data;
+};
+
+/** ⭐ №292: массовое удаление строк сметы (фиксации удаляются каскадом) */
+export const deleteMaterialsBulk = async (
+  ids: number[],
+): Promise<{ deleted: number }> => {
+  const response = await api.post('/materials/bulk/delete', { ids });
+  return response.data;
+};
+
 
 // Загрузка проекта по ID (для хлебных крошек)
 export const fetchProjectById = async (

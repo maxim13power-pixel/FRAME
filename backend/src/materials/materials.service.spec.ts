@@ -535,3 +535,78 @@ describe('MaterialsService — окно фиксации (№174)', () => {
     ).rejects.toThrow(BadRequestException);
   });
 });
+describe('MaterialsService — массовые операции над строками (№292)', () => {
+  const prisma = {
+    material: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    objectAccess: { findMany: jest.fn() },
+  };
+  const audit = { log: jest.fn() };
+  let service: MaterialsService;
+
+  const grant = (over: Record<string, unknown> = {}) => ({
+    objectId: 15,
+    projectId: null as number | null,
+    role: 'FOREMAN',
+    hidePrices: false,
+    isHidden: false,
+    revokedAt: null as Date | null,
+    ...over,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.material.findUnique.mockResolvedValue({
+      projectId: 29,
+      project: { objectId: 15 },
+    });
+    prisma.objectAccess.findMany.mockResolvedValue([grant()]);
+    prisma.material.deleteMany.mockResolvedValue({ count: 2 });
+    prisma.material.create.mockResolvedValue({ id: 900, name: 'Стена (копия)' });
+    service = new MaterialsService(prisma as never, audit as never);
+  });
+
+  it('bulkRemove удаляет пачку строк одного проекта', async () => {
+    await expect(service.bulkRemove([10, 11, 11], 7)).resolves.toEqual({ deleted: 2 });
+    // дубли схлопываются, удаление — одним запросом
+    expect(prisma.material.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: [10, 11] } },
+    });
+  });
+
+  it('bulkRemove: наблюдателю нельзя удалять ⇒ Forbidden', async () => {
+    prisma.objectAccess.findMany.mockResolvedValue([grant({ role: 'VIEWER' })]);
+
+    await expect(service.bulkRemove([10], 7)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.material.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('bulkDuplicate копирует каждую строку (факт не переносится)', async () => {
+    prisma.material.findUnique.mockResolvedValue({
+      id: 10,
+      name: 'Стена',
+      article: null,
+      unit: 'PIECE',
+      specQuantity: 5,
+      note: null,
+      projectId: 29,
+      priceItemId: 3,
+      unitPrice: 100,
+      materialItemId: null,
+      materialUnitPrice: 0,
+      isSpecLocked: true,
+      project: { objectId: 15 },
+    });
+    prisma.material.findMany.mockResolvedValue([]);
+
+    await expect(service.bulkDuplicate([10], 7)).resolves.toEqual({ copied: 1 });
+
+    const created = callArg<{ data: Record<string, unknown> }>(prisma.material.create);
+    expect(created.data).toMatchObject({ totalUsed: 0, unitPrice: 100, projectId: 29 });
+  });
+});
+

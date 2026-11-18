@@ -993,6 +993,38 @@ export class MaterialsService {
     return candidate;
   }
 
+  /**
+   * ⭐ №292: массовое копирование строк сметы (кнопка «Дублировать» при выделении).
+   * Копируется только план (название/объём/цены), факт и фиксации не переносятся.
+   */
+  async bulkDuplicate(ids: number[], userId: number) {
+    const unique = [...new Set(ids)];
+    for (const id of unique) {
+      await this.duplicate(id, userId);
+    }
+    return { copied: unique.length };
+  }
+
+  /**
+   * ⭐ №292: массовое удаление строк сметы (кнопка «Удалить» при выделении).
+   * Права проверяем по каждой строке — правила те же, что у одиночного удаления;
+   * фиксации уходят каскадом.
+   */
+  async bulkRemove(ids: number[], userId: number) {
+    const unique = [...new Set(ids)];
+    if (unique.length === 0) return { deleted: 0 };
+    for (const id of unique) {
+      const access = await this.checkMaterialAccess(id, userId);
+      if (access.role === 'VIEWER') {
+        throw new ForbiddenException('Наблюдатель не может удалять материалы');
+      }
+    }
+    const res = await this.prisma.material.deleteMany({
+      where: { id: { in: unique } },
+    });
+    return { deleted: res.count };
+  }
+
   // Удаление (фиксации удалятся каскадно)
   async remove(id: number, userId?: number) {
     // ⭐ Проверка доступа через ObjectAccess (запоминаем access)

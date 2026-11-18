@@ -72,6 +72,8 @@ import {
   updateMaterial,
   createPriceItemForMaterial,
   duplicateMaterial,
+  duplicateMaterialsBulk,
+  deleteMaterialsBulk,
 } from '../services/materialService';
 import type { MaterialData, MaterialFixData } from '../services/materialService';
 import { fetchProjectById } from '../services/materialService';
@@ -557,6 +559,9 @@ const [applyingTemplate, setApplyingTemplate] = useState(false);
 const [availableProjects, setAvailableProjects] = useState<AvailableProject[]>([]);
 const [zeroQuantities, setZeroQuantities] = useState(false);
 const [deletingTemplateId, setDeletingTemplateId] = useState<number | null>(null);
+// ⭐ №292: массовое выделение строк сметы (чекбокс в колонке «№»)
+const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+const [bulkBusy, setBulkBusy] = useState(false);
 const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
   open: false,
   message: '',
@@ -1128,6 +1133,92 @@ setPriceLoading(false);
       notifyError(getApiErrorText(err, 'Не удалось сменить справочник'));
     }
   };
+
+  // ⭐ №292: массовое выделение строк в таблице сметы
+  const toggleSelected = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  // «Выбрать все» работает по видимым строкам (с учётом поиска/фильтра/сортировки)
+  const allVisibleSelected =
+    sortedMaterials.length > 0 && sortedMaterials.every((m) => selectedIds.has(m.id));
+  const someVisibleSelected =
+    !allVisibleSelected && sortedMaterials.some((m) => selectedIds.has(m.id));
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) => {
+      const allSelected = sortedMaterials.length > 0 && sortedMaterials.every((m) => prev.has(m.id));
+      return allSelected ? new Set<number>() : new Set(sortedMaterials.map((m) => m.id));
+    });
+  }, [sortedMaterials]);
+
+  // Выделение не должно «залипать» на удалённых/отфильтрованных строках
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const alive = new Set(materials.map((m) => m.id));
+      const next = new Set([...prev].filter((id) => alive.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [materials]);
+
+  // Esc снимает выделение — привычно для таблиц
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') clearSelection();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedIds.size, clearSelection]);
+
+  // ⭐ №292: дублировать выделенные строки (план без факта, как одиночное копирование)
+  const handleBulkDuplicate = useCallback(async () => {
+    if (!projectId || selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    setBulkBusy(true);
+    try {
+      const res = await duplicateMaterialsBulk(ids);
+      setMaterials(await fetchMaterialsByProject(parseInt(projectId)));
+      clearSelection();
+      notify(`Скопировано строк: ${res.copied}`, 'success');
+    } catch (err) {
+      notifyError('Не удалось скопировать строки: ' + getApiErrorText(err, 'неизвестная ошибка'));
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [projectId, selectedIds, clearSelection, notify, notifyError]);
+
+  // ⭐ №292: удалить выделенные строки (с подтверждением — фиксации уходят вместе со строками)
+  const handleBulkDelete = useCallback(async () => {
+    if (!projectId || selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    const ok = await confirm({
+      title: `Удалить строк: ${ids.length}?`,
+      text: `Строки и все их фиксации будут удалены безвозвратно. Цены и позиции справочника не меняются.`,
+      confirmText: 'Удалить',
+      danger: true,
+    });
+    if (!ok) return;
+    setBulkBusy(true);
+    try {
+      const res = await deleteMaterialsBulk(ids);
+      setMaterials(await fetchMaterialsByProject(parseInt(projectId)));
+      clearSelection();
+      notify(`Удалено строк: ${res.deleted}`, 'success');
+    } catch (err) {
+      notifyError('Не удалось удалить строки: ' + getApiErrorText(err, 'неизвестная ошибка'));
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [projectId, selectedIds, confirm, clearSelection, notify, notifyError]);
 
   const handleDuplicate = async (material: MaterialData) => {
     if (!token) return;
@@ -2048,11 +2139,71 @@ onClose={() => setFilterAnchorEl(null)}
 </Menu>
       {/* Таблица для десктопа */}
       {!isMobile && (
+        <>
+        {/* ⭐ №292: панель массовых действий появляется только при выделении */}
+        {selectedIds.size > 0 && (
+          <Paper
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              flexWrap: 'wrap',
+              px: 1.5,
+              py: 1,
+              mb: 1,
+              borderRadius: 2,
+              border: '1px solid #90caf9',
+              bgcolor: '#e3f2fd',
+            }}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Выбрано: {selectedIds.size}
+            </Typography>
+            <Box sx={{ flex: 1 }} />
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={() => void handleBulkDuplicate()}
+              disabled={bulkBusy}
+            >
+              Дублировать
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={() => void handleBulkDelete()}
+              disabled={bulkBusy}
+            >
+              Удалить
+            </Button>
+            <Button size="small" onClick={clearSelection} disabled={bulkBusy}>
+              Отмена
+            </Button>
+          </Paper>
+        )}
         <TableContainer component={Paper} sx={{ mb: 2 }}>
           <Table sx={{ minWidth: 1500 }}>
 <TableHead sx={{ bgcolor: '#f5f5f5' }}>
 <TableRow>
-<TableCell rowSpan={2} sx={{ fontWeight: 600 }}>№</TableCell>
+<TableCell rowSpan={2} sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+  {/* ⭐ №292: чекбокс «выбрать все» — в колонке «№», раскладка таблицы не меняется */}
+  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+    <Checkbox
+      size="small"
+      checked={allVisibleSelected}
+      indeterminate={someVisibleSelected}
+      onChange={toggleSelectAll}
+      disabled={sortedMaterials.length === 0}
+      title="Выбрать все строки (по текущему фильтру)"
+      inputProps={{ 'aria-label': 'Выбрать все строки' }}
+      sx={{ p: 0.25 }}
+    />
+    №
+  </Box>
+</TableCell>
 <TableCell rowSpan={2} sx={{ fontWeight: 600, cursor: 'pointer', '&:hover': { bgcolor: '#e0e0e0' } }} onClick={() => handleSortClick('name')}>
 Наименование{renderSortIcon('name')}
 </TableCell>
@@ -2094,9 +2245,23 @@ onClose={() => setFilterAnchorEl(null)}
   id={`material-row-${m.id}`}
   sx={(highlightId === m.id && highlightVisible) || flashId === m.id
     ? { bgcolor: '#fff8e1', transition: 'background-color 0.3s' }
-    : undefined}
+    : selectedIds.has(m.id)
+      ? { bgcolor: 'rgba(25, 118, 210, 0.08)' }
+      : undefined}
 >
-<TableCell>{idx + 1}</TableCell>
+{/* ⭐ №292: чекбокс + номер — выделение строк для массовых действий */}
+<TableCell sx={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+    <Checkbox
+      size="small"
+      checked={selectedIds.has(m.id)}
+      onChange={() => toggleSelected(m.id)}
+      inputProps={{ 'aria-label': `Выбрать строку ${idx + 1}` }}
+      sx={{ p: 0.25 }}
+    />
+    {idx + 1}
+  </Box>
+</TableCell>
 <TableCell>{m.name}</TableCell>
 <TableCell sx={{ textAlign: 'center' }}>{m.article || '-'}</TableCell>
 <TableCell sx={{ textAlign: 'center' }}>{UNIT_OPTIONS.find(u => u.value === m.unit)?.label || m.unit}</TableCell>
@@ -2261,6 +2426,7 @@ onClose={() => setFilterAnchorEl(null)}
 </TableFooter>
           </Table>
         </TableContainer>
+        </>
       )}
 
   {/* Карточки для мобилки */}
