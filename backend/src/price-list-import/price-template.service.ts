@@ -143,6 +143,12 @@ export class PriceTemplateService {
     const wb = new ExcelJS.Workbook();
     wb.creator = 'FRAME';
 
+    // ⭐ №289: «Как заполнять» и «Единицы» — ПЕРВЫМИ листами.
+    // Раньше они лежали в конце файла, пользователь до них не «доезжал»
+    // и заполнял единицы измерения наугад (ошибки при импорте).
+    this.writeHelp(wb, input.kind);
+    this.writeUnits(wb);
+
     const used = new Set(SERVICE_SHEETS);
     const pairs: { sheet: string; category: string }[] = [];
     const source =
@@ -156,10 +162,22 @@ export class PriceTemplateService {
       this.writeDataSheet(wb.addWorksheet(sheetName), item.items);
     }
 
+    // служебные скрытые листы — в конце: на табах их всё равно не видно
     this.writeMeta(wb, input);
     this.writeCategories(wb, pairs);
-    this.writeHelp(wb, input.kind);
-    this.writeUnits(wb);
+
+    // ⭐ №289: файл открывается на инструкции, а не на первом листе категории
+    wb.views = [
+      {
+        x: 0,
+        y: 0,
+        width: 20000,
+        height: 12000,
+        firstSheet: 0,
+        activeTab: 0,
+        visibility: 'visible',
+      },
+    ];
 
     const buffer = await wb.xlsx.writeBuffer();
     return Buffer.from(buffer as unknown as ArrayBuffer);

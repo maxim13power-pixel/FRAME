@@ -45,6 +45,29 @@ describe('PriceTemplateService — шаблон и разбор (§121)', () => 
     expect(rows[1]).toMatchObject({ id: 502, unitRaw: 'пог. м', price: 120.5 });
   });
 
+  it('листы идут в порядке: «Как заполнять», «Единицы», потом категории (№289)', async () => {
+    const buffer = await service.build({
+      catalogId: 42,
+      catalogName: 'Мой справочник',
+      kind: PriceKind.WORK,
+      sheets: [
+        { sheet: 'Электромонтаж', category: 'Электромонтаж', items: [] },
+        { sheet: 'Плиточные', category: 'Плиточные работы', items: [] },
+      ],
+    });
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as unknown as ArrayBuffer);
+    const visible = wb.worksheets.filter((ws) => ws.state !== 'hidden').map((ws) => ws.name);
+
+    // инструкция и единицы — первыми, иначе пользователь до них не доезжает
+    expect(visible.slice(0, 2)).toEqual(['Как заполнять', 'Единицы']);
+    expect(visible.slice(2)).toEqual(['Электромонтаж', 'Плиточные']);
+    // служебные листы скрыты и разбор их не считает категориями
+    const parsed = await service.parse(buffer);
+    expect(parsed.sheets.map((s) => s.sheet)).toEqual(['Электромонтаж', 'Плиточные']);
+  });
+
   it('читает чужой файл: колонки по шапке, template = false', async () => {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Прайс поставщика');
