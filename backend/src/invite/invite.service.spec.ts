@@ -103,4 +103,56 @@ describe('InviteService — выдача ролей (№180)', () => {
     ).rejects.toThrow(/администратор объекта/);
     expect(prisma.inviteToken.create).not.toHaveBeenCalled();
   });
+  // ⭐ №303: «разрешить создавать проекты» по ссылке
+  it('админ выпускает ссылку прорабу с правом создавать проекты', async () => {
+    givenAccess('CUSTOMER');
+
+    await service.createInviteLink(
+      1,
+      { role: 'FOREMAN', canCreateProjects: true } as CreateInviteDto,
+      7,
+    );
+
+    expect(prisma.inviteToken.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ canCreateProjects: true }),
+      }),
+    );
+  });
+
+  it('право создавать проекты не выдаётся для ссылки в проект и для не-прораба', async () => {
+    givenAccess('CUSTOMER');
+    prisma.project.findFirst.mockResolvedValue({ id: 5 });
+
+    await service.createInviteLink(
+      1,
+      { role: 'FOREMAN', projectId: 5, canCreateProjects: true } as CreateInviteDto,
+      7,
+    );
+    expect(
+      prisma.inviteToken.create.mock.calls[0][0].data.canCreateProjects,
+    ).toBe(false);
+
+    await service.createInviteLink(
+      1,
+      { role: 'VIEWER', canCreateProjects: true } as CreateInviteDto,
+      7,
+    );
+    expect(
+      prisma.inviteToken.create.mock.calls[1][0].data.canCreateProjects,
+    ).toBe(false);
+  });
+
+  it('прораб не может выдать по ссылке право создавать проекты', async () => {
+    givenAccess('FOREMAN');
+
+    await expect(
+      service.createInviteLink(
+        1,
+        { role: 'FOREMAN', canCreateProjects: true } as CreateInviteDto,
+        7,
+      ),
+    ).rejects.toThrow(/только администратор объекта/);
+    expect(prisma.inviteToken.create).not.toHaveBeenCalled();
+  });
 });

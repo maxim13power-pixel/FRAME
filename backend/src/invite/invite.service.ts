@@ -81,6 +81,17 @@ export class InviteService {
     // Генерируем URL-safe токен (21 символ)
     const token = nanoid(21);
 
+    // ⭐ №303: «разрешить создавать проекты» — та же нормализация, что у прямой выдачи
+    // доступа (access.service): только прораб и только ссылка на весь объект.
+    // Выдавать это право может лишь администратор объекта — нельзя делегировать больше, чем имеешь.
+    const canCreateProjects =
+      dto.projectId == null && dto.role === 'FOREMAN' ? !!dto.canCreateProjects : false;
+    if (canCreateProjects && myAccess.role !== 'CUSTOMER') {
+      throw new ForbiddenException(
+        'Разрешить создание проектов по ссылке может только администратор объекта',
+      );
+    }
+
     return this.prisma.inviteToken.create({
       data: {
         token,
@@ -89,6 +100,7 @@ export class InviteService {
         createdBy: actorUserId,
         role: dto.role,
         hidePrices: dto.hidePrices ?? false,
+        canCreateProjects,
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
         maxUses: dto.maxUses ?? null,
       },
@@ -179,6 +191,8 @@ export class InviteService {
       token: invite.token,
       role: invite.role,
       hidePrices: invite.hidePrices,
+      // ⭐ №303: страница принятия показывает, что даёт ссылка
+      canCreateProjects: invite.canCreateProjects,
       creator: invite.creator,
       object: invite.object,
       project: invite.project,
@@ -226,6 +240,11 @@ export class InviteService {
             projectId: invite.projectId, // ⭐ №250: ссылка может вести в проект
             role: invite.role,
             hidePrices: invite.hidePrices,
+            // ⭐ №303: право создания проектов приходит из ссылки (уже нормализовано при выпуске)
+            canCreateProjects:
+              invite.projectId == null && invite.role === 'FOREMAN'
+                ? invite.canCreateProjects
+                : false,
             invitedBy: invite.createdBy,
           },
         });

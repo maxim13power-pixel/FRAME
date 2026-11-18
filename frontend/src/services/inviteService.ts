@@ -13,6 +13,8 @@ export interface InviteLink {
   createdBy: number;
   role: AccessRole;
   hidePrices: boolean;
+  /** ⭐ №303: «разрешить создавать проекты» (только прораб + ссылка на весь объект) */
+  canCreateProjects: boolean;
   expiresAt: string | null;
   maxUses: number | null;
   usesCount: number;
@@ -25,6 +27,7 @@ export interface InviteLink {
 export interface CreateInvitePayload {
   role: AccessRole;
   hidePrices?: boolean;
+  canCreateProjects?: boolean; // ⭐ №303
   expiresAt?: string;
   maxUses?: number;
   projectId?: number;

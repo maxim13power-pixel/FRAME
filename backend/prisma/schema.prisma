@@ -534,6 +534,8 @@ model InviteToken {
   createdBy  Int          // кто создал ссылку (прораб или заказчик)
   role       AccessRole   @default(FOREMAN) // роль, с которой будет добавлен юзер
   hidePrices Boolean      @default(false)   // ⭐ флаг «скрыть цены» для приглашённых
+  // ⭐ №303: «разрешить создавать проекты» по ссылке (только прораб + ссылка на весь объект)
+  canCreateProjects Boolean @default(false)
   projectId  Int?         // ⭐ №250: ссылка приглашает только в этот проект
   project    Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   expiresAt  DateTime?    // срок жизни (null = бессрочно)

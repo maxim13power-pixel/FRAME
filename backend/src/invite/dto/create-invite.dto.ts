@@ -16,6 +16,14 @@ export class CreateInviteDto {
   @IsBoolean()
   hidePrices?: boolean;
 
+  /**
+   * ⭐ №303: «разрешить создавать проекты» — право имеет смысл только для прораба
+   * и только для ссылки на весь объект (не в конкретный проект).
+   */
+  @IsOptional()
+  @IsBoolean()
+  canCreateProjects?: boolean;
+
   @IsOptional()
   @IsDateString()
   expiresAt?: string; // ISO строка даты

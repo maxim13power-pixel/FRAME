@@ -18,8 +18,6 @@ import {
   IconButton,
   Menu,
   Divider,
-  Tabs,
-  Tab,
   Checkbox,
   FormControlLabel,
   Radio,
@@ -47,7 +45,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import EditIcon from '@mui/icons-material/Edit';
-import { fetchAccessList, addAccess, updateAccess, removeAccess, setMyAccessHidden } from '../services/accessService';
+import { fetchAccessList, updateAccess, removeAccess, setMyAccessHidden } from '../services/accessService';
 import { APP_URL } from '../config';
 import type { AccessMember, AccessRole } from '../services/accessService';
 import { createInviteLink, fetchInviteLinks, revokeInviteLink } from '../services/inviteService';
@@ -181,21 +179,15 @@ const [accessObject, setAccessObject] = useState<ObjectData | null>(null);
 const [accessMembers, setAccessMembers] = useState<AccessMember[]>([]);
 const [accessLoading, setAccessLoading] = useState(false);
 const [accessError, setAccessError] = useState('');
-// ⭐ Форма приглашения
-const [inviteIdentifier, setInviteIdentifier] = useState(''); // email или телефон
-const [inviteRole, setInviteRole] = useState<AccessRole>('FOREMAN');
-// ⭐ №163: область доступа — '' = весь объект, иначе конкретный проект
-const [inviteProjectId, setInviteProjectId] = useState<number | ''>('');
+// ⭐ Форма приглашения — только ссылкой (⭐ №303: email/телефон убраны из UI)
 const [accessProjects, setAccessProjects] = useState<ProjectData[]>([]);
 // ⭐ №197: «Команда проекта» — фильтр участников по области доступа
 const [memberScopeFilter, setMemberScopeFilter] = useState<'all' | 'object' | number>('all');
 // ⭐ Приглашение по ссылке (как в Google Docs)
-const [inviteTab, setInviteTab] = useState<'link' | 'direct'>('link');
 const [linkRole, setLinkRole] = useState<AccessRole>('FOREMAN');
-const [inviteHidePrices, setInviteHidePrices] = useState(false); // ⭐ №182
-// ⭐ №207: право прораба создавать проекты (только для доступа на весь объект)
-const [inviteCanCreateProjects, setInviteCanCreateProjects] = useState(false);
 const [linkHidePrices, setLinkHidePrices] = useState(false);
+// ⭐ №303: «разрешить создавать проекты» теперь можно выдать и по ссылке
+const [linkCanCreateProjects, setLinkCanCreateProjects] = useState(false);
 const [createdLinkUrl, setCreatedLinkUrl] = useState<string | null>(null);
 const [activeLinks, setActiveLinks] = useState<InviteLink[]>([]);
 const [linkCopied, setLinkCopied] = useState(false);
@@ -809,52 +801,14 @@ const handleCloseAccess = () => {
   setAccessMembers([]);
   setAccessError('');
   setAccessRequests([]); // ⭐ №178
-  setInviteIdentifier('');
-  setInviteRole('FOREMAN');
-  setInviteProjectId(''); // ⭐ №163
   setAccessProjects([]);
   setMemberScopeFilter('all'); // ⭐ №197
-  setInviteTab('link');
   setLinkRole('FOREMAN');
-  setInviteHidePrices(false);
-  setInviteCanCreateProjects(false);
   setLinkHidePrices(false);
+  setLinkCanCreateProjects(false);
   setCreatedLinkUrl(null);
   setActiveLinks([]);
   setLinkCopied(false);
-};
-
-// ⭐ Пригласить участника (определяем: это email или телефон)
-const handleInvite = async () => {
-  if (!token || !accessObject) return;
-  const ident = inviteIdentifier.trim();
-  if (!ident) {
-    setAccessError('Укажите email или телефон');
-    return;
-  }
-  setAccessLoading(true);
-  setAccessError('');
-  try {
-    const isEmail = ident.includes('@');
-    await addAccess(accessObject.id, {
-      ...(isEmail ? { email: ident } : { phone: ident }),
-      role: inviteRole,
-      // ⭐ №163: '' = на весь объект, иначе — только на выбранный проект
-      projectId: inviteProjectId === '' ? null : inviteProjectId,
-      hidePrices: inviteHidePrices, // ⭐ №182
-      // ⭐ №207: право создавать проекты — только прораб + весь объект
-      canCreateProjects:
-        inviteRole === 'FOREMAN' && inviteProjectId === ''
-          ? inviteCanCreateProjects
-          : false,
-    });
-    setInviteIdentifier('');
-    await loadAccessMembers(accessObject.id);
-  } catch (err: unknown) {
-    setAccessError(getApiErrorMessage(err, 'Ошибка приглашения'));
-  } finally {
-    setAccessLoading(false);
-  }
 };
 
 // ⭐ Сменить роль участника (только Администратор объекта)
@@ -934,6 +888,8 @@ const handleCreateLink = async () => {
     const link = await createInviteLink(accessObject.id, {
       role: linkRole,
       hidePrices: linkHidePrices,
+      // ⭐ №303: право создания проектов — только для прораба (бэкенд нормализует и проверит права)
+      canCreateProjects: linkRole === 'FOREMAN' ? linkCanCreateProjects : false,
     });
           // ⭐ Используем APP_URL из конфига (для Universal Links в будущем)
       setCreatedLinkUrl(`${APP_URL}/invite/${link.token}`);
@@ -2446,7 +2402,6 @@ trailing: headerTrailing,
                     color={memberScopeFilter === 'object' ? 'primary' : 'default'}
                     onClick={() => {
                       setMemberScopeFilter('object');
-                      setInviteProjectId('');
                     }}
                     sx={{ cursor: 'pointer' }}
                   />
@@ -2459,7 +2414,6 @@ trailing: headerTrailing,
                       color={memberScopeFilter === project.id ? 'primary' : 'default'}
                       onClick={() => {
                         setMemberScopeFilter(project.id);
-                        setInviteProjectId(project.id);
                       }}
                       sx={{ cursor: 'pointer' }}
                     />
@@ -2576,19 +2530,9 @@ trailing: headerTrailing,
               <>
                 <Typography variant="subtitle1" gutterBottom>➕ Пригласить участника</Typography>
 
-                {/* ⭐ Вкладки: ссылкой (главный способ) или напрямую */}
-                <Tabs
-                  value={inviteTab}
-                  onChange={(_, v) => setInviteTab(v)}
-                  sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
-                >
-                  <Tab value="link" label="🔗 Ссылкой" />
-                  <Tab value="direct" label="✉️ Email / телефон" />
-                </Tabs>
-
-                {inviteTab === 'link' ? (
-                  /* ===== ВКЛАДКА: ПРИГЛАШЕНИЕ ССЫЛКОЙ ===== */
-                  <Stack spacing={2}>
+                {/* ⭐ №303: приглашаем ТОЛЬКО ссылкой — табы и ввод email/телефона убраны:
+                    люди пересылают ссылку в мессенджере, чужую почту никто не вписывает */}
+                <Stack spacing={2}>
                     <FormControl fullWidth size="small">
                       <InputLabel id="link-role-label">Кого приглашаем</InputLabel>
                       <Select
@@ -2618,6 +2562,27 @@ trailing: headerTrailing,
                         ? 'Участник сможет вносить работы и объёмы, но не увидит цены — идеально для субподрядчиков.'
                         : 'Участник будет видеть все цены и суммы объекта.'}
                     </Typography>
+
+                    {/* ⭐ №303: право создавать проекты — как в прежней выдаче доступа,
+                        доступно только для прораба */}
+                    {linkRole === 'FOREMAN' && (
+                      <>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={linkCanCreateProjects}
+                              onChange={(e) => setLinkCanCreateProjects(e.target.checked)}
+                            />
+                          }
+                          label="🏗 Разрешить создавать проекты"
+                        />
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: -2 }}>
+                          {linkCanCreateProjects
+                            ? 'Приглашённый прораб сможет создавать новые проекты в этом объекте. Командой он не управляет.'
+                            : 'Проекты создаёте только вы: приглашённый сможет отправить заявку — вы её одобрите.'}
+                        </Typography>
+                      </>
+                    )}
 
                     {createdLinkUrl ? (
                       /* Ссылка создана — показываем её с кнопками */
@@ -2663,7 +2628,9 @@ trailing: headerTrailing,
                             <Typography variant="caption" sx={{ flexGrow: 1 }} noWrap>
                               {roleLabel(link.role)}
                               {link.project ? ` • проект: ${link.project.name}` : ''}
-                              {link.hidePrices ? ' • 🙈 без цен' : ''} • использований: {link.usesCount}
+                              {link.hidePrices ? ' • 🙈 без цен' : ''}
+                              {link.canCreateProjects ? ' • 🏗 может создавать проекты' : ''}
+                              {' • '}использований: {link.usesCount}
                               {link.maxUses ? `/${link.maxUses}` : ''}
                             </Typography>
                             <IconButton size="small" color="error" onClick={() => handleRevokeLink(link.id)}>
@@ -2674,110 +2641,8 @@ trailing: headerTrailing,
                       </Box>
                     )}
                   </Stack>
-                ) : (
-                  /* ===== ВКЛАДКА: ПРИГЛАШЕНИЕ ПО EMAIL/ТЕЛЕФОНУ ===== */
-                  <Stack spacing={2}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Email или телефон"
-                      placeholder="email@example.com или +79990000000"
-                      value={inviteIdentifier}
-                      onChange={(e) => setInviteIdentifier(e.target.value)}
-                    />
-                    <FormControl fullWidth size="small">
-                      <InputLabel id="invite-role-label">Роль</InputLabel>
-                      <Select
-                        labelId="invite-role-label"
-                        value={inviteRole}
-                        label="Роль"
-                        onChange={(e) => setInviteRole(e.target.value as AccessRole)}
-                      >
-                        <MenuItem value="CUSTOMER">👑 Администратор объекта</MenuItem>
-                        <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
-                        <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
-                      </Select>
-                    </FormControl>
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-                      {inviteRole === 'CUSTOMER' && '👑 Администратор объекта: видит все цены, управляет командой и настройками.'}
-                      {inviteRole === 'FOREMAN' && '👷 Прораб: ведёт работы и фиксирует объёмы. Его изменения видны в смете и отчётах.'}
-                      {inviteRole === 'VIEWER' && '👁 Наблюдатель: видит прогресс и объёмы, но без денег. Не может приглашать.'}
-                    </Typography>
-                    {/* ⭐ №163: область доступа — весь объект или только один проект */}
-                    <FormControl fullWidth size="small">
-                      <InputLabel id="invite-scope-label">Доступ</InputLabel>
-                      <Select
-                        labelId="invite-scope-label"
-                        value={inviteProjectId}
-                        label="Доступ"
-                        onChange={(e) =>
-                          setInviteProjectId(
-                            e.target.value === '' ? '' : Number(e.target.value),
-                          )
-                        }
-                      >
-                        <MenuItem value="">🏗 Весь объект (все проекты)</MenuItem>
-                        {accessProjects.map((project) => (
-                          <MenuItem key={project.id} value={project.id}>
-                            📁 Только «{project.name}»
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-                      {inviteProjectId === ''
-                        ? 'Участник увидит все проекты объекта, включая созданные позже.'
-                        : 'Участник увидит только выбранный проект. Остальные проекты объекта ему недоступны.'}
-                    </Typography>
-                    {/* ⭐ №207: право создавать проекты — только прораб и только на весь объект */}
-                    {inviteRole === 'FOREMAN' && inviteProjectId === '' && (
-                      <>
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={inviteCanCreateProjects}
-                              onChange={(e) => setInviteCanCreateProjects(e.target.checked)}
-                            />
-                          }
-                          label="🏗 Разрешить создавать проекты"
-                        />
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: -2 }}>
-                          {inviteCanCreateProjects
-                            ? 'Прораб сможет создавать новые проекты в этом объекте. Командой и участниками он не управляет.'
-                            : 'Проекты создаёте только вы. Прораб сможет отправить заявку — вы её одобрите.'}
-                        </Typography>
-                      </>
-                    )}
-                    {/* ⭐ №182: видимость цен — отдельное право (как в приглашении ссылкой) */}
-                    {inviteRole !== 'VIEWER' && (
-                      <>
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={inviteHidePrices}
-                              onChange={(e) => setInviteHidePrices(e.target.checked)}
-                            />
-                          }
-                          label="🙈 Скрыть цены для этого участника"
-                        />
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: -2 }}>
-                          {inviteHidePrices
-                            ? 'Участник сможет вносить работы и объёмы, но не увидит цены и суммы.'
-                            : 'Участник будет видеть цены и суммы объекта.'}
-                        </Typography>
-                      </>
-                    )}
-                    <Button
-                      variant="contained"
-                      onClick={handleInvite}
-                      disabled={accessLoading || !inviteIdentifier.trim()}
-                    >
-                      Пригласить
-                    </Button>
-                  </Stack>
-                )}
 
-                {/* Кнопка закрытия — общая для обеих вкладок */}
+                {/* Кнопка закрытия */}
                 <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
                   <Button variant="outlined" onClick={handleCloseAccess}>Закрыть</Button>
                 </Box>

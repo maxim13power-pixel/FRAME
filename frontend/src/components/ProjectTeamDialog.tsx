@@ -23,9 +23,6 @@ import {
   MenuItem,
   Select,
   Stack,
-  Tab,
-  Tabs,
-  TextField,
   Typography,
   useMediaQuery,
   useTheme,
@@ -93,9 +90,7 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
   const [selected, setSelected] = useState<number[]>([]);
   const [newRole, setNewRole] = useState<AccessRole>('FOREMAN');
   const [hidePrices, setHidePrices] = useState(false);
-  const [invite, setInvite] = useState('');
-  // ⭐ №250: приглашение ссылкой — как в «Объектах»
-  const [inviteTab, setInviteTab] = useState<'link' | 'direct'>('link');
+  // ⭐ №303: приглашение только ссылкой — email/телефон убраны из UI
   const [linkRole, setLinkRole] = useState<AccessRole>('FOREMAN');
   const [linkHidePrices, setLinkHidePrices] = useState(false);
   const [createdLinkUrl, setCreatedLinkUrl] = useState<string | null>(null);
@@ -130,12 +125,10 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
     void load();
     void loadLinks();
     setSelected([]);
-    setInvite('');
     setNewRole('FOREMAN');
     setHidePrices(false);
     setCreatedLinkUrl(null);
     setLinkCopied(false);
-    setInviteTab('link');
   }, [load, loadLinks]);
 
   const objectWide = useMemo(
@@ -189,31 +182,6 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
       await refresh();
     } catch (err) {
       notifyError(getApiErrorText(err, 'Не удалось выдать доступ'));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleInvite = async () => {
-    if (!project) return;
-    const value = invite.trim();
-    if (!value) return;
-    setBusy(true);
-    try {
-      const payload = value.includes('@')
-        ? { email: value }
-        : { phone: value };
-      await addAccess(objectId, {
-        ...payload,
-        role: newRole,
-        projectId: project.id,
-        hidePrices,
-      });
-      setInvite('');
-      notify('Участник добавлен в проект');
-      await refresh();
-    } catch (err) {
-      notifyError(getApiErrorText(err, 'Не удалось пригласить участника'));
     } finally {
       setBusy(false);
     }
@@ -439,16 +407,7 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
             <Typography variant="subtitle1" gutterBottom>
               ➕ Пригласить участника
             </Typography>
-            <Tabs
-              value={inviteTab}
-              onChange={(_, v) => setInviteTab(v)}
-              sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
-            >
-              <Tab value="link" label="🔗 Ссылкой" />
-              <Tab value="direct" label="✉️ Email / телефон" />
-            </Tabs>
-
-            {inviteTab === 'link' ? (
+            {/* ⭐ №303: только ссылка — email/телефон убраны (чужую почту никто не вписывает) */}
               <Stack spacing={2}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="project-link-role-label">
@@ -581,31 +540,6 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                     ))}
                   </Box>
                 )}
-              </Stack>
-            ) : (
-              <Stack spacing={2}>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <TextField
-                size="small"
-                fullWidth
-                label="Email или телефон"
-                placeholder="email@example.com или +79990000000"
-                value={invite}
-                disabled={!canManage || busy}
-                onChange={(e) => setInvite(e.target.value)}
-              />
-              <Button
-                variant="contained"
-                disabled={!canManage || busy || !invite.trim()}
-                onClick={() => void handleInvite()}
-              >
-                Пригласить
-              </Button>
-            </Box>
-            <Typography variant="caption" color="text.secondary">
-              Если человек уже зарегистрирован в FRAME — добавьте его из команды
-              объекта ниже.
-            </Typography>
 
             <Divider />
             <Typography variant="subtitle2">
@@ -678,7 +612,6 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
               </Button>
             </Box>
               </Stack>
-            )}
 
           </>
         )}
