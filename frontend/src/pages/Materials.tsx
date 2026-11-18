@@ -2243,15 +2243,15 @@ onClose={() => setFilterAnchorEl(null)}
           >
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
               Выбрано: {selectedIds.size}
-              {!hidePrices && selectedTotals.fact > 0 && (
+              {!hidePrices && selectedTotals.count > 0 && (
                 <Typography
                   component="span"
                   variant="body2"
                   color="text.secondary"
                   sx={{ ml: 1 }}
-                  title={`План по выделенным: ${rub(selectedTotals.plan)}`}
+                  title="Смета — план по выделенным, факт — уже выполнено (фиксации)"
                 >
-                  · факт {rub(selectedTotals.fact)}
+                  · смета {rub(selectedTotals.plan)} · факт {rub(selectedTotals.fact)}
                 </Typography>
               )}
             </Typography>
@@ -2782,15 +2782,15 @@ onClose={() => setFilterAnchorEl(null)}
     <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.75 }}>
       <Typography variant="body2" sx={{ fontWeight: 700, flex: 1 }}>
         Выбрано: {selectedIds.size}
-        {!hidePrices && selectedTotals.fact > 0 && (
+        {!hidePrices && selectedTotals.count > 0 && (
           <Typography
             component="span"
             variant="caption"
             color="text.secondary"
             sx={{ ml: 1 }}
-            title={`План по выделенным: ${rub(selectedTotals.plan)}`}
+            title="Смета — план по выделенным, факт — уже выполнено (фиксации)"
           >
-            · факт {rub(selectedTotals.fact)}
+            · смета {rub(selectedTotals.plan)} · факт {rub(selectedTotals.fact)}
           </Typography>
         )}
       </Typography>
