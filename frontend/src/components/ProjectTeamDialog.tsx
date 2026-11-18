@@ -94,6 +94,8 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
   const [linkRole, setLinkRole] = useState<AccessRole>('FOREMAN');
   const [linkHidePrices, setLinkHidePrices] = useState(false);
   const [createdLinkUrl, setCreatedLinkUrl] = useState<string | null>(null);
+  // ⭐ №304: срок действия созданной ссылки (по умолчанию 7 дней)
+  const [createdLinkExpiresAt, setCreatedLinkExpiresAt] = useState<string | null>(null);
   const [activeLinks, setActiveLinks] = useState<InviteLink[]>([]);
   const [linkCopied, setLinkCopied] = useState(false);
 
@@ -128,6 +130,7 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
     setNewRole('FOREMAN');
     setHidePrices(false);
     setCreatedLinkUrl(null);
+    setCreatedLinkExpiresAt(null);
     setLinkCopied(false);
   }, [load, loadLinks]);
 
@@ -231,6 +234,7 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
         projectId: project.id,
       });
       setCreatedLinkUrl(`${APP_URL}/invite/${link.token}`);
+      setCreatedLinkExpiresAt(link.expiresAt ?? null);
       await loadLinks();
     } catch (err) {
       setError(getApiErrorText(err, 'Не удалось создать ссылку'));
@@ -419,7 +423,7 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                     label="Кого приглашаем"
                     onChange={(e) => setLinkRole(e.target.value as AccessRole)}
                   >
-                    <MenuItem value="CUSTOMER">👑 Администратор</MenuItem>
+                    {/* ⭐ №304: «Администратор» — объектная роль, в ссылке в проект её нет */}
                     <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
                     <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
                   </Select>
@@ -462,6 +466,12 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                     >
                       {createdLinkUrl}
                     </Typography>
+                    {/* ⭐ №304: срок действия — по умолчанию 7 дней */}
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                      {createdLinkExpiresAt
+                        ? `Действует до ${new Date(createdLinkExpiresAt).toLocaleDateString('ru-RU')}`
+                        : 'Действует 7 дней'}
+                    </Typography>
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       <Button
                         size="small"
@@ -482,21 +492,30 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                       <Button
                         size="small"
                         color="error"
-                        onClick={() => setCreatedLinkUrl(null)}
+                        onClick={() => {
+                          setCreatedLinkUrl(null);
+                          setCreatedLinkExpiresAt(null);
+                        }}
                       >
                         Создать новую
                       </Button>
                     </Box>
                   </Box>
                 ) : (
-                  <Button
-                    variant="contained"
-                    startIcon={<LinkIcon />}
-                    onClick={() => void handleCreateLink()}
-                    disabled={!canManage || busy}
-                  >
-                    Создать ссылку-приглашение
-                  </Button>
+                  <>
+                    <Button
+                      variant="contained"
+                      startIcon={<LinkIcon />}
+                      onClick={() => void handleCreateLink()}
+                      disabled={!canManage || busy}
+                    >
+                      Создать ссылку-приглашение
+                    </Button>
+                    <Typography variant="caption" color="text.secondary">
+                      Ссылка действует 7 дней. Отправьте её в мессенджере — человек войдёт
+                      по ней и получит доступ к проекту.
+                    </Typography>
+                  </>
                 )}
 
                 {activeLinks.length > 0 && (
@@ -527,6 +546,10 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                           {link.hidePrices ? ' • 🙈 без цен' : ''} •
                           использований: {link.usesCount}
                           {link.maxUses ? `/${link.maxUses}` : ''}
+                          {/* ⭐ №304: срок действия ссылки */}
+                          {link.expiresAt
+                            ? ` • до ${new Date(link.expiresAt).toLocaleDateString('ru-RU')}`
+                            : ''}
                         </Typography>
                         <IconButton
                           size="small"

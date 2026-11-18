@@ -3,28 +3,16 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
-  IsNotEmpty,
   IsOptional,
-  IsString,
   Min,
 } from 'class-validator';
 
 export class AddAccessDto {
-  // ⭐ Кого приглашаем: либо по userId (если фронт нашёл юзера), либо по email/телефону
-  @IsOptional()
+  // ⭐ №304: выдаём доступ только конкретному пользователю (по userId).
+  // Приглашение «по email/телефону» убрано: люди делятся ссылкой в мессенджере.
   @IsInt()
   @Min(1)
-  userId?: number;
-
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  email?: string;
-
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  phone?: string;
+  userId!: number;
 
   // ⭐ Роль приглашённого
   @IsIn(['CUSTOMER', 'FOREMAN', 'VIEWER'], {

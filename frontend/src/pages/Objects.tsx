@@ -189,6 +189,8 @@ const [linkHidePrices, setLinkHidePrices] = useState(false);
 // ⭐ №303: «разрешить создавать проекты» теперь можно выдать и по ссылке
 const [linkCanCreateProjects, setLinkCanCreateProjects] = useState(false);
 const [createdLinkUrl, setCreatedLinkUrl] = useState<string | null>(null);
+// ⭐ №304: показываем, до какого числа действует созданная ссылка (по умолчанию 7 дней)
+const [createdLinkExpiresAt, setCreatedLinkExpiresAt] = useState<string | null>(null);
 const [activeLinks, setActiveLinks] = useState<InviteLink[]>([]);
 const [linkCopied, setLinkCopied] = useState(false);
 // ⭐ №178: заявки на право создавать проекты (входящие — для менеджера/админа)
@@ -807,6 +809,7 @@ const handleCloseAccess = () => {
   setLinkHidePrices(false);
   setLinkCanCreateProjects(false);
   setCreatedLinkUrl(null);
+  setCreatedLinkExpiresAt(null);
   setActiveLinks([]);
   setLinkCopied(false);
 };
@@ -893,6 +896,7 @@ const handleCreateLink = async () => {
     });
           // ⭐ Используем APP_URL из конфига (для Universal Links в будущем)
       setCreatedLinkUrl(`${APP_URL}/invite/${link.token}`);
+      setCreatedLinkExpiresAt(link.expiresAt ?? null);
     await loadInviteLinks(accessObject.id);
   } catch (err: unknown) {
     setAccessError(getApiErrorMessage(err, 'Ошибка создания ссылки'));
@@ -2593,6 +2597,12 @@ trailing: headerTrailing,
                         <Typography variant="body2" sx={{ wordBreak: 'break-all', my: 1, fontWeight: 600 }}>
                           {createdLinkUrl}
                         </Typography>
+                        {/* ⭐ №304: срок действия — теперь по умолчанию 7 дней */}
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                          {createdLinkExpiresAt
+                            ? `Действует до ${new Date(createdLinkExpiresAt).toLocaleDateString('ru-RU')}`
+                            : 'Действует 7 дней'}
+                        </Typography>
                         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                           <Button size="small" variant="contained" startIcon={<ShareIcon />} onClick={handleShareLink}>
                             Поделиться
@@ -2600,20 +2610,33 @@ trailing: headerTrailing,
                           <Button size="small" variant="outlined" startIcon={linkCopied ? undefined : <ContentCopyIcon />} onClick={handleCopyLink}>
                             {linkCopied ? '✓ Скопировано' : 'Копировать'}
                           </Button>
-                          <Button size="small" color="error" onClick={() => setCreatedLinkUrl(null)}>
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={() => {
+                              setCreatedLinkUrl(null);
+                              setCreatedLinkExpiresAt(null);
+                            }}
+                          >
                             Создать новую
                           </Button>
                         </Box>
                       </Box>
                     ) : (
-                      <Button
-                        variant="contained"
-                        startIcon={<LinkIcon />}
-                        onClick={handleCreateLink}
-                        disabled={accessLoading}
-                      >
-                        Создать ссылку-приглашение
-                      </Button>
+                      <>
+                        <Button
+                          variant="contained"
+                          startIcon={<LinkIcon />}
+                          onClick={handleCreateLink}
+                          disabled={accessLoading}
+                        >
+                          Создать ссылку-приглашение
+                        </Button>
+                        <Typography variant="caption" color="text.secondary">
+                          Ссылка действует 7 дней. Отправьте её в мессенджере — человек
+                          войдёт по ней и получит доступ.
+                        </Typography>
+                      </>
                     )}
 
                     {/* Список активных ссылок */}
@@ -2632,6 +2655,10 @@ trailing: headerTrailing,
                               {link.canCreateProjects ? ' • 🏗 может создавать проекты' : ''}
                               {' • '}использований: {link.usesCount}
                               {link.maxUses ? `/${link.maxUses}` : ''}
+                              {/* ⭐ №304: срок действия ссылки */}
+                              {link.expiresAt
+                                ? ` • до ${new Date(link.expiresAt).toLocaleDateString('ru-RU')}`
+                                : ''}
                             </Typography>
                             <IconButton size="small" color="error" onClick={() => handleRevokeLink(link.id)}>
                               <DeleteIcon fontSize="small" />

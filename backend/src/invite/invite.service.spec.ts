@@ -155,4 +155,30 @@ describe('InviteService — выдача ролей (№180)', () => {
     ).rejects.toThrow(/только администратор объекта/);
     expect(prisma.inviteToken.create).not.toHaveBeenCalled();
   });
+
+  // ⭐ №304: срок жизни по умолчанию — 7 дней; «Администратор» не для ссылки в проект
+  it('по умолчанию ссылка живёт 7 дней', async () => {
+    givenAccess('CUSTOMER');
+    const before = Date.now();
+
+    await service.createInviteLink(1, { role: 'FOREMAN' } as CreateInviteDto, 7);
+
+    const data = prisma.inviteToken.create.mock.calls[0][0].data;
+    const days = (data.expiresAt.getTime() - before) / 86_400_000;
+    expect(Math.round(days)).toBe(7);
+  });
+
+  it('для ссылки в проект роль «Администратор» недоступна', async () => {
+    givenAccess('CUSTOMER');
+    prisma.project.findFirst.mockResolvedValue({ id: 5 });
+
+    await expect(
+      service.createInviteLink(
+        1,
+        { role: 'CUSTOMER', projectId: 5 } as CreateInviteDto,
+        7,
+      ),
+    ).rejects.toThrow(/Прораб.*Наблюдатель/);
+    expect(prisma.inviteToken.create).not.toHaveBeenCalled();
+  });
 });

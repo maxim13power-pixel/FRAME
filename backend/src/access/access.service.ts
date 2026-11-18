@@ -64,32 +64,11 @@ export class AccessService {
     }
   }
 
-  // ⭐ Хелпер: найти приглашаемого юзера (по userId / email / телефону)
+  // ⭐ Хелпер: найти пользователя, которому выдаём доступ (⭐ №304: только по userId)
   private async resolveUser(dto: AddAccessDto) {
-    if (dto.userId) {
-      const user = await this.prisma.user.findUnique({
-        where: { id: dto.userId },
-      });
-      if (!user) throw new NotFoundException('Пользователь не найден');
-      return user;
-    }
-    if (dto.email) {
-      const user = await this.prisma.user.findUnique({
-        where: { email: dto.email.trim().toLowerCase() },
-      });
-      if (!user)
-        throw new NotFoundException('Пользователь с таким email не найден');
-      return user;
-    }
-    if (dto.phone) {
-      const user = await this.prisma.user.findUnique({
-        where: { phone: dto.phone.trim() },
-      });
-      if (!user)
-        throw new NotFoundException('Пользователь с таким телефоном не найден');
-      return user;
-    }
-    throw new BadRequestException('Укажите userId, email или телефон');
+    const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+    if (!user) throw new NotFoundException('Пользователь не найден');
+    return user;
   }
 
   // 1. Список участников объекта (для модалки «Управление доступом»)

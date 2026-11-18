@@ -44,11 +44,9 @@ export interface MyAccess {
   createdAt: string;
 }
 
-// ⭐ Payload для приглашения (одно из трёх: userId / email / phone)
+// ⭐ Payload для выдачи доступа существующему пользователю (⭐ №304: только userId)
 export interface AddAccessPayload {
-  userId?: number;
-  email?: string;
-  phone?: string;
+  userId: number;
   role: AccessRole;
   projectId?: number | null; // null = весь объект
   // ⭐ №207: право создавать проекты (только прораб + доступ на весь объект)

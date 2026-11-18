@@ -9,6 +9,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { nanoid } from 'nanoid';
 
+/** ⭐ №304: сколько дней по умолчанию действует ссылка-приглашение. */
+export const DEFAULT_INVITE_TTL_DAYS = 7;
+
 @Injectable()
 export class InviteService {
   constructor(private prisma: PrismaService) {}
@@ -71,6 +74,12 @@ export class InviteService {
           'Ссылку-приглашение в проект создаёт администратор объекта',
         );
       }
+      // ⭐ №304: «Администратор» — объектная роль; в ссылке в проект её не предлагаем
+      if (dto.role === 'CUSTOMER') {
+        throw new BadRequestException(
+          'Для ссылки в проект выберите роль «Прораб» или «Наблюдатель»',
+        );
+      }
       const project = await this.prisma.project.findFirst({
         where: { id: dto.projectId, objectId },
         select: { id: true },
@@ -101,7 +110,10 @@ export class InviteService {
         role: dto.role,
         hidePrices: dto.hidePrices ?? false,
         canCreateProjects,
-        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+        // ⭐ №304: по умолчанию ссылка живёт 7 дней (раньше — бессрочно)
+        expiresAt: dto.expiresAt
+          ? new Date(dto.expiresAt)
+          : new Date(Date.now() + DEFAULT_INVITE_TTL_DAYS * 86_400_000),
         maxUses: dto.maxUses ?? null,
       },
       include: {
