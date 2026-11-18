@@ -734,7 +734,12 @@ const Home: React.FC = () => {
             <Box
               key={f.id}
               onClick={() => navigate(`/objects/${f.material.project.object.id}/projects/${f.material.project.id}/materials`)}
-              sx={{ cursor: 'pointer' }}
+              // ⭐ №313: подсветка строки при наведении — как в «Горит на неделе»
+              sx={{
+                cursor: 'pointer',
+                borderRadius: 1,
+                '&:hover': { bgcolor: 'rgba(25,118,210,0.06)' },
+              }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Typography variant="body2" fontWeight={600}>
