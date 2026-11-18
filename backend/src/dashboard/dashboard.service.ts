@@ -107,7 +107,10 @@ export class DashboardService {
     const scope = buildWorkScope(grants);
     const moneyScope = buildMoneyScope(grants);
     const accessibleProject = accessibleProjectWhere(scope);
-    const moneyVisibleProject = accessibleProjectWhere(moneyScope);
+    // ⭐ №317: демо-объект (образец для новичка) в «Без расценки» не участвует:
+    // иначе сразу после регистрации висит «Без расценки • 8» — это строки демо-сметы,
+    // у которых заполнена только цена работы.
+    const noPriceProject = accessibleProjectWhere(moneyScope, { excludeDemo: true });
 
     // ── 1. KPI + Money — одним батчем Promise.all (5 SQL, без N+1) ─────────────
     const [
@@ -227,7 +230,7 @@ export class DashboardService {
         this.prisma.material.findMany({
           where: {
             OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
-            project: moneyVisibleProject,
+            project: noPriceProject,
           },
           orderBy: { updatedAt: 'desc' },
           take: NO_PRICE_TOP,
@@ -252,7 +255,7 @@ export class DashboardService {
         this.prisma.material.count({
           where: {
             OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
-            project: moneyVisibleProject,
+            project: noPriceProject,
           },
         }),
         // 3d. RecentFixes — 50 последних (7 на экране, остальное по кнопке, №310)
@@ -331,10 +334,13 @@ export class DashboardService {
    */
   async getNoPrice(userId: number, limit = 5): Promise<DashboardNoPriceDto> {
     const grants = await loadAccessGrants(this.prisma, userId);
-    const moneyVisibleProject = accessibleProjectWhere(buildMoneyScope(grants));
+    // ⭐ №317: демо-объект в «Без расценки» не участвует (как и в сводке)
+    const noPriceProject = accessibleProjectWhere(buildMoneyScope(grants), {
+      excludeDemo: true,
+    });
     const where = {
       OR: [{ unitPrice: 0 }, { materialUnitPrice: 0 }],
-      project: moneyVisibleProject,
+      project: noPriceProject,
     };
     const [items, count] = await Promise.all([
       this.prisma.material.findMany({

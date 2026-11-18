@@ -179,7 +179,7 @@ export function isScopeEmpty(scope: AccessScope): boolean {
 /** where для Project — только доступные пользователю проекты */
 export function accessibleProjectWhere(
   scope: AccessScope,
-  opts: { includeArchived?: boolean } = {},
+  opts: { includeArchived?: boolean; excludeDemo?: boolean } = {},
 ): Prisma.ProjectWhereInput {
   if (isScopeEmpty(scope)) return { id: -1 }; // заведомо пустой результат
   const or: Prisma.ProjectWhereInput[] = [];
@@ -192,6 +192,9 @@ export function accessibleProjectWhere(
   return {
     AND: [
       ...(opts.includeArchived ? [] : [{ object: { isArchived: false } }]),
+      // ⭐ №317: демо-объект — образец для новичка, его строки не должны попадать
+      // в рабочие списки («Без расценки» и т.п.)
+      ...(opts.excludeDemo ? [{ object: { isDemo: false } }] : []),
       { OR: or },
     ],
   };
