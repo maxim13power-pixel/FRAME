@@ -76,7 +76,7 @@ export const fetchAvailableProjects = async (): Promise<AvailableProject[]> => {
  */
 export const copyEstimateFromProject = async (
   targetProjectId: number,
-  payload: { sourceProjectId: number; zeroQuantities?: boolean },
+  payload: { sourceProjectId: number; zeroQuantities?: boolean; append?: boolean },
 ): Promise<{ created: number }> => {
   const response = await api.post(`/projects/${targetProjectId}/copy-estimate`, payload);
   return response.data;

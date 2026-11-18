@@ -50,6 +50,7 @@ import AddIcon from '@mui/icons-material/Add';
 //import LockIcon from '@mui/icons-material/Lock';
 //import LockOpenIcon from '@mui/icons-material/LockOpen';
 //import DeleteIcon from '@mui/icons-material/Delete';
+import DeleteIcon from '@mui/icons-material/Delete'; // ⭐ №290: удаление шаблона
 import SettingsIcon from '@mui/icons-material/Settings';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
@@ -82,8 +83,11 @@ import { searchPriceItems } from '../services/priceListService';
 import type { PriceCatalogData, PriceCategoryData, PriceItemData } from '../services/priceListService';
 import { fetchCategoriesWithItems, fetchPriceCatalogs, updatePriceItem } from '../services/priceListService';
 import { getApiErrorText } from '../utils/errors';
-import { applyEstimateTemplate, fetchEstimateTemplates } from '../services/estimateTemplateService';
+import { applyEstimateTemplate, deleteEstimateTemplate, fetchEstimateTemplates } from '../services/estimateTemplateService';
 import type { EstimateTemplate } from '../services/estimateTemplateService';
+// ⭐ №290: «Добавить из шаблона» — смета из любого доступного проекта (как при создании проекта)
+import { copyEstimateFromProject, fetchAvailableProjects } from '../services/projectService';
+import type { AvailableProject } from '../services/projectService';
 // ⭐ XLSX/PDF-генераторы грузим по требованию (внутри handleExport) — иначе xlsx+pdfmake
 // тянутся в бандл страницы «Сметы» и замедляют её открытие.
 import type { ExportMeta } from '../utils/exportMaterials';
@@ -363,7 +367,7 @@ const goBack = useBackNavigation(`/objects/${objectId}/projects`);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
-  const { notify, error: notifyError } = useFeedback();
+  const { notify, error: notifyError, success, confirm } = useFeedback();
   const direction = useScrollDirection();
 
   // ⭐ №161: deep-link из виджета «Без расценки» → ?materialId=…
@@ -549,6 +553,10 @@ const [importMenuAnchor, setImportMenuAnchor] = useState<HTMLElement | null>(nul
 const [templateModalOpen, setTemplateModalOpen] = useState(false);
 const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
 const [applyingTemplate, setApplyingTemplate] = useState(false);
+// ⭐ №290: сметы доступных проектов + удаление шаблонов
+const [availableProjects, setAvailableProjects] = useState<AvailableProject[]>([]);
+const [zeroQuantities, setZeroQuantities] = useState(false);
+const [deletingTemplateId, setDeletingTemplateId] = useState<number | null>(null);
 const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
   open: false,
   message: '',
@@ -1439,7 +1447,67 @@ setSortAnchorEl(null);
       setTemplates([]);
       notifyError('Не удалось загрузить шаблоны: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
+    // ⭐ №290: сметы других доступных проектов — рядом с шаблонами
+    try {
+      setAvailableProjects(await fetchAvailableProjects());
+    } catch {
+      setAvailableProjects([]);
+    }
   }, [notifyError]);
+
+  // ⭐ №290: добавить в текущую смету позиции из другого проекта (append, прогресс не переносится)
+  const handleApplyProjectEstimate = useCallback(
+    async (sourceProjectId: number, name: string) => {
+      if (!projectId) return;
+      setApplyingTemplate(true);
+      try {
+        const res = await copyEstimateFromProject(parseInt(projectId), {
+          sourceProjectId,
+          zeroQuantities,
+          append: true,
+        });
+        setMaterials(await fetchMaterialsByProject(parseInt(projectId)));
+        setTemplateModalOpen(false);
+        if (res?.created) {
+          success(
+            `Добавлено позиций из «${name}»: ${res.created}` +
+              (zeroQuantities ? ' (количества обнулены)' : ''),
+          );
+        } else {
+          notify('В смете проекта-источника нет позиций', 'warning');
+        }
+      } catch (err) {
+        notifyError('Не удалось добавить смету: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      } finally {
+        setApplyingTemplate(false);
+      }
+    },
+    [projectId, zeroQuantities, success, notify, notifyError],
+  );
+
+  // ⭐ №290: шаблоны раньше нельзя было удалить — теперь корзинка в списке
+  const handleDeleteTemplate = useCallback(
+    async (template: EstimateTemplate) => {
+      const ok = await confirm({
+        title: 'Удалить шаблон?',
+        text: `Шаблон «${template.name}» (${template.items?.length ?? 0} поз.) будет удалён безвозвратно. Уже добавленные в сметы позиции останутся.`,
+        confirmText: 'Удалить',
+        danger: true,
+      });
+      if (!ok) return;
+      setDeletingTemplateId(template.id);
+      try {
+        await deleteEstimateTemplate(template.id);
+        setTemplates((prev) => prev.filter((t) => t.id !== template.id));
+        success(`Шаблон «${template.name}» удалён`);
+      } catch (err) {
+        notifyError('Не удалось удалить шаблон: ' + getApiErrorText(err, 'неизвестная ошибка'));
+      } finally {
+        setDeletingTemplateId(null);
+      }
+    },
+    [confirm, success, notifyError],
+  );
 
   const handleApplyTemplate = useCallback(
     async (templateId: number) => {
@@ -1485,7 +1553,7 @@ setSortAnchorEl(null);
       </IconButton>
       <IconButton
         onClick={(e) => setImportMenuAnchor(e.currentTarget)}
-        aria-label="Импорт: из шаблона, Excel, скачать шаблон"
+        aria-label="Импорт: смета из проекта, шаблон, Excel, скачать шаблон"
         sx={{ bgcolor: 'rgba(0, 0, 0, 0.06)', color: '#1976d2', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
       >
         {applyingTemplate ? <CircularProgress size={18} /> : <PlaylistAddIcon />}
@@ -1783,7 +1851,7 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
           }}
         >
           <PlaylistAddIcon fontSize="small" style={{ marginRight: 8 }} />
-          Добавить из шаблона
+          Добавить из проекта или шаблона
         </MenuItem>
         <MenuItem
           onClick={() => {
@@ -1825,35 +1893,107 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
         </Paper>
       </Modal>
 
-      {/* ⭐ Модалка «Добавить позиции из шаблона сметы» */}
+      {/* ⭐ №208/№290: позиции из сметы другого проекта или из шаблона */}
       <Modal open={templateModalOpen} onClose={() => setTemplateModalOpen(false)} disableRestoreFocus>
-        <Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '92%', sm: 440 }, p: 3, borderRadius: 2 }}>
-          <Typography variant="h6" gutterBottom>Добавить из шаблона</Typography>
+        <Paper sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: { xs: '92%', sm: 480 }, p: 3, borderRadius: 2 }}>
+          <Typography variant="h6" gutterBottom>Добавить в смету</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Позиции шаблона добавятся к текущей смете (сейчас в ней {materials.length}). Существующие
-            строки не изменяются.
+            Позиции добавятся к текущей смете (сейчас в ней {materials.length}). Существующие строки
+            не изменяются, прогресс и факт не переносятся.
           </Typography>
-          {templates.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              Шаблонов нет. Сохраните смету любого проекта как шаблон: «Проекты» → меню проекта →
-              «Сохранить шаблон».
-            </Typography>
-          ) : (
-            <Stack spacing={1} sx={{ maxHeight: 320, overflowY: 'auto' }}>
-              {templates.map((t) => (
-                <Button
-                  key={t.id}
-                  variant="outlined"
-                  disabled={applyingTemplate}
-                  onClick={() => { void handleApplyTemplate(t.id); }}
-                  sx={{ justifyContent: 'space-between', textTransform: 'none', py: 1 }}
-                >
-                  <span>{t.name}</span>
-                  <span style={{ opacity: 0.7 }}>{t.items?.length ?? 0} поз.</span>
-                </Button>
-              ))}
-            </Stack>
-          )}
+
+          <Box sx={{ maxHeight: 360, overflowY: 'auto', pr: 0.5 }}>
+            {/* ⭐ №290: сметы других проектов — основной способ, как при создании проекта */}
+            {availableProjects.filter((p) => String(p.id) !== projectId).length > 0 && (
+              <>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                  Сметы ваших проектов
+                </Typography>
+                <Stack spacing={1} sx={{ mt: 0.5, mb: 1 }}>
+                  {availableProjects
+                    .filter((p) => String(p.id) !== projectId)
+                    .map((p) => (
+                      <Button
+                        key={`proj-${p.id}`}
+                        variant="outlined"
+                        disabled={applyingTemplate}
+                        onClick={() => { void handleApplyProjectEstimate(p.id, p.name); }}
+                        sx={{ justifyContent: 'space-between', textTransform: 'none', py: 1 }}
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {p.name} — {p.objectName}
+                        </span>
+                        <span style={{ opacity: 0.7, flexShrink: 0, marginLeft: 8 }}>
+                          {p.materialsCount} поз.
+                        </span>
+                      </Button>
+                    ))}
+                </Stack>
+                <FormControlLabel
+                  sx={{ mb: 2, alignItems: 'flex-start' }}
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={zeroQuantities}
+                      onChange={(e) => setZeroQuantities(e.target.checked)}
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">
+                      Обнулить количества — оставить названия и единицы измерения
+                    </Typography>
+                  }
+                />
+              </>
+            )}
+
+            {/* Шаблоны: добавление + удаление (раньше их нельзя было удалить) */}
+            {templates.length > 0 && (
+              <>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                  Шаблоны смет
+                </Typography>
+                <Stack spacing={1} sx={{ mt: 0.5 }}>
+                  {templates.map((t) => (
+                    <Box key={t.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Button
+                        variant="outlined"
+                        disabled={applyingTemplate}
+                        onClick={() => { void handleApplyTemplate(t.id); }}
+                        sx={{ flex: 1, minWidth: 0, justifyContent: 'space-between', textTransform: 'none', py: 1 }}
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {t.name}
+                        </span>
+                        <span style={{ opacity: 0.7, flexShrink: 0, marginLeft: 8 }}>
+                          {t.items?.length ?? 0} поз.
+                        </span>
+                      </Button>
+                      <IconButton
+                        aria-label={`Удалить шаблон ${t.name}`}
+                        title="Удалить шаблон"
+                        color="error"
+                        disabled={deletingTemplateId === t.id || applyingTemplate}
+                        onClick={() => { void handleDeleteTemplate(t); }}
+                      >
+                        {deletingTemplateId === t.id ? <CircularProgress size={18} /> : <DeleteIcon />}
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Stack>
+              </>
+            )}
+
+            {templates.length === 0 &&
+              availableProjects.filter((p) => String(p.id) !== projectId).length === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  Пока нечего добавить: у других проектов нет позиций в смете. Заполните смету
+                  любого проекта — он появится здесь. Шаблон можно сохранить из меню проекта
+                  («Сохранить шаблон»).
+                </Typography>
+              )}
+          </Box>
+
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
             <Button onClick={() => setTemplateModalOpen(false)}>Закрыть</Button>
           </Box>

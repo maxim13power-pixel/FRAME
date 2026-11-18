@@ -258,7 +258,9 @@ export class ProjectsService {
     const existing = await this.prisma.material.count({
       where: { projectId: targetProjectId },
     });
-    if (existing > 0) {
+    // ⭐ №290: при создании проекта копируем только в пустой проект (защита от дублей),
+    // а кнопка «Добавить из шаблона» в смете дополняет непустую смету (append = true).
+    if (existing > 0 && dto.append !== true) {
       throw new BadRequestException(
         'В проекте уже есть позиции — смету можно копировать только в пустой проект',
       );

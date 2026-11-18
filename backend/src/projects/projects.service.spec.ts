@@ -161,6 +161,27 @@ describe('ProjectsService — смета из другого проекта (№
     expect(prisma.material.createMany).not.toHaveBeenCalled();
   });
 
+  it('append в непустую смету добавляет позиции (№290)', async () => {
+    prisma.material.count.mockResolvedValue(3); // в смете уже есть строки
+    prisma.material.findMany.mockResolvedValue([
+      {
+        name: 'Стена',
+        article: null,
+        unit: 'PIECE',
+        specQuantity: 7,
+        unitPrice: 10,
+        materialUnitPrice: 0,
+        priceItemId: null,
+        materialItemId: null,
+      },
+    ]);
+
+    await expect(
+      service.copyEstimate(29, { sourceProjectId: 12, append: true }, 7),
+    ).resolves.toEqual({ created: 1 });
+    expect(prisma.material.createMany).toHaveBeenCalled();
+  });
+
   it('наблюдатель смету копировать не может ⇒ Forbidden', async () => {
     prisma.objectAccess.findMany.mockResolvedValue([grant({ role: 'VIEWER' })]);
 

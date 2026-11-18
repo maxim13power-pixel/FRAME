@@ -17,4 +17,13 @@ export class CopyEstimateDto {
   @IsOptional()
   @IsBoolean()
   zeroQuantities?: boolean;
+
+  /**
+   * ⭐ №290: true — добавляем позиции в НЕПУСТУЮ смету (кнопка «Добавить из шаблона» в смете).
+   * По умолчанию (создание проекта) копировать можно только в пустой проект — это защита
+   * от случайного дубля при двойном клике.
+   */
+  @IsOptional()
+  @IsBoolean()
+  append?: boolean;
 }
