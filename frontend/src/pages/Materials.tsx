@@ -3182,19 +3182,7 @@ renderInput={(params) => (
             </Typography>
             </Box>
             )}
-            <TextField
-              fullWidth
-              type="number"
-              label="Цена работы, ₽"
-              value={addPricePrice}
-              onChange={(e) => setAddPricePrice(e.target.value)}
-              inputProps={{ min: 0, step: 0.01 }}
-              helperText={
-                selectedPriceItem
-                  ? 'Можно изменить — цена обновится в справочнике проекта'
-                  : 'Новая цена попадёт в справочник проекта'
-              }
-            />
+            {/* ⭐ №319: поле «Цена работы» показывается только в ручном режиме (кнопка ниже) */}
             {/* ⭐ №319: переход в ручной режим — справочник и категории скрываются */}
             <Button
               size="small"
@@ -3332,35 +3320,8 @@ renderInput={(params) => (
     </Typography>
     </Box>
     )}
-    {/* ⭐ №318: материал продаётся упаковкой (краска, мешок) → спрашиваем норму расхода */}
-    {((selectedMaterialItem?.packSize ?? 0) > 0 || addConsumption !== '') && (
-    <TextField
-      fullWidth
-      type="number"
-      label={`Расход материала на 1 ${unitLabelOf(newUnit)}`}
-      value={addConsumption}
-      onChange={(e) => setAddConsumption(e.target.value)}
-      inputProps={{ min: 0, step: 0.01 }}
-      helperText={
-        (selectedMaterialItem?.packSize ?? 0) > 0 && Number(addConsumption.replace(',', '.')) > 0
-          ? `Упаковка ${selectedMaterialItem?.packSize} ${unitLabelOf(selectedMaterialItem?.unit ?? 'PIECE')} за ${(selectedMaterialItem?.price ?? 0).toLocaleString('ru-RU')} ₽ → ${packUnitPrice(Number(selectedMaterialItem?.price ?? 0), Number(selectedMaterialItem?.packSize), Number(addConsumption.replace(',', '.'))).toLocaleString('ru-RU')} ₽ за 1 ${unitLabelOf(newUnit)}`
-          : 'Сколько материала нужно на 1 единицу строки (кг/л/шт). Пусто — цена считается за единицу строки.'
-      }
-    />
-    )}
-    <TextField
-      fullWidth
-      type="number"
-      label="Цена материала, ₽"
-      value={addMatPricePrice}
-      onChange={(e) => setAddMatPricePrice(e.target.value)}
-      inputProps={{ min: 0, step: 0.01 }}
-      helperText={
-        selectedMaterialItem
-          ? 'Можно изменить — цена обновится в справочнике проекта'
-          : 'Новая цена попадёт в справочник проекта'
-      }
-    />
+    {/* ⭐ №319: цена материалa показывается только в ручном режиме (кнопка ниже).
+        Норма расхода теперь ниже, вне режимов — она доступна всегда. */}
     {/* ⭐ №319: переход в ручной режим — справочник и категории скрываются */}
     <Button
       size="small"
@@ -3409,6 +3370,21 @@ renderInput={(params) => (
         )}
         </>
         )}
+{/* ⭐ №319: норма расхода — доступна ВСЕГДА (и в режиме справочника, и при своей цене).
+    Если у материала есть упаковка, цена за единицу считается по ней. */}
+<TextField
+  fullWidth
+  type="number"
+  label={`Расход материала на 1 ${unitLabelOf(newUnit)}`}
+  value={addConsumption}
+  onChange={(e) => setAddConsumption(e.target.value)}
+  inputProps={{ min: 0, step: 0.01 }}
+  helperText={
+    (selectedMaterialItem?.packSize ?? 0) > 0 && Number(addConsumption.replace(',', '.')) > 0
+      ? `Упаковка ${selectedMaterialItem?.packSize} ${unitLabelOf(selectedMaterialItem?.unit ?? 'PIECE')} за ${(selectedMaterialItem?.price ?? 0).toLocaleString('ru-RU')} ₽ → ${packUnitPrice(Number(selectedMaterialItem?.price ?? 0), Number(selectedMaterialItem?.packSize), Number(addConsumption.replace(',', '.'))).toLocaleString('ru-RU')} ₽ за 1 ${unitLabelOf(newUnit)}`
+      : 'Сколько материала нужно на 1 единицу строки (кг/л/шт). Пусто — цена материала берётся «за единицу».'
+  }
+/>
 {/* ⭐ №319: цена за 1 единицу строки — всегда на виду, чтобы не путаться в ценах */}
 {(() => {
   const workPerUnit = Number(addPricePrice.replace(',', '.')) || 0;
