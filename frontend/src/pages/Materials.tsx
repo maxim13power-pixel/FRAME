@@ -3130,6 +3130,12 @@ onClose={() => setFilterAnchorEl(null)}
         overflowY: 'auto',
         p: 4,
         borderRadius: 2,
+        // ⭐ №328: поля ввода ниже на 10% (56 → ~50 px). Многострочное примечание
+        // не трогаем — оно растёт само по тексту.
+        '& .MuiInputBase-input:not(textarea)': {
+          paddingTop: '13.7px',
+          paddingBottom: '13.7px',
+        },
          }}>
           <Typography variant="h6" gutterBottom>Добавить позицию</Typography>
           <Stack spacing={2}>
