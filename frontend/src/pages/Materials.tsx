@@ -155,15 +155,10 @@ const UNIT_OPTIONS = [
 const isDraftPrice = (option: PriceItemData | { __new__?: boolean }): boolean =>
   (option as PriceItemData)?.needsClarification === true;
 
-/** ⭐ №318: цена материала на 1 единицу строки по упаковке и норме расхода */
-const packUnitPrice = (
-  packPrice: number,
-  packSize: number,
-  consumption: number,
-): number => {
-  if (!(packSize > 0) || !(consumption > 0)) return packPrice;
-  return Math.round((packPrice / packSize) * consumption * 100) / 100;
-};
+/**
+ * ⭐ №326: поле «Расход материала на 1 ед.» убрано — расчёт живёт в «своя цена материала»
+ * (калькулятор 🧮), поэтому цена материала строки = цена расценки как есть.
+ */
 
 /**
  * ⭐ №321: норма расхода из «N упаковок на объём работ».
@@ -556,8 +551,6 @@ const [addManualWork, setAddManualWork] = useState(false);
 const [addManualMaterial, setAddManualMaterial] = useState(false);
 // ⭐ Материал из справочника (цена за материал)
 const [selectedMaterialItem, setSelectedMaterialItem] = useState<PriceItemData | null>(null);
-// ⭐ №318: норма расхода материала на 1 единицу строки (когда материал продаётся упаковкой)
-const [addConsumption, setAddConsumption] = useState('');
 // ⭐ №321: калькулятор «сколько упаковок на объём работ» — вместо ручного расчёта
 const [addFromVolume, setAddFromVolume] = useState(false);
 const [addCalcVolume, setAddCalcVolume] = useState('');
@@ -581,7 +574,6 @@ const [materialCategories, setMaterialCategories] = useState<{ id: number; name:
 // Редактирование: материал из справочника
 const [editMaterialItemId, setEditMaterialItemId] = useState<number | null>(null);
 const [editSelectedMaterialItem, setEditSelectedMaterialItem] = useState<PriceItemData | null>(null);
-const [editConsumption, setEditConsumption] = useState('');
 const [editMaterialOptions, setEditMaterialOptions] = useState<PriceItemData[]>([]);
 const [editMaterialLoading, setEditMaterialLoading] = useState(false);
 const [editMatCreatingNew, setEditMatCreatingNew] = useState(false);
@@ -1008,8 +1000,6 @@ setAddMatPricePrice('');
 // ⭐ №319: ручной режим сбрасывается вместе с формой
 setAddManualWork(false);
 setAddManualMaterial(false);
-// ⭐ №318: норма расхода сбрасывается вместе с формой
-setAddConsumption('');
 // ⭐ №321: калькулятор «от объёма» сбрасывается вместе с формой
 setAddFromVolume(false);
 setAddCalcVolume('');
@@ -1060,23 +1050,13 @@ setPriceLoading(false);
   const addCalcMaterialTotal = addCalcPacksNum * addCalcPackPriceNum;
   const addCalcPerUnit =
     addCalcVolumeNum > 0 ? addCalcMaterialTotal / addCalcVolumeNum : 0;
-  // ⭐ №325: в ручном режиме цена УЖЕ за единицу — норму и упаковку в справочник не пишем
-  // (иначе расценка получила бы цену за единицу с чужой упаковкой и считала бы неверно).
-  const addConsumptionValue = addManualMaterial
-    ? null
-    : addConsumption.trim() === ''
-      ? null
-      : numOr0(addConsumption) || null;
-  // цена материала за 1 единицу строки (для блока «За 1 <ед.>»)
-  const addMaterialPerUnit = addManualMaterial
-    ? numOr0(addMatPricePrice)
-    : addMatCreatingNew
+  // ⭐ №325/№326: цена материала за 1 единицу строки (для блока «За 1 <ед.>»).
+  // В ручном режиме — введённая/посчитанная цена на единицу, в режиме справочника — цена
+  // расценки как есть (поля нормы расхода больше нет, расчёт — в «своя цена материала»).
+  const addMaterialPerUnit =
+    addManualMaterial || addMatCreatingNew
       ? numOr0(addMatPricePrice)
-      : packUnitPrice(
-          Number(selectedMaterialItem?.price ?? 0),
-          addItemPackSize,
-          numOr0(addConsumption) || 0,
-        );
+      : Number(selectedMaterialItem?.price ?? 0);
 
   /** ⭐ №325: пересчитать цену упаковки → цену на единицу и сразу подставить в поле */
   const applyCalcToPrice = (packsStr: string, packPriceStr: string, volumeStr: string) => {
@@ -1188,8 +1168,6 @@ setPriceLoading(false);
         materialItemId,
         workPrice,
         materialPrice,
-        // ⭐ №318/№325: норма расхода (только режим справочника — там цена из упаковки)
-        consumption: addConsumptionValue,
       });
       setMaterials(prev => [created, ...prev]);
       loadCategories();
@@ -1674,10 +1652,6 @@ const handleOpenEdit = async () => {
   setEditSelectedPriceItem(settingsMaterial.priceItem ?? null);
   setEditMaterialItemId(settingsMaterial.materialItemId ?? null);
   setEditSelectedMaterialItem(settingsMaterial.materialItem ?? null);
-  // ⭐ №318: норма расхода (пусто — цена материала «за единицу строки»)
-  setEditConsumption(
-    settingsMaterial.consumption == null ? '' : String(settingsMaterial.consumption),
-  );
   setEditMatCreatingNew(false);
   setEditMatPriceName('');
   setEditMatPriceCategoryId('');
@@ -1749,9 +1723,8 @@ const handleEditMaterialPriceSearch = async (value: string) => {
   }
 };
 
-// ⭐ №318: норма расхода при правке строки (калькулятор теперь в ручном режиме добавления)
-const editConsumptionValue =
-  editConsumption.trim() === '' ? null : numOr0(editConsumption) || null;
+// ⭐ №326: норму расхода не отправляем — существующая в строке остаётся как есть (PATCH
+// без поля её не меняет), а цену материала задаёт расценка или калькулятор «своя цена».
 
 const handleSaveEdit = async () => {
   if (!token || !settingsMaterial) return;
@@ -1846,8 +1819,7 @@ const handleSaveEdit = async () => {
       note: editNote,
       priceItemId: priceItemIdToSend,
       materialItemId: materialItemIdToSend,
-      // ⭐ №318: норма расхода (сервер пересчитает цену материала по упаковке)
-      consumption: editConsumptionValue,
+      // ⭐ №326: норму расхода не трогаем — если она была в строке, сервер её сохранит
     });
     setMaterials(prev => prev.map(m => m.id === updated.id ? mergeUpdatedMaterial(m, updated) : m));
     loadCategories(); // ⭐ обновить категории фильтра
@@ -3465,7 +3437,10 @@ renderInput={(params) => (
         <Button
           size="small"
           variant="text"
-          onClick={() => setAddManualMaterial(false)}
+          onClick={() => {
+            setAddManualMaterial(false);
+            setAddFromVolume(false);
+          }}
           sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
         >
           ← Выбрать из справочника
@@ -3546,7 +3521,6 @@ renderInput={(params) => (
       onClick={() => {
         setAddManualMaterial(true);
         setSelectedMaterialItem(null);
-        setAddConsumption('');
         setMaterialOptions([]);
       }}
       sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
@@ -3585,23 +3559,17 @@ renderInput={(params) => (
         </Button>
         </>
         )}
-        {/* ⭐ №325: в режиме справочника норма расхода — как раньше: цена берётся
-            из расценки (за упаковку), норма умножается на неё. */}
-        <TextField
-          fullWidth
-          type="number"
-          label={`Расход материала на 1 ${unitLabelOf(newUnit)}`}
-          value={addConsumption}
-          onChange={(e) => setAddConsumption(e.target.value)}
-          inputProps={{ min: 0, step: 0.01 }}
-          helperText={
-            (selectedMaterialItem?.packSize ?? 0) > 0 && numOr0(addConsumption) > 0
-              ? `Упаковка ${selectedMaterialItem?.packSize} ${unitLabelOf(selectedMaterialItem?.unit ?? 'PIECE')} за ${(selectedMaterialItem?.price ?? 0).toLocaleString('ru-RU')} ₽ → ${packUnitPrice(Number(selectedMaterialItem?.price ?? 0), Number(selectedMaterialItem?.packSize), numOr0(addConsumption)).toLocaleString('ru-RU')} ₽ за 1 ${unitLabelOf(newUnit)}`
-              : selectedMaterialItem && !((selectedMaterialItem?.packSize ?? 0) > 0)
-                ? 'У расценки не указано «В упаковке» — норма пока не влияет на цену. Укажите «В упаковке» в справочнике цен.'
-                : 'Сколько материала нужно на 1 единицу строки (в единицах упаковки: кг, л, шт). Пусто — цена материала берётся «за единицу».'
-          }
-        />
+        {/* ⭐ №326: поля «Расход материала» больше нет — весь расчёт в «своя цена материала».
+            Если у расценки указана упаковка, честно предупреждаем: цена строки = цена расценки. */}
+        {(selectedMaterialItem?.packSize ?? 0) > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            У расценки указана упаковка ({selectedMaterialItem?.packSize}{' '}
+            {unitLabelOf(selectedMaterialItem?.unit ?? 'PIECE')} за{' '}
+            {(selectedMaterialItem?.price ?? 0).toLocaleString('ru-RU')} ₽) — цена строки
+            возьмётся как цена расценки. Нужна цена за 1 {unitLabelOf(newUnit)}? Нажмите
+            «✏️ Указать свою цену материала» и посчитайте 🧮.
+          </Typography>
+        )}
         </>
         )}
 {/* ⭐ №319: цена за 1 единицу строки — всегда на виду, чтобы не путаться в ценах. */}
@@ -4036,24 +4004,8 @@ renderInput={(params) => (
 <Button size="small" onClick={() => { setEditSelectedMaterialItem(null); setEditMaterialItemId(null); }}>Сбросить</Button>
 </Box>
 )}
-{/* ⭐ №318: норма расхода материала (для материалов в упаковке).
-    ⭐ №325: калькулятор живёт в ручном режиме «Добавить позицию» — здесь остаётся
-    только ручной ввод нормы, цена берётся из расценки. */}
-<TextField
-  fullWidth
-  type="number"
-  label={`Расход материала на 1 ${unitLabelOf(editUnit)}`}
-  value={editConsumption}
-  onChange={(e) => setEditConsumption(e.target.value)}
-  inputProps={{ min: 0, step: 0.01 }}
-  helperText={
-    (editSelectedMaterialItem?.packSize ?? 0) > 0 && numOr0(editConsumption) > 0
-      ? `Упаковка ${editSelectedMaterialItem?.packSize} ${unitLabelOf(editSelectedMaterialItem?.unit ?? 'PIECE')} за ${(editSelectedMaterialItem?.price ?? 0).toLocaleString('ru-RU')} ₽ → ${packUnitPrice(Number(editSelectedMaterialItem?.price ?? 0), Number(editSelectedMaterialItem?.packSize), numOr0(editConsumption)).toLocaleString('ru-RU')} ₽ за 1 ${unitLabelOf(editUnit)}`
-      : editSelectedMaterialItem && !((editSelectedMaterialItem?.packSize ?? 0) > 0)
-        ? 'У расценки не указано «В упаковке» — норма пока не влияет на цену. Укажите её в справочнике цен.'
-        : 'Сколько материала нужно на 1 единицу строки (в единицах упаковки: кг, л, шт). Пусто — цена считается за единицу строки.'
-  }
-/>
+{/* ⭐ №326: поля «Расход материала» в правке нет — цена материала берётся из расценки,
+    а ручная цена на единицу задаётся при добавлении («своя цена материала» + 🧮). */}
 {!editSelectedMaterialItem && (
 <Button size="small" variant="text" onClick={() => { setEditMatCreatingNew(true); setEditMatPriceName(editName); }}>
 ➕ Создать новую расценку материала
