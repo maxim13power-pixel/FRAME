@@ -160,20 +160,6 @@ const isDraftPrice = (option: PriceItemData | { __new__?: boolean }): boolean =>
  * (калькулятор 🧮), поэтому цена материала строки = цена расценки как есть.
  */
 
-/**
- * ⭐ №321: норма расхода из «N упаковок на объём работ».
- * Прораб думает «на 90 м² уйдёт 1 рулон 100 м²», а в строке хранится расход на 1 единицу:
- * consumption = упаковки × «в упаковке» / объём. null — данных не хватает.
- */
-const consumptionFromPacks = (
-  packs: number,
-  packSize: number,
-  volume: number,
-): number | null => {
-  if (!(packs > 0) || !(packSize > 0) || !(volume > 0)) return null;
-  return Math.round(((packs * packSize) / volume) * 10000) / 10000;
-};
-
 /** ⭐ №321: рубли без лишних копеек в подсказках («900», «999.9») */
 const money2 = (value: number): string =>
   (Math.round(value * 100) / 100).toLocaleString('ru-RU');
@@ -551,12 +537,11 @@ const [addManualWork, setAddManualWork] = useState(false);
 const [addManualMaterial, setAddManualMaterial] = useState(false);
 // ⭐ Материал из справочника (цена за материал)
 const [selectedMaterialItem, setSelectedMaterialItem] = useState<PriceItemData | null>(null);
-// ⭐ №321: калькулятор «сколько упаковок на объём работ» — вместо ручного расчёта
+// ⭐ №321/№335: калькулятор «сколько материала на объём работ» — вместо ручного расчёта
 const [addFromVolume, setAddFromVolume] = useState(false);
 const [addCalcVolume, setAddCalcVolume] = useState('');
 const [addCalcPacks, setAddCalcPacks] = useState('1');
-const [addCalcPackSize, setAddCalcPackSize] = useState('');
-// ⭐ №325: цена упаковки — из неё считается цена материала на единицу
+// ⭐ №325: цена за единицу материала — из неё считается цена материала на единицу строки
 const [addCalcPackPrice, setAddCalcPackPrice] = useState('');
 const [materialOptions, setMaterialOptions] = useState<PriceItemData[]>([]);
 const [materialLoading, setMaterialLoading] = useState(false);
@@ -1004,7 +989,6 @@ setAddManualMaterial(false);
 setAddFromVolume(false);
 setAddCalcVolume('');
 setAddCalcPacks('1');
-setAddCalcPackSize('');
 setZeroConfirmOpen(false);
 setZeroItems([]);
 setWorkCategoryChoice('');
@@ -1030,23 +1014,10 @@ console.error('Ошибка поиска расценок:', err);
 setPriceLoading(false);
 }
 };
-  // ⭐ №321/№325: калькулятор «сколько упаковок на объём» → цена за 1 единицу.
-  // ⭐ №325: в ручном режиме цена упаковки вводится отдельно, а в «Новая цена материала
-  // на ед.» перетекает уже посчитанная цена за единицу (её можно поправить руками).
+  // ⭐ №321/№325: калькулятор «количество материала × цена → цена за 1 единицу».
   const addCalcPackPriceNum = numOr0(addCalcPackPrice);
-  const addItemPackSize = Number(selectedMaterialItem?.packSize ?? 0);
-  // ⭐ №323: «В упаковке» — в единицах материала (кг/л/м²), а не в единицах строки
-  const addPackInLabel = selectedMaterialItem?.unit
-    ? `В упаковке, ${unitLabelOf(selectedMaterialItem.unit)}`
-    : 'В упаковке, ед.';
-  const addCalcPackSizeNum = numOr0(addCalcPackSize) || addItemPackSize;
   const addCalcVolumeNum = numOr0(addCalcVolume);
   const addCalcPacksNum = numOr0(addCalcPacks);
-  const addCalcConsumption = consumptionFromPacks(
-    addCalcPacksNum,
-    addCalcPackSizeNum,
-    addCalcVolumeNum,
-  );
   const addCalcMaterialTotal = addCalcPacksNum * addCalcPackPriceNum;
   const addCalcPerUnit =
     addCalcVolumeNum > 0 ? addCalcMaterialTotal / addCalcVolumeNum : 0;
@@ -1058,7 +1029,7 @@ setPriceLoading(false);
       ? numOr0(addMatPricePrice)
       : Number(selectedMaterialItem?.price ?? 0);
 
-  /** ⭐ №325: пересчитать цену упаковки → цену на единицу и сразу подставить в поле */
+  /** ⭐ №325: количество × цена материала → цена за единицу, сразу в поле выше */
   const applyCalcToPrice = (packsStr: string, packPriceStr: string, volumeStr: string) => {
     const packs = numOr0(packsStr);
     const packPrice = numOr0(packPriceStr);
@@ -3371,11 +3342,6 @@ renderInput={(params) => (
                 ? String(selectedMaterialItem?.price)
                 : '',
             );
-            setAddCalcPackSize(
-              (selectedMaterialItem?.packSize ?? 0) > 0
-                ? String(selectedMaterialItem?.packSize)
-                : '',
-            );
           }}
           sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
         >
@@ -3399,49 +3365,35 @@ renderInput={(params) => (
               />
               <TextField
                 type="number"
-                label="Упаковок"
+                label="Количество материала"
                 value={addCalcPacks}
                 onChange={(e) => {
                   setAddCalcPacks(e.target.value);
                   applyCalcToPrice(e.target.value, addCalcPackPrice, addCalcVolume);
                 }}
-                inputProps={{ min: 0, step: 1 }}
-                sx={{ width: 124, flexShrink: 0 }}
-              />
-            </Stack>
-            <Stack direction="row" spacing={1}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Цена упаковки, ₽"
-                value={addCalcPackPrice}
-                onChange={(e) => {
-                  setAddCalcPackPrice(e.target.value);
-                  applyCalcToPrice(addCalcPacks, e.target.value, addCalcVolume);
-                }}
                 inputProps={{ min: 0, step: 0.01 }}
-                helperText="Цена мешка, рулона, банки"
-              />
-              <TextField
-                type="number"
-                label={addPackInLabel}
-                value={addCalcPackSize}
-                onChange={(e) => setAddCalcPackSize(e.target.value)}
-                inputProps={{ min: 0, step: 0.1 }}
-                helperText="Сколько единиц в упаковке"
-                sx={{ width: 168, flexShrink: 0 }}
+                sx={{ width: 156, flexShrink: 0 }}
               />
             </Stack>
+            <TextField
+              fullWidth
+              type="number"
+              label="Цена за единицу материала, ₽"
+              value={addCalcPackPrice}
+              onChange={(e) => {
+                setAddCalcPackPrice(e.target.value);
+                applyCalcToPrice(addCalcPacks, e.target.value, addCalcVolume);
+              }}
+              inputProps={{ min: 0, step: 0.01 }}
+              helperText="За тонну, м³, мешок, рулон — в чём покупаете материал"
+            />
             {addCalcPerUnit > 0 ? (
               <Box>
                 <Typography variant="caption" color="text.secondary" display="block">
-                  {money2(addCalcPacksNum)} упак × {money2(addCalcPackPriceNum)} ₽ →{' '}
-                  {money2(addCalcPerUnit)} ₽ за 1 {unitLabelOf(newUnit)}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" display="block">
-                  {addCalcConsumption != null
-                    ? `Справочно норма расхода: ${addCalcConsumption} на 1 ${unitLabelOf(newUnit)}`
-                    : 'Заполните «В упаковке» — покажем и норму расхода на 1 ед.'}
+                  {money2(addCalcPacksNum)} × {money2(addCalcPackPriceNum)} ₽ ={' '}
+                  {money2(addCalcMaterialTotal)} ₽ на {money2(addCalcVolumeNum)}{' '}
+                  {unitLabelOf(newUnit)} → {money2(addCalcPerUnit)} ₽ за 1{' '}
+                  {unitLabelOf(newUnit)}
                 </Typography>
                 <Typography variant="caption" color="primary" display="block">
                   Цена на ед. подставлена в поле выше — можно поправить вручную.
@@ -3449,8 +3401,8 @@ renderInput={(params) => (
               </Box>
             ) : (
               <Typography variant="caption" color="text.secondary">
-                Заполните объём, количество упаковок и цену упаковки — цену за единицу
-                посчитаем сами.
+                Заполните объём работ, количество материала и цену за единицу — цену
+                за 1 {unitLabelOf(newUnit)} посчитаем сами.
               </Typography>
             )}
           </>
@@ -3503,15 +3455,10 @@ renderInput={(params) => (
     if (value) {
     setNewUnit(value.unit);
     setAddMatPricePrice(String(value.price ?? ''));
-    // ⭐ №321: упаковка из расценки — подставим в калькулятор «от объёма»
-    setAddCalcPackSize(
-      (value.packSize ?? 0) > 0 ? String(value.packSize) : '',
-    );
     if (!newName.trim()) setNewName(value.name);
     if (!newArticle.trim() && value.article) setNewArticle(value.article);
     } else {
     setAddMatPricePrice('');
-    setAddCalcPackSize('');
     }
     }}
     onInputChange={(_e, value) => handleMaterialPriceSearch(value)}
@@ -3565,7 +3512,7 @@ renderInput={(params) => (
     )}
  {/* ⭐ Компактно: цена + единица на одном этаже */}
  <Stack direction="row" spacing={2}>
-   <TextField fullWidth label={addFromVolume ? 'Цена упаковки, ₽' : 'Цена, ₽'} type="number" value={addMatPricePrice} onChange={e => setAddMatPricePrice(e.target.value)} />
+   <TextField fullWidth label="Цена, ₽" type="number" value={addMatPricePrice} onChange={e => setAddMatPricePrice(e.target.value)} />
    <FormControl fullWidth sx={{ maxWidth: 100 }}>
      <InputLabel>Ед. изм.</InputLabel>
      <Select value={addMatPriceUnit} label="Ед. изм." onChange={e => setAddMatPriceUnit(e.target.value)}>
