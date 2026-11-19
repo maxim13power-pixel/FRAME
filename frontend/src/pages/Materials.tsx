@@ -563,6 +563,8 @@ const [addFromVolume, setAddFromVolume] = useState(false);
 const [addCalcVolume, setAddCalcVolume] = useState('');
 const [addCalcPacks, setAddCalcPacks] = useState('1');
 const [addCalcPackSize, setAddCalcPackSize] = useState('');
+// ⭐ №325: цена упаковки — из неё считается цена материала на единицу
+const [addCalcPackPrice, setAddCalcPackPrice] = useState('');
 const [materialOptions, setMaterialOptions] = useState<PriceItemData[]>([]);
 const [materialLoading, setMaterialLoading] = useState(false);
 const [addMatCreatingNew, setAddMatCreatingNew] = useState(false);
@@ -579,13 +581,7 @@ const [materialCategories, setMaterialCategories] = useState<{ id: number; name:
 // Редактирование: материал из справочника
 const [editMaterialItemId, setEditMaterialItemId] = useState<number | null>(null);
 const [editSelectedMaterialItem, setEditSelectedMaterialItem] = useState<PriceItemData | null>(null);
-// ⭐ №318: норма расхода материала при редактировании строки
 const [editConsumption, setEditConsumption] = useState('');
-// ⭐ №321: калькулятор «от объёма» в правке строки
-const [editFromVolume, setEditFromVolume] = useState(false);
-const [editCalcVolume, setEditCalcVolume] = useState('');
-const [editCalcPacks, setEditCalcPacks] = useState('1');
-const [editCalcPackSize, setEditCalcPackSize] = useState('');
 const [editMaterialOptions, setEditMaterialOptions] = useState<PriceItemData[]>([]);
 const [editMaterialLoading, setEditMaterialLoading] = useState(false);
 const [editMatCreatingNew, setEditMatCreatingNew] = useState(false);
@@ -1044,16 +1040,15 @@ console.error('Ошибка поиска расценок:', err);
 setPriceLoading(false);
 }
 };
-  // ⭐ №321: калькулятор «сколько упаковок на объём» → норма расхода на 1 единицу.
-  // Хранится по-прежнему одно число (consumption), просто его теперь не надо считать в уме.
-  const addMatPackPrice =
-    numOr0(addMatPricePrice) || Number(selectedMaterialItem?.price ?? 0);
+  // ⭐ №321/№325: калькулятор «сколько упаковок на объём» → цена за 1 единицу.
+  // ⭐ №325: в ручном режиме цена упаковки вводится отдельно, а в «Новая цена материала
+  // на ед.» перетекает уже посчитанная цена за единицу (её можно поправить руками).
+  const addCalcPackPriceNum = numOr0(addCalcPackPrice);
   const addItemPackSize = Number(selectedMaterialItem?.packSize ?? 0);
   // ⭐ №323: «В упаковке» — в единицах материала (кг/л/м²), а не в единицах строки
   const addPackInLabel = selectedMaterialItem?.unit
     ? `В упаковке, ${unitLabelOf(selectedMaterialItem.unit)}`
     : 'В упаковке, ед.';
-  // в режиме 🧮 упаковка из поля, иначе — из расценки (как было до №321)
   const addCalcPackSizeNum = numOr0(addCalcPackSize) || addItemPackSize;
   const addCalcVolumeNum = numOr0(addCalcVolume);
   const addCalcPacksNum = numOr0(addCalcPacks);
@@ -1062,15 +1057,36 @@ setPriceLoading(false);
     addCalcPackSizeNum,
     addCalcVolumeNum,
   );
-  const addConsumptionValue = addFromVolume
-    ? addCalcConsumption
+  const addCalcMaterialTotal = addCalcPacksNum * addCalcPackPriceNum;
+  const addCalcPerUnit =
+    addCalcVolumeNum > 0 ? addCalcMaterialTotal / addCalcVolumeNum : 0;
+  // ⭐ №325: в ручном режиме цена УЖЕ за единицу — норму и упаковку в справочник не пишем
+  // (иначе расценка получила бы цену за единицу с чужой упаковкой и считала бы неверно).
+  const addConsumptionValue = addManualMaterial
+    ? null
     : addConsumption.trim() === ''
       ? null
       : numOr0(addConsumption) || null;
-  const addPackSizeToSend =
-    addFromVolume && numOr0(addCalcPackSize) > 0
-      ? numOr0(addCalcPackSize)
-      : undefined;
+  // цена материала за 1 единицу строки (для блока «За 1 <ед.>»)
+  const addMaterialPerUnit = addManualMaterial
+    ? numOr0(addMatPricePrice)
+    : addMatCreatingNew
+      ? numOr0(addMatPricePrice)
+      : packUnitPrice(
+          Number(selectedMaterialItem?.price ?? 0),
+          addItemPackSize,
+          numOr0(addConsumption) || 0,
+        );
+
+  /** ⭐ №325: пересчитать цену упаковки → цену на единицу и сразу подставить в поле */
+  const applyCalcToPrice = (packsStr: string, packPriceStr: string, volumeStr: string) => {
+    const packs = numOr0(packsStr);
+    const packPrice = numOr0(packPriceStr);
+    const volume = numOr0(volumeStr);
+    if (packs > 0 && packPrice > 0 && volume > 0) {
+      setAddMatPricePrice(String(Math.round(((packs * packPrice) / volume) * 100) / 100));
+    }
+  };
 
   const handleCreateMaterial = async (confirmedZero = false) => {
     if (!token || !projectId || !newName.trim()) {
@@ -1172,10 +1188,8 @@ setPriceLoading(false);
         materialItemId,
         workPrice,
         materialPrice,
-        // ⭐ №318/№321: норма расхода — сервер посчитает цену материала по упаковке
+        // ⭐ №318/№325: норма расхода (только режим справочника — там цена из упаковки)
         consumption: addConsumptionValue,
-        // ⭐ №321: упаковку, введённую в калькуляторе, сохраняем в расценку справочника
-        materialPackSize: addPackSizeToSend,
       });
       setMaterials(prev => [created, ...prev]);
       loadCategories();
@@ -1664,17 +1678,6 @@ const handleOpenEdit = async () => {
   setEditConsumption(
     settingsMaterial.consumption == null ? '' : String(settingsMaterial.consumption),
   );
-  // ⭐ №321: калькулятор «от объёма» — сбрасываем и предзаполняем из строки
-  setEditFromVolume(false);
-  setEditCalcVolume(
-    settingsMaterial.specQuantity ? String(settingsMaterial.specQuantity) : '',
-  );
-  setEditCalcPacks('1');
-  setEditCalcPackSize(
-    (settingsMaterial.materialItem?.packSize ?? 0) > 0
-      ? String(settingsMaterial.materialItem?.packSize)
-      : '',
-  );
   setEditMatCreatingNew(false);
   setEditMatPriceName('');
   setEditMatPriceCategoryId('');
@@ -1746,31 +1749,9 @@ const handleEditMaterialPriceSearch = async (value: string) => {
   }
 };
 
-// ⭐ №321: калькулятор «от объёма» для правки строки (та же формула, что в добавлении)
-const editMatPackPrice =
-  numOr0(editMatPricePrice) || Number(editSelectedMaterialItem?.price ?? 0);
-const editItemPackSize = Number(editSelectedMaterialItem?.packSize ?? 0);
-// ⭐ №323: «В упаковке» — в единицах материала (кг/л/м²), а не в единицах строки
-const editPackInLabel = editSelectedMaterialItem?.unit
-  ? `В упаковке, ${unitLabelOf(editSelectedMaterialItem.unit)}`
-  : 'В упаковке, ед.';
-const editCalcPackSizeNum = numOr0(editCalcPackSize) || editItemPackSize;
-const editCalcVolumeNum = numOr0(editCalcVolume);
-const editCalcPacksNum = numOr0(editCalcPacks);
-const editCalcConsumption = consumptionFromPacks(
-  editCalcPacksNum,
-  editCalcPackSizeNum,
-  editCalcVolumeNum,
-);
-const editConsumptionValue = editFromVolume
-  ? editCalcConsumption
-  : editConsumption.trim() === ''
-    ? null
-    : numOr0(editConsumption) || null;
-const editPackSizeToSend =
-  editFromVolume && numOr0(editCalcPackSize) > 0
-    ? numOr0(editCalcPackSize)
-    : undefined;
+// ⭐ №318: норма расхода при правке строки (калькулятор теперь в ручном режиме добавления)
+const editConsumptionValue =
+  editConsumption.trim() === '' ? null : numOr0(editConsumption) || null;
 
 const handleSaveEdit = async () => {
   if (!token || !settingsMaterial) return;
@@ -1865,10 +1846,8 @@ const handleSaveEdit = async () => {
       note: editNote,
       priceItemId: priceItemIdToSend,
       materialItemId: materialItemIdToSend,
-      // ⭐ №318/№321: норма расхода (сервер пересчитает цену материала по упаковке)
+      // ⭐ №318: норма расхода (сервер пересчитает цену материала по упаковке)
       consumption: editConsumptionValue,
-      // ⭐ №321: упаковку из калькулятора сохраняем в расценку справочника
-      materialPackSize: editPackSizeToSend,
     });
     setMaterials(prev => prev.map(m => m.id === updated.id ? mergeUpdatedMaterial(m, updated) : m));
     loadCategories(); // ⭐ обновить категории фильтра
@@ -3376,16 +3355,113 @@ renderInput={(params) => (
         <TextField
           fullWidth
           type="number"
-          label={addFromVolume ? 'Цена упаковки, ₽' : 'Новая цена материала, ₽'}
+          label="Новая цена материала на ед., ₽"
           value={addMatPricePrice}
           onChange={(e) => setAddMatPricePrice(e.target.value)}
           inputProps={{ min: 0, step: 0.01 }}
-          helperText={
-            addFromVolume
-              ? 'Цена мешка/рулона/банки — разделим её на объём работ. Сохранится в расценке проекта.'
-              : 'Рукописная цена за 1 единицу строки — станет расценкой в справочнике проекта'
-          }
+          helperText={`Цена за 1 ${unitLabelOf(newUnit)} строки — станет расценкой в справочнике проекта`}
         />
+        {/* ⭐ №325: калькулятор считает цену за единицу и подставляет её в поле выше */}
+        <Button
+          size="small"
+          variant="text"
+          onClick={() => {
+            if (addFromVolume) {
+              setAddFromVolume(false);
+              return;
+            }
+            setAddFromVolume(true);
+            setAddCalcVolume(newSpecQuantity ? String(newSpecQuantity) : '');
+            setAddCalcPacks('1');
+            setAddCalcPackPrice(
+              (selectedMaterialItem?.price ?? 0) > 0
+                ? String(selectedMaterialItem?.price)
+                : '',
+            );
+            setAddCalcPackSize(
+              (selectedMaterialItem?.packSize ?? 0) > 0
+                ? String(selectedMaterialItem?.packSize)
+                : '',
+            );
+          }}
+          sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
+        >
+          {addFromVolume
+            ? '↩ Свернуть расчёт'
+            : '🧮 Рассчитать расход на 1 ед.'}
+        </Button>
+        {addFromVolume && (
+          <>
+            <Stack direction="row" spacing={1}>
+              <TextField
+                fullWidth
+                type="number"
+                label={`Объём работ, ${unitLabelOf(newUnit)}`}
+                value={addCalcVolume}
+                onChange={(e) => {
+                  setAddCalcVolume(e.target.value);
+                  applyCalcToPrice(addCalcPacks, addCalcPackPrice, e.target.value);
+                }}
+                inputProps={{ min: 0, step: 0.01 }}
+              />
+              <TextField
+                type="number"
+                label="Упаковок"
+                value={addCalcPacks}
+                onChange={(e) => {
+                  setAddCalcPacks(e.target.value);
+                  applyCalcToPrice(e.target.value, addCalcPackPrice, addCalcVolume);
+                }}
+                inputProps={{ min: 0, step: 1 }}
+                sx={{ width: 124, flexShrink: 0 }}
+              />
+            </Stack>
+            <Stack direction="row" spacing={1}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Цена упаковки, ₽"
+                value={addCalcPackPrice}
+                onChange={(e) => {
+                  setAddCalcPackPrice(e.target.value);
+                  applyCalcToPrice(addCalcPacks, e.target.value, addCalcVolume);
+                }}
+                inputProps={{ min: 0, step: 0.01 }}
+                helperText="Цена мешка, рулона, банки"
+              />
+              <TextField
+                type="number"
+                label={addPackInLabel}
+                value={addCalcPackSize}
+                onChange={(e) => setAddCalcPackSize(e.target.value)}
+                inputProps={{ min: 0, step: 0.1 }}
+                helperText="Сколько единиц в упаковке"
+                sx={{ width: 168, flexShrink: 0 }}
+              />
+            </Stack>
+            {addCalcPerUnit > 0 ? (
+              <Box>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {money2(addCalcPacksNum)} упак × {money2(addCalcPackPriceNum)} ₽ →{' '}
+                  {money2(addCalcPerUnit)} ₽ за 1 {unitLabelOf(newUnit)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {addCalcConsumption != null
+                    ? `Справочно норма расхода: ${addCalcConsumption} на 1 ${unitLabelOf(newUnit)}`
+                    : 'Заполните «В упаковке» — покажем и норму расхода на 1 ед.'}
+                </Typography>
+                <Typography variant="caption" color="primary" display="block">
+                  Цена на ед. подставлена в поле выше — можно поправить вручную.
+                </Typography>
+              </Box>
+            ) : (
+              <Typography variant="caption" color="text.secondary">
+                Заполните объём, количество упаковок и цену упаковки — цену за единицу
+                посчитаем сами.
+              </Typography>
+            )}
+          </>
+        )}
         <Button
           size="small"
           variant="text"
@@ -3451,7 +3527,7 @@ renderInput={(params) => (
     renderOption={renderPriceOption}
     getOptionDisabled={isDraftPrice}
     renderInput={(params) => (
-    <TextField {...params} label="Стоимость материала" placeholder="Название или цена..." />
+    <TextField {...params} label="Стоимость материала на ед." placeholder="Название или цена..." />
     )}
     />
     {selectedMaterialItem && (
@@ -3509,117 +3585,29 @@ renderInput={(params) => (
         </Button>
         </>
         )}
+        {/* ⭐ №325: в режиме справочника норма расхода — как раньше: цена берётся
+            из расценки (за упаковку), норма умножается на неё. */}
+        <TextField
+          fullWidth
+          type="number"
+          label={`Расход материала на 1 ${unitLabelOf(newUnit)}`}
+          value={addConsumption}
+          onChange={(e) => setAddConsumption(e.target.value)}
+          inputProps={{ min: 0, step: 0.01 }}
+          helperText={
+            (selectedMaterialItem?.packSize ?? 0) > 0 && numOr0(addConsumption) > 0
+              ? `Упаковка ${selectedMaterialItem?.packSize} ${unitLabelOf(selectedMaterialItem?.unit ?? 'PIECE')} за ${(selectedMaterialItem?.price ?? 0).toLocaleString('ru-RU')} ₽ → ${packUnitPrice(Number(selectedMaterialItem?.price ?? 0), Number(selectedMaterialItem?.packSize), numOr0(addConsumption)).toLocaleString('ru-RU')} ₽ за 1 ${unitLabelOf(newUnit)}`
+              : selectedMaterialItem && !((selectedMaterialItem?.packSize ?? 0) > 0)
+                ? 'У расценки не указано «В упаковке» — норма пока не влияет на цену. Укажите «В упаковке» в справочнике цен.'
+                : 'Сколько материала нужно на 1 единицу строки (в единицах упаковки: кг, л, шт). Пусто — цена материала берётся «за единицу».'
+          }
+        />
         </>
         )}
-{/* ⭐ №319: норма расхода — доступна ВСЕГДА (и в режиме справочника, и при своей цене).
-    ⭐ №323: кнопка-режим «🧮 Рассчитать расход на 1 ед.» — в том же стиле, что
-    «✏️ Указать свою цену материала». Вводим объём работ, сколько упаковок нужно и сколько
-    единиц в упаковке — норму и цену за единицу считаем сами и показываем словами. */}
-<Button
-  size="small"
-  variant="text"
-  onClick={() => {
-    if (addFromVolume) {
-      setAddFromVolume(false);
-      return;
-    }
-    setAddFromVolume(true);
-    setAddCalcVolume(newSpecQuantity ? String(newSpecQuantity) : '');
-    setAddCalcPacks('1');
-    setAddCalcPackSize(
-      (selectedMaterialItem?.packSize ?? 0) > 0
-        ? String(selectedMaterialItem?.packSize)
-        : '',
-    );
-  }}
-  sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
->
-  {addFromVolume
-    ? '↩ Ввести расход вручную'
-    : '🧮 Рассчитать расход на 1 ед.'}
-</Button>
-{addFromVolume ? (
-  <>
-    <Stack direction="row" spacing={1}>
-      <TextField
-        fullWidth
-        type="number"
-        label={`Объём работ, ${unitLabelOf(newUnit)}`}
-        value={addCalcVolume}
-        onChange={(e) => setAddCalcVolume(e.target.value)}
-        inputProps={{ min: 0, step: 0.01 }}
-      />
-      <TextField
-        type="number"
-        label="Упаковок"
-        value={addCalcPacks}
-        onChange={(e) => setAddCalcPacks(e.target.value)}
-        inputProps={{ min: 0, step: 1 }}
-        sx={{ width: 124, flexShrink: 0 }}
-      />
-    </Stack>
-    <TextField
-      fullWidth
-      type="number"
-      label={addPackInLabel}
-      value={addCalcPackSize}
-      onChange={(e) => setAddCalcPackSize(e.target.value)}
-      inputProps={{ min: 0, step: 0.1 }}
-      helperText="Сколько единиц материала в одной упаковке: мешок 25 кг, рулон 100 м², банка 9 л. Сохранится в расценке."
-    />
-    {addCalcConsumption != null ? (
-      <Box>
-        <Typography variant="caption" color="text.secondary" display="block">
-          Материал: {money2(addCalcPacksNum)} упак × {money2(addMatPackPrice)} ₽ ={' '}
-          {money2(addCalcPacksNum * addMatPackPrice)} ₽ на{' '}
-          {money2(addCalcVolumeNum)} {unitLabelOf(newUnit)}
-          {' → '}
-          {money2(
-            packUnitPrice(
-              addMatPackPrice,
-              addCalcPackSizeNum,
-              addCalcConsumption,
-            ),
-          )}{' '}
-          ₽ за 1 {unitLabelOf(newUnit)}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" display="block">
-          Норма расхода: {addCalcConsumption} на 1 {unitLabelOf(newUnit)}
-        </Typography>
-      </Box>
-    ) : (
-      <Typography variant="caption" color="text.secondary">
-        Заполните объём, количество упаковок и «в упаковке» — норму и цену
-        посчитаем сами.
-      </Typography>
-    )}
-  </>
-) : (
-  <TextField
-    fullWidth
-    type="number"
-    label={`Расход материала на 1 ${unitLabelOf(newUnit)}`}
-    value={addConsumption}
-    onChange={(e) => setAddConsumption(e.target.value)}
-    inputProps={{ min: 0, step: 0.01 }}
-    helperText={
-      (selectedMaterialItem?.packSize ?? 0) > 0 && numOr0(addConsumption) > 0
-        ? `Упаковка ${selectedMaterialItem?.packSize} ${unitLabelOf(selectedMaterialItem?.unit ?? 'PIECE')} за ${(selectedMaterialItem?.price ?? 0).toLocaleString('ru-RU')} ₽ → ${packUnitPrice(Number(selectedMaterialItem?.price ?? 0), Number(selectedMaterialItem?.packSize), numOr0(addConsumption)).toLocaleString('ru-RU')} ₽ за 1 ${unitLabelOf(newUnit)}`
-        : selectedMaterialItem && !((selectedMaterialItem?.packSize ?? 0) > 0)
-          ? 'У расценки не указано «В упаковке» — норма пока не влияет на цену. Нажмите кнопку «🧮 Рассчитать расход на 1 ед.» и укажите, сколько единиц в упаковке.'
-          : 'Сколько материала нужно на 1 единицу строки (в единицах упаковки: кг, л, шт). Пусто — цена материала берётся «за единицу».'
-    }
-  />
-)}
-{/* ⭐ №319: цена за 1 единицу строки — всегда на виду, чтобы не путаться в ценах.
-    ⭐ №321: в режиме 🧮 сразу показываем материал на весь объём строки. */}
+{/* ⭐ №319: цена за 1 единицу строки — всегда на виду, чтобы не путаться в ценах. */}
 {(() => {
   const workPerUnit = numOr0(addPricePrice);
-  const materialPerUnit = packUnitPrice(
-    addMatPackPrice,
-    addCalcPackSizeNum,
-    addConsumptionValue ?? 0,
-  );
+  const materialPerUnit = addMaterialPerUnit;
   return (
     <Box sx={{ bgcolor: 'rgba(25, 118, 210, 0.06)', p: 1.5, borderRadius: 1 }}>
       <Typography variant="caption" color="text.secondary">
@@ -4028,10 +4016,6 @@ value={editSelectedMaterialItem}
 onChange={(_e, value) => {
   setEditSelectedMaterialItem(value);
   setEditMaterialItemId(value?.id ?? null);
-  // ⭐ №321: упаковка из расценки — подставим в калькулятор «от объёма»
-  setEditCalcPackSize(
-    (value?.packSize ?? 0) > 0 ? String(value?.packSize) : '',
-  );
 }}
 onInputChange={(_e, value) => handleEditMaterialPriceSearch(value)}
 getOptionLabel={(o) => `${o.name} — ${(o.price ?? 0).toLocaleString('ru-RU')} ₽/${UNIT_OPTIONS.find(u => u.value === o.unit)?.label || o.unit}`}
@@ -4052,81 +4036,9 @@ renderInput={(params) => (
 <Button size="small" onClick={() => { setEditSelectedMaterialItem(null); setEditMaterialItemId(null); }}>Сбросить</Button>
 </Box>
 )}
-{/* ⭐ №318: норма расхода. ⭐ №323: кнопка-режим «🧮 Рассчитать расход на 1 ед.» —
-    та же логика, что в «Добавить позицию»: объём работ → упаковки → «в упаковке». */}
-<Button
-  size="small"
-  variant="text"
-  onClick={() => {
-    if (editFromVolume) {
-      setEditFromVolume(false);
-      return;
-    }
-    setEditFromVolume(true);
-    setEditCalcVolume(editSpecQty ? String(editSpecQty) : '');
-    setEditCalcPacks('1');
-    setEditCalcPackSize(
-      (editSelectedMaterialItem?.packSize ?? 0) > 0
-        ? String(editSelectedMaterialItem?.packSize)
-        : '',
-    );
-  }}
-  sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
->
-  {editFromVolume
-    ? '↩ Ввести расход вручную'
-    : '🧮 Рассчитать расход на 1 ед.'}
-</Button>
-{editFromVolume ? (
-<>
-<Stack direction="row" spacing={1}>
-<TextField
-  fullWidth
-  type="number"
-  label={`Объём работ, ${unitLabelOf(editUnit)}`}
-  value={editCalcVolume}
-  onChange={(e) => setEditCalcVolume(e.target.value)}
-  inputProps={{ min: 0, step: 0.01 }}
-/>
-<TextField
-  type="number"
-  label="Упаковок"
-  value={editCalcPacks}
-  onChange={(e) => setEditCalcPacks(e.target.value)}
-  inputProps={{ min: 0, step: 1 }}
-  sx={{ width: 124, flexShrink: 0 }}
-/>
-</Stack>
-<TextField
-  fullWidth
-  type="number"
-  label={editPackInLabel}
-  value={editCalcPackSize}
-  onChange={(e) => setEditCalcPackSize(e.target.value)}
-  inputProps={{ min: 0, step: 0.1 }}
-  helperText="Сколько единиц материала в одной упаковке: мешок 25 кг, рулон 100 м², банка 9 л. Сохранится в расценке."
-/>
-{editCalcConsumption != null ? (
-<Box>
-<Typography variant="caption" color="text.secondary" display="block">
-  Материал: {money2(editCalcPacksNum)} упак × {money2(editMatPackPrice)} ₽ ={' '}
-  {money2(editCalcPacksNum * editMatPackPrice)} ₽ на{' '}
-  {money2(editCalcVolumeNum)} {unitLabelOf(editUnit)}
-  {' → '}
-  {money2(packUnitPrice(editMatPackPrice, editCalcPackSizeNum, editCalcConsumption))} ₽
-  за 1 {unitLabelOf(editUnit)}
-</Typography>
-<Typography variant="caption" color="text.secondary" display="block">
-  Норма расхода: {editCalcConsumption} на 1 {unitLabelOf(editUnit)}
-</Typography>
-</Box>
-) : (
-<Typography variant="caption" color="text.secondary">
-  Заполните объём, количество упаковок и «в упаковке» — норму и цену посчитаем сами.
-</Typography>
-)}
-</>
-) : (
+{/* ⭐ №318: норма расхода материала (для материалов в упаковке).
+    ⭐ №325: калькулятор живёт в ручном режиме «Добавить позицию» — здесь остаётся
+    только ручной ввод нормы, цена берётся из расценки. */}
 <TextField
   fullWidth
   type="number"
@@ -4138,11 +4050,10 @@ renderInput={(params) => (
     (editSelectedMaterialItem?.packSize ?? 0) > 0 && numOr0(editConsumption) > 0
       ? `Упаковка ${editSelectedMaterialItem?.packSize} ${unitLabelOf(editSelectedMaterialItem?.unit ?? 'PIECE')} за ${(editSelectedMaterialItem?.price ?? 0).toLocaleString('ru-RU')} ₽ → ${packUnitPrice(Number(editSelectedMaterialItem?.price ?? 0), Number(editSelectedMaterialItem?.packSize), numOr0(editConsumption)).toLocaleString('ru-RU')} ₽ за 1 ${unitLabelOf(editUnit)}`
       : editSelectedMaterialItem && !((editSelectedMaterialItem?.packSize ?? 0) > 0)
-        ? 'У расценки не указано «В упаковке» — норма пока не влияет на цену. Нажмите кнопку «🧮 Рассчитать расход на 1 ед.» и укажите, сколько единиц в упаковке.'
+        ? 'У расценки не указано «В упаковке» — норма пока не влияет на цену. Укажите её в справочнике цен.'
         : 'Сколько материала нужно на 1 единицу строки (в единицах упаковки: кг, л, шт). Пусто — цена считается за единицу строки.'
   }
 />
-)}
 {!editSelectedMaterialItem && (
 <Button size="small" variant="text" onClick={() => { setEditMatCreatingNew(true); setEditMatPriceName(editName); }}>
 ➕ Создать новую расценку материала
@@ -4165,7 +4076,7 @@ renderInput={(params) => (
 )}
  {/* ⭐ Компактно: цена + единица на одном этаже */}
  <Stack direction="row" spacing={2}>
-   <TextField fullWidth label={editFromVolume ? 'Цена упаковки, ₽' : 'Цена, ₽'} type="number" value={editMatPricePrice} onChange={e => setEditMatPricePrice(e.target.value)} />
+   <TextField fullWidth label="Цена, ₽" type="number" value={editMatPricePrice} onChange={e => setEditMatPricePrice(e.target.value)} />
    <FormControl fullWidth sx={{ maxWidth: 100 }}>
      <InputLabel>Ед. изм.</InputLabel>
      <Select value={editMatPriceUnit} label="Ед. изм." onChange={e => setEditMatPriceUnit(e.target.value)}>
