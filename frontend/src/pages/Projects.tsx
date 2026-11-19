@@ -292,6 +292,9 @@ const [currentObject, setCurrentObject] = useState<ObjectData | null>(null);
   // выдал право canCreateProjects или одобрил его заявку. Участник одного проекта
   // видит «Запросить право» вместо тупикового 403.
   const canCreateProjects = currentObject?.canCreateProjects === true;
+  // ⭐ №340: доступ на весь объект может быть и без права создавать проекты —
+  // тексты заявки должны это различать (раньше всегда писали «доступ только к проекту»).
+  const hasObjectAccess = currentObject?.hasObjectAccess === true;
 
   // ⭐ №158: кому скрыты цены (VIEWER/hidePrices) — блок справочника не показываем
   const hideFinance = currentObject?.hidePrices === true;
@@ -2086,8 +2089,9 @@ onBack: goBack,
           ) : (
             <>
               <Alert severity="warning" sx={{ mb: 2 }}>
-                У вас доступ только к проекту этого объекта. Создавать новые проекты может
-                участник объекта — отправьте заявку, её рассмотрит админ или менеджер объекта.
+                {hasObjectAccess
+                  ? 'Доступ ко всему объекту у вас есть, но создавать новые проекты может только прораб с правом «создавать проекты». Отправьте заявку — админ объекта её рассмотрит.'
+                  : 'У вас доступ только к проекту этого объекта. Создавать новые проекты может участник объекта — отправьте заявку, её рассмотрит админ объекта.'}
               </Alert>
               <TextField
                 fullWidth
@@ -2100,8 +2104,9 @@ onBack: goBack,
                 sx={{ mb: 2 }}
               />
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-                Одобрение откроет вам доступ ко всему объекту (роль «Прораб» с управлением
-                командой) — иначе созданный проект был бы виден только частично.
+                {hasObjectAccess
+                  ? 'Одобрение выдаст право создавать проекты — доступ ко всему объекту у вас уже есть.'
+                  : 'Одобрение откроет вам доступ ко всему объекту (роль «Прораб» с правом создавать проекты).'}
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
                 <Button variant="outlined" onClick={() => setRequestModalOpen(false)}>

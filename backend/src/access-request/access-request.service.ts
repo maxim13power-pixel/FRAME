@@ -19,6 +19,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateAccessRequestDto } from './dto/create-access-request.dto';
+import { loadAccessGrants, resolveObjectRole } from '../auth/access-scope'; // ⭐ №340
 
 const REQUEST_INCLUDE = {
   requester: { select: { id: true, fullName: true, email: true, phone: true } },
@@ -59,12 +60,13 @@ export class AccessRequestService {
     });
     if (!object) throw new NotFoundException('Объект не найден');
 
-    // Доступ к объекту вообще есть? (проектная запись тоже считается)
-    const my = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId },
-    });
-    if (!my) throw new NotFoundException('Объект не найден');
-    if (my.revokedAt) {
+    // ⭐ №340: проверяем права через единый резолв доступа (access-scope), а не «любую
+    // объектную запись». Раньше прораб с доступом на весь объект, но БЕЗ флага
+    // canCreateProjects, получал «уже есть право» и не мог подать заявку.
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const my = resolveObjectRole(grants, objectId);
+    if (my.role == null) throw new NotFoundException('Объект не найден');
+    if (my.revoked) {
       throw new ForbiddenException('Доступ отозван: заявку подать нельзя');
     }
     if (my.role === AccessRole.VIEWER) {
@@ -73,15 +75,8 @@ export class AccessRequestService {
       );
     }
 
-    // Уже есть объектная запись с правом записи? Тогда заявка не нужна
-    const objectWide = await this.prisma.objectAccess.findFirst({
-      where: { userId, objectId, projectId: null },
-    });
-    if (
-      objectWide &&
-      !objectWide.revokedAt &&
-      objectWide.role !== AccessRole.VIEWER
-    ) {
+    // Право уже есть — заявка не нужна (CUSTOMER или флаг canCreateProjects)
+    if (my.canCreateProjects) {
       throw new BadRequestException(
         'У вас уже есть право создавать проекты в этом объекте',
       );
