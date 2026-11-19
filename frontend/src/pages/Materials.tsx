@@ -3133,11 +3133,19 @@ onClose={() => setFilterAnchorEl(null)}
         px: 4,
         pb: 4,
         borderRadius: 2,
-        // ⭐ №328: поля ввода ниже на 10% (56 → ~50 px). Многострочное примечание
-        // не трогаем — оно растёт само по тексту.
-        '& .MuiInputBase-input:not(textarea)': {
-          paddingTop: '13.7px',
-          paddingBottom: '13.7px',
+        // ⭐ №331: ВСЕ поля этой модалки ниже на 10 % (56 → 50 px) — и однострочные,
+        // и автокомплиты, и «Примечание» (оно по-прежнему растёт по тексту).
+        '& .MuiInputBase-input': {
+          paddingTop: '13px',
+          paddingBottom: '13px',
+        },
+        // фиксируем высоту однострочных (select, input, autocomplete), многострочное — авто
+        '& .MuiInputBase-root:not(.MuiInputBase-multiline)': {
+          height: 50,
+        },
+        // подпись внутри поля держим по центру новой высоты
+        '& .MuiInputLabel-outlined:not(.MuiInputLabel-shrink)': {
+          transform: 'translate(14px, 14px) scale(1)',
         },
          }}>
           {/* ⭐ №330: заголовок по центру окна */}
