@@ -106,6 +106,28 @@ export class AccessService {
     }
 
     const projectId = dto.projectId ?? null;
+    // ⭐ №341: «Администратор объекта» — только для доступа на весь объект
+    if (projectId != null && dto.role === AccessRole.CUSTOMER) {
+      throw new BadRequestException(
+        'Роль «Администратор объекта» — только для доступа на весь объект',
+      );
+    }
+    // ⭐ №341: если объект уже открыт целиком, доступ в проект не нужен
+    if (projectId != null) {
+      const objectWide = await this.prisma.objectAccess.findFirst({
+        where: {
+          userId: invitedUser.id,
+          objectId,
+          projectId: null,
+          revokedAt: null,
+        },
+      });
+      if (objectWide) {
+        throw new ConflictException(
+          'Уже есть доступ ко всему объекту — отдельный доступ к проекту не нужен',
+        );
+      }
+    }
     // ⭐ №207: право создавать проекты имеет смысл только для объектной записи
     // и только для прораба — администратору объекта оно не нужно (и так может).
     const canCreateProjects =
@@ -182,7 +204,42 @@ export class AccessService {
       undefined,
       { userId: invitedUser.id, role: dto.role, canCreateProjects: created.canCreateProjects, hidePrices: created.hidePrices },
     );
+    // ⭐ №341: объектный доступ поглощает проектные — они больше не нужны
+    if (projectId == null) {
+      await this.mergeProjectGrantsToObject(
+        objectId,
+        invitedUser.id,
+        actorUserId,
+      );
+    }
     return created;
+  }
+
+  /**
+   * ⭐ №341: удалить проектные доступы человека, когда у него появился объектный
+   * (правило «объект поглощает проекты», иначе список растёт бесконечно).
+   */
+  private async mergeProjectGrantsToObject(
+    objectId: number,
+    userId: number,
+    actorUserId: number,
+  ) {
+    const projectGrants = await this.prisma.objectAccess.findMany({
+      where: { objectId, userId, projectId: { not: null }, revokedAt: null },
+      select: { id: true, projectId: true, role: true },
+    });
+    if (projectGrants.length === 0) return;
+    await this.prisma.objectAccess.deleteMany({
+      where: { id: { in: projectGrants.map((g) => g.id) } },
+    });
+    await this.audit.log(
+      actorUserId,
+      'object_access',
+      objectId,
+      'merge_to_object',
+      { grants: projectGrants },
+      { userId, merged: projectGrants.length },
+    );
   }
   // 3. Сменить роль участника / право создавать проекты.
   // ⭐ №207: видимость цен здесь НЕ меняется — она фиксируется при приглашении.
@@ -210,6 +267,12 @@ export class AccessService {
     }
 
     const nextRole = dto.role ?? target.role;
+    // ⭐ №341: «Администратор объекта» — только для доступа на весь объект
+    if (target.projectId != null && nextRole === AccessRole.CUSTOMER) {
+      throw new BadRequestException(
+        'Роль «Администратор объекта» — только для доступа на весь объект',
+      );
+    }
     // ⭐ №207: право создавать проекты — только у прораба с объектным доступом.
     // Роль администратора объекта имеет это право по определению.
     const nextCanCreateProjects =
@@ -338,12 +401,49 @@ export class AccessService {
     return { success: true, ...result };
   }
 
+  /**
+   * ⭐ №341: удалить ОДНУ запись доступа (например, «убрать из проекта», оставив
+   * остальные проекты). Если запись последняя — это обычное удаление участника
+   * со снимками и копиями (семантика №207).
+   */
+  async removeGrant(objectId: number, accessId: number, actorUserId: number) {
+    await this.assertManager(objectId, actorUserId);
+    const target = await this.prisma.objectAccess.findFirst({
+      where: { id: accessId, objectId },
+    });
+    if (!target) throw new NotFoundException('Запись доступа не найдена');
+    if (target.userId === actorUserId) {
+      throw new BadRequestException('Нельзя удалить собственный доступ');
+    }
+    const others = await this.prisma.objectAccess.count({
+      where: {
+        objectId,
+        userId: target.userId,
+        revokedAt: null,
+        id: { not: target.id },
+      },
+    });
+    if (others === 0) {
+      // последняя живая запись — удаляем участника целиком (с копиями и снимком)
+      return this.removeParticipant(objectId, accessId, actorUserId);
+    }
+    await this.prisma.objectAccess.delete({ where: { id: target.id } });
+    await this.audit.log(
+      actorUserId,
+      'object_access',
+      objectId,
+      'delete',
+      { userId: target.userId, projectId: target.projectId, role: target.role },
+      { userId: target.userId, scopeOnly: true },
+    );
+    return { success: true, removed: 1, scopeOnly: true };
+  }
+
   async removeParticipant(
     objectId: number,
     accessId: number,
     actorUserId: number,
-  ) {
-    await this.assertManager(objectId, actorUserId);
+  ) {    await this.assertManager(objectId, actorUserId);
 
     const target = await this.prisma.objectAccess.findFirst({
       where: { id: accessId, objectId },

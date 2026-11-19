@@ -14,6 +14,7 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { InviteService } from './invite.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
+import { AcceptInviteDto } from './dto/accept-invite.dto';
 
 @Controller()
 export class InviteController {
@@ -62,10 +63,26 @@ export class InviteController {
   }
 
   // POST /invite/:token/accept — принять приглашение (авторизованный)
+  // ⭐ №341: confirmDowngrade — явное подтверждение, если ссылка понижает роль
   @Post('invite/:token/accept')
   @UseGuards(JwtAuthGuard)
-  acceptInvite(@Param('token') token: string, @Req() req) {
-    return this.inviteService.acceptInvite(token, req.user.userId);
+  acceptInvite(
+    @Param('token') token: string,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: AcceptInviteDto,
+    @Req() req,
+  ) {
+    return this.inviteService.acceptInvite(token, req.user.userId, {
+      confirmDowngrade: dto?.confirmDowngrade === true,
+    });
+  }
+
+  // GET /invite/:token/status — ⭐ №341: что будет, если я приму ссылку
+  // (уже есть доступ / понижение роли). Только для авторизованных.
+  @Get('invite/:token/status')
+  @UseGuards(JwtAuthGuard)
+  inviteStatus(@Param('token') token: string, @Req() req) {
+    return this.inviteService.inviteStatus(token, req.user.userId);
   }
 
   // ⭐ Публичный эндпоинт (НЕ требует JWT)

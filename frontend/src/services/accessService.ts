@@ -110,6 +110,17 @@ export const removeAccess = async (
   return response.data;
 };
 
+// ⭐ №341: убрать только одну область доступа (например, «из проекта»), остальные оставить
+export const removeAccessScope = async (
+  objectId: number,
+  accessId: number,
+): Promise<RemoveAccessResult> => {
+  const response = await api.delete(
+    `/objects/${objectId}/access/${accessId}/only`,
+  );
+  return response.data;
+};
+
 // 5. ⭐ №249: удалить участника ИМЕННО проекта (объектные доступы не трогаем).
 // Перед удалением бэкенд снимает личные копии сметы/снимок по этому проекту.
 export const removeProjectAccess = async (

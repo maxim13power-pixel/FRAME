@@ -57,6 +57,18 @@ export class AccessController {
     );
   }
 
+  // DELETE /objects/:objectId/access/:accessId/only — ⭐ №341: убрать ТОЛЬКО эту область
+  // (например, «убрать из проекта», оставив другие проекты). Последняя запись =
+  // обычное удаление участника.
+  @Delete(':accessId/only')
+  removeGrant(
+    @Param('objectId', ParseIntPipe) objectId: number,
+    @Param('accessId', ParseIntPipe) accessId: number,
+    @Req() req,
+  ) {
+    return this.accessService.removeGrant(objectId, accessId, req.user.userId);
+  }
+
   // DELETE /objects/:objectId/access/:accessId — ⭐ №207: удалить участника.
   // Перед удалением бэкенд снимает личные копии (шаблоны смет + снимок доступа).
   @Delete(':accessId')

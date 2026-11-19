@@ -5,12 +5,20 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { nanoid } from 'nanoid';
 
 /** ⭐ №304: сколько дней по умолчанию действует ссылка-приглашение. */
 export const DEFAULT_INVITE_TTL_DAYS = 7;
+
+/** ⭐ №341: вес ролей для правил слияния (кто «сильнее») */
+const ROLE_WEIGHT: Record<AccessRole, number> = {
+  CUSTOMER: 3,
+  FOREMAN: 2,
+  VIEWER: 1,
+};
 
 @Injectable()
 export class InviteService {
@@ -215,76 +223,250 @@ export class InviteService {
   }
 
   // 5. Принять приглашение (авторизованный юзер)
-  // ⭐ Обёрнуто в транзакцию для защиты от race condition (двойной клик, параллельные запросы).
-  // Уникальность доступа гарантируется unique constraint @@unique([userId, objectId, projectId]).
-  async acceptInvite(token: string, userId: number) {
+  // ⭐ №341: правила слияния доступов:
+  //   • есть активный доступ на весь объект → «уже есть доступ», ничего не создаём;
+  //   • ссылка в проект, а доступ к проекту уже есть → «уже есть доступ к проекту»;
+  //   • ссылка на ОБЪЕКТ, а у человека есть проектные доступы → они удаляются (сливаются
+  //     в объектный), роль ставится ровно из ссылки; если это понижение роли — просим
+  //     подтверждение (confirmDowngrade), чтобы человек не потерял права молча.
+  async acceptInvite(
+    token: string,
+    userId: number,
+    opts: { confirmDowngrade?: boolean } = {},
+  ) {
     return this.prisma.$transaction(async (tx) => {
-      // 1. Читаем invite (с включёнными связями для возврата)
-      const invite = await tx.inviteToken.findUnique({
-        where: { token },
-        include: {
-          creator: { select: { id: true, fullName: true } },
-          object: { select: { id: true, name: true } },
-          project: { select: { id: true, name: true } },
+      const invite = await this.loadActiveInvite(tx, token);
+
+      const grants = await tx.objectAccess.findMany({
+        where: { userId, objectId: invite.objectId },
+        select: {
+          id: true,
+          projectId: true,
+          role: true,
+          revokedAt: true,
         },
+        orderBy: { id: 'asc' },
       });
+      const live = grants.filter((g) => !g.revokedAt);
+      const objectGrant = live.find((g) => g.projectId == null);
 
-      if (!invite || !invite.isActive) {
-        throw new NotFoundException('Ссылка не найдена или отозвана');
+      // 1) Доступ на весь объект уже есть — ссылка не срабатывает, но и не «сгорает»
+      if (objectGrant) {
+        return {
+          alreadyHasAccess: true as const,
+          scope: 'object' as const,
+          objectId: invite.objectId,
+          role: objectGrant.role,
+          message: 'У вас уже есть доступ ко всему объекту и всем его проектам',
+        };
       }
 
-      // 2. Проверка срока жизни
-      if (invite.expiresAt && invite.expiresAt < new Date()) {
-        throw new BadRequestException('Срок действия ссылки истёк');
-      }
-
-      // 3. Проверка лимита использований
-      if (invite.maxUses !== null && invite.usesCount >= invite.maxUses) {
-        throw new BadRequestException('Лимит использований ссылки исчерпан');
-      }
-
-      // 4. Создаём доступ. Если уже есть — БД выбросит P2002 (unique constraint).
-      try {
-        await tx.objectAccess.create({
-          data: {
-            userId,
+      // 2) Ссылка в проект
+      if (invite.projectId != null) {
+        const sameProject = live.find((g) => g.projectId === invite.projectId);
+        if (sameProject) {
+          return {
+            alreadyHasAccess: true as const,
+            scope: 'project' as const,
             objectId: invite.objectId,
-            projectId: invite.projectId, // ⭐ №250: ссылка может вести в проект
-            role: invite.role,
-            hidePrices: invite.hidePrices,
-            // ⭐ №303: право создания проектов приходит из ссылки (уже нормализовано при выпуске)
-            canCreateProjects:
-              invite.projectId == null && invite.role === 'FOREMAN'
-                ? invite.canCreateProjects
-                : false,
-            invitedBy: invite.createdBy,
+            projectId: invite.projectId,
+            role: sameProject.role,
+            message: 'У вас уже есть доступ к этому проекту',
+          };
+        }
+        await this.createOrRestoreGrant(tx, invite, userId, grants);
+        await this.bumpUses(tx, token);
+        return {
+          message: 'Приглашение принято',
+          objectId: invite.objectId,
+          projectId: invite.projectId,
+          projectName: invite.project?.name ?? null,
+          role: invite.role,
+        };
+      }
+
+      // 3) Ссылка на ОБЪЕКТ: сливаем проектные доступы в один объектный
+      const projectGrants = live.filter((g) => g.projectId != null);
+      const strongestProjectRole = projectGrants.reduce<AccessRole | null>(
+        (acc, g) =>
+          acc == null || ROLE_WEIGHT[g.role] > ROLE_WEIGHT[acc] ? g.role : acc,
+        null,
+      );
+      const downgrade =
+        strongestProjectRole != null &&
+        ROLE_WEIGHT[invite.role] < ROLE_WEIGHT[strongestProjectRole];
+      if (downgrade && !opts.confirmDowngrade) {
+        const projects = await tx.project.findMany({
+          where: { id: { in: projectGrants.map((g) => g.projectId as number) } },
+          select: { name: true },
+        });
+        throw new ConflictException({
+          message:
+            'Ссылка даст меньше прав, чем у вас есть сейчас. Подтвердите, чтобы продолжить.',
+          requiresConfirmation: true,
+          fromRole: strongestProjectRole,
+          toRole: invite.role,
+          projects: projects.map((p) => p.name),
+        });
+      }
+
+      if (projectGrants.length > 0) {
+        await tx.objectAccess.deleteMany({
+          where: { id: { in: projectGrants.map((g) => g.id) } },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: userId,
+            entity: 'object',
+            entityId: invite.objectId,
+            action: 'access_merge_to_object',
+            before: { grants: projectGrants } as unknown as Prisma.InputJsonValue,
+            after: { role: invite.role, inviteId: invite.id },
           },
         });
-      } catch (e: any) {
-        // P2002 = Unique constraint failed → юзер уже имеет доступ
-        if (e.code === 'P2002') {
-          throw new ConflictException(
-            invite.projectId != null
-              ? 'У вас уже есть доступ к этому проекту'
-              : 'У вас уже есть доступ к этому объекту',
-          );
-        }
-        throw e;
       }
 
-      // 5. Инкрементируем счётчик (внутри той же транзакции — атомарно)
-      await tx.inviteToken.update({
-        where: { token },
-        data: { usesCount: { increment: 1 } },
-      });
-
+      await this.createOrRestoreGrant(tx, invite, userId, grants);
+      await this.bumpUses(tx, token);
       return {
         message: 'Приглашение принято',
         objectId: invite.objectId,
-        projectId: invite.projectId,
-        projectName: invite.project?.name ?? null,
+        projectId: null,
+        projectName: null,
         role: invite.role,
+        mergedProjects: projectGrants.length,
       };
+    });
+  }
+
+  /** Активная ссылка с проверками срока и лимита (для accept и статуса) */
+  private async loadActiveInvite(tx: Prisma.TransactionClient, token: string) {
+    const invite = await tx.inviteToken.findUnique({
+      where: { token },
+      include: {
+        creator: { select: { id: true, fullName: true } },
+        object: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
+      },
+    });
+    if (!invite || !invite.isActive) {
+      throw new NotFoundException('Ссылка не найдена или отозвана');
+    }
+    if (invite.expiresAt && invite.expiresAt < new Date()) {
+      throw new BadRequestException('Срок действия ссылки истёк');
+    }
+    if (invite.maxUses !== null && invite.usesCount >= invite.maxUses) {
+      throw new BadRequestException('Лимит использований ссылки исчерпан');
+    }
+    return invite;
+  }
+
+  /** Создать запись доступа или восстановить отозванную с той же областью */
+  private async createOrRestoreGrant(
+    tx: Prisma.TransactionClient,
+    invite: {
+      objectId: number;
+      projectId: number | null;
+      role: AccessRole;
+      hidePrices: boolean;
+      canCreateProjects: boolean;
+      createdBy: number;
+    },
+    userId: number,
+    grants: { id: number; projectId: number | null; revokedAt: Date | null }[],
+  ) {
+    const canCreateProjects =
+      invite.projectId == null && invite.role === 'FOREMAN'
+        ? invite.canCreateProjects
+        : false;
+    const sameScope = grants.find((g) => g.projectId === invite.projectId);
+    if (sameScope) {
+      // отозванная запись — восстанавливаем с параметрами ссылки
+      await tx.objectAccess.update({
+        where: { id: sameScope.id },
+        data: {
+          role: invite.role,
+          hidePrices: invite.hidePrices,
+          canCreateProjects,
+          revokedAt: null,
+          revokedById: null,
+          isHidden: false,
+          invitedBy: invite.createdBy,
+        },
+      });
+      return;
+    }
+    await tx.objectAccess.create({
+      data: {
+        userId,
+        objectId: invite.objectId,
+        projectId: invite.projectId,
+        role: invite.role,
+        hidePrices: invite.hidePrices,
+        canCreateProjects,
+        invitedBy: invite.createdBy,
+      },
+    });
+  }
+
+  /** Учёт использования ссылки */
+  private async bumpUses(tx: Prisma.TransactionClient, token: string) {
+    await tx.inviteToken.update({
+      where: { token },
+      data: { usesCount: { increment: 1 } },
+    });
+  }
+
+  /**
+   * ⭐ №341: состояние «а что будет, если я приму ссылку» — для страницы принятия.
+   * Возвращает уже имеющийся доступ и предупреждение о понижении роли.
+   */
+  async inviteStatus(token: string, userId: number) {
+    return this.prisma.$transaction(async (tx) => {
+      const invite = await this.loadActiveInvite(tx, token);
+      const grants = await tx.objectAccess.findMany({
+        where: { userId, objectId: invite.objectId },
+        select: { projectId: true, role: true, revokedAt: true },
+      });
+      const live = grants.filter((g) => !g.revokedAt);
+      const objectGrant = live.find((g) => g.projectId == null);
+      if (objectGrant) {
+        return {
+          alreadyHasAccess: 'object' as const,
+          role: objectGrant.role,
+        };
+      }
+      if (
+        invite.projectId != null &&
+        live.some((g) => g.projectId === invite.projectId)
+      ) {
+        return { alreadyHasAccess: 'project' as const, role: invite.role };
+      }
+      const projectGrants = live.filter((g) => g.projectId != null);
+      const strongest = projectGrants.reduce<AccessRole | null>(
+        (acc, g) =>
+          acc == null || ROLE_WEIGHT[g.role] > ROLE_WEIGHT[acc] ? g.role : acc,
+        null,
+      );
+      if (
+        invite.projectId == null &&
+        strongest != null &&
+        ROLE_WEIGHT[invite.role] < ROLE_WEIGHT[strongest]
+      ) {
+        const projects = await tx.project.findMany({
+          where: { id: { in: projectGrants.map((g) => g.projectId as number) } },
+          select: { name: true },
+        });
+        return {
+          alreadyHasAccess: null,
+          downgrade: {
+            fromRole: strongest,
+            toRole: invite.role,
+            projects: projects.map((p) => p.name),
+          },
+        };
+      }
+      return { alreadyHasAccess: null };
     });
   }
 }

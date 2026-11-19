@@ -43,11 +43,12 @@ import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подск
 import SettingsIcon from '@mui/icons-material/Settings';
 import PeopleIcon from '@mui/icons-material/People';
 import DeleteIcon from '@mui/icons-material/Delete';
+import CloseIcon from '@mui/icons-material/Close';
 import LinkIcon from '@mui/icons-material/Link';
 import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import EditIcon from '@mui/icons-material/Edit';
-import { fetchAccessList, updateAccess, removeAccess, setMyAccessHidden } from '../services/accessService';
+import { fetchAccessList, updateAccess, removeAccess, removeAccessScope, setMyAccessHidden } from '../services/accessService';
 import { APP_URL } from '../config';
 import type { AccessMember, AccessRole } from '../services/accessService';
 import { createInviteLink, fetchInviteLinks, revokeInviteLink } from '../services/inviteService';
@@ -479,6 +480,12 @@ const objectWideMembers = accessMembers.filter((m) => m.projectId == null);
 // не видит, поэтому «видят проект» про него говорить нельзя (в списке он остаётся
 // с плашкой «Доступ отозван»).
 const objectWideActiveCount = objectWideMembers.filter((m) => !m.revokedAt).length;
+// ⭐ №341: один человек = одна карточка в списке (у него может быть несколько записей)
+const uniquePeople = (rows: AccessMember[]) => new Set(rows.map((m) => m.userId)).size;
+const allPeopleCount = uniquePeople(accessMembers);
+const objectPeopleActiveCount = uniquePeople(
+  objectWideMembers.filter((m) => !m.revokedAt),
+);
 const scopedAccessMembers =
   memberScopeFilter === 'all'
     ? accessMembers
@@ -489,8 +496,21 @@ const scopedProject =
   typeof memberScopeFilter === 'number'
     ? accessProjects.find((p) => p.id === memberScopeFilter) ?? null
     : null;
+// ⭐ №341: группируем записи по человеку — иначе один человек занимает N строк
+const groupedAccessMembers = (() => {
+  const map = new Map<number, AccessMember[]>();
+  for (const m of scopedAccessMembers) {
+    const list = map.get(m.userId) ?? [];
+    list.push(m);
+    map.set(m.userId, list);
+  }
+  return [...map.entries()].map(([userId, grants]) => ({
+    userId,
+    grants: grants.sort((a, b) => (a.projectId == null ? -1 : 0) - (b.projectId == null ? -1 : 0)),
+  }));
+})();
 const projectMemberCount = (projectId: number) =>
-  accessMembers.filter((m) => m.projectId === projectId).length;
+  uniquePeople(accessMembers.filter((m) => m.projectId === projectId));
 
 // ⭐ Загрузить список участников
 const loadAccessMembers = async (objectId: number) => {
@@ -860,6 +880,30 @@ const handleRemoveAccess = async (member: AccessMember) => {
     await loadAccessMembers(accessObject.id);
   } catch (err: unknown) {
     setAccessError(getApiErrorMessage(err, 'Ошибка удаления участника'));
+  } finally {
+    setAccessLoading(false);
+  }
+};
+
+// ⭐ №341: убрать доступ только к одному проекту (человек остаётся в остальных)
+const handleRemoveAccessScope = async (member: AccessMember) => {
+  if (!token || !accessObject) return;
+  const who = member.user.fullName || member.user.email || member.user.phone || 'участника';
+  const project = member.projectId ? projectScopeLabel(member.projectId) : 'проект';
+  const ok = await confirm({
+    title: 'Убрать доступ к проекту?',
+    text: `${who} больше не будет видеть проект «${project}». Остальные доступы и данные сохранятся.`,
+    confirmText: 'Убрать',
+  });
+  if (!ok) return;
+  setAccessError('');
+  setAccessLoading(true);
+  try {
+    await removeAccessScope(accessObject.id, member.id);
+    notify('Доступ к проекту убран', 'success');
+    await loadAccessMembers(accessObject.id);
+  } catch (err: unknown) {
+    setAccessError(getApiErrorMessage(err, 'Ошибка удаления доступа'));
   } finally {
     setAccessLoading(false);
   }
@@ -2403,17 +2447,17 @@ trailing: headerTrailing,
                 <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1.5 }}>
                   <Chip
                     size="small"
-                    label={`Все: ${accessMembers.length}`}
+                    label={`Все: ${allPeopleCount}`}
                     variant={memberScopeFilter === 'all' ? 'filled' : 'outlined'}
                     color={memberScopeFilter === 'all' ? 'primary' : 'default'}
                     onClick={() => setMemberScopeFilter('all')}
-                    // ⭐ №308: подсказка, что именно в счёте
-                    title="Все записи доступа объекта, включая отозванные"
+                    // ⭐ №341: считаем ЛЮДЕЙ, а не записи доступа
+                    title="Сколько людей имеет доступ к объекту (включая отозванных)"
                     sx={{ cursor: 'pointer' }}
                   />
                   <Chip
                     size="small"
-                    label={`🏗 Весь объект: ${objectWideMembers.length}`}
+                    label={`🏗 Весь объект: ${objectPeopleActiveCount}`}
                     variant={memberScopeFilter === 'object' ? 'filled' : 'outlined'}
                     color={memberScopeFilter === 'object' ? 'primary' : 'default'}
                     onClick={() => {
@@ -2452,92 +2496,130 @@ trailing: headerTrailing,
                   </Alert>
                 )}
 
-                {scopedAccessMembers.map((member) => (
-                  <Box
-                    key={member.id}
-                    sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5, mb: 1, bgcolor: '#f5f7fa', borderRadius: 2 }}
-                  >
-                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                        {member.user.fullName || member.user.email || member.user.phone || 'Без имени'}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" noWrap>
-                        {member.user.email || member.user.phone || ''}
-                      </Typography>
-                      {/* ⭐ №163: область доступа — весь объект или конкретный проект */}
-                      <Chip
-                        size="small"
-                        variant={member.projectId ? 'filled' : 'outlined'}
-                        color={member.projectId ? 'primary' : 'default'}
-                        label={
-                          member.projectId
-                            ? `📁 ${projectScopeLabel(member.projectId)}`
-                            : '🏗 весь объект'
-                        }
-                        sx={{ mt: 0.5, height: 20, fontSize: '0.7rem' }}
-                      />
-                      {/* ⭐ №168: отозванный участник виден в команде, живой доступ закрыт (№193) */}
-                      {member.revokedAt && (
-                        <Chip
-                          size="small"
-                          color="error"
-                          label="🔒 Доступ отозван"
-                          sx={{ mt: 0.5, ml: 0.5, height: 20, fontSize: '0.7rem' }}
-                        />
-                      )}
-                      {member.hidePrices && !member.revokedAt && (
-                        <Chip
-                          size="small"
-                          label="🙈 цены скрыты"
-                          sx={{ mt: 0.5, ml: 0.5, height: 20, fontSize: '0.7rem' }}
-                        />
+                {groupedAccessMembers.map(({ userId, grants }) => {
+                  const objectGrant = grants.find((g) => g.projectId == null) ?? null;
+                  const projectGrants = grants.filter((g) => g.projectId != null);
+                  const head = grants[0];
+                  const anyLive = grants.some((g) => !g.revokedAt);
+                  return (
+                    <Box
+                      key={userId}
+                      sx={{ p: 1.5, mb: 1, bgcolor: '#f5f7fa', borderRadius: 2 }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                            {head.user.fullName || head.user.email || head.user.phone || 'Без имени'}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" noWrap>
+                            {head.user.email || head.user.phone || ''}
+                          </Typography>
+                        </Box>
+                        {/* ⭐ №207: одно действие — удалить человека из объекта */}
+                        {canManage && anyLive && (
+                          <IconButton
+                            size="small"
+                            color="error"
+                            title="Удалить участника из объекта"
+                            disabled={accessLoading}
+                            onClick={() => handleRemoveAccess(objectGrant ?? head)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                      </Box>
+
+                      {/* ⭐ №341: объектный доступ поглощает проектные — показываем одну строку */}
+                      {objectGrant ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                          <Chip
+                            size="small"
+                            label="🏗 весь объект"
+                            sx={{ height: 22, fontSize: '0.72rem' }}
+                          />
+                          {objectGrant.revokedAt && (
+                            <Chip size="small" color="error" label="🔒 Доступ отозван" sx={{ height: 22, fontSize: '0.72rem' }} />
+                          )}
+                          {objectGrant.hidePrices && !objectGrant.revokedAt && (
+                            <Chip size="small" label="🙈 цены скрыты" sx={{ height: 22, fontSize: '0.72rem' }} />
+                          )}
+                          {canManage && !objectGrant.revokedAt ? (
+                            <>
+                              <Select
+                                size="small"
+                                value={objectGrant.role}
+                                onChange={(e) => handleChangeRole(objectGrant.id, e.target.value as AccessRole)}
+                                sx={{ minWidth: 150 }}
+                              >
+                                <MenuItem value="CUSTOMER">👑 Администратор объекта</MenuItem>
+                                <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
+                                <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
+                              </Select>
+                              {objectGrant.role === 'FOREMAN' && (
+                                <FormControlLabel
+                                  sx={{ mr: 0 }}
+                                  control={
+                                    <Checkbox
+                                      size="small"
+                                      checked={objectGrant.canCreateProjects}
+                                      onChange={(e) => handleToggleCreateProjects(objectGrant.id, e.target.checked)}
+                                    />
+                                  }
+                                  label={<Typography variant="caption">проекты</Typography>}
+                                />
+                              )}
+                            </>
+                          ) : (
+                            <Chip label={roleLabel(objectGrant.role)} size="small" color={roleColor(objectGrant.role)} />
+                          )}
+                        </Box>
+                      ) : (
+                        <Stack spacing={0.75} sx={{ mt: 1 }}>
+                          {projectGrants.map((g) => (
+                            <Box key={g.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                              <Chip
+                                size="small"
+                                color="primary"
+                                label={`📁 ${projectScopeLabel(g.projectId as number)}`}
+                                sx={{ height: 22, fontSize: '0.72rem' }}
+                              />
+                              {g.revokedAt && (
+                                <Chip size="small" color="error" label="🔒 Доступ отозван" sx={{ height: 22, fontSize: '0.72rem' }} />
+                              )}
+                              {g.hidePrices && !g.revokedAt && (
+                                <Chip size="small" label="🙈 цены скрыты" sx={{ height: 22, fontSize: '0.72rem' }} />
+                              )}
+                              {canManage && !g.revokedAt ? (
+                                <Select
+                                  size="small"
+                                  value={g.role}
+                                  onChange={(e) => handleChangeRole(g.id, e.target.value as AccessRole)}
+                                  sx={{ minWidth: 130 }}
+                                >
+                                  <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
+                                  <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
+                                </Select>
+                              ) : (
+                                <Chip label={roleLabel(g.role)} size="small" color={roleColor(g.role)} />
+                              )}
+                              {canManage && !g.revokedAt && (
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  title="Убрать доступ к этому проекту"
+                                  disabled={accessLoading}
+                                  onClick={() => void handleRemoveAccessScope(g)}
+                                >
+                                  <CloseIcon fontSize="small" />
+                                </IconButton>
+                              )}
+                            </Box>
+                          ))}
+                        </Stack>
                       )}
                     </Box>
-
-                    {/* ⭐ №207: «может создавать проекты» — право прораба с доступом на весь объект */}
-                    {canManage && member.role === 'FOREMAN' && !member.projectId && !member.revokedAt && (
-                      <FormControlLabel
-                        sx={{ mr: 0 }}
-                        control={
-                          <Checkbox
-                            size="small"
-                            checked={member.canCreateProjects}
-                            onChange={(e) => handleToggleCreateProjects(member.id, e.target.checked)}
-                          />
-                        }
-                        label={<Typography variant="caption">проекты</Typography>}
-                      />
-                    )}
-
-                    {canManage && !member.revokedAt ? (
-                      <Select
-                        size="small"
-                        value={member.role}
-                        onChange={(e) => handleChangeRole(member.id, e.target.value as AccessRole)}
-                        sx={{ minWidth: 130 }}
-                      >
-                        <MenuItem value="CUSTOMER">👑 Администратор объекта</MenuItem>
-                        <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
-                        <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
-                      </Select>
-                    ) : (
-                      <Chip label={roleLabel(member.role)} size="small" color={roleColor(member.role)} />
-                    )}
-
-                    {/* ⭐ №207: одно действие — удалить (с подтверждением и без восстановления) */}
-                    {canManage && (
-                      <IconButton
-                        size="small"
-                        color="error"
-                        title="Удалить участника"
-                        disabled={accessLoading}
-                        onClick={() => handleRemoveAccess(member)}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    )}
-                  </Box>
-                ))}
+                  );
+                })}
               </Box>
             )}
 

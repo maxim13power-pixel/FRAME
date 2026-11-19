@@ -62,16 +62,39 @@ export const revokeInviteLink = async (
 };
 
 // 4. Принять приглашение (авторизованный юзер)
+// ⭐ №341: confirmDowngrade — подтверждение, если ссылка понижает роль
 export const acceptInvite = async (
   inviteToken: string,
+  confirmDowngrade = false,
 ): Promise<{
   message: string;
   objectId: number;
   projectId?: number | null;
   projectName?: string | null;
   role: AccessRole;
+  alreadyHasAccess?: boolean;
+  scope?: 'object' | 'project';
+  mergedProjects?: number;
 }> => {
-  const response = await api.post(`/invite/${inviteToken}/accept`, {});
+  const response = await api.post(`/invite/${inviteToken}/accept`, {
+    ...(confirmDowngrade ? { confirmDowngrade: true } : {}),
+  });
+  return response.data;
+};
+
+// 5. ⭐ №341: что будет, если принять ссылку (уже есть доступ / понижение роли)
+export const getInviteStatus = async (
+  inviteToken: string,
+): Promise<{
+  alreadyHasAccess: 'object' | 'project' | null;
+  role?: AccessRole;
+  downgrade?: {
+    fromRole: AccessRole;
+    toRole: AccessRole;
+    projects: string[];
+  };
+}> => {
+  const response = await api.get(`/invite/${inviteToken}/status`);
   return response.data;
 };
 

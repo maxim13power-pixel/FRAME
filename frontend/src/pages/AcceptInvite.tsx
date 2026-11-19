@@ -13,7 +13,7 @@ import {
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getInviteInfo, acceptInvite } from '../services/inviteService';
+import { getInviteInfo, getInviteStatus, acceptInvite } from '../services/inviteService';
 import { useAuth } from '../contexts/AuthContext';
 import type { AccessRole } from '../services/accessService';
 import { useTheme, useMediaQuery } from '@mui/material';
@@ -57,6 +57,12 @@ const AcceptInvite: React.FC = () => {
   const [error, setError] = useState('');
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
+  // ⭐ №341: что будет при принятии — уже есть доступ / понижение роли
+  const [status, setStatus] = useState<{
+    alreadyHasAccess: 'object' | 'project' | null;
+    role?: AccessRole;
+    downgrade?: { fromRole: AccessRole; toRole: AccessRole; projects: string[] };
+  } | null>(null);
 
   // ⭐ Загружаем инфу о приглашении (публичный эндпоинт, без JWT)
   useEffect(() => {
@@ -75,13 +81,37 @@ const AcceptInvite: React.FC = () => {
     load();
   }, [inviteToken]);
 
+  // ⭐ №341: если пользователь уже вошёл — спросим, что даст ссылка
+  useEffect(() => {
+    if (!inviteToken || !token) return;
+    let alive = true;
+    getInviteStatus(inviteToken)
+      .then((data) => {
+        if (alive) setStatus(data);
+      })
+      .catch(() => {
+        if (alive) setStatus(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [inviteToken, token]);
+
   // ⭐ Принять приглашение (для залогиненных)
-  const handleAccept = async () => {
+  const handleAccept = async (confirmDowngrade = false) => {
     if (!token || !inviteToken) return;
     setAccepting(true);
     setError('');
     try {
-      const acceptedInvite = await acceptInvite(inviteToken);
+      const acceptedInvite = await acceptInvite(inviteToken, confirmDowngrade);
+      if (acceptedInvite.alreadyHasAccess) {
+        // ссылка не «сгорела», просто доступа уже не нужно
+        setStatus({
+          alreadyHasAccess: acceptedInvite.scope ?? 'object',
+          role: acceptedInvite.role,
+        });
+        return;
+      }
       setAccepted(true);
       // Через 1.5 сек уводим в объект или сразу в проект
       setTimeout(
@@ -196,9 +226,57 @@ const AcceptInvite: React.FC = () => {
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
             {token ? (
-              <Button variant="contained" size="large" fullWidth onClick={handleAccept} disabled={accepting}>
-                {accepting ? <CircularProgress size={24} /> : '✅ Принять приглашение'}
-              </Button>
+              status?.alreadyHasAccess ? (
+                <>
+                  <Alert severity="info" sx={{ mb: 2, textAlign: 'left' }}>
+                    {status.alreadyHasAccess === 'object'
+                      ? 'У вас уже есть доступ ко всему объекту и всем его проектам — принимать ссылку не нужно.'
+                      : 'У вас уже есть доступ к этому проекту — ссылка ничего не изменит.'}
+                  </Alert>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    onClick={() => navigate('/objects')}
+                  >
+                    Открыть объекты
+                  </Button>
+                </>
+              ) : status?.downgrade ? (
+                <>
+                  <Alert severity="warning" sx={{ mb: 2, textAlign: 'left' }}>
+                    Сейчас у вас роль «{roleLabel(status.downgrade.fromRole)}»
+                    {status.downgrade.projects.length > 0
+                      ? ` в проекте «${status.downgrade.projects.join('», «')}»`
+                      : ''}
+                    . По этой ссылке вы получите роль «
+                    {roleLabel(status.downgrade.toRole)}» и права прораба потеряете.
+                  </Alert>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    color="warning"
+                    onClick={() => void handleAccept(true)}
+                    disabled={accepting}
+                  >
+                    {accepting ? <CircularProgress size={24} /> : 'Продолжить'}
+                  </Button>
+                  <Button fullWidth sx={{ mt: 1 }} onClick={() => navigate('/objects')}>
+                    Отмена
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="contained"
+                  size="large"
+                  fullWidth
+                  onClick={() => void handleAccept(false)}
+                  disabled={accepting}
+                >
+                  {accepting ? <CircularProgress size={24} /> : '✅ Принять приглашение'}
+                </Button>
+              )
             ) : (
               <>
                 <Button variant="contained" size="large" fullWidth onClick={handleGoLogin}>
