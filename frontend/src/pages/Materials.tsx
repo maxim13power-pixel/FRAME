@@ -283,6 +283,26 @@ const PriceStepSelects: React.FC<PriceStepSelectsProps> = ({
     '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' },
   } as const;
 
+  // ⭐ №322: на телефоне две ступени должны стоять в ОДНУ строку — там подпись
+  // сокращается до «Справочник» / «Категория» (выбранное значение видно в шторке),
+  // а выбранный не по умолчанию фильтр подсвечивается голубым.
+  const catalogChipLabel = isPhone ? 'Справочник' : `Справочник: ${catalogCaption}`;
+  const categoryChipLabel = isPhone ? 'Категория' : `Категория: ${categoryCaption}`;
+  const catalogIsPicked = catalogChoice !== '';
+  const categoryIsPicked = categoryChoice !== '';
+  const mobileChipSx = isPhone
+    ? {
+        flex: '1 1 0',
+        minWidth: 0,
+        justifyContent: 'flex-start',
+        bgcolor: 'transparent',
+      }
+    : {};
+  const activeChipSx = (active: boolean) =>
+    isPhone && active
+      ? { bgcolor: 'rgba(25, 118, 210, 0.10)', borderColor: '#1976d2' }
+      : {};
+
   const stepItems =
     openStep === 'catalog'
       ? [
@@ -346,22 +366,28 @@ const PriceStepSelects: React.FC<PriceStepSelectsProps> = ({
 
   return (
     <>
-      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{ flexWrap: isPhone ? 'nowrap' : 'wrap', rowGap: 0.5, width: '100%' }}
+      >
         <Chip
           size="small"
           variant="outlined"
           onClick={(e) => openStepWith('catalog', e)}
           icon={<ArrowDropDownIcon />}
-          label={`Справочник: ${catalogCaption}`}
-          sx={chipSx}
+          label={catalogChipLabel}
+          title={`Справочник: ${catalogCaption}`}
+          sx={{ ...chipSx, ...mobileChipSx, ...activeChipSx(catalogIsPicked) }}
         />
         <Chip
           size="small"
           variant="outlined"
           onClick={(e) => openStepWith('category', e)}
           icon={<ArrowDropDownIcon />}
-          label={`Категория: ${categoryCaption}`}
-          sx={chipSx}
+          label={categoryChipLabel}
+          title={`Категория: ${categoryCaption}`}
+          sx={{ ...chipSx, ...mobileChipSx, ...activeChipSx(categoryIsPicked) }}
         />
       </Stack>
 
@@ -384,6 +410,10 @@ const PriceStepSelects: React.FC<PriceStepSelectsProps> = ({
           <Box sx={{ p: 2, pb: 0 }}>
             <Typography variant="subtitle1" fontWeight={700}>
               {openStep === 'catalog' ? 'Справочник' : 'Категория'}
+            </Typography>
+            {/* ⭐ №322: в чипсе на телефоне только название ступени — выбранное видно здесь */}
+            <Typography variant="caption" color="text.secondary">
+              Сейчас: {openStep === 'catalog' ? catalogCaption : categoryCaption}
             </Typography>
           </Box>
           <Box sx={{ overflowY: 'auto', py: 1 }}>{stepItems}</Box>
