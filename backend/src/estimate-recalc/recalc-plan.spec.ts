@@ -75,19 +75,45 @@ describe('recalc-plan (№170)', () => {
     expect(plan.rows[0].work.newPrice).toBe(550);
   });
 
-  it('не трогает строку с фиксациями и считает её в итогах по старой цене', () => {
+  it('⭐ №337: пересчитывает и строку с фиксациями (старая защита убрана)', () => {
     const plan = buildRecalcPlan(
       [row({ totalUsed: 4 })],
       [work(100, 'Штукатурка стен', 900)],
       [],
     );
     expect(plan.rows[0].hasFacts).toBe(true);
-    expect(plan.rows[0].apply).toBe(false);
-    expect(plan.rows[0].reason).toBe('hasFacts');
+    expect(plan.rows[0].apply).toBe(true);
+    expect(plan.rows[0].reason).toBe('ok');
     expect(plan.summary.withFacts).toBe(1);
-    expect(plan.summary.willUpdate).toBe(0);
-    // 10 м² × 500 ₽ — цена осталась прежней
-    expect(plan.summary.planNew).toBe(plan.summary.planOld);
+    expect(plan.summary.willUpdate).toBe(1);
+    // 10 м² × 900 ₽ — план по строке пересчитан
+    expect(plan.summary.planNew).toBe(9000);
+    expect(plan.summary.planOld).toBe(5000);
+  });
+
+  it('⭐ №337: наценка на работы и скидка на материалы', () => {
+    const plan = buildRecalcPlan(
+      [row({ materialItemId: 55, materialUnitPrice: 100 })],
+      [work(100, 'Штукатурка стен', 500)],
+      [material(55, 'Штукатурка стен', 100)],
+      { workMarkupPercent: 10, materialMarkupPercent: -5 },
+    );
+    expect(plan.rows[0].work.newPrice).toBe(550);
+    expect(plan.rows[0].material.newPrice).toBe(95);
+    expect(plan.rows[0].apply).toBe(true);
+    // 10 × (550 + 95)
+    expect(plan.summary.planNew).toBe(6450);
+  });
+
+  it('⭐ №337: наценка действует только на найденные расценки', () => {
+    const plan = buildRecalcPlan(
+      [row({ priceItemId: null, name: 'Нет такой работы' })],
+      [work(1, 'Штукатурка стен', 600)],
+      [],
+      { workMarkupPercent: 50 },
+    );
+    expect(plan.rows[0].apply).toBe(false);
+    expect(plan.rows[0].planNew).toBe(plan.rows[0].planOld);
   });
 
   it('неоднозначное совпадение по названию = ambiguous, цену не меняем', () => {

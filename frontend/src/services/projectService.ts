@@ -243,24 +243,42 @@ export interface PriceRecalcVersion {
   sourceAuditId: number | null;
 }
 
+/** ⭐ №337: наценка/скидка пересчёта (проценты, могут быть отрицательными) */
+export interface PriceRecalcOptions {
+  workMarkupPercent?: number;
+  materialMarkupPercent?: number;
+}
+
 export const fetchPriceRecalcPreview = async (
   projectId: number,
   catalogId?: number | null,
+  options: PriceRecalcOptions = {},
 ): Promise<PriceRecalcPreview> => {
-  const response = await api.get(`/projects/${projectId}/price-recalc/preview`, {
-    params: catalogId ? { catalogId } : undefined,
-  });
+  const params: Record<string, number> = {};
+  if (catalogId) params.catalogId = catalogId;
+  if (options.workMarkupPercent) params.workMarkupPercent = options.workMarkupPercent;
+  if (options.materialMarkupPercent) {
+    params.materialMarkupPercent = options.materialMarkupPercent;
+  }
+  const response = await api.get(
+    `/projects/${projectId}/price-recalc/preview`,
+    { params: Object.keys(params).length > 0 ? params : undefined },
+  );
   return response.data;
 };
 
 export const applyPriceRecalc = async (
   projectId: number,
   catalogId?: number | null,
+  options: PriceRecalcOptions = {},
 ): Promise<PriceRecalcApplyResult> => {
-  const response = await api.post(
-    `/projects/${projectId}/price-recalc`,
-    catalogId ? { catalogId } : {},
-  );
+  const body: Record<string, number> = {};
+  if (catalogId) body.catalogId = catalogId;
+  if (options.workMarkupPercent) body.workMarkupPercent = options.workMarkupPercent;
+  if (options.materialMarkupPercent) {
+    body.materialMarkupPercent = options.materialMarkupPercent;
+  }
+  const response = await api.post(`/projects/${projectId}/price-recalc`, body);
   return response.data;
 };
 

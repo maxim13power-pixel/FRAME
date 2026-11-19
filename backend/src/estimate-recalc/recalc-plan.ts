@@ -9,11 +9,19 @@
 //   3) по нормализованному названию + единице измерения — если совпадение ровно одно;
 //   иначе: ambiguous (несколько кандидатов) или missing (нет в справочнике).
 //
-// Строки с фиксациями (totalUsed > 0) НЕ трогаем: цена — договорённость на момент работ
-// (решение владельца 10.1(4)), даже если в справочнике она уже другая.
+// ⭐ №337: строки с фиксациями ТОЖЕ пересчитываются — в этом и смысл функции (решение владельца:
+// старая защита блокировала основной принцип пересчёта). Суммы факта пересчитываются от totalUsed.
+// ⭐ №337: к цене из справочника можно применить наценку/скидку в процентах отдельно
+// для работ и материалов (как при копировании объекта).
 import { Unit } from '@prisma/client';
 import { unitFamily } from '../imports/unit-normalizer'; // ⭐ №272: «м» ↔ «пог. м»
 import { materialPricePerUnit } from './consumption'; // ⭐ №318: материал в упаковке
+
+/** Наценка/скидка в процентах (0 — цена как в справочнике, −10 — скидка 10 %) */
+export interface RecalcOptions {
+  workMarkupPercent?: number;
+  materialMarkupPercent?: number;
+}
 
 export type RecalcMatchKind =
   | 'id'
@@ -67,8 +75,7 @@ export interface RecalcSide {
 
 export type RecalcRowReason =
   | 'ok' // цену меняем
-  | 'same' // расценка найдена, цена та же
-  | 'hasFacts' // есть фиксации — строку не трогаем
+  | 'same' // расценка найдена, цена та же (с учётом процента)
   | 'notFound' // расценки нет в справочнике
   | 'ambiguous'; // в справочнике несколько кандидатов
 
@@ -192,14 +199,17 @@ function buildSide(
   unit: Unit,
   index: RecalcPriceIndex,
   consumption?: number | null, // ⭐ №318: только для материала (норма расхода)
+  markupPercent = 0, // ⭐ №337: наценка/скидка на цену из справочника
 ): RecalcSide {
   const { match, item } = resolvePriceRef(refId, name, article, unit, index);
   const before = roundMoney(oldPrice);
   // ⭐ №318: материал в упаковке + норма расхода → цена на единицу строки
   // считается как «цена упаковки / объём × расход» (без них — как раньше).
-  const after = item
+  const base = item
     ? materialPricePerUnit(item.price, item.packSize, consumption)
     : before;
+  // ⭐ №337: наценка/скидка в процентах, округляем до копеек
+  const after = item ? roundMoney(base * (1 + markupPercent / 100)) : before;
   return {
     oldPrice: before,
     newPrice: after,
@@ -212,14 +222,19 @@ function buildSide(
 /**
  * План пересчёта: строки сметы × расценки справочника (работы и материалы отдельно —
  * цена работы не должна подхватываться из материалов и наоборот).
+ * ⭐ №337: пересчитываются ВСЕ строки, включая строки с фиксациями; при желании
+ * к цене применяется наценка/скидка в процентах (workMaterial — раздельно).
  */
 export function buildRecalcPlan(
   rows: RecalcMaterialRow[],
   works: RecalcPriceRef[],
   materials: RecalcPriceRef[],
+  options: RecalcOptions = {},
 ): RecalcPlan {
   const workIndex = buildPriceIndex(works);
   const materialIndex = buildPriceIndex(materials);
+  const workPercent = Number(options.workMarkupPercent) || 0;
+  const materialPercent = Number(options.materialMarkupPercent) || 0;
 
   const planRows = rows.map<RecalcPlanRow>((row) => {
     const specQuantity = Number(row.specQuantity) || 0;
@@ -233,6 +248,8 @@ export function buildRecalcPlan(
       row.article,
       row.unit,
       workIndex,
+      null,
+      workPercent,
     );
     const material = buildSide(
       Number(row.materialUnitPrice) || 0,
@@ -243,6 +260,8 @@ export function buildRecalcPlan(
       materialIndex,
       // ⭐ №318: норма расхода строки — для материалов в упаковке
       row.consumption ?? null,
+      // ⭐ №337: наценка на материалы
+      materialPercent,
     );
 
     const changed = work.changed || material.changed;
@@ -257,11 +276,11 @@ export function buildRecalcPlan(
       material.match === 'ambiguous' ||
       (material.match === 'missing' && material.oldPrice > 0);
 
-    const apply = !hasFacts && changed;
+    // ⭐ №337: фиксации больше НЕ блокируют пересчёт
+    const apply = changed;
 
     let reason: RecalcRowReason = 'same';
-    if (hasFacts) reason = 'hasFacts';
-    else if (ambiguous) reason = 'ambiguous';
+    if (ambiguous) reason = 'ambiguous';
     else if (changed) reason = 'ok';
     else if (workIssue || materialIssue) reason = 'notFound';
 

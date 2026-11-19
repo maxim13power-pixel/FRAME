@@ -19,6 +19,7 @@ import { findWorkingCatalog } from '../price-list/working-catalog'; // ⭐ №27
 import {
   buildRecalcPlan,
   RecalcMaterialRow,
+  RecalcOptions,
   RecalcPriceRef,
   roundMoney,
 } from './recalc-plan';
@@ -135,6 +136,7 @@ export class EstimateRecalcService {
     projectId: number,
     userId: number,
     catalogId?: number,
+    options: RecalcOptions = {},
   ) {
     const access = await this.checkProjectAccess(projectId, userId);
 
@@ -228,9 +230,12 @@ export class EstimateRecalcService {
       unitPrice: Number(m.unitPrice),
       materialItemId: m.materialItemId,
       materialUnitPrice: Number(m.materialUnitPrice),
+      // ⭐ №318: норма расхода влияет на цену материала из упаковки
+      consumption: m.consumption,
     }));
 
-    const plan = buildRecalcPlan(rows, works, materialPrices);
+    // ⭐ №337: план строится с наценкой/скидкой на работы и материалы
+    const plan = buildRecalcPlan(rows, works, materialPrices, options);
 
     return {
       access,
@@ -268,8 +273,13 @@ export class EstimateRecalcService {
   }
 
   /** Превью пересчёта — ничего не пишет */
-  async preview(projectId: number, userId: number, catalogId?: number) {
-    const ctx = await this.loadPlan(projectId, userId, catalogId);
+  async preview(
+    projectId: number,
+    userId: number,
+    catalogId?: number,
+    options: RecalcOptions = {},
+  ) {
+    const ctx = await this.loadPlan(projectId, userId, catalogId, options);
     if (this.mustHidePrices(ctx.access)) {
       throw new ForbiddenException(
         'Вам скрыты цены — пересчёт недоступен. Попросите администратора объекта открыть цены.',
@@ -280,15 +290,17 @@ export class EstimateRecalcService {
 
   /**
    * Применение пересчёта.
-   * Пишем ТОЛЬКО строки без фиксаций (totalUsed = 0) и только с реальным изменением цены.
+   * ⭐ №337: пишем ВСЕ строки с изменением цены, включая строки с фиксациями
+   * (суммы факта пересчитываются от totalUsed). Наценка/скидка — параметром.
    * В той же транзакции сохраняем снимок «до» в AuditLog — он же версия для отката.
    */
   async apply(
     projectId: number,
     catalogId: number | undefined,
     userId: number,
+    options: RecalcOptions = {},
   ) {
-    const ctx = await this.loadPlan(projectId, userId, catalogId);
+    const ctx = await this.loadPlan(projectId, userId, catalogId, options);
     this.assertCanRecalc(ctx.access);
 
     const { plan, catalog } = ctx;
@@ -304,10 +316,7 @@ export class EstimateRecalcService {
           source: ctx.source,
         },
         summary: plan.summary,
-        message:
-          plan.summary.withFacts === plan.summary.rows && plan.summary.rows > 0
-            ? 'Во всех строках уже есть фиксации — цены не меняем.'
-            : 'Менять нечего: цены уже совпадают со справочником.',
+        message: 'Менять нечего: цены уже совпадают со справочником.',
       };
     }
 
@@ -326,17 +335,11 @@ export class EstimateRecalcService {
 
         const beforeRows: PriceSnapshotRow[] = [];
         const afterRows: PriceSnapshotRow[] = [];
-        let skippedFacts = 0;
 
         for (const row of rowsToApply) {
           const current = lockedById.get(row.materialId);
           if (!current) continue; // строку удалили между превью и применением
           const used = Number(current.totalUsed);
-          // Пока показывали превью, могли появиться фиксации — такую строку не трогаем
-          if (used > 0) {
-            skippedFacts += 1;
-            continue;
-          }
           beforeRows.push({
             materialId: row.materialId,
             unitPrice: Number(current.unitPrice),
@@ -358,7 +361,7 @@ export class EstimateRecalcService {
         }
 
         if (afterRows.length === 0) {
-          return { entry: null, updated: 0, skippedFacts };
+          return { entry: null, updated: 0 };
         }
 
         // ⭐ №276: старый проект мог быть без привязки — фиксируем базу, в которую пишем
@@ -405,13 +408,17 @@ export class EstimateRecalcService {
             },
           },
         });
-        return { entry, updated: afterRows.length, skippedFacts };
+        return { entry, updated: afterRows.length };
       },
       { timeout: 30_000 },
     );
 
     const updated = result.updated;
-    const skipped = result.skippedFacts > 0 ? ` Пропущено с фиксациями: ${result.skippedFacts}.` : '';
+    const percentNote =
+      (Number(options.workMarkupPercent) || 0) !== 0 ||
+      (Number(options.materialMarkupPercent) || 0) !== 0
+        ? ` Наценка: работы ${Number(options.workMarkupPercent) || 0} %, материалы ${Number(options.materialMarkupPercent) || 0} %.`
+        : '';
     return {
       updated,
       auditId: result.entry?.id ?? null,
@@ -423,8 +430,8 @@ export class EstimateRecalcService {
       summary: plan.summary,
       message:
         updated === 0
-          ? 'Пока показывали превью, в строках появились фиксации — цены не меняем.'
-          : `Пересчитано строк: ${updated}.${skipped} Откат — в «Истории пересчётов».`,
+          ? 'Менять нечего: цены уже совпадают со справочником.'
+          : `Пересчитано строк: ${updated}.${percentNote} Откат — в «Истории пересчётов».`,
     };
   }
 

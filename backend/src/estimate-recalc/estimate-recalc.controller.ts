@@ -23,16 +23,26 @@ interface AuthedRequest {
   user: { userId: number };
 }
 
+/** ⭐ №337: процент из query — пусто/мусор → undefined (наценки нет) */
+function toPercent(value?: string): number | undefined {
+  if (value == null || value.trim() === '') return undefined;
+  const parsed = Number(value.replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 @Controller('projects')
 @UseGuards(JwtAuthGuard)
 export class EstimateRecalcController {
   constructor(private readonly recalcService: EstimateRecalcService) {}
 
   // Превью: что и как изменится. Ничего не пишет.
+  // ⭐ №337: справочник и наценки можно выбрать прямо в модалке.
   @Get(':id/price-recalc/preview')
   preview(
     @Param('id', ParseIntPipe) id: number,
     @Query('catalogId') catalogId: string | undefined,
+    @Query('workMarkupPercent') workPercent: string | undefined,
+    @Query('materialMarkupPercent') materialPercent: string | undefined,
     @Req() req: AuthedRequest,
   ) {
     const parsed = catalogId ? parseInt(catalogId, 10) : undefined;
@@ -40,10 +50,14 @@ export class EstimateRecalcController {
       id,
       req.user.userId,
       Number.isNaN(parsed as number) ? undefined : parsed,
+      {
+        workMarkupPercent: toPercent(workPercent),
+        materialMarkupPercent: toPercent(materialPercent),
+      },
     );
   }
 
-  // Применение: пишет только строки без фиксаций + снимок версии в аудит.
+  // Применение: пишет строки с новой ценой (включая строки с фиксациями) + снимок в аудит.
   @Post(':id/price-recalc')
   apply(
     @Param('id', ParseIntPipe) id: number,
@@ -51,7 +65,10 @@ export class EstimateRecalcController {
     dto: RecalcDto,
     @Req() req: AuthedRequest,
   ) {
-    return this.recalcService.apply(id, dto.catalogId, req.user.userId);
+    return this.recalcService.apply(id, dto.catalogId, req.user.userId, {
+      workMarkupPercent: dto.workMarkupPercent,
+      materialMarkupPercent: dto.materialMarkupPercent,
+    });
   }
 
   // История пересчётов проекта (версии для отката).

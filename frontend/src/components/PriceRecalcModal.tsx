@@ -10,8 +10,12 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  FormControl,
+  InputLabel,
+  MenuItem,
   Modal,
   Paper,
+  Select,
   Stack,
   Tab,
   Table,
@@ -21,6 +25,7 @@ import {
   TableHead,
   TableRow,
   Tabs,
+  TextField,
   Typography,
   useMediaQuery,
   useTheme,
@@ -38,6 +43,8 @@ import type {
   PriceRecalcRow,
   PriceRecalcVersion,
 } from '../services/projectService';
+import { fetchPriceCatalogs } from '../services/priceListService';
+import type { PriceCatalogData } from '../services/priceListService';
 import { getApiErrorText } from '../utils/errors';
 
 const UNIT_LABELS: Record<string, string> = {
@@ -120,13 +127,32 @@ export const PriceRecalcModal: React.FC<PriceRecalcModalProps> = ({
   const [rollingId, setRollingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // ⭐ №337: выбор справочника и наценки прямо в модалке
+  const [catalogs, setCatalogs] = useState<PriceCatalogData[]>([]);
+  const [selectedCatalogId, setSelectedCatalogId] = useState<number | ''>(
+    catalogId ?? '',
+  );
+  const [workPercent, setWorkPercent] = useState('');
+  const [materialPercent, setMaterialPercent] = useState('');
+
+  const workPercentValue = (): number =>
+    workPercent.trim() === '' ? 0 : Number(workPercent.replace(',', '.')) || 0;
+  const materialPercentValue = (): number =>
+    materialPercent.trim() === ''
+      ? 0
+      : Number(materialPercent.replace(',', '.')) || 0;
+
   const loadPreview = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await fetchPriceRecalcPreview(
         projectId,
-        catalogId ?? undefined,
+        selectedCatalogId === '' ? undefined : selectedCatalogId,
+        {
+          workMarkupPercent: workPercentValue(),
+          materialMarkupPercent: materialPercentValue(),
+        },
       );
       setPreview(data);
     } catch (err) {
@@ -135,7 +161,8 @@ export const PriceRecalcModal: React.FC<PriceRecalcModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [projectId, catalogId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, selectedCatalogId, workPercent, materialPercent]);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -148,27 +175,58 @@ export const PriceRecalcModal: React.FC<PriceRecalcModalProps> = ({
     }
   }, [projectId]);
 
+  // ⭐ №337: список справочников для выбора — один раз при открытии
+  useEffect(() => {
+    if (!open) return;
+    void fetchPriceCatalogs()
+      .then((list) =>
+        setCatalogs(
+          list.filter((c) => !(c as { isArchived?: boolean }).isArchived),
+        ),
+      )
+      .catch(() => setCatalogs([]));
+  }, [open]);
+
+  // Превью пересобираем с небольшой задержкой — не дёргаем сервер на каждый символ
   useEffect(() => {
     if (!open) return;
     setTab('preview');
-    void loadPreview();
+    const timer = setTimeout(() => {
+      void loadPreview();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [open, loadPreview]);
+
+  useEffect(() => {
+    if (!open) return;
     void loadHistory();
-  }, [open, loadPreview, loadHistory]);
+  }, [open, loadHistory]);
 
   const handleApply = async () => {
     if (!preview || preview.summary.willUpdate === 0) return;
+    const percentNote =
+      workPercentValue() !== 0 || materialPercentValue() !== 0
+        ? ` Наценка: работы ${workPercentValue()} %, материалы ${materialPercentValue()} %.`
+        : '';
     const ok = await confirm({
       title: 'Пересчитать смету?',
       text:
-        `Обновим цены в строках: ${preview.summary.willUpdate}. ` +
-        `Строки с фиксациями не тронем (${preview.summary.withFacts}). ` +
-        'Объёмы и проценты останутся прежними.',
+        `Обновим цены в строках: ${preview.summary.willUpdate}.` +
+        ` Строки с фиксациями тоже пересчитаются (${preview.summary.withFacts}).` +
+        ` Суммы факта пересчитаются от фактических объёмов.${percentNote}`,
       confirmText: 'Пересчитать',
     });
     if (!ok) return;
     setApplying(true);
     try {
-      const result = await applyPriceRecalc(projectId, catalogId ?? undefined);
+      const result = await applyPriceRecalc(
+        projectId,
+        selectedCatalogId === '' ? undefined : selectedCatalogId,
+        {
+          workMarkupPercent: workPercentValue(),
+          materialMarkupPercent: materialPercentValue(),
+        },
+      );
       notify(
         result.message || `Пересчитано строк: ${result.updated}`,
         'success',
@@ -229,8 +287,56 @@ export const PriceRecalcModal: React.FC<PriceRecalcModalProps> = ({
           <Typography variant="h6">Пересчёт по справочнику</Typography>
           <Typography variant="body2" color="text.secondary">
             «{catalogLabel}»{catalogFromObject ? ' (справочник объекта)' : ''} —
-            меняем только цены работ и материалов. Объёмы, фиксации и проценты
-            не трогаем.
+            меняем только цены работ и материалов. Объёмы не трогаем, строки с
+            фиксациями тоже пересчитываются, суммы факта — от фактических объёмов.
+          </Typography>
+          {/* ⭐ №337: выбор справочника и наценки в процентах */}
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            sx={{ mt: 1.5 }}
+          >
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 240 } }}>
+              <InputLabel>Справочник для пересчёта</InputLabel>
+              <Select
+                label="Справочник для пересчёта"
+                value={selectedCatalogId}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSelectedCatalogId(
+                    value === '' ? '' : Number(value),
+                  );
+                }}
+              >
+                <MenuItem value="">Как в проекте</MenuItem>
+                {catalogs.map((c) => (
+                  <MenuItem key={c.id} value={c.id}>
+                    {c.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              size="small"
+              type="number"
+              label="Наценка на работы, %"
+              value={workPercent}
+              onChange={(e) => setWorkPercent(e.target.value)}
+              inputProps={{ step: 1 }}
+              sx={{ width: { xs: '100%', sm: 190 } }}
+            />
+            <TextField
+              size="small"
+              type="number"
+              label="Наценка на материалы, %"
+              value={materialPercent}
+              onChange={(e) => setMaterialPercent(e.target.value)}
+              inputProps={{ step: 1 }}
+              sx={{ width: { xs: '100%', sm: 200 } }}
+            />
+          </Stack>
+          <Typography variant="caption" color="text.secondary">
+            0 — цена как в справочнике, −10 — скидка 10 %, +15 — наценка 15 %.
           </Typography>
           <Tabs
             value={tab}
@@ -276,7 +382,7 @@ export const PriceRecalcModal: React.FC<PriceRecalcModalProps> = ({
                     <Chip
                       size="small"
                       color="info"
-                      label={`С фиксациями: ${preview.summary.withFacts}`}
+                      label={`С фиксациями: ${preview.summary.withFacts} (тоже пересчитаются)`}
                     />
                   )}
                   {preview.summary.notFound > 0 && (
@@ -310,8 +416,8 @@ export const PriceRecalcModal: React.FC<PriceRecalcModalProps> = ({
 
                 {preview.summary.willUpdate === 0 && (
                   <Alert severity="info" sx={{ mb: 2 }}>
-                    Менять нечего: цены уже совпадают со справочником либо во
-                    всех строках есть фиксации.
+                    Менять нечего: цены уже совпадают со справочником (с учётом
+                    наценки) либо ни одна строка не нашлась в справочнике.
                   </Alert>
                 )}
 
@@ -435,7 +541,7 @@ const PreviewTable: React.FC<{ rows: PriceRecalcRow[] }> = ({ rows }) => (
         {rows.map((row) => {
           const meta = REASON_META[row.reason];
           return (
-            <TableRow key={row.materialId} hover sx={{ opacity: row.hasFacts ? 0.7 : 1 }}>
+            <TableRow key={row.materialId} hover>
               <TableCell sx={{ maxWidth: 280 }}>
                 <Typography variant="body2" fontWeight={row.apply ? 700 : 500}>
                   {row.name}
@@ -514,7 +620,7 @@ const PriceLine: React.FC<{
 const PreviewCard: React.FC<{ row: PriceRecalcRow }> = ({ row }) => {
   const meta = REASON_META[row.reason];
   return (
-    <Paper variant="outlined" sx={{ p: 1.5, opacity: row.hasFacts ? 0.75 : 1 }}>
+    <Paper variant="outlined" sx={{ p: 1.5 }}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
         <Typography variant="body2" fontWeight={700} sx={{ flexGrow: 1 }}>
           {row.name}
