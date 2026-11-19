@@ -3187,13 +3187,10 @@ onClose={() => setFilterAnchorEl(null)}
          </Select>
        </FormControl>
      </Stack>
-        {/* ⭐ №327: примечание — одна строка, но растёт по мере ввода */}
+        {/* ⭐ №332: примечание — строго одно поле в одну строку, как остальные */}
         <TextField
           fullWidth
           label="Примечание"
-          multiline
-          minRows={1}
-          maxRows={6}
           value={newNote}
           onChange={e => setNewNote(e.target.value)}
         />
@@ -3897,7 +3894,7 @@ textAlign: 'center',
     </Select>
   </FormControl>
 </Stack>
-<TextField fullWidth label="Примечание" multiline minRows={1} maxRows={6} value={editNote} onChange={e => setEditNote(e.target.value)} />
+<TextField fullWidth label="Примечание" value={editNote} onChange={e => setEditNote(e.target.value)} />
 
 <Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена работ</Typography></Divider>
 {!editCreatingNew ? (
