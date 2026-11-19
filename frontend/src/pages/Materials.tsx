@@ -3512,7 +3512,7 @@ renderInput={(params) => (
         </>
         )}
 {/* ⭐ №319: норма расхода — доступна ВСЕГДА (и в режиме справочника, и при своей цене).
-    ⭐ №323: кнопка-режим «🧮 Рассчитать расход материала на 1 ед.» — в том же стиле, что
+    ⭐ №323: кнопка-режим «🧮 Рассчитать расход на 1 ед.» — в том же стиле, что
     «✏️ Указать свою цену материала». Вводим объём работ, сколько упаковок нужно и сколько
     единиц в упаковке — норму и цену за единицу считаем сами и показываем словами. */}
 <Button
@@ -3536,7 +3536,7 @@ renderInput={(params) => (
 >
   {addFromVolume
     ? '↩ Ввести расход вручную'
-    : '🧮 Рассчитать расход материала на 1 ед.'}
+    : '🧮 Рассчитать расход на 1 ед.'}
 </Button>
 {addFromVolume ? (
   <>
@@ -3606,7 +3606,7 @@ renderInput={(params) => (
       (selectedMaterialItem?.packSize ?? 0) > 0 && numOr0(addConsumption) > 0
         ? `Упаковка ${selectedMaterialItem?.packSize} ${unitLabelOf(selectedMaterialItem?.unit ?? 'PIECE')} за ${(selectedMaterialItem?.price ?? 0).toLocaleString('ru-RU')} ₽ → ${packUnitPrice(Number(selectedMaterialItem?.price ?? 0), Number(selectedMaterialItem?.packSize), numOr0(addConsumption)).toLocaleString('ru-RU')} ₽ за 1 ${unitLabelOf(newUnit)}`
         : selectedMaterialItem && !((selectedMaterialItem?.packSize ?? 0) > 0)
-          ? 'У расценки не указано «В упаковке» — норма пока не влияет на цену. Нажмите кнопку «🧮 Рассчитать расход» и укажите, сколько единиц в упаковке.'
+          ? 'У расценки не указано «В упаковке» — норма пока не влияет на цену. Нажмите кнопку «🧮 Рассчитать расход на 1 ед.» и укажите, сколько единиц в упаковке.'
           : 'Сколько материала нужно на 1 единицу строки (в единицах упаковки: кг, л, шт). Пусто — цена материала берётся «за единицу».'
     }
   />
@@ -4052,7 +4052,7 @@ renderInput={(params) => (
 <Button size="small" onClick={() => { setEditSelectedMaterialItem(null); setEditMaterialItemId(null); }}>Сбросить</Button>
 </Box>
 )}
-{/* ⭐ №318: норма расхода. ⭐ №323: кнопка-режим «🧮 Рассчитать расход материала на 1 ед.» —
+{/* ⭐ №318: норма расхода. ⭐ №323: кнопка-режим «🧮 Рассчитать расход на 1 ед.» —
     та же логика, что в «Добавить позицию»: объём работ → упаковки → «в упаковке». */}
 <Button
   size="small"
@@ -4075,7 +4075,7 @@ renderInput={(params) => (
 >
   {editFromVolume
     ? '↩ Ввести расход вручную'
-    : '🧮 Рассчитать расход материала на 1 ед.'}
+    : '🧮 Рассчитать расход на 1 ед.'}
 </Button>
 {editFromVolume ? (
 <>
@@ -4138,7 +4138,7 @@ renderInput={(params) => (
     (editSelectedMaterialItem?.packSize ?? 0) > 0 && numOr0(editConsumption) > 0
       ? `Упаковка ${editSelectedMaterialItem?.packSize} ${unitLabelOf(editSelectedMaterialItem?.unit ?? 'PIECE')} за ${(editSelectedMaterialItem?.price ?? 0).toLocaleString('ru-RU')} ₽ → ${packUnitPrice(Number(editSelectedMaterialItem?.price ?? 0), Number(editSelectedMaterialItem?.packSize), numOr0(editConsumption)).toLocaleString('ru-RU')} ₽ за 1 ${unitLabelOf(editUnit)}`
       : editSelectedMaterialItem && !((editSelectedMaterialItem?.packSize ?? 0) > 0)
-        ? 'У расценки не указано «В упаковке» — норма пока не влияет на цену. Нажмите кнопку «🧮 Рассчитать расход» и укажите, сколько единиц в упаковке.'
+        ? 'У расценки не указано «В упаковке» — норма пока не влияет на цену. Нажмите кнопку «🧮 Рассчитать расход на 1 ед.» и укажите, сколько единиц в упаковке.'
         : 'Сколько материала нужно на 1 единицу строки (в единицах упаковки: кг, л, шт). Пусто — цена считается за единицу строки.'
   }
 />
