@@ -58,4 +58,10 @@ export class UpdateMaterialDto {
   @IsNumber({}, { message: 'consumption должен быть числом' })
   @Min(0, { message: 'Расход не может быть отрицательным' })
   consumption?: number | null;
+
+  // ⭐ №321: «сколько единиц в упаковке» — правится из сметы калькулятором «от объёма».
+  @IsOptional()
+  @IsNumber({}, { message: 'materialPackSize должен быть числом' })
+  @Min(0, { message: 'Упаковка не может быть отрицательной' })
+  materialPackSize?: number | null;
 }

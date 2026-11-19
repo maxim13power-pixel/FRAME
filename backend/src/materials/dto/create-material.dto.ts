@@ -73,4 +73,11 @@ export class CreateMaterialDto {
   @IsNumber({}, { message: 'consumption должен быть числом' })
   @Min(0, { message: 'Расход не может быть отрицательным' })
   consumption?: number | null;
+
+  // ⭐ №321: «сколько единиц в упаковке» — задаётся прямо из сметы калькулятором
+  // «от объёма» (мешок 25 кг, рулон 100 м²). Пишется в расценку справочника.
+  @IsOptional()
+  @IsNumber({}, { message: 'materialPackSize должен быть числом' })
+  @Min(0, { message: 'Упаковка не может быть отрицательной' })
+  materialPackSize?: number | null;
 }

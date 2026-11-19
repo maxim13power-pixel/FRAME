@@ -65,7 +65,27 @@ async function findTargetItem(
       unit: { in: unitsInFamily(input.unit) },
     },
   });
-  return candidates.find((item) => norm(item.name) === norm(input.name)) ?? null;
+  return (
+    candidates.find((item) => norm(item.name) === norm(input.name)) ?? null
+  );
+}
+
+/**
+ * ⭐ №321: «в упаковке N единиц» можно задать прямо из сметы (калькулятор «от объёма»).
+ * Пишем только положительное значение и только если оно отличается — иначе лишний UPDATE.
+ */
+async function applyPackSize(
+  tx: Prisma.TransactionClient,
+  item: PriceItem,
+  packSize?: number | null,
+): Promise<PriceItem> {
+  const next = Number(packSize ?? 0);
+  if (!(next > 0)) return item;
+  if (Number(item.packSize ?? 0) === next) return item;
+  return tx.priceItem.update({
+    where: { id: item.id },
+    data: { packSize: next },
+  });
 }
 
 /**
@@ -87,6 +107,8 @@ export async function resolveProjectPriceItem(
     categoryId?: number | null;
     /** true — при совпадении обновить цену в справочнике проекта */
     updatePrice?: boolean;
+    /** ⭐ №321: сколько единиц в упаковке (кг/л/шт); null/0 — не трогаем */
+    packSize?: number | null;
   },
 ): Promise<{
   item: PriceItem;
@@ -105,7 +127,12 @@ export async function resolveProjectPriceItem(
       throw new Error('Расценка не найдена или неактивна');
     }
     if (source.catalogId === catalogId) {
-      return { item: source, catalogId, copied: false, priceUpdated: false };
+      return {
+        item: await applyPackSize(tx, source, opts.packSize),
+        catalogId,
+        copied: false,
+        priceUpdated: false,
+      };
     }
     const existing = await findTargetItem(tx, catalogId, {
       name: source.name,
@@ -114,7 +141,12 @@ export async function resolveProjectPriceItem(
       kind: source.kind,
     });
     if (existing) {
-      return { item: existing, catalogId, copied: false, priceUpdated: false };
+      return {
+        item: await applyPackSize(tx, existing, opts.packSize),
+        catalogId,
+        copied: false,
+        priceUpdated: false,
+      };
     }
     const copied = await tx.priceItem.create({
       data: {
@@ -124,6 +156,8 @@ export async function resolveProjectPriceItem(
         article: source.article,
         unit: source.unit,
         price: source.price,
+        // ⭐ №321: копия расценки сохраняет упаковку (раньше терялась)
+        packSize: opts.packSize ?? source.packSize ?? null,
         categoryId: source.categoryId,
         kind: source.kind,
         isActive: true,
@@ -140,15 +174,27 @@ export async function resolveProjectPriceItem(
     kind: opts.kind,
   });
   if (existing) {
-    if (
+    const nextPackSize = Number(opts.packSize ?? 0);
+    // ⭐ №321: упаковку сохраняем вместе с ценой (калькулятор «от объёма»)
+    const packChanged =
+      nextPackSize > 0 && Number(existing.packSize ?? 0) !== nextPackSize;
+    const priceChanged =
       opts.updatePrice !== false &&
-      Math.abs(Number(existing.price) - Number(opts.price)) >= 0.01
-    ) {
+      Math.abs(Number(existing.price) - Number(opts.price)) >= 0.01;
+    if (priceChanged || packChanged) {
       const updated = await tx.priceItem.update({
         where: { id: existing.id },
-        data: { price: opts.price, categoryId },
+        data: {
+          ...(priceChanged ? { price: opts.price, categoryId } : {}),
+          ...(packChanged ? { packSize: nextPackSize } : {}),
+        },
       });
-      return { item: updated, catalogId, copied: false, priceUpdated: true };
+      return {
+        item: updated,
+        catalogId,
+        copied: false,
+        priceUpdated: priceChanged,
+      };
     }
     return { item: existing, catalogId, copied: false, priceUpdated: false };
   }
@@ -161,6 +207,8 @@ export async function resolveProjectPriceItem(
       article: opts.article?.trim() || null,
       unit: opts.unit,
       price: opts.price,
+      // ⭐ №321: упаковка из калькулятора «от объёма» (null — цена за единицу)
+      packSize: Number(opts.packSize ?? 0) > 0 ? Number(opts.packSize) : null,
       categoryId,
       kind: opts.kind,
       isActive: true,

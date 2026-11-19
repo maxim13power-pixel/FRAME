@@ -13,7 +13,10 @@ import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { CreatePriceItemDto } from '../price-list/dto/create-price-item.dto';
-import { loadCatalogAccess, findVisiblePriceItem } from '../price-list/catalog-access'; // ⭐ №164, №191
+import {
+  loadCatalogAccess,
+  findVisiblePriceItem,
+} from '../price-list/catalog-access'; // ⭐ №164, №191
 import { resolveProjectPriceItem } from '../price-list/project-catalog'; // ⭐ №271
 import { materialPricePerUnit } from '../estimate-recalc/consumption'; // ⭐ №318
 import { assertAccessActive, findProjectAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
@@ -272,6 +275,8 @@ export class MaterialsService {
           unit,
           price: Number(dto.materialPrice ?? 0),
           kind: 'MATERIAL',
+          // ⭐ №321: упаковку можно указать прямо в смете (калькулятор «от объёма»)
+          packSize: dto.materialPackSize ?? null,
         });
         materialItemId = resolved.item.id;
         // ⭐ №318: банка 9 кг за 1000 ₽ и расход 0.2 кг/м² → 22.22 ₽/м²
@@ -289,6 +294,8 @@ export class MaterialsService {
           unit,
           price: Number(dto.materialPrice),
           kind: 'MATERIAL',
+          // ⭐ №321: упаковку можно указать прямо в смете (калькулятор «от объёма»)
+          packSize: dto.materialPackSize ?? null,
         });
         materialItemId = resolved.item.id;
         materialUnitPrice = materialPricePerUnit(
@@ -655,7 +662,9 @@ export class MaterialsService {
         this.mustHidePrices(access) &&
         (dto.workPrice !== undefined || dto.materialPrice !== undefined)
       ) {
-        throw new ForbiddenException('Вам скрыты цены — менять цену строки нельзя');
+        throw new ForbiddenException(
+          'Вам скрыты цены — менять цену строки нельзя',
+        );
       }
     }
 
@@ -778,7 +787,8 @@ export class MaterialsService {
       // ⭐ №275: цена, введённая в строке сметы, перекрывает расценку.
       // Это снапшот строки: справочник не меняется (для него есть отдельная правка).
       if (dto.workPrice !== undefined) unitPrice = dto.workPrice;
-      if (dto.materialPrice !== undefined) materialUnitPrice = dto.materialPrice;
+      if (dto.materialPrice !== undefined)
+        materialUnitPrice = dto.materialPrice;
 
       // ⭐ №318: норма расхода. Если цену материала не задали вручную — считаем её
       // по упаковке из справочника: цена упаковки / объём × расход.
@@ -795,10 +805,21 @@ export class MaterialsService {
           where: { id: materialItemId },
           select: { price: true, packSize: true },
         });
+        // ⭐ №321: упаковку можно поправить прямо из сметы (калькулятор «от объёма»):
+        // мешок 25 кг, рулон 100 м² — иначе норма расхода молча ни на что не влияет.
+        let packSize = item?.packSize ?? null;
+        const nextPackSize = Number(dto.materialPackSize ?? 0);
+        if (nextPackSize > 0 && Number(packSize ?? 0) !== nextPackSize) {
+          await tx.priceItem.update({
+            where: { id: materialItemId },
+            data: { packSize: nextPackSize },
+          });
+          packSize = nextPackSize;
+        }
         // Если норму сбросили (null) — helper вернёт цену расценки «за единицу строки»
         materialUnitPrice = materialPricePerUnit(
           Number(item?.price ?? 0),
-          item?.packSize,
+          packSize,
           consumption,
         );
       }
@@ -843,7 +864,14 @@ export class MaterialsService {
         after.unitPrice !== priceBefore.unitPrice ||
         after.materialUnitPrice !== priceBefore.materialUnitPrice
       ) {
-        await this.audit.log(userId, 'material', id, 'price_change', priceBefore, after);
+        await this.audit.log(
+          userId,
+          'material',
+          id,
+          'price_change',
+          priceBefore,
+          after,
+        );
       }
     }
     return this.mustHidePrices(access) ? this.stripPrices(updated) : updated;
@@ -1019,7 +1047,8 @@ export class MaterialsService {
     }
 
     const kind: PriceKind = side === 'work' ? 'WORK' : 'MATERIAL';
-    let itemId = side === 'work' ? material.priceItemId : material.materialItemId;
+    let itemId =
+      side === 'work' ? material.priceItemId : material.materialItemId;
 
     // 1. Привязки нет → ищем позицию по названию, иначе создаём
     if (itemId == null) {
@@ -1089,7 +1118,10 @@ export class MaterialsService {
       return created.id;
     } catch (e) {
       // параллельное создание категории — перечитываем существующую
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
         const raced = await this.prisma.priceCategory.findFirst({
           where: { name, kind },
           select: { id: true },

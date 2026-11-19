@@ -129,6 +129,8 @@ export const createMaterial = async (
     materialPrice?: number;
     /** ⭐ №318: норма расхода материала (для упаковки) */
     consumption?: number | null;
+    /** ⭐ №321: сколько единиц в упаковке — из калькулятора «от объёма» */
+    materialPackSize?: number | null;
   }
 ): Promise<MaterialData> => {
   const response = await api.post('/materials', data);
@@ -214,6 +216,8 @@ export const updateMaterial = async (
     materialPrice?: number;
     /** ⭐ №318: норма расхода материала (null — сбросить) */
     consumption?: number | null;
+    /** ⭐ №321: сколько единиц в упаковке — из калькулятора «от объёма» */
+    materialPackSize?: number | null;
   }
 ): Promise<MaterialData> => {
   const response = await api.patch(`/materials/${materialId}`, data);
