@@ -50,7 +50,8 @@ const HEADER_FILL: ExcelJS.Fill = {
 };
 
 export interface TemplateItemInput {
-  id: number;
+  /** ⭐ №339: у шаблона-образца ID нет — при импорте позиции создаются по названию */
+  id?: number;
   name: string;
   article: string | null;
   unit: Unit;
@@ -225,7 +226,7 @@ export class PriceTemplateService {
       row.getCell(4).value = item.price;
       row.getCell(4).numFmt = '#,##0.00';
       row.getCell(5).value = item.note ?? '';
-      row.getCell(6).value = item.id;
+      row.getCell(6).value = item.id ?? '';
       for (let c = 1; c <= HEADERS.length; c += 1) row.getCell(c).border = BORDER;
     });
 

@@ -339,7 +339,7 @@ export interface PriceClarificationGroup {
 export const downloadPriceTemplate = async (
   catalogId: number,
   kind: PriceImportKind,
-  /** ⭐ №338: true — пустой шаблон, false — выгрузка текущего справочника */
+  /** ⭐ №338/№339: true — шаблон с образцом (один для всех), false — выгрузка справочника */
   template = true,
 ): Promise<void> => {
   const response = await api.get(`/price-list/catalogs/${catalogId}/export`, {

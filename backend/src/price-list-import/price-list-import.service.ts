@@ -66,9 +66,9 @@ export class PriceListImportService {
   ) {}
 
   /**
-   * ⭐ №338: «Скачать шаблон» — ВСЕГДА пустой бланк (лист «Как заполнять», «Единицы»,
-   * категория с заголовками и пустыми строками), независимо от наполнения справочника.
-   * Отдельно `templateOnly = false` — выгрузка текущего справочника (для бэкапа/обмена).
+   * ⭐ №338/№339: `templateOnly = true` — «Скачать шаблон»: заполненный ОБРАЗЕЦ (SYSTEM-
+   * справочник), один и тот же для всех, независимо от содержимого личного справочника.
+   * Без флага — выгрузка текущего справочника (для бэкапа/обмена).
    */
   async export(
     catalogId: number,
@@ -79,36 +79,38 @@ export class PriceListImportService {
     const access = await this.prices.assertCanEditCatalog(catalogId, userId);
     const suffix = kind === 'WORK' ? 'работы' : 'материалы';
 
-    if (templateOnly) {
-      const buffer = await this.templates.build({
-        catalogId,
-        catalogName: access.catalog.name,
-        kind,
-        sheets: [],
-      });
-      return { fileName: `Шаблон прайса — ${suffix}.xlsx`, buffer };
-    }
+    // ⭐ №339: источник шаблона — системный образец, а не данные справочника
+    const sourceCatalogId = templateOnly
+      ? ((await this.prisma.priceCatalog.findFirst({
+          where: { kind: 'SYSTEM' },
+          select: { id: true },
+          orderBy: { id: 'asc' },
+        }))?.id ?? null)
+      : catalogId;
 
-    const items = await this.prisma.priceItem.findMany({
-      where: { catalogId, kind, isActive: true },
-      select: {
-        id: true,
-        name: true,
-        article: true,
-        unit: true,
-        price: true,
-        categoryId: true,
-        category: { select: { name: true, sortOrder: true } },
-      },
-      orderBy: [{ category: { sortOrder: 'asc' } }, { name: 'asc' }],
-    });
+    const items = sourceCatalogId
+      ? await this.prisma.priceItem.findMany({
+          where: { catalogId: sourceCatalogId, kind, isActive: true },
+          select: {
+            id: true,
+            name: true,
+            article: true,
+            unit: true,
+            price: true,
+            categoryId: true,
+            category: { select: { name: true, sortOrder: true } },
+          },
+          orderBy: [{ category: { sortOrder: 'asc' } }, { name: 'asc' }],
+        })
+      : [];
 
     const byCategory = new Map<string, TemplateSheetInput>();
     for (const item of items) {
       const name = item.category?.name ?? 'Разное';
       const sheet = byCategory.get(name) ?? { sheet: name, category: name, items: [] };
       sheet.items.push({
-        id: item.id,
+        // ⭐ №339: в шаблоне не пишем ID образца — импорт создаст позиции по названию
+        id: templateOnly ? undefined : item.id,
         name: item.name,
         article: item.article,
         unit: item.unit,
@@ -129,7 +131,9 @@ export class PriceListImportService {
 
     const buffer = await this.templates.build(input);
     return {
-      fileName: `Прайс «${access.catalog.name}» — ${suffix}.xlsx`,
+      fileName: templateOnly
+        ? `Шаблон прайса — ${suffix}.xlsx`
+        : `Прайс «${access.catalog.name}» — ${suffix}.xlsx`,
       buffer,
     };
   }
