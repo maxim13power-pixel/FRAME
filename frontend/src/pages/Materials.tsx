@@ -3140,7 +3140,8 @@ onClose={() => setFilterAnchorEl(null)}
           paddingBottom: '13.7px',
         },
          }}>
-          <Typography variant="h6" gutterBottom>Добавить позицию</Typography>
+          {/* ⭐ №330: заголовок по центру окна */}
+          <Typography variant="h6" gutterBottom textAlign="center">Добавить позицию</Typography>
           <Stack spacing={2}>
             <TextField
               fullWidth
