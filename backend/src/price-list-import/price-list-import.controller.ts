@@ -75,15 +75,21 @@ export class PriceListImportController {
     return this.templateUpdate.apply(id, req.user.userId, mode);
   }
 
-  /** Скачать шаблон (он же выгрузка текущего справочника) */
+  /** ⭐ №338: `template=1` — пустой бланк, без параметра — выгрузка справочника */
   @Get('catalogs/:id/export')
   async export(
     @Param('id', ParseIntPipe) id: number,
     @Query('kind') kind: string | undefined,
+    @Query('template') template: string | undefined,
     @Req() req,
     @Res() res: Response,
   ) {
-    const file = await this.service.export(id, parseKind(kind), req.user.userId);
+    const file = await this.service.export(
+      id,
+      parseKind(kind),
+      req.user.userId,
+      template === '1' || template === 'true',
+    );
     // ASCII-фолбэк для старых клиентов + RFC 5987 для кириллицы
     const ascii = file.fileName.replace(/[^\x20-\x7E]/g, '_');
     res.setHeader(

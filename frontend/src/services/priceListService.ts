@@ -339,16 +339,20 @@ export interface PriceClarificationGroup {
 export const downloadPriceTemplate = async (
   catalogId: number,
   kind: PriceImportKind,
+  /** ⭐ №338: true — пустой шаблон, false — выгрузка текущего справочника */
+  template = true,
 ): Promise<void> => {
   const response = await api.get(`/price-list/catalogs/${catalogId}/export`, {
-    params: { kind },
+    params: { kind, ...(template ? { template: 1 } : {}) },
     responseType: 'blob',
   });
   const disposition = String(response.headers['content-disposition'] ?? '');
   const match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
   const fileName = match
     ? decodeURIComponent(match[1])
-    : `Прайс — ${kind === 'WORK' ? 'работы' : 'материалы'}.xlsx`;
+    : `${template ? 'Шаблон прайса' : 'Прайс'} — ${
+        kind === 'WORK' ? 'работы' : 'материалы'
+      }.xlsx`;
 
   const blob = new Blob([response.data], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

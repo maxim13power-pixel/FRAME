@@ -45,6 +45,7 @@ import CategoryIcon from '@mui/icons-material/Category';
 import PriceCheckIcon from '@mui/icons-material/PriceCheck';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import SyncIcon from '@mui/icons-material/Sync';
@@ -174,9 +175,20 @@ const PriceListInner: React.FC = () => {
   const handleDownloadTemplate = async () => {
     if (!catalogId) return;
     try {
-      await downloadPriceTemplate(catalogId, activeTab);
+      // ⭐ №338: шаблон — всегда пустой бланк
+      await downloadPriceTemplate(catalogId, activeTab, true);
     } catch (err) {
       notifyError(getApiErrorText(err, 'Не удалось скачать шаблон'));
+    }
+  };
+
+  /** ⭐ №338: выгрузка текущего справочника (не шаблон) */
+  const handleExportCatalog = async () => {
+    if (!catalogId) return;
+    try {
+      await downloadPriceTemplate(catalogId, activeTab, false);
+    } catch (err) {
+      notifyError(getApiErrorText(err, 'Не удалось выгрузить справочник'));
     }
   };
 
@@ -785,6 +797,16 @@ const PriceListInner: React.FC = () => {
         >
           <FileDownloadIcon fontSize="small" style={{ marginRight: 8 }} />
           Скачать шаблон
+        </MenuItem>
+        {/* ⭐ №338: отдельно — выгрузка своих расценок (раньше это и был «шаблон») */}
+        <MenuItem
+          onClick={() => {
+            setTemplateMenuAnchor(null);
+            void handleExportCatalog();
+          }}
+        >
+          <FileDownloadOutlinedIcon fontSize="small" style={{ marginRight: 8 }} />
+          Скачать прайс (Excel)
         </MenuItem>
         <MenuItem
           onClick={() => {

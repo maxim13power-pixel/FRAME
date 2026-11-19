@@ -65,13 +65,30 @@ export class PriceListImportService {
     private readonly audit: AuditService,
   ) {}
 
-  /** Выгрузка = шаблон: текущие позиции справочника листами по категориям */
+  /**
+   * ⭐ №338: «Скачать шаблон» — ВСЕГДА пустой бланк (лист «Как заполнять», «Единицы»,
+   * категория с заголовками и пустыми строками), независимо от наполнения справочника.
+   * Отдельно `templateOnly = false` — выгрузка текущего справочника (для бэкапа/обмена).
+   */
   async export(
     catalogId: number,
     kind: PriceKind,
     userId: number,
+    templateOnly = false,
   ): Promise<{ fileName: string; buffer: Buffer }> {
     const access = await this.prices.assertCanEditCatalog(catalogId, userId);
+    const suffix = kind === 'WORK' ? 'работы' : 'материалы';
+
+    if (templateOnly) {
+      const buffer = await this.templates.build({
+        catalogId,
+        catalogName: access.catalog.name,
+        kind,
+        sheets: [],
+      });
+      return { fileName: `Шаблон прайса — ${suffix}.xlsx`, buffer };
+    }
+
     const items = await this.prisma.priceItem.findMany({
       where: { catalogId, kind, isActive: true },
       select: {
@@ -111,7 +128,6 @@ export class PriceListImportService {
     }
 
     const buffer = await this.templates.build(input);
-    const suffix = kind === 'WORK' ? 'работы' : 'материалы';
     return {
       fileName: `Прайс «${access.catalog.name}» — ${suffix}.xlsx`,
       buffer,

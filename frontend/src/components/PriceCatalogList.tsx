@@ -49,10 +49,6 @@ import {
   restorePriceCatalog,
 } from '../services/priceListService';
 import type { PriceCatalogData } from '../services/priceListService';
-import { fetchObjects } from '../services/objectService';
-import { fetchProjectsByObject } from '../services/projectService';
-import type { ObjectData } from '../services/objectService';
-import type { ProjectData } from '../services/projectService';
 import { useFeedback } from '../contexts/FeedbackContext';
 import { getApiErrorText } from '../utils/errors';
 
@@ -72,15 +68,9 @@ const goBack = useBackNavigation('/');
   const [editing, setEditing] = useState<PriceCatalogData | null>(null);
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
-  // ⭐ №164: «поделиться» — копия расценок в справочник объекта/проекта
+  // ⭐ №338: «копировать справочник» — просто личная копия (без объекта/проекта)
   const [copySource, setCopySource] = useState<PriceCatalogData | null>(null);
-  const [copyObjects, setCopyObjects] = useState<ObjectData[]>([]);
-  const [copyProjects, setCopyProjects] = useState<ProjectData[]>([]);
-  const [copyObjectId, setCopyObjectId] = useState<number | ''>('');
-  const [copyProjectId, setCopyProjectId] = useState<number | ''>('');
   const [copyName, setCopyName] = useState('');
-  const [copyWorkMarkup, setCopyWorkMarkup] = useState('0');
-  const [copyMaterialMarkup, setCopyMaterialMarkup] = useState('0');
   const [copySaving, setCopySaving] = useState(false);
   // ⭐ №179: поиск по справочникам (имя / объект / проект)
   const [search, setSearch] = useState('');
@@ -263,51 +253,19 @@ const goBack = useBackNavigation('/');
     }
   };
 
-  // ⭐ №164: «поделиться» справочником — копия расценок в справочник объекта/проекта
-  const handleOpenCopy = async (catalog: PriceCatalogData) => {
+  // ⭐ №338: просто копия справочника — без выбора объекта/проекта
+  // (привязка к объекту/проекту больше не нужна: цены переносятся кнопкой «Пересчитать»)
+  const handleOpenCopy = (catalog: PriceCatalogData) => {
     setCopySource(catalog);
     setCopyName(`Копия «${catalog.name}»`);
-    setCopyWorkMarkup('0');
-    setCopyMaterialMarkup('0');
-    setCopyObjectId('');
-    setCopyProjectId('');
-    setCopyProjects([]);
-    try {
-      // ⭐ №176: архивные объекты в «Поделиться» больше не попадают (фильтр в fetchObjects)
-      setCopyObjects(await fetchObjects());
-    } catch {
-      setCopyObjects([]);
-    }
-  };
-
-  const handleCopyObjectChange = async (value: number | '') => {
-    setCopyObjectId(value);
-    setCopyProjectId('');
-    if (!value) {
-      setCopyProjects([]);
-      return;
-    }
-    try {
-      setCopyProjects(await fetchProjectsByObject(value));
-    } catch {
-      setCopyProjects([]);
-    }
   };
 
   const handleCopyConfirm = async () => {
     if (!copySource) return;
-    if (!copyObjectId && !copyProjectId) {
-      notify('Выберите объект или проект', 'warning');
-      return;
-    }
     setCopySaving(true);
     try {
       const created = await copyPriceCatalog(copySource.id, {
         name: copyName.trim() || undefined,
-        objectId: copyProjectId ? undefined : Number(copyObjectId),
-        projectId: copyProjectId ? Number(copyProjectId) : undefined,
-        workMarkupPercent: Number(copyWorkMarkup) || 0,
-        materialMarkupPercent: Number(copyMaterialMarkup) || 0,
       });
       success(
         `Скопировано расценок: ${created.itemsCount ?? 0} → «${created.name}»`,
@@ -667,10 +625,10 @@ const goBack = useBackNavigation('/');
               onClick={() => {
                 const c = actionsCatalog;
                 setActionsCatalog(null);
-                if (c) void handleOpenCopy(c);
+                if (c) handleOpenCopy(c);
               }}
             >
-              Скопировать в объект или проект
+              Копировать справочник
             </Button>
 
             {actionsCatalog?.isArchived ? (
@@ -744,7 +702,7 @@ const goBack = useBackNavigation('/');
           </Stack>
         </Paper>
       </Modal>
-      {/* ⭐ №164: «поделиться» — копия расценок в справочник объекта/проекта */}
+      {/* ⭐ №338: копирование справочника — просто новый личный справочник */}
       <Modal open={!!copySource} onClose={() => setCopySource(null)} disableRestoreFocus>
         <Paper
           sx={{
@@ -758,11 +716,11 @@ const goBack = useBackNavigation('/');
           }}
         >
           <Typography variant="h6" gutterBottom>
-            Поделиться справочником
+            Копировать справочник
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Расценки «{copySource?.name}» ({copySource?.itemsCount ?? 0}) будут скопированы
-            в новый справочник выбранного объекта или проекта. Исходный справочник не меняется.
+            Расценки «{copySource?.name}» ({copySource?.itemsCount ?? 0}) будут
+            скопированы в новый справочник. Исходный справочник не меняется.
           </Typography>
           <Stack spacing={2}>
             <TextField
@@ -772,70 +730,6 @@ const goBack = useBackNavigation('/');
               onChange={(e) => setCopyName(e.target.value)}
               inputProps={{ maxLength: 80 }}
             />
-            <Stack direction="row" spacing={2}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Работы, %"
-                value={copyWorkMarkup}
-                onChange={(e) => setCopyWorkMarkup(e.target.value)}
-                inputProps={{ min: -90, max: 500, step: 0.1 }}
-                helperText="0 — без наценки, минус — скидка"
-              />
-              <TextField
-                fullWidth
-                type="number"
-                label="Материалы, %"
-                value={copyMaterialMarkup}
-                onChange={(e) => setCopyMaterialMarkup(e.target.value)}
-                inputProps={{ min: -90, max: 500, step: 0.1 }}
-                helperText="Цены меняются только в копии"
-              />
-            </Stack>
-            <FormControl fullWidth>
-              <InputLabel id="catalog-copy-object-label">Объект</InputLabel>
-              <Select
-                labelId="catalog-copy-object-label"
-                label="Объект"
-                value={copyObjectId}
-                onChange={(e) => {
-                  void handleCopyObjectChange(
-                    e.target.value === '' ? '' : Number(e.target.value),
-                  );
-                }}
-              >
-                <MenuItem value="">
-                  <em>Не выбран</em>
-                </MenuItem>
-                {copyObjects.map((o) => (
-                  <MenuItem key={o.id} value={o.id}>
-                    {o.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth disabled={!copyObjectId}>
-              <InputLabel id="catalog-copy-project-label">Проект (необязательно)</InputLabel>
-              <Select
-                labelId="catalog-copy-project-label"
-                label="Проект (необязательно)"
-                value={copyProjectId}
-                onChange={(e) =>
-                  setCopyProjectId(
-                    e.target.value === '' ? '' : Number(e.target.value),
-                  )
-                }
-              >
-                <MenuItem value="">
-                  <em>Весь объект</em>
-                </MenuItem>
-                {copyProjects.map((p) => (
-                  <MenuItem key={p.id} value={p.id}>
-                    {p.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
           </Stack>
           <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
             <Button onClick={() => setCopySource(null)}>Отмена</Button>
