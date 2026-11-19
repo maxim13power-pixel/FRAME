@@ -1134,18 +1134,8 @@ const PriceListInner: React.FC = () => {
              </Select>
            </FormControl>
          </Stack>
-            {/* ⭐ №318: упаковка — только для материалов (краска 9 л, мешок 25 кг) */}
-            {(editingItem?.kind ?? activeTab) === 'MATERIAL' && (
-              <TextField
-                fullWidth
-                label="В упаковке, кг/л/шт (необязательно)"
-                type="number"
-                placeholder="например 9"
-                value={itemPackSize}
-                onChange={e => setItemPackSize(e.target.value)}
-                helperText="Цена выше — за упаковку. В смете цена на единицу работ считается по норме расхода: цена упаковки ÷ объём × расход."
-              />
-            )}
+            {/* ⭐ №336: поля «В упаковке» больше нет — цена расценки всегда за единицу
+                измерения, а норму расхода материал получает в названии. */}
             <FormControl fullWidth>
               <InputLabel>Категория</InputLabel>
               <Select

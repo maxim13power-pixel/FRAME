@@ -23,7 +23,6 @@ import * as crypto from 'crypto'; // ⭐ P0-4
 import { AccessRole } from '@prisma/client'; // ⭐ №127 онбординг
 import { DEMO_PROJECT_TEMPLATES, demoNameKey } from './demo-object-template'; // ⭐ №288
 import { ensureWorkingCatalog } from '../price-list/working-catalog'; // ⭐ №274
-import { materialPricePerUnit } from '../estimate-recalc/consumption'; // ⭐ №318
 
 // ⭐ №210: код подтверждения израсходован (двойной клик/повторная отправка формы).
 // Текст вынесен наружу — его проверяет спека регистрации.
@@ -561,13 +560,9 @@ export class AuthService {
           const used = Math.min(m.used, m.spec);
           // ⭐ №288: цена из справочника, иначе резервная из шаблона — прочерков в демо быть не должно
           const workPrice = work?.price ?? m.workPrice;
-          // ⭐ №318: материал в упаковке (краска 9 л, мешок 20 кг) считается по норме расхода:
-          // цена упаковки / объём × расход. Без упаковки и расхода — цена за единицу как раньше.
-          const matPrice = materialPricePerUnit(
-            mat?.price ?? m.matPrice ?? 0,
-            mat?.packSize ?? null,
-            m.consumption ?? null,
-          );
+          // ⭐ №336: материалы в справочнике уже в единицах работы — цена за м²/м/шт,
+          // пересчёт по упаковке и норме не нужен
+          const matPrice = Number(mat?.price ?? m.matPrice ?? 0);
           const shifts = p.shifts;
           const material = await tx.material.create({
             data: {
@@ -583,8 +578,6 @@ export class AuthService {
               materialItemId: mat?.id ?? null,
               materialUnitPrice: matPrice,
               materialTotalCost: r2(used * matPrice),
-              // ⭐ №318: норма расхода — чтобы демо можно было пересчитать по новым ценам
-              consumption: m.consumption ?? null,
               lastEntry: used > 0 ? used : null,
               lastEntryDate: used > 0 ? dayAgo(shifts[shifts.length - 1] ?? 0) : null,
               projectId: project.id,
