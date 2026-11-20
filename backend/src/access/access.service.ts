@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { assertAccessActive, findLiveAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
+import { assertAccessActive, canSeeMoney, findLiveAccess, loadAccessGrants } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { AddAccessDto } from './dto/add-access.dto';
 import { UpdateAccessDto } from './dto/update-access.dto';
@@ -69,6 +69,12 @@ export class AccessService {
     const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
     if (!user) throw new NotFoundException('Пользователь не найден');
     return user;
+  }
+
+  // ⭐ №356: видит ли пользователь деньги хоть где-то (для скрытия справочника цен)
+  async canSeeMoney(userId: number) {
+    const grants = await loadAccessGrants(this.prisma, userId);
+    return canSeeMoney(grants);
   }
 
   // 1. Список участников объекта (для модалки «Управление доступом»)

@@ -27,6 +27,7 @@ import DrawerMenu from '../components/DrawerMenu';
 import { MobileHeaderProvider } from '../contexts/MobileHeaderContext';
 import Logo from '../components/Logo'; // компонент логотипа
 import { useAuth } from '../contexts/AuthContext';
+import { usePriceVisibility } from '../hooks/usePriceVisibility';
 
 // Цвета для пунктов меню
 const menuColors = [
@@ -65,6 +66,11 @@ const SIDEBAR_HEADER_H = 64;
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [bottomNavValue, setBottomNavValue] = useState('objects');
   const { user } = useAuth(); // ⭐ для иконки профиля в свёрнутом rail
+  // ⭐ №356: без видимых цен «Справочник цен» не показываем
+  const canSeePrices = usePriceVisibility();
+  const visibleMenuItems = canSeePrices
+    ? menuItems
+    : menuItems.filter((item) => item.path !== '/price-list');
 
   const handleNavigate = (path: string) => {
     navigate(path);
@@ -139,7 +145,7 @@ const SIDEBAR_HEADER_H = 64;
           <Divider />
           {/* Пункты меню */}
                  <List sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto' }}>
-            {menuItems.map((item, index) => (
+            {visibleMenuItems.map((item, index) => (
               <ListItem key={item.path} disablePadding>
                 <ListItemButton onClick={() => handleNavigate(item.path)}>
                   <ListItemIcon sx={{ color: menuColors[index % menuColors.length] }}>
@@ -214,7 +220,7 @@ const SIDEBAR_HEADER_H = 64;
        <Divider sx={{ width: '70%', mb: 1.5 }} />
        {/* Иконки без подписей + tooltips */}
        <Box sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        {menuItems.map((item) => {
+        {visibleMenuItems.map((item) => {
           const active = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
           return (
             <Tooltip key={item.path} title={item.label} placement="right" arrow>

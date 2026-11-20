@@ -81,6 +81,14 @@ export const fetchAccessList = async (
 };
 
 // 2. Пригласить пользователя (или вернуть ранее отозванного — тем же запросом)
+// ⭐ №356: вижу ли я цены (для скрытия «Справочника цен» и цифр в нём)
+export const fetchPriceVisibility = async (): Promise<{
+  canSeeMoney: boolean;
+}> => {
+  const response = await api.get('/me/access/price-visibility');
+  return response.data;
+};
+
 // ⭐ №350: люди из команды моих объектов — для прямого добавления без ссылки
 // ⭐ №351: grantsInObject — доступы человека в ЭТОМ объекте (для кнопки «Изменить»)
 export interface AccessCandidateGrant {

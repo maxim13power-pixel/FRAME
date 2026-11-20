@@ -380,6 +380,28 @@ export class PriceListService {
   }
 
   /**
+   * ⭐ №356: видит ли пользователь деньги хоть где-то (или он администратор системы).
+   * Если не видит нигде — цены прячем во ВСЕХ справочниках, включая собственный и системный:
+   * участник со скрытыми ценами не должен видеть цифры в принципе.
+   */
+  private async canSeeMoneyAnywhere(userId?: number): Promise<boolean> {
+    if (!userId) return false;
+    if (await this.isAdmin(userId)) return true;
+    const grants = await this.prisma.objectAccess.findMany({
+      where: { userId, revokedAt: null },
+      select: { role: true, hidePrices: true },
+    });
+    return grants.some(
+      (g) => !g.hidePrices && g.role !== AccessRole.VIEWER,
+    );
+  }
+
+  /** Публичная проверка для контроллера «можно ли мне смотреть цены» */
+  async canSeePrices(userId?: number): Promise<boolean> {
+    return this.canSeeMoneyAnywhere(userId);
+  }
+
+  /**
    * ⭐ №220 (уточнение владельца): видит ли пользователь цены В КОНКРЕТНОМ справочнике.
    *  • свой справочник — всегда видит;
    *  • объектный/проектный — если в ЭТОМ объекте цены не скрыты;
@@ -390,6 +412,8 @@ export class PriceListService {
   private async pricesVisibleFor(catalogId: number | undefined, userId?: number): Promise<boolean> {
     if (!userId) return false;
     if (await this.isAdmin(userId)) return true;
+    // ⭐ №356: не видит деньги нигде → не видит их ни в одном справочнике
+    if (!(await this.canSeeMoneyAnywhere(userId))) return false;
     const grants = await this.prisma.objectAccess.findMany({
       where: { userId, revokedAt: null },
       select: { objectId: true, role: true, hidePrices: true },
@@ -652,6 +676,12 @@ export class PriceListService {
 
   // Создание расценки → в выбранный справочник (по умолчанию — личный справочник юзера)
   async createItem(dto: CreatePriceItemDto, userId?: number) {
+    // ⭐ №356: кто не видит цены — не может их и назначать
+    if (userId && !(await this.canSeeMoneyAnywhere(userId))) {
+      throw new ForbiddenException(
+        'Цены скрыты администратором объекта — изменять справочник нельзя',
+      );
+    }
     // Проверяем что категория существует (категории общие)
     const category = await this.prisma.priceCategory.findFirst({
       where: { id: dto.categoryId },
@@ -733,6 +763,12 @@ export class PriceListService {
     dto: Partial<CreatePriceItemDto>,
     userId?: number,
   ) {
+    // ⭐ №356: кто не видит цены — не может их и менять
+    if (userId && !(await this.canSeeMoneyAnywhere(userId))) {
+      throw new ForbiddenException(
+        'Цены скрыты администратором объекта — изменять справочник нельзя',
+      );
+    }
     const item = await this.prisma.priceItem.findUnique({ where: { id } });
     if (!item)
       throw new NotFoundException('Расценка не найдена или нет доступа');

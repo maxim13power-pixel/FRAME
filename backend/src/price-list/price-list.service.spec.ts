@@ -375,8 +375,17 @@ describe('PriceListService — скрытие цен (№220)', () => {
     expect(rows[0].price).toBe(320);
   });
 
-  it('свой справочник виден всегда, даже если в объектах цены скрыты', async () => {
+  // ⭐ №356: если цены не видны НИГДЕ — прячем даже в собственном справочнике
+  it('цены скрыты нигде не видны → собственный справочник тоже без цен', async () => {
     const { service } = build({ seesPrices: false, ownerId: 7 });
+
+    const rows = await service.searchItems(undefined, undefined, 'WORK', 7, 18);
+
+    expect(rows[0].price).toBeNull();
+  });
+
+  it('цены видны хоть где-то → собственный справочник показывает цены', async () => {
+    const { service } = build({ seesPrices: true, ownerId: 7 });
 
     const rows = await service.searchItems(undefined, undefined, 'WORK', 7, 18);
 

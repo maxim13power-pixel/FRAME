@@ -266,6 +266,53 @@ async function main() {
     expect(Number(res.data.money.actual) > 0, `money.actual: ${res.data.money.actual}`);
   });
 
+  // ── 1b. Справочник цен (№356) ─────────────────────────────
+  const flatItems = (payload) =>
+    (Array.isArray(payload) ? payload : []).flatMap((c) => c.items ?? []);
+
+  await check('флаг «вижу цены»: наблюдатель — нет, админ — да', async () => {
+    const viewerFlag = await api('/me/access/price-visibility', {}, viewer.token);
+    expectStatus(viewerFlag, 200, 'флаг наблюдателя');
+    expect(viewerFlag.data.canSeeMoney === false, `наблюдатель: ${JSON.stringify(viewerFlag.data)}`);
+    const adminFlag = await api('/me/access/price-visibility', {}, admin.token);
+    expect(adminFlag.data.canSeeMoney === true, `админ: ${JSON.stringify(adminFlag.data)}`);
+  });
+
+  let adminItem;
+  await check('админ видит цены в справочнике', async () => {
+    const res = await api('/price-list/categories/full', {}, admin.token);
+    expectStatus(res, 200, 'справочник админа');
+    adminItem = flatItems(res.data).find((i) => i.price != null);
+    expect(adminItem, 'у админа нет позиций с ценой');
+  });
+
+  await check('наблюдатель не видит цены в справочнике', async () => {
+    const res = await api('/price-list/categories/full', {}, viewer.token);
+    expectStatus(res, 200, 'справочник наблюдателя');
+    const items = flatItems(res.data);
+    expect(items.length > 0, 'справочник пуст (ожидали позиции без цен)');
+    const priced = items.filter((i) => i.price != null);
+    expect(priced.length === 0, `позиций с ценой: ${priced.length}`);
+  });
+
+  await check('поиск по справочнику не отдаёт цены наблюдателю', async () => {
+    const res = await api('/price-list/items/search?search=а', {}, viewer.token);
+    expectStatus(res, 200, 'поиск наблюдателя');
+    const items = Array.isArray(res.data) ? res.data : res.data.items ?? [];
+    expect(items.length > 0, 'поиск ничего не вернул');
+    const priced = items.filter((i) => i.price != null);
+    expect(priced.length === 0, `позиций с ценой в поиске: ${priced.length}`);
+  });
+
+  await check('наблюдатель не может менять цены справочника', async () => {
+    const res = await api(
+      `/price-list/items/${adminItem.id}`,
+      { method: 'PATCH', body: { price: 1 } },
+      viewer.token,
+    );
+    expectStatus(res, 403, 'правка цены наблюдателем');
+  });
+
   // ── 2. Проектный доступ ───────────────────────────────────
   console.log('\n2. Проектный доступ');
 

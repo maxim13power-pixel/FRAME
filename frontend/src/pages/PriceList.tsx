@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useBackNavigation } from '../hooks/useBackNavigation';
+import { usePriceVisibility } from '../hooks/usePriceVisibility';
 import {
   Box,
   Typography,
@@ -99,6 +100,8 @@ const PriceListInner: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
   const { notify, error: notifyError } = useFeedback();
+  // ⭐ №356: без видимых цен справочник не показываем (и не грузим)
+  const canSeePrices = usePriceVisibility();
   // ⭐ №151: справочник выбирается по URL (/price-list/:catalogId)
   const { catalogId: catalogIdParam } = useParams<{ catalogId?: string }>();
   const catalogId = catalogIdParam ? parseInt(catalogIdParam) : undefined;
@@ -567,6 +570,18 @@ const PriceListInner: React.FC = () => {
   // ============================================================
   // РЕНДЕР
   // ============================================================
+  // ⭐ №356: участнику со скрытыми ценами «Справочник цен» недоступен
+  if (!canSeePrices) {
+    return (
+      <Box sx={{ maxWidth: 640, mx: 'auto', mt: 4, px: 2 }}>
+        <Alert severity="info">
+          Цены скрыты администратором объекта. Справочник цен вам недоступен —
+          цены в смете, отчётах и на главной тоже не показываются.
+        </Alert>
+      </Box>
+    );
+  }
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
