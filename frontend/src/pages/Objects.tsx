@@ -189,9 +189,8 @@ const [accessError, setAccessError] = useState('');
 const [accessProjects, setAccessProjects] = useState<ProjectData[]>([]);
 // ⭐ №197: «Команда проекта» — фильтр участников по области доступа
 const [memberScopeFilter, setMemberScopeFilter] = useState<'all' | 'object' | number>('all');
-// ⭐ №344: список участников в раскрывающейся панели с ограничением высоты,
-// чтобы модалка не разрасталась при большой команде
-const [membersExpanded, setMembersExpanded] = useState(true);
+// ⭐ №346: список участников — в свёрнутой по умолчанию панели (чтобы модалка была короткой)
+const [membersExpanded, setMembersExpanded] = useState(false);
 // ⭐ Приглашение по ссылке (как в Google Docs)
 const [linkRole, setLinkRole] = useState<AccessRole>('FOREMAN');
 const [linkHidePrices, setLinkHidePrices] = useState(false);
@@ -2458,20 +2457,42 @@ trailing: headerTrailing,
               <Alert severity="info" sx={{ mb: 2 }}>Пока нет участников. Пригласите первого!</Alert>
             ) : (
               <Box sx={{ mb: 2 }}>
-                {/* ⭐ №344: карточки участников — в раскрывающейся панели с внутренним скроллом */}
+                {/* ⭐ №344/№346: карточки участников — в раскрывающейся панели.
+                    Панель свёрнута по умолчанию и подсвечена, чтобы было понятно,
+                    что она нажимается. */}
                 <Box
                   onClick={() => setMembersExpanded((v) => !v)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setMembersExpanded((v) => !v);
+                    }
+                  }}
                   sx={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 0.5,
                     cursor: 'pointer',
                     userSelect: 'none',
+                    p: 1,
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: membersExpanded ? 'primary.main' : 'divider',
+                    bgcolor: membersExpanded
+                      ? 'rgba(25, 118, 210, 0.06)'
+                      : 'rgba(25, 118, 210, 0.04)',
+                    transition: 'background-color 0.2s, border-color 0.2s',
+                    '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.12)' },
                     mb: membersExpanded ? 1 : 0,
                   }}
                 >
                   <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
                     👥 Участники · {allPeopleCount}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {membersExpanded ? 'свернуть' : 'развернуть'}
                   </Typography>
                   <IconButton size="small" aria-label="Свернуть или развернуть список участников">
                     {membersExpanded ? (
