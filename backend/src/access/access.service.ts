@@ -91,9 +91,22 @@ export class AccessService {
    * ⭐ №350: люди из команды всех моих объектов — чтобы добавлять их напрямую,
    * без пересылки ссылок. Возвращает всех, у кого есть активный доступ к объектам,
    * где я администратор (CUSTOMER), с пометкой «уже в этом объекте».
+   * ⭐ №352: с `projectId` — проверяем «уже видит этот проект» (объектный доступ или
+   * доступ именно к этому проекту) и отдаём только проектные записи для «Изменить».
    */
-  async getCandidates(objectId: number, actorUserId: number) {
+  async getCandidates(
+    objectId: number,
+    actorUserId: number,
+    projectId?: number,
+  ) {
     await this.assertManager(objectId, actorUserId);
+    if (projectId != null) {
+      const project = await this.prisma.project.findFirst({
+        where: { id: projectId, objectId },
+        select: { id: true },
+      });
+      if (!project) throw new NotFoundException('Проект не найден');
+    }
 
     const myObjects = await this.prisma.objectAccess.findMany({
       where: {
@@ -139,6 +152,7 @@ export class AccessService {
         objects: Set<number>;
         projects: Set<number>;
         inObject: boolean;
+        objectWide: boolean;
         roleInObject: AccessRole | null;
         grantsInObject: {
           accessId: number;
@@ -159,22 +173,34 @@ export class AccessService {
         objects: new Set<number>(),
         projects: new Set<number>(),
         inObject: false,
+        objectWide: false,
         roleInObject: null,
         grantsInObject: [],
       };
       entry.objects.add(row.objectId);
       if (row.projectId != null) entry.projects.add(row.projectId);
-      if (row.objectId === objectId) {
+      if (row.objectId === objectId && row.projectId == null) {
+        entry.objectWide = true;
+      }
+      // ⭐ №352: «уже имеет доступ» — либо на весь объект, либо именно к этому проекту
+      const inScope =
+        projectId == null
+          ? row.objectId === objectId
+          : row.objectId === objectId &&
+            (row.projectId == null || row.projectId === projectId);
+      if (inScope) {
         entry.inObject = true;
-        entry.roleInObject = row.role;
-        entry.grantsInObject.push({
-          accessId: row.id,
-          projectId: row.projectId,
-          projectName: null,
-          role: row.role,
-          hidePrices: row.hidePrices,
-          canCreateProjects: row.canCreateProjects,
-        });
+        if (entry.roleInObject == null) entry.roleInObject = row.role;
+        if (projectId == null || row.projectId === projectId) {
+          entry.grantsInObject.push({
+            accessId: row.id,
+            projectId: row.projectId,
+            projectName: null,
+            role: row.role,
+            hidePrices: row.hidePrices,
+            canCreateProjects: row.canCreateProjects,
+          });
+        }
       }
       byUser.set(row.userId, entry);
     }
@@ -208,6 +234,7 @@ export class AccessService {
         objectsCount: c.objects.size,
         projectsCount: c.projects.size,
         inObject: c.inObject,
+        objectWide: c.objectWide,
         roleInObject: c.roleInObject,
         grantsInObject: c.grantsInObject.map((g) => ({
           ...g,

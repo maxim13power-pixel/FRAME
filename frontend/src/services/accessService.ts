@@ -100,14 +100,19 @@ export interface AccessCandidate {
   objectsCount: number;
   projectsCount: number;
   inObject: boolean;
+  /** ⭐ №352: у человека доступ на весь объект (значит, видит и проект) */
+  objectWide: boolean;
   roleInObject: AccessRole | null;
   grantsInObject: AccessCandidateGrant[];
 }
 
 export const fetchAccessCandidates = async (
   objectId: number,
+  projectId?: number,
 ): Promise<AccessCandidate[]> => {
-  const response = await api.get(`/objects/${objectId}/access/candidates`);
+  const response = await api.get(`/objects/${objectId}/access/candidates`, {
+    params: projectId != null ? { projectId } : undefined,
+  });
   return response.data;
 };
 

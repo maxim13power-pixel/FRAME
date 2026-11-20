@@ -9,6 +9,7 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
+  Collapse,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -16,33 +17,44 @@ import {
   FormControl,
   FormControlLabel,
   IconButton,
+  InputAdornment,
   InputLabel,
   List,
   ListItem,
   ListItemText,
   MenuItem,
+  Modal,
+  Paper,
   Select,
   Stack,
+  TextField,
   Typography,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
-import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PersonSearchIcon from '@mui/icons-material/PersonSearch';
+import SearchIcon from '@mui/icons-material/Search';
 import LinkIcon from '@mui/icons-material/Link';
 import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { APP_URL } from '../config';
-import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import {
   addAccess,
+  fetchAccessCandidates,
   fetchAccessList,
   removeProjectAccess,
   updateAccess,
 } from '../services/accessService';
-import type { AccessMember, AccessRole } from '../services/accessService';
+import type {
+  AccessCandidate,
+  AccessMember,
+  AccessRole,
+} from '../services/accessService';
 import type { ProjectData } from '../services/projectService';
 import {
   createInviteLink,
@@ -80,16 +92,14 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
 }) => {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
-  const { user } = useAuth();
   const { confirm, notify, error: notifyError } = useFeedback();
 
   const [members, setMembers] = useState<AccessMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [selected, setSelected] = useState<number[]>([]);
-  const [newRole, setNewRole] = useState<AccessRole>('FOREMAN');
-  const [hidePrices, setHidePrices] = useState(false);
+  // ⭐ №346/№352: список участников — в свёрнутой по умолчанию панели
+  const [membersExpanded, setMembersExpanded] = useState(false);
   // ⭐ №303: приглашение только ссылкой — email/телефон убраны из UI
   const [linkRole, setLinkRole] = useState<AccessRole>('FOREMAN');
   const [linkHidePrices, setLinkHidePrices] = useState(false);
@@ -98,6 +108,22 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
   const [createdLinkExpiresAt, setCreatedLinkExpiresAt] = useState<string | null>(null);
   const [activeLinks, setActiveLinks] = useState<InviteLink[]>([]);
   const [linkCopied, setLinkCopied] = useState(false);
+  // ⭐ №352: выбор участника из команды моих объектов (как в модалке объекта)
+  const [pickOpen, setPickOpen] = useState(false);
+  const [pickList, setPickList] = useState<AccessCandidate[]>([]);
+  const [pickLoading, setPickLoading] = useState(false);
+  const [pickError, setPickError] = useState('');
+  const [pickQuery, setPickQuery] = useState('');
+  const [pickBusyId, setPickBusyId] = useState<number | null>(null);
+  // ⭐ №352: изменение доступа к проекту из списка выбранных
+  const [editGrant, setEditGrant] = useState<{
+    candidate: AccessCandidate;
+    accessId: number;
+    role: AccessRole;
+    hidePrices: boolean;
+  } | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
 
   const load = useCallback(async () => {
     if (!open) return;
@@ -126,12 +152,14 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
   useEffect(() => {
     void load();
     void loadLinks();
-    setSelected([]);
-    setNewRole('FOREMAN');
-    setHidePrices(false);
+    setMembersExpanded(false);
     setCreatedLinkUrl(null);
     setCreatedLinkExpiresAt(null);
     setLinkCopied(false);
+    setPickOpen(false);
+    setPickList([]);
+    setPickError('');
+    setEditGrant(null);
   }, [load, loadLinks]);
 
   const objectWide = useMemo(
@@ -145,48 +173,78 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
         : [],
     [members, project],
   );
-  const candidates = useMemo(() => {
-    if (!project) return [];
-    const already = new Set(projectMembers.map((m) => m.userId));
-    const seen = new Set<number>();
-    return members.filter((m) => {
-      if (m.projectId == null || m.projectId === project.id) return false;
-      if (already.has(m.userId) || seen.has(m.userId)) return false;
-      if (user?.id === m.userId) return false;
-      seen.add(m.userId);
-      return true;
-    });
-  }, [members, project, projectMembers, user?.id]);
+  // ⭐ №352: людей считаем по людям, а не по записям доступа
+  const participantCount = useMemo(
+    () =>
+      new Set([...objectWide.map((m) => m.userId), ...projectMembers.map((m) => m.userId)])
+        .size,
+    [objectWide, projectMembers],
+  );
 
   const refresh = useCallback(async () => {
     await load();
     onChanged?.();
   }, [load, onChanged]);
 
-  const handleAddSelected = async () => {
-    if (!project || selected.length === 0) return;
-    setBusy(true);
+  // ⭐ №352: открыть список людей из команды моих объектов (для этого проекта)
+  const openPicker = async () => {
+    if (!project) return;
+    setPickOpen(true);
+    setPickLoading(true);
+    setPickError('');
+    setPickQuery('');
     try {
-      const chosen = candidates.filter((m) => selected.includes(m.userId));
-      for (const m of chosen) {
-        await addAccess(objectId, {
-          userId: m.userId,
-          role: newRole,
-          projectId: project.id,
-          hidePrices,
-        });
-      }
+      setPickList(await fetchAccessCandidates(objectId, project.id));
+    } catch (err) {
+      setPickList([]);
+      setPickError(getApiErrorText(err, 'Не удалось загрузить список участников'));
+    } finally {
+      setPickLoading(false);
+    }
+  };
+
+  const handleAddCandidate = async (candidate: AccessCandidate) => {
+    if (!project) return;
+    setPickBusyId(candidate.userId);
+    setPickError('');
+    try {
+      await addAccess(objectId, {
+        userId: candidate.userId,
+        // «Администратор» — объектная роль, в проекте её нет (№304)
+        role: linkRole === 'CUSTOMER' ? 'FOREMAN' : linkRole,
+        projectId: project.id,
+        hidePrices: linkHidePrices,
+      });
       notify(
-        `Доступ к проекту выдан: ${chosen.length} ${
-          chosen.length === 1 ? 'участнику' : 'участникам'
-        }.`,
+        `Добавлен: ${candidate.fullName || candidate.email || candidate.phone || 'участник'}`,
+        'success',
       );
-      setSelected([]);
+      setPickList(await fetchAccessCandidates(objectId, project.id));
       await refresh();
     } catch (err) {
-      notifyError(getApiErrorText(err, 'Не удалось выдать доступ'));
+      setPickError(getApiErrorText(err, 'Не удалось добавить участника'));
     } finally {
-      setBusy(false);
+      setPickBusyId(null);
+    }
+  };
+
+  const handleSaveGrant = async () => {
+    if (!editGrant || !project) return;
+    setEditSaving(true);
+    setEditError('');
+    try {
+      await updateAccess(objectId, editGrant.accessId, {
+        role: editGrant.role,
+        hidePrices: editGrant.hidePrices,
+      });
+      notify('Доступ к проекту обновлён', 'success');
+      setEditGrant(null);
+      setPickList(await fetchAccessCandidates(objectId, project.id));
+      await refresh();
+    } catch (err) {
+      setEditError(getApiErrorText(err, 'Не удалось изменить доступ'));
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -322,6 +380,51 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
           </Box>
         ) : (
           <>
+            {/* ⭐ №346/№352: участники — в свёрнутой по умолчанию подсвеченной панели */}
+            <Box
+              onClick={() => setMembersExpanded((v) => !v)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setMembersExpanded((v) => !v);
+                }
+              }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                cursor: 'pointer',
+                userSelect: 'none',
+                p: 1,
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: membersExpanded ? 'primary.main' : 'divider',
+                bgcolor: membersExpanded
+                  ? 'rgba(25, 118, 210, 0.06)'
+                  : 'rgba(25, 118, 210, 0.04)',
+                transition: 'background-color 0.2s, border-color 0.2s',
+                '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.12)' },
+                mb: membersExpanded ? 1 : 0,
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
+                👥 Участники · {participantCount}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {membersExpanded ? 'свернуть' : 'развернуть'}
+              </Typography>
+              <IconButton size="small" aria-label="Свернуть или развернуть список участников">
+                {membersExpanded ? (
+                  <ExpandLessIcon fontSize="small" />
+                ) : (
+                  <ExpandMoreIcon fontSize="small" />
+                )}
+              </IconButton>
+            </Box>
+            <Collapse in={membersExpanded}>
+            <Box sx={{ maxHeight: { xs: 260, md: 340 }, overflowY: 'auto', pr: 0.5 }}>
             <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
               Видят весь объект ({objectWide.length})
             </Typography>
@@ -406,6 +509,8 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                 ))}
               </List>
             )}
+            </Box>
+            </Collapse>
 
             <Divider sx={{ my: 1.5 }} />
             <Typography variant="subtitle1" gutterBottom>
@@ -503,14 +608,26 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                   </Box>
                 ) : (
                   <>
-                    <Button
-                      variant="contained"
-                      startIcon={<LinkIcon />}
-                      onClick={() => void handleCreateLink()}
-                      disabled={!canManage || busy}
-                    >
-                      Создать ссылку-приглашение
-                    </Button>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                      <Button
+                        variant="outlined"
+                        startIcon={<PersonSearchIcon />}
+                        onClick={() => void openPicker()}
+                        disabled={!canManage || busy}
+                        sx={{ flex: 1 }}
+                      >
+                        Выбрать участника
+                      </Button>
+                      <Button
+                        variant="contained"
+                        startIcon={<LinkIcon />}
+                        onClick={() => void handleCreateLink()}
+                        disabled={!canManage || busy}
+                        sx={{ flex: 1 }}
+                      >
+                        Создать ссылку
+                      </Button>
+                    </Stack>
                     <Typography variant="caption" color="text.secondary">
                       Ссылка действует 2 часа. Отправьте её в мессенджере — человек войдёт
                       по ней и получит доступ к проекту. Не успели — выпустите новую.
@@ -567,76 +684,220 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                   </Box>
                 )}
 
-            <Divider />
-            <Typography variant="subtitle2">
-              Добавить из команды объекта
-            </Typography>
-            {candidates.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">
-                Все участники команды уже имеют доступ к этому проекту.
-              </Typography>
-            ) : (
-              <List dense disablePadding>
-                {candidates.map((m) => (
-                  <ListItem key={m.id} disableGutters>
-                    <Checkbox
-                      edge="start"
-                      checked={selected.includes(m.userId)}
-                      disabled={!canManage || busy}
-                      onChange={(e) =>
-                        setSelected((prev) =>
-                          e.target.checked
-                            ? [...prev, m.userId]
-                            : prev.filter((id) => id !== m.userId),
-                        )
-                      }
-                    />
-                    <ListItemText
-                      primary={userLabel(m)}
-                      secondary={`сейчас: ${ROLE_LABEL[m.role]}`}
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            )}
-
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              <FormControl size="small" sx={{ minWidth: 150 }}>
-                <InputLabel>Роль</InputLabel>
-                <Select
-                  label="Роль"
-                  value={newRole}
-                  disabled={!canManage || busy}
-                  onChange={(e) => setNewRole(e.target.value as AccessRole)}
+                {/* ⭐ №352: выбор участника из команды моих объектов (как в модалке объекта) */}
+                <Modal
+                  open={pickOpen}
+                  onClose={() => setPickOpen(false)}
+                  disableRestoreFocus
                 >
-                  {(['CUSTOMER', 'FOREMAN', 'VIEWER'] as AccessRole[]).map(
-                    (r) => (
-                      <MenuItem key={r} value={r}>
-                        {ROLE_LABEL[r]}
-                      </MenuItem>
-                    ),
-                  )}
-                </Select>
-              </FormControl>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={hidePrices}
-                    disabled={!canManage || busy}
-                    onChange={(e) => setHidePrices(e.target.checked)}
-                  />
-                }
-                label="Скрыть цены"
-              />
-              <Button
-                variant="contained"
-                startIcon={<PersonAddIcon />}
-                disabled={!canManage || busy || selected.length === 0}
-                onClick={() => void handleAddSelected()}
-              >
-                Добавить ({selected.length})
-              </Button>
-            </Box>
+                  <Paper
+                    sx={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: { xs: '92%', sm: 520 },
+                      maxHeight: '85vh',
+                      overflowY: 'auto',
+                      p: 3,
+                      borderRadius: 3,
+                      outline: 'none',
+                    }}
+                  >
+                    <Typography variant="h6" gutterBottom>
+                      👥 Выбрать участника
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                      Люди из команды ваших объектов. Добавим в этот проект с ролью «
+                      {ROLE_LABEL[linkRole === 'CUSTOMER' ? 'FOREMAN' : linkRole]}»
+                      {linkHidePrices ? ', без цен' : ''}.
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      placeholder="Поиск по имени или e-mail"
+                      value={pickQuery}
+                      onChange={(e) => setPickQuery(e.target.value)}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <SearchIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ mb: 1.5 }}
+                    />
+                    {pickError && (
+                      <Alert severity="error" sx={{ mb: 1.5 }}>
+                        {pickError}
+                      </Alert>
+                    )}
+                    {pickLoading ? (
+                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                        <CircularProgress />
+                      </Box>
+                    ) : pickList.length === 0 ? (
+                      <Alert severity="info">
+                        Пока нет людей в ваших объектах — пригласите первого по ссылке.
+                      </Alert>
+                    ) : (
+                      <Stack spacing={1} sx={{ maxHeight: '50vh', overflowY: 'auto', pr: 0.5 }}>
+                        {pickList
+                          .filter((c) => {
+                            const q = pickQuery.trim().toLowerCase();
+                            if (!q) return true;
+                            return `${c.fullName ?? ''} ${c.email ?? ''} ${c.phone ?? ''}`
+                              .toLowerCase()
+                              .includes(q);
+                          })
+                          .map((c) => {
+                            const projectGrant = c.grantsInObject[0] ?? null;
+                            return (
+                              <Box
+                                key={c.userId}
+                                sx={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 1,
+                                  p: 1,
+                                  borderRadius: 2,
+                                  bgcolor: '#f5f7fa',
+                                }}
+                              >
+                                <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                                    {c.fullName || c.email || c.phone || 'Без имени'}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary" noWrap>
+                                    {c.email || c.phone || ''}
+                                    {' · '}объектов: {c.objectsCount}
+                                  </Typography>
+                                </Box>
+                                {c.objectWide ? (
+                                  <Chip size="small" label="видит весь объект" />
+                                ) : projectGrant ? (
+                                  <Stack direction="row" spacing={0.5} alignItems="center">
+                                    <Chip size="small" label="уже в проекте" />
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      onClick={() =>
+                                        setEditGrant({
+                                          candidate: c,
+                                          accessId: projectGrant.accessId,
+                                          role: projectGrant.role,
+                                          hidePrices: projectGrant.hidePrices,
+                                        })
+                                      }
+                                    >
+                                      Изменить
+                                    </Button>
+                                  </Stack>
+                                ) : (
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    disabled={pickBusyId === c.userId || !canManage}
+                                    onClick={() => void handleAddCandidate(c)}
+                                  >
+                                    Добавить
+                                  </Button>
+                                )}
+                              </Box>
+                            );
+                          })}
+                      </Stack>
+                    )}
+                    <Stack direction="row" justifyContent="flex-end" sx={{ mt: 2 }}>
+                      <Button variant="outlined" onClick={() => setPickOpen(false)}>
+                        Закрыть
+                      </Button>
+                    </Stack>
+                  </Paper>
+                </Modal>
+
+                {/* ⭐ №352: изменение доступа к проекту */}
+                <Modal
+                  open={editGrant != null}
+                  onClose={() => setEditGrant(null)}
+                  disableRestoreFocus
+                >
+                  <Paper
+                    sx={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: { xs: '92%', sm: 420 },
+                      p: 3,
+                      borderRadius: 3,
+                      outline: 'none',
+                    }}
+                  >
+                    <Typography variant="h6" gutterBottom>
+                      ✏️ Изменить доступ
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                      {editGrant?.candidate.fullName ||
+                        editGrant?.candidate.email ||
+                        ''}
+                      {' · проект: '}
+                      {project?.name ?? ''}
+                    </Typography>
+                    {editError && (
+                      <Alert severity="error" sx={{ mb: 1.5 }}>
+                        {editError}
+                      </Alert>
+                    )}
+                    {editGrant && (
+                      <Stack spacing={1.5}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Роль</InputLabel>
+                          <Select
+                            label="Роль"
+                            value={editGrant.role === 'CUSTOMER' ? 'FOREMAN' : editGrant.role}
+                            onChange={(e) =>
+                              setEditGrant({
+                                ...editGrant,
+                                role: e.target.value as AccessRole,
+                              })
+                            }
+                          >
+                            <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
+                            <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
+                          </Select>
+                        </FormControl>
+                        <FormControlLabel
+                          sx={{ mr: 0 }}
+                          control={
+                            <Checkbox
+                              checked={editGrant.hidePrices}
+                              onChange={(e) =>
+                                setEditGrant({
+                                  ...editGrant,
+                                  hidePrices: e.target.checked,
+                                })
+                              }
+                            />
+                          }
+                          label={<Typography variant="body1">🙈 цены скрыты</Typography>}
+                        />
+                      </Stack>
+                    )}
+                    <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 2 }}>
+                      <Button onClick={() => setEditGrant(null)} disabled={editSaving}>
+                        Отмена
+                      </Button>
+                      <Button
+                        variant="contained"
+                        onClick={() => void handleSaveGrant()}
+                        disabled={editSaving || editGrant == null}
+                      >
+                        {editSaving ? <CircularProgress size={22} /> : 'Сохранить'}
+                      </Button>
+                    </Stack>
+                  </Paper>
+                </Modal>
               </Stack>
 
           </>
