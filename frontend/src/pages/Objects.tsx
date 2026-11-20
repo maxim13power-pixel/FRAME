@@ -210,6 +210,13 @@ const [candidatesLoading, setCandidatesLoading] = useState(false);
 const [candidatesError, setCandidatesError] = useState('');
 const [candidatesQuery, setCandidatesQuery] = useState('');
 const [candidateBusyId, setCandidateBusyId] = useState<number | null>(null);
+// ⭐ №351: изменение доступа человека прямо из списка кандидатов
+const [editCandidate, setEditCandidate] = useState<AccessCandidate | null>(null);
+const [editGrantRole, setEditGrantRole] = useState<Record<number, AccessRole>>({});
+const [editGrantHide, setEditGrantHide] = useState<Record<number, boolean>>({});
+const [editGrantCreate, setEditGrantCreate] = useState<Record<number, boolean>>({});
+const [editSaving, setEditSaving] = useState(false);
+const [editError, setEditError] = useState('');
 // ⭐ №178: заявки на право создавать проекты (входящие — для менеджера/админа)
 const [accessRequests, setAccessRequests] = useState<AccessRequestData[]>([]);
 const [accessRequestBusy, setAccessRequestBusy] = useState<number | null>(null);
@@ -1021,6 +1028,61 @@ const openCandidates = async () => {
     setCandidatesError(getApiErrorMessage(err, 'Не удалось загрузить список участников'));
   } finally {
     setCandidatesLoading(false);
+  }
+};
+
+// ⭐ №351: изменить доступ человека прямо из списка кандидатов
+const openEditCandidate = (candidate: AccessCandidate) => {
+  setEditError('');
+  setEditCandidate(candidate);
+  setEditGrantRole(
+    Object.fromEntries(
+      candidate.grantsInObject.map((g) => [g.accessId, g.role]),
+    ),
+  );
+  setEditGrantHide(
+    Object.fromEntries(
+      candidate.grantsInObject.map((g) => [g.accessId, g.hidePrices]),
+    ),
+  );
+  setEditGrantCreate(
+    Object.fromEntries(
+      candidate.grantsInObject.map((g) => [g.accessId, g.canCreateProjects]),
+    ),
+  );
+};
+
+const handleSaveCandidateAccess = async () => {
+  if (!token || !accessObject || !editCandidate) return;
+  setEditSaving(true);
+  setEditError('');
+  try {
+    for (const grant of editCandidate.grantsInObject) {
+      const role = editGrantRole[grant.accessId] ?? grant.role;
+      const hidePrices = editGrantHide[grant.accessId] ?? grant.hidePrices;
+      const canCreateProjects =
+        editGrantCreate[grant.accessId] ?? grant.canCreateProjects;
+      const changed =
+        role !== grant.role ||
+        hidePrices !== grant.hidePrices ||
+        canCreateProjects !== grant.canCreateProjects;
+      if (!changed) continue;
+      await updateAccess(accessObject.id, grant.accessId, {
+        role,
+        hidePrices,
+        canCreateProjects,
+      });
+    }
+    notify('Доступ обновлён', 'success');
+    setEditCandidate(null);
+    await loadAccessMembers(accessObject.id);
+    if (candidatesOpen) {
+      setCandidates(await fetchAccessCandidates(accessObject.id));
+    }
+  } catch (err: unknown) {
+    setEditError(getApiErrorMessage(err, 'Не удалось изменить доступ'));
+  } finally {
+    setEditSaving(false);
   }
 };
 
@@ -2998,7 +3060,16 @@ trailing: headerTrailing,
                                 </Typography>
                               </Box>
                               {c.inObject ? (
-                                <Chip size="small" label="уже в объекте" />
+                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                  <Chip size="small" label="уже в объекте" />
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={() => openEditCandidate(c)}
+                                  >
+                                    Изменить
+                                  </Button>
+                                </Stack>
                               ) : (
                                 <Button
                                   size="small"
@@ -3016,6 +3087,134 @@ trailing: headerTrailing,
                     <Stack direction="row" justifyContent="flex-end" sx={{ mt: 2 }}>
                       <Button variant="outlined" onClick={() => setCandidatesOpen(false)}>
                         Закрыть
+                      </Button>
+                    </Stack>
+                  </Paper>
+                </Modal>
+
+                {/* ⭐ №351: изменение доступа человека (роль, цены, право создавать проекты) */}
+                <Modal
+                  open={editCandidate != null}
+                  onClose={() => setEditCandidate(null)}
+                  disableRestoreFocus
+                >
+                  <Paper
+                    sx={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: { xs: '92%', sm: 460 },
+                      maxHeight: '85vh',
+                      overflowY: 'auto',
+                      p: 3,
+                      borderRadius: 3,
+                      outline: 'none',
+                    }}
+                  >
+                    <Typography variant="h6" gutterBottom>
+                      ✏️ Изменить доступ
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                      {editCandidate?.fullName || editCandidate?.email || ''}
+                    </Typography>
+                    {editError && (
+                      <Alert severity="error" sx={{ mb: 1.5 }}>
+                        {editError}
+                      </Alert>
+                    )}
+                    <Stack spacing={1.5}>
+                      {editCandidate?.grantsInObject.map((g) => {
+                        const role = editGrantRole[g.accessId] ?? g.role;
+                        return (
+                          <Box
+                            key={g.accessId}
+                            sx={{ p: 1.5, borderRadius: 2, bgcolor: '#f5f7fa' }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ display: 'block', mb: 1 }}
+                            >
+                              {g.projectId == null
+                                ? '🏗 весь объект'
+                                : `📁 проект: ${g.projectName ?? `#${g.projectId}`}`}
+                            </Typography>
+                            <Stack
+                              direction={{ xs: 'column', sm: 'row' }}
+                              spacing={1}
+                              alignItems={{ sm: 'center' }}
+                            >
+                              <FormControl size="small" sx={{ minWidth: 170 }}>
+                                <Select
+                                  value={role}
+                                  onChange={(e) =>
+                                    setEditGrantRole((prev) => ({
+                                      ...prev,
+                                      [g.accessId]: e.target.value as AccessRole,
+                                    }))
+                                  }
+                                >
+                                  {g.projectId == null && (
+                                    <MenuItem value="CUSTOMER">👑 Администратор объекта</MenuItem>
+                                  )}
+                                  <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
+                                  <MenuItem value="VIEWER">👁 Наблюдатель</MenuItem>
+                                </Select>
+                              </FormControl>
+                              <FormControlLabel
+                                sx={{ mr: 0 }}
+                                control={
+                                  <Checkbox
+                                    size="small"
+                                    checked={editGrantHide[g.accessId] ?? g.hidePrices}
+                                    onChange={(e) =>
+                                      setEditGrantHide((prev) => ({
+                                        ...prev,
+                                        [g.accessId]: e.target.checked,
+                                      }))
+                                    }
+                                  />
+                                }
+                                label={<Typography variant="body2">🙈 цены скрыты</Typography>}
+                              />
+                              {g.projectId == null && role === 'FOREMAN' && (
+                                <FormControlLabel
+                                  sx={{ mr: 0 }}
+                                  control={
+                                    <Checkbox
+                                      size="small"
+                                      checked={
+                                        editGrantCreate[g.accessId] ?? g.canCreateProjects
+                                      }
+                                      onChange={(e) =>
+                                        setEditGrantCreate((prev) => ({
+                                          ...prev,
+                                          [g.accessId]: e.target.checked,
+                                        }))
+                                      }
+                                    />
+                                  }
+                                  label={
+                                    <Typography variant="body2">🏗 создаёт проекты</Typography>
+                                  }
+                                />
+                              )}
+                            </Stack>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                    <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 2 }}>
+                      <Button onClick={() => setEditCandidate(null)} disabled={editSaving}>
+                        Отмена
+                      </Button>
+                      <Button
+                        variant="contained"
+                        onClick={() => void handleSaveCandidateAccess()}
+                        disabled={editSaving || editCandidate == null}
+                      >
+                        {editSaving ? <CircularProgress size={22} /> : 'Сохранить'}
                       </Button>
                     </Stack>
                   </Paper>

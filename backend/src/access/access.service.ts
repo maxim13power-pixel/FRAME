@@ -115,10 +115,13 @@ export class AccessService {
         userId: { not: actorUserId },
       },
       select: {
+        id: true,
         userId: true,
         objectId: true,
         projectId: true,
         role: true,
+        hidePrices: true,
+        canCreateProjects: true,
         user: {
           select: { id: true, fullName: true, email: true, phone: true },
         },
@@ -137,6 +140,14 @@ export class AccessService {
         projects: Set<number>;
         inObject: boolean;
         roleInObject: AccessRole | null;
+        grantsInObject: {
+          accessId: number;
+          projectId: number | null;
+          projectName: string | null;
+          role: AccessRole;
+          hidePrices: boolean;
+          canCreateProjects: boolean;
+        }[];
       }
     >();
     for (const row of rows) {
@@ -149,15 +160,44 @@ export class AccessService {
         projects: new Set<number>(),
         inObject: false,
         roleInObject: null,
+        grantsInObject: [],
       };
       entry.objects.add(row.objectId);
       if (row.projectId != null) entry.projects.add(row.projectId);
       if (row.objectId === objectId) {
         entry.inObject = true;
         entry.roleInObject = row.role;
+        entry.grantsInObject.push({
+          accessId: row.id,
+          projectId: row.projectId,
+          projectName: null,
+          role: row.role,
+          hidePrices: row.hidePrices,
+          canCreateProjects: row.canCreateProjects,
+        });
       }
       byUser.set(row.userId, entry);
     }
+
+    // ⭐ №351: названия проектов — чтобы в модалке «Изменить» было видно, к какому
+    // проекту относится доступ
+    const projectIds = [
+      ...new Set(
+        [...byUser.values()].flatMap((c) =>
+          c.grantsInObject
+            .map((g) => g.projectId)
+            .filter((id): id is number => id != null),
+        ),
+      ),
+    ];
+    const projects =
+      projectIds.length > 0
+        ? await this.prisma.project.findMany({
+            where: { id: { in: projectIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+    const projectName = new Map(projects.map((p) => [p.id, p.name]));
 
     return [...byUser.values()]
       .map((c) => ({
@@ -169,6 +209,10 @@ export class AccessService {
         projectsCount: c.projects.size,
         inObject: c.inObject,
         roleInObject: c.roleInObject,
+        grantsInObject: c.grantsInObject.map((g) => ({
+          ...g,
+          projectName: g.projectId != null ? projectName.get(g.projectId) ?? null : null,
+        })),
       }))
       .sort((a, b) =>
         (a.fullName || a.email || '').localeCompare(
@@ -332,15 +376,15 @@ export class AccessService {
       { userId, merged: projectGrants.length },
     );
   }
-  // 3. Сменить роль участника / право создавать проекты.
-  // ⭐ №207: видимость цен здесь НЕ меняется — она фиксируется при приглашении.
+  // 3. Сменить роль участника / право создавать проекты / видимость цен.
+  // ⭐ №351: видимость цен тоже меняется — администратор объекта может всё.
   async updateAccess(
     objectId: number,
     accessId: number,
     dto: UpdateAccessDto,
     actorUserId: number,
   ) {
-    await this.assertManager(objectId, actorUserId);
+    const myAccess = await this.assertManager(objectId, actorUserId);
 
     const target = await this.prisma.objectAccess.findFirst({
       where: { id: accessId, objectId },
@@ -358,6 +402,12 @@ export class AccessService {
     }
 
     const nextRole = dto.role ?? target.role;
+    // ⭐ №351: видимость цен — как при приглашении: нельзя открыть другому цены,
+    // которые скрыты у тебя самого (№182)
+    const nextHidePrices = dto.hidePrices ?? target.hidePrices;
+    if (nextHidePrices !== target.hidePrices) {
+      this.assertCanDelegatePrices(myAccess, nextHidePrices);
+    }
     // ⭐ №341: «Администратор объекта» — только для доступа на весь объект
     if (target.projectId != null && nextRole === AccessRole.CUSTOMER) {
       throw new BadRequestException(
@@ -381,7 +431,8 @@ export class AccessService {
       where: { id: accessId },
       data: {
         role: nextRole,
-        // ⭐ №207: hidePrices приглашением фиксируется — здесь не меняется
+        // ⭐ №351: цены можно менять; журнал ниже фиксирует и старые, и новые значения
+        hidePrices: nextHidePrices,
         canCreateProjects: nextCanCreateProjects,
       },
       include: {
@@ -406,7 +457,7 @@ export class AccessService {
         userId: target.userId,
         role: nextRole,
         canCreateProjects: nextCanCreateProjects,
-        hidePrices: target.hidePrices,
+        hidePrices: nextHidePrices,
       },
     );
     return updated;

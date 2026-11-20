@@ -101,8 +101,8 @@ describe('AccessService — понижение последнего админи
     expect(prisma.objectAccess.count).not.toHaveBeenCalled();
   });
 
-  // ⭐ №207: видимость цен фиксируется приглашением и через updateAccess не меняется
-  it('updateAccess не меняет hidePrices (только роль и право создавать проекты)', async () => {
+  // ⭐ №351: администратор объекта может менять и видимость цен
+  it('updateAccess меняет hidePrices вместе с ролью', async () => {
     await service.updateAccess(
       3,
       2,
@@ -111,8 +111,20 @@ describe('AccessService — понижение последнего админи
     );
 
     const data = prisma.objectAccess.update.mock.calls[0][0].data;
-    expect(data).not.toHaveProperty('hidePrices');
+    expect(data.hidePrices).toBe(true);
     expect(data.role).toBe('FOREMAN');
+  });
+
+  // ⭐ №182: нельзя открыть другому цены, скрытые у самого актора
+  it('нельзя открыть цены, если у актора они скрыты ⇒ ForbiddenException', async () => {
+    prisma.objectAccess.findFirst
+      .mockReset()
+      .mockResolvedValueOnce({ ...adminGrant, hidePrices: true })
+      .mockResolvedValueOnce({ ...adminGrant, id: 2, userId: 9, hidePrices: true });
+
+    await expect(
+      service.updateAccess(3, 2, { hidePrices: false } as any, 7),
+    ).rejects.toThrow(/скрыты цены/);
   });
 
   // ⭐ №182/№207: делегирование цен проверяется на приглашении
