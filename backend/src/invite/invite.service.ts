@@ -266,6 +266,28 @@ export class InviteService {
           const canCreateChanged =
             nextCanCreate !== objectGrant.canCreateProjects;
           if (roleChanged || pricesChanged || canCreateChanged) {
+            // ⭐ №354: нельзя оставить объект без администратора — если это последний
+            // CUSTOMER, понижение по ссылке запрещено (даже если он сам её открыл).
+            if (
+              roleChanged &&
+              objectGrant.role === AccessRole.CUSTOMER &&
+              invite.role !== AccessRole.CUSTOMER
+            ) {
+              const otherCustomers = await tx.objectAccess.count({
+                where: {
+                  objectId: invite.objectId,
+                  projectId: null,
+                  role: AccessRole.CUSTOMER,
+                  revokedAt: null,
+                  id: { not: objectGrant.id },
+                },
+              });
+              if (otherCustomers === 0) {
+                throw new BadRequestException(
+                  'Вы единственный администратор объекта. По этой ссылке вы потеряете права администратора, и управлять объектом станет некому — действие отменено. Роль может изменить другой администратор.',
+                );
+              }
+            }
             await tx.objectAccess.update({
               where: { id: objectGrant.id },
               data: {
@@ -482,6 +504,7 @@ export class InviteService {
       const grants = await tx.objectAccess.findMany({
         where: { userId, objectId: invite.objectId },
         select: {
+          id: true,
           projectId: true,
           role: true,
           hidePrices: true,
@@ -511,6 +534,32 @@ export class InviteService {
                 : null,
           };
           if (changes.role || changes.hidePrices || changes.canCreateProjects) {
+            // ⭐ №354: последний администратор — понижение по ссылке блокируем,
+            // чтобы объект не остался без управления (и человек сам себя не закрыл)
+            if (
+              changes.role &&
+              objectGrant.role === AccessRole.CUSTOMER &&
+              invite.role !== AccessRole.CUSTOMER
+            ) {
+              const otherCustomers = await tx.objectAccess.count({
+                where: {
+                  objectId: invite.objectId,
+                  projectId: null,
+                  role: AccessRole.CUSTOMER,
+                  revokedAt: null,
+                  id: { not: objectGrant.id },
+                },
+              });
+              if (otherCustomers === 0) {
+                return {
+                  alreadyHasAccess: 'object' as const,
+                  role: objectGrant.role,
+                  blocked: true as const,
+                  blockedMessage:
+                    'Вы единственный администратор объекта. По этой ссылке вы потеряете права администратора, и управлять объектом станет некому. Роль может изменить другой администратор.',
+                };
+              }
+            }
             return {
               alreadyHasAccess: 'object' as const,
               role: objectGrant.role,

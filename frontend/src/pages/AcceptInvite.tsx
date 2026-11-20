@@ -61,6 +61,9 @@ const AcceptInvite: React.FC = () => {
   const [status, setStatus] = useState<{
     alreadyHasAccess: 'object' | 'project' | null;
     role?: AccessRole;
+    // ⭐ №354: ссылка понизила бы последнего администратора — блокируем
+    blocked?: boolean;
+    blockedMessage?: string;
     changes?: {
       role: { from: AccessRole; to: AccessRole } | null;
       hidePrices: { from: boolean; to: boolean } | null;
@@ -240,7 +243,22 @@ const AcceptInvite: React.FC = () => {
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
             {token ? (
-              status?.changes ? (
+              status?.blocked ? (
+                <>
+                  <Alert severity="error" sx={{ mb: 2, textAlign: 'left' }}>
+                    {status.blockedMessage ||
+                      'Эту ссылку нельзя применить: она понизит права последнего администратора объекта.'}
+                  </Alert>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    onClick={() => navigate('/objects')}
+                  >
+                    Открыть объекты
+                  </Button>
+                </>
+              ) : status?.changes ? (
                 (() => {
                   const roleWeight: Record<AccessRole, number> = {
                     CUSTOMER: 3,
