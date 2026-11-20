@@ -22,6 +22,7 @@
     "db:seed:catalog": "ts-node prisma/seed.ts",
     "db:seed:prices": "ts-node prisma/seed-prices.ts",
     "db:reset:users": "ts-node prisma/reset-user-data.ts",
+    "db:cleanup:access": "ts-node prisma/cleanup-access-duplicates.ts",
     "db:demo": "ts-node prisma/demo-object.ts",
     "postinstall": "npx prisma generate"
   },
