@@ -67,6 +67,8 @@ const goBack = useBackNavigation('/');
   const [loggingOutAll, setLoggingOutAll] = useState(false);
   // ⭐ №215: правка имени и смена пароля прямо из профиля
   const [nameDraft, setNameDraft] = useState('');
+  // ⭐ №366: телефон тоже можно менять из профиля (API это умел)
+  const [phoneDraft, setPhoneDraft] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [pwCurrent, setPwCurrent] = useState('');
   const [pwNew, setPwNew] = useState('');
@@ -110,7 +112,7 @@ const goBack = useBackNavigation('/');
     localStorage.setItem('frame_bottom_nav', JSON.stringify(value));
     // ⭐ Обновляем BottomNav без reload — подписчик ловит кастомное событие
     window.dispatchEvent(new CustomEvent('frame:bottom-nav-changed'));
-    navigate(-1); // автозакрытие страницы после сохранения
+    // ⭐ №366: не уводим со страницы — раньше navigate(-1) мог отправить на /login
   };
 
   const toggle = (value: string) => {
@@ -165,9 +167,10 @@ const goBack = useBackNavigation('/');
   // ⭐ №215: черновик имени подтягиваем из профиля
   useEffect(() => {
     setNameDraft(user?.name ?? '');
-  }, [user?.name]);
+    setPhoneDraft(user?.phone ?? '');
+  }, [user?.name, user?.phone]);
 
-  // ⭐ №215: сохранение имени. Ответ сервера — форма login.user, кладём в контекст.
+  // ⭐ №215: сохранение профиля (имя + телефон). Ответ сервера — форма login.user.
   const handleSaveName = async () => {
     const fullName = nameDraft.trim();
     if (fullName.length < 2) {
@@ -176,11 +179,14 @@ const goBack = useBackNavigation('/');
     }
     try {
       setSavingName(true);
-      const updated = await updateMyProfile({ fullName });
+      const updated = await updateMyProfile({
+        fullName,
+        phone: phoneDraft.trim(),
+      });
       if (token) login(token, updated);
-      notify('Имя сохранено');
+      notify('Профиль сохранён');
     } catch (err: unknown) {
-      notifyError(getApiErrorMessage(err, 'Не удалось сохранить имя'));
+      notifyError(getApiErrorMessage(err, 'Не удалось сохранить профиль'));
     } finally {
       setSavingName(false);
     }
@@ -294,7 +300,7 @@ const goBack = useBackNavigation('/');
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <EditIcon sx={{ color: '#1976d2' }} />
-              <Typography variant="subtitle2" fontWeight={700}>Изменить имя</Typography>
+              <Typography variant="subtitle2" fontWeight={700}>Изменить профиль</Typography>
             </Box>
           </AccordionSummary>
           <AccordionDetails>
@@ -306,16 +312,28 @@ const goBack = useBackNavigation('/');
                 onChange={(e) => setNameDraft(e.target.value)}
                 fullWidth
               />
+              <TextField
+                size="small"
+                label="Телефон"
+                value={phoneDraft}
+                onChange={(e) => setPhoneDraft(e.target.value)}
+                placeholder="+7 900 000-00-00"
+                helperText="Необязательно. Пустое поле очищает телефон."
+                fullWidth
+              />
               <Button
                 variant="contained"
                 onClick={handleSaveName}
                 disabled={
-                  savingName || nameDraft.trim().length < 2 || nameDraft.trim() === (user?.name ?? '')
+                  savingName ||
+                  nameDraft.trim().length < 2 ||
+                  (nameDraft.trim() === (user?.name ?? '') &&
+                    phoneDraft.trim() === (user?.phone ?? ''))
                 }
                 startIcon={savingName ? <CircularProgress size={16} color="inherit" /> : undefined}
                 sx={{ alignSelf: 'flex-start' }}
               >
-                Сохранить имя
+                Сохранить профиль
               </Button>
             </Stack>
           </AccordionDetails>

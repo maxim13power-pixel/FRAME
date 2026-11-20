@@ -1,11 +1,17 @@
 import React, { useState } from 'react';
 import { Box, Button, Paper, TextField, Typography } from '@mui/material';
+import { allPositive } from './CalculatorUtils';
 
 const TileCalculator: React.FC = () => {
   const [area, setArea] = useState('');
   const [pieceArea, setPieceArea] = useState('');
 
-  const pieces = Math.ceil(((Number(area) || 0) * 1.05) / (Number(pieceArea) || 1));
+  // ⭐ №366: нет площади элемента/поверхности → не считаем (раньше делитель молча = 1)
+  const areaNum = Number(area);
+  const pieceNum = Number(pieceArea);
+  const pieces = allPositive(areaNum, pieceNum)
+    ? Math.ceil((areaNum * 1.05) / pieceNum)
+    : Number.NaN;
 
   const reset = () => {
     setArea('');
@@ -21,7 +27,7 @@ const TileCalculator: React.FC = () => {
       <Paper elevation={0} sx={{ p: 2, bgcolor: '#e0f7fa', border: '1px solid #80deea', borderRadius: 2 }}>
         <Typography variant="caption" color="text.secondary">С запасом 5%</Typography>
         <Typography variant="h5" sx={{ mt: 0.5, color: '#006064', fontWeight: 700 }}>
-          {pieces} шт.
+          {Number.isFinite(pieces) ? `${pieces} шт.` : '—'}
         </Typography>
       </Paper>
       <Button variant="outlined" onClick={reset} disabled={!area && !pieceArea}>Сброс</Button>

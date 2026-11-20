@@ -79,7 +79,7 @@ export class DashboardService {
   // есть запись в ObjectAccess. Архивные объекты (isArchived=true) исключаются.
   async getSummary(
     userId: number,
-    tzOffsetMinutes: number = -new Date().getTimezoneOffset(),
+    tzOffsetMinutes: number = new Date().getTimezoneOffset(),
   ): Promise<DashboardSummaryDto> {
     // ⭐ №173: смещение клиента (минуты, UTC − локальное). Без параметра — зона сервера.
     const offset = tzOffsetMinutes * 60_000;

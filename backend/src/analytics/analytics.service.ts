@@ -223,7 +223,7 @@ export class AnalyticsService {
     tzOffsetMinutes?: number,
     now: Date = new Date(),
   ) {
-    const tz = tzOffsetMinutes ?? -new Date().getTimezoneOffset();
+    const tz = tzOffsetMinutes ?? new Date().getTimezoneOffset();
     const keys = lastMonthKeys(now, tz, 6);
     const start = monthStartInstant(keys[0], tz);
     const end = monthStartInstant(nextMonthKey(keys[keys.length - 1]), tz);

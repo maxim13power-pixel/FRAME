@@ -111,6 +111,8 @@ const goBack = useBackNavigation('/');
   const [deletingShift, setDeletingShift] = useState<BrigadeShiftData | null>(null);
   const [sDate, setSDate] = useState(todayStr());
   const [sHours, setSHours] = useState(''); // мобильная бригада без состава
+  // ⭐ №365: выработка за выход в рублях (необязательно; вместо часов или вместе с ними)
+  const [sOutputValue, setSOutputValue] = useState('');
   const [sProjectId, setSProjectId] = useState<number | ''>('');
   const [sComment, setSComment] = useState('');
   // ⭐ №169: состав выхода — чекбокс «был / не был» + часы у каждого рабочего
@@ -390,6 +392,7 @@ const goBack = useBackNavigation('/');
     setEditingShift(shift ?? null);
     setSDate(shift ? String(shift.date).slice(0, 10) : todayStr());
     setSHours(shift ? String(shift.hoursWorked) : '');
+    setSOutputValue(shift?.outputValue != null ? String(shift.outputValue) : '');
     setSProjectId(shift?.projectId ?? '');
     setSComment(shift?.comment ?? '');
     // Новый выход: все отмечены, у каждого 8 ч. Правка: отмечены те, кто был,
@@ -464,11 +467,17 @@ const goBack = useBackNavigation('/');
     }
     setSaving(true); setFormError('');
     try {
+      const outputValue = sOutputValue.trim() ? parseDecimal(sOutputValue) : 0;
+      if (outputValue < 0) {
+        setFormError('Выработка не может быть отрицательной');
+        return;
+      }
       const data: BrigadeShiftPayload = {
         date: sDate,
         hoursWorked,
         members,
         projectId: sProjectId === '' ? undefined : sProjectId,
+        outputValue: outputValue > 0 ? outputValue : undefined,
         comment: sComment.trim() || undefined,
       };
       if (editingShift) {
@@ -718,6 +727,7 @@ const goBack = useBackNavigation('/');
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Typography variant="body2" fontWeight={600} sx={{ flexGrow: 1 }}>
                             {fmtDate(s.date)} • {fmtNum(s.hoursWorked)} ч
+                            {s.outputValue != null ? ` • ${fmtNum(s.outputValue)} ₽` : ''}
                           </Typography>
                           <IconButton size="small" onClick={() => openShiftModal(s)} sx={{ bgcolor: 'action.hover' }}>
                             <SettingsIcon fontSize="small" />
@@ -746,6 +756,9 @@ const goBack = useBackNavigation('/');
                         <TableRow>
                           <TableCell>Дата</TableCell>
                           <TableCell align="right">Часы</TableCell>
+                          {shifts.some((s) => s.outputValue != null) && (
+                            <TableCell align="right">Выработка</TableCell>
+                          )}
                           <TableCell>Состав</TableCell>
                           <TableCell>Проект</TableCell>
                           <TableCell>Комментарий</TableCell>
@@ -757,6 +770,11 @@ const goBack = useBackNavigation('/');
                           <TableRow key={s.id} hover>
                             <TableCell>{fmtDate(s.date)}</TableCell>
                             <TableCell align="right">{fmtNum(s.hoursWorked)}</TableCell>
+                            {shifts.some((item) => item.outputValue != null) && (
+                              <TableCell align="right">
+                                {s.outputValue != null ? `${fmtNum(s.outputValue)} ₽` : '—'}
+                              </TableCell>
+                            )}
                             <TableCell>
                               {s.members && s.members.length > 0 ? (
                                 <Tooltip
@@ -798,11 +816,19 @@ const goBack = useBackNavigation('/');
 
             {tab === 'stats' && (
               <Stack spacing={2}>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(auto-fit, minmax(160px, 1fr))' }, gap: 2 }}>
                   <Paper sx={{ p: 2, borderRadius: 2 }}>
                     <Typography variant="caption" color="text.secondary">Всего часов</Typography>
                     <Typography variant="h6" fontWeight={700} color="#1976d2">{fmtNum(stats?.totalHours ?? 0)}</Typography>
                   </Paper>
+                  {stats?.totalOutputValue != null && (
+                    <Paper sx={{ p: 2, borderRadius: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Выработка</Typography>
+                      <Typography variant="h6" fontWeight={700} color="#2e7d32">
+                        {fmtNum(stats.totalOutputValue)} ₽
+                      </Typography>
+                    </Paper>
+                  )}
                   <Paper sx={{ p: 2, borderRadius: 2 }}>
                     <Typography variant="caption" color="text.secondary">Выходов</Typography>
                     <Typography variant="h6" fontWeight={700} color="#2e7d32">{stats?.shiftsCount ?? 0}</Typography>
@@ -1191,6 +1217,15 @@ const goBack = useBackNavigation('/');
                 </Select>
               </FormControl>
             )}
+            <TextField
+              fullWidth
+              label="Выработка за выход, ₽"
+              type="number"
+              inputProps={{ min: 0, step: 0.01 }}
+              value={sOutputValue}
+              onChange={(e) => setSOutputValue(e.target.value)}
+              helperText="Необязательно: если платят за день, а часы не нужны"
+            />
             <TextField
               fullWidth
               label="Комментарий"

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FieldGrid, NumberField, ResetButton, ResultPaper } from './CalculatorCommon';
-import { formatNumber } from './CalculatorUtils';
+import { allPositive, formatNumber } from './CalculatorUtils';
 
 const GroutCalculator: React.FC = () => {
   const [area, setArea] = useState('');
@@ -10,7 +10,11 @@ const GroutCalculator: React.FC = () => {
   const width = (Number(tileWidth) || 0) / 100;
   const length = (Number(tileLength) || 0) / 100;
   const seamMeters = (Number(seam) || 0) / 1000;
-  const grout = (Number(area) || 0) * 2 * ((width + length) / (width * length || 1)) * seamMeters * 0.005 * 1600;
+  // ⭐ №366: (W+L)/(W×L) уже даёт длину шва на 1 м² в двух направлениях —
+  // лишний множитель 2 завышал расход ровно вдвое. Плюс не считаем без размеров.
+  const grout = allPositive(Number(area), width, length, seamMeters)
+    ? (Number(area) * ((width + length) / (width * length)) * seamMeters * 0.005 * 1600)
+    : Number.NaN;
 
   return (
     <>

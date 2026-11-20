@@ -58,8 +58,9 @@ export class UsersService {
   // прораб, приглашённый на один проект, видел пустую страницу).
   async getTeam(userId: number) {
     // 1. Мои активные записи доступа — объектные и проектные.
+    // ⭐ №366: личный архив (isHidden) в «Моей команде» не показываем.
     const myAccesses = await this.prisma.objectAccess.findMany({
-      where: { userId, revokedAt: null },
+      where: { userId, revokedAt: null, isHidden: false },
       include: {
         object: {
           select: {

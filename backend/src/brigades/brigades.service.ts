@@ -366,9 +366,16 @@ export class BrigadesService {
     to?: string,
     projectId?: number,
   ) {
-    await this.checkBrigadeAccess(brigadeId, userId);
+    const brigade = await this.checkBrigadeAccess(brigadeId, userId);
+    // ⭐ №365: выработка — деньги. Скрытые цены видят только СВОИ выходы,
+    // наблюдатель и отозванный — ничего.
+    const hideOutput =
+      brigade.objectId != null
+        ? (await this.checkObjectAccess(brigade.objectId, userId)).hidePrices
+        : false;
     const where: Prisma.BrigadeShiftWhereInput = { brigadeId };
     if (from || to) {
+      this.assertIsoDateRange(from, to);
       where.date = {
         ...(from ? { gte: new Date(from) } : {}),
         ...(to ? { lte: new Date(to) } : {}),
@@ -384,7 +391,26 @@ export class BrigadesService {
         include: SHIFT_INCLUDE,
       })
       // ⭐ №169: дата — строка YYYY-MM-DD (фильтры и график сравнивают именно её)
-      .then((rows) => rows.map((s) => this.mapShift(s)));
+      .then((rows) =>
+        rows.map((s) => {
+          const mapped = this.mapShift(s);
+          if (hideOutput && mapped.createdBy !== userId) {
+            return { ...mapped, outputValue: null };
+          }
+          return mapped;
+        }),
+      );
+  }
+
+  /** ⭐ №365: битые даты фильтра → 400, а не 500 из Prisma. */
+  private assertIsoDateRange(from?: string, to?: string) {
+    const bad = (value: string) => Number.isNaN(new Date(value).getTime());
+    if (from && bad(from)) {
+      throw new BadRequestException('from: ожидается дата в формате ГГГГ-ММ-ДД');
+    }
+    if (to && bad(to)) {
+      throw new BadRequestException('to: ожидается дата в формате ГГГГ-ММ-ДД');
+    }
   }
 
   async logShift(userId: number, brigadeId: number, dto: LogShiftDto) {
@@ -493,7 +519,12 @@ export class BrigadesService {
 
   // ─── Статистика ───
   async stats(userId: number, brigadeId: number) {
-    await this.checkBrigadeAccess(brigadeId, userId);
+    const brigade = await this.checkBrigadeAccess(brigadeId, userId);
+    // ⭐ №365: итог по деньгам — только тем, кто видит цены
+    const hideOutput =
+      brigade.objectId != null
+        ? (await this.checkObjectAccess(brigade.objectId, userId)).hidePrices
+        : false;
     const agg = await this.prisma.brigadeShift.aggregate({
       where: { brigadeId },
       _sum: { hoursWorked: true, outputValue: true, outputArea: true },
@@ -503,7 +534,7 @@ export class BrigadesService {
     const totalHours = Number(agg._sum.hoursWorked ?? 0);
     return {
       totalHours: Math.round(totalHours * 100) / 100,
-      totalOutputValue: Number(agg._sum.outputValue ?? 0),
+      totalOutputValue: hideOutput ? null : Number(agg._sum.outputValue ?? 0),
       totalOutputArea: Number(agg._sum.outputArea ?? 0),
       shiftsCount,
       avgHoursPerShift: shiftsCount > 0 ? Math.round((totalHours / shiftsCount) * 100) / 100 : 0,

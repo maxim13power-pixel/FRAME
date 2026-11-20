@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { Box, Button, Paper, TextField, Typography } from '@mui/material';
+import { allPositive } from './CalculatorUtils';
 
 const WallpaperCalculator: React.FC = () => {
   const [wallArea, setWallArea] = useState('');
   const [rollCoverage, setRollCoverage] = useState('');
 
-  const rolls = Math.ceil((Number(wallArea) || 0) / (Number(rollCoverage) || 1));
+  // ⭐ №366: покрытие рулона 0/пусто → «—», а не «площадь рулонов»
+  const rolls = allPositive(Number(wallArea), Number(rollCoverage))
+    ? Math.ceil(Number(wallArea) / Number(rollCoverage))
+    : Number.NaN;
 
   const reset = () => {
     setWallArea('');
@@ -21,7 +25,7 @@ const WallpaperCalculator: React.FC = () => {
       <Paper elevation={0} sx={{ p: 2, bgcolor: '#fff3e0', border: '1px solid #ffcc80', borderRadius: 2 }}>
         <Typography variant="caption" color="text.secondary">Необходимое количество</Typography>
         <Typography variant="h5" sx={{ mt: 0.5, color: '#e65100', fontWeight: 700 }}>
-          {rolls} шт. рулонов
+          {Number.isFinite(rolls) ? `${rolls} шт. рулонов` : '—'}
         </Typography>
       </Paper>
       <Button variant="outlined" onClick={reset} disabled={!wallArea && !rollCoverage}>Сброс</Button>

@@ -123,6 +123,7 @@ async function cleanup() {
     await prisma.accessRequest.deleteMany({ where: { requesterId: { in: ids } } });
     await prisma.inviteToken.deleteMany({ where: { createdBy: { in: ids } } });
     await prisma.auditLog.deleteMany({ where: { actorId: { in: ids } } });
+    await prisma.brigade.deleteMany({ where: { createdBy: { in: ids } } });
   }
   for (const u of users) {
     if (u.email) {
@@ -730,6 +731,60 @@ async function main() {
       pricesWorker.token,
     );
     expectStatus(res, 403, 'история для скрытого');
+  });
+
+  // ── 8. Бригады: выработка и права на деньги ───────────────
+  console.log('\n8. Бригады');
+
+  let brigadeId;
+  const today = new Date().toISOString().slice(0, 10);
+  await check('бригада: скрытый видит только свою выработку', async () => {
+    const created = await api(
+      '/brigades',
+      { method: 'POST', body: { name: `Бригада ${stamp}`, objectId: object.id } },
+      admin.token,
+    );
+    expectStatus(created, [200, 201], 'создание бригады');
+    brigadeId = created.data.id;
+
+    const adminShift = await api(
+      `/brigades/${brigadeId}/shifts`,
+      { method: 'POST', body: { date: today, hoursWorked: 8, outputValue: 1000 } },
+      admin.token,
+    );
+    expectStatus(adminShift, [200, 201], 'выход админа');
+    expect(Number(adminShift.data.outputValue) === 1000, 'админ не видит свою выработку');
+
+    const viewerShifts = await api(`/brigades/${brigadeId}/shifts`, {}, viewer.token);
+    expectStatus(viewerShifts, 200, 'выходы для наблюдателя');
+    const viewerRow = viewerShifts.data.find((s) => s.id === adminShift.data.id);
+    expect(viewerRow && viewerRow.outputValue == null, 'наблюдатель видит чужую выработку');
+    const viewerStats = await api(`/brigades/${brigadeId}/stats`, {}, viewer.token);
+    expect(viewerStats.data.totalOutputValue == null, 'наблюдатель видит итог выработки');
+
+    const workerShift = await api(
+      `/brigades/${brigadeId}/shifts`,
+      { method: 'POST', body: { date: today, hoursWorked: 6, outputValue: 500 } },
+      pricesWorker.token,
+    );
+    expectStatus(workerShift, [200, 201], 'выход скрытого прораба');
+
+    const workerShifts = await api(`/brigades/${brigadeId}/shifts`, {}, pricesWorker.token);
+    const own = workerShifts.data.find((s) => s.id === workerShift.data.id);
+    const foreign = workerShifts.data.find((s) => s.id === adminShift.data.id);
+    expect(Number(own?.outputValue) === 500, 'скрытый прораб не видит СВОЮ выработку');
+    expect(foreign?.outputValue == null, 'скрытый прораб видит чужую выработку');
+
+    const adminStats = await api(`/brigades/${brigadeId}/stats`, {}, admin.token);
+    expect(Number(adminStats.data.totalOutputValue) === 1500, 'админ не видит итог выработки');
+  });
+
+  await check('битая дата фильтра выходов → 400', async () => {
+    expectStatus(
+      await api(`/brigades/${brigadeId}/shifts?from=abc`, {}, admin.token),
+      400,
+      'from=abc',
+    );
   });
 
   // ⭐ №364: удаление аккаунта не должно оставлять объект без администратора

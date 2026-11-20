@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { FieldGrid, NumberField, ResetButton, ResultPaper } from './CalculatorCommon';
+import { allPositive } from './CalculatorUtils';
 
 const FoamBlockCalculator: React.FC = () => {
   const [wallLength, setWallLength] = useState('');
@@ -10,7 +11,11 @@ const FoamBlockCalculator: React.FC = () => {
   const [blockThickness, setBlockThickness] = useState('');
   const wallVolume = (Number(wallLength) || 0) * (Number(wallHeight) || 0) * (Number(wallThickness) || 0);
   const blockVolume = (Number(blockLength) || 0) * (Number(blockHeight) || 0) * (Number(blockThickness) || 0);
-  const blocks = Math.ceil(wallVolume / (blockVolume || 1));
+  // ⭐ №366: пустые размеры блока → «—», а не «столько же блоков, сколько объём стен»
+  const blocks =
+    allPositive(wallVolume, blockVolume) && wallVolume > 0
+      ? Math.ceil(wallVolume / blockVolume)
+      : Number.NaN;
 
   const reset = () => {
     setWallLength('');
@@ -33,7 +38,7 @@ const FoamBlockCalculator: React.FC = () => {
         <NumberField label="Высота блока, м" value={blockHeight} onChange={setBlockHeight} />
         <NumberField label="Толщина блока, м" value={blockThickness} onChange={setBlockThickness} />
       </FieldGrid>
-      <ResultPaper label="Пеноблоки" value={`${blocks} шт.`} color="#5d4037" background="#efebe9" borderColor="#bcaaa4" />
+      <ResultPaper label="Пеноблоки" value={Number.isFinite(blocks) ? `${blocks} шт.` : '—'} color="#5d4037" background="#efebe9" borderColor="#bcaaa4" />
       <ResetButton onClick={reset} disabled={!wallLength && !wallHeight && !wallThickness && !blockLength && !blockHeight && !blockThickness} />
     </>
   );

@@ -53,7 +53,8 @@ export interface BrigadeData {
 
 export interface BrigadeStats {
   totalHours: number;
-  totalOutputValue: number;
+  // ⭐ №365: null — деньги скрыты (наблюдатель / hidePrices)
+  totalOutputValue: number | null;
   totalOutputArea: number;
   shiftsCount: number;
   avgHoursPerShift: number;
