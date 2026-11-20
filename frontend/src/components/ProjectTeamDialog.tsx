@@ -438,15 +438,6 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                   }
                   label="🙈 Скрыть цены для приглашённых"
                 />
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ mt: -2 }}
-                >
-                  {linkHidePrices
-                    ? 'Участник сможет вносить работы и объёмы, но не увидит цены — идеально для субподрядчиков.'
-                    : 'Участник будет видеть все цены и суммы проекта.'}
-                </Typography>
 
                 {createdLinkUrl ? (
                   <Box
