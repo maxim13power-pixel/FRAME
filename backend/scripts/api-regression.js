@@ -67,6 +67,11 @@ const expectStatus = (res, expected, label) => {
   );
 };
 
+// ⭐ №364: запоминаем id — если проверка «удаление аккаунта» вдруг пройдёт,
+// пользователь обезличивается (email = null) и его уже не найти по почте.
+const createdUserIds = [];
+const createdObjectIds = [];
+
 const register = async (name) => {
   const email = `regr_${name}_${stamp}@local.test`;
   const codeRes = await api('/auth/request-code', {
@@ -79,6 +84,7 @@ const register = async (name) => {
     body: { email, code: codeRes.data.devCode },
   });
   expectStatus(verifyRes, [200, 201], `verify ${name}`);
+  createdUserIds.push(verifyRes.data.user.id);
   return { email, token: verifyRes.data.access_token, userId: verifyRes.data.user.id };
 };
 
@@ -92,10 +98,15 @@ const findGrant = async (objectId, token, userId) => {
 
 async function cleanup() {
   const users = await prisma.user.findMany({
-    where: { email: { endsWith: '@local.test' } },
+    where: {
+      OR: [
+        { email: { endsWith: '@local.test' } },
+        { id: { in: createdUserIds } },
+      ],
+    },
     select: { id: true, email: true },
   });
-  const objectIds = new Set();
+  const objectIds = new Set(createdObjectIds);
   for (const u of users) {
     const rows = await prisma.objectAccess.findMany({
       where: { userId: u.id },
@@ -114,7 +125,9 @@ async function cleanup() {
     await prisma.auditLog.deleteMany({ where: { actorId: { in: ids } } });
   }
   for (const u of users) {
-    await prisma.verificationToken.deleteMany({ where: { email: u.email } });
+    if (u.email) {
+      await prisma.verificationToken.deleteMany({ where: { email: u.email } });
+    }
     await prisma.user.delete({ where: { id: u.id } }).catch(() => {});
   }
 }
@@ -162,6 +175,7 @@ async function main() {
   expectStatus(objectsRes, 200, 'список объектов админа');
   const object = objectsRes.data[0];
   expect(!!object, 'у админа нет объекта (демо-объект не создался)');
+  createdObjectIds.push(object.id);
 
   const projectsRes = await api(`/projects/object/${object.id}`, {}, admin.token);
   expectStatus(projectsRes, 200, 'проекты объекта');
@@ -716,6 +730,46 @@ async function main() {
       pricesWorker.token,
     );
     expectStatus(res, 403, 'история для скрытого');
+  });
+
+  // ⭐ №364: удаление аккаунта не должно оставлять объект без администратора
+  await check('нельзя удалить аккаунт единственного админа объекта', async () => {
+    // понижаем ВСЕХ остальных админов, чтобы admin остался единственным CUSTOMER
+    const rows = await accessList(object.id, admin.token);
+    for (const row of rows) {
+      if (row.userId === admin.userId || row.revokedAt) continue;
+      if (row.role !== 'CUSTOMER') continue;
+      expectStatus(
+        await api(
+          `/objects/${object.id}/access/${row.id}`,
+          { method: 'PATCH', body: { role: 'VIEWER' } },
+          admin.token,
+        ),
+        200,
+        'понижение другого админа',
+      );
+    }
+    const res = await api('/users/me', { method: 'DELETE' }, admin.token);
+    expectStatus(res, 409, 'удаление аккаунта админа');
+    expect(
+      /Передайте админку/.test(String(res.data?.message ?? '')),
+      `текст ошибки: ${res.data?.message}`,
+    );
+    expectStatus(await api('/objects', {}, admin.token), 200, 'админ жив после отказа');
+  });
+
+  await check('аккаунт без чужих объектов удаляется вместе с демо-объектом', async () => {
+    const self = await register('selfdelete');
+    expectStatus(
+      await api('/users/me', { method: 'DELETE' }, self.token),
+      200,
+      'самоудаление аккаунта',
+    );
+    expectStatus(
+      await api('/objects', {}, self.token),
+      401,
+      'старый токен после удаления',
+    );
   });
 
   const failed = results.filter((r) => !r.ok);

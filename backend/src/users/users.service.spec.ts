@@ -133,3 +133,80 @@ describe('UsersService.getTeam — «Моя команда» (№184)', () => {
     await expect(service.getTeam(99)).resolves.toEqual([]);
   });
 });
+
+// ⭐ №364: удаление аккаунта не должно оставлять объект без администратора
+describe('UsersService.deleteMe (№364)', () => {
+  const makeService = (objects: unknown[]) => {
+    const tx = {
+      object: { deleteMany: jest.fn(), updateMany: jest.fn() },
+      priceItem: { deleteMany: jest.fn() },
+      priceCatalog: { deleteMany: jest.fn() },
+      estimateTemplate: { deleteMany: jest.fn() },
+      rental: { deleteMany: jest.fn() },
+      objectAccess: { deleteMany: jest.fn() },
+      report: { updateMany: jest.fn() },
+      warehouseTransaction: { updateMany: jest.fn() },
+      brigadeShift: { updateMany: jest.fn() },
+      user: { update: jest.fn() },
+    };
+    const prisma = {
+      object: { findMany: jest.fn().mockResolvedValue(objects) },
+      $transaction: jest.fn(
+        async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx),
+      ),
+    };
+    return { service: new UsersService(prisma as never), prisma, tx };
+  };
+
+  const grant = (userId: number, role: string) => ({
+    userId,
+    projectId: null,
+    role,
+  });
+
+  it('единственный админ объекта с другими участниками ⇒ 409, база не тронута', async () => {
+    const { service, prisma } = makeService([
+      {
+        id: 1,
+        name: 'Квартира',
+        isDemo: false,
+        accesses: [grant(5, 'CUSTOMER'), grant(9, 'VIEWER')],
+      },
+    ]);
+
+    await expect(service.deleteMe(5)).rejects.toThrow(/Передайте админку/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('есть второй администратор ⇒ удаление проходит', async () => {
+    const { service, tx } = makeService([
+      {
+        id: 1,
+        name: 'Квартира',
+        isDemo: false,
+        accesses: [grant(5, 'CUSTOMER'), grant(9, 'CUSTOMER')],
+      },
+    ]);
+
+    await service.deleteMe(5);
+
+    expect(tx.user.update).toHaveBeenCalled();
+  });
+
+  it('личный демо-объект удаляется вместе с аккаунтом', async () => {
+    const { service, tx } = makeService([
+      {
+        id: 7,
+        name: 'Квартира-образец',
+        isDemo: true,
+        accesses: [grant(5, 'CUSTOMER')],
+      },
+    ]);
+
+    await service.deleteMe(5);
+
+    expect(tx.object.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: [7] } },
+    });
+  });
+});

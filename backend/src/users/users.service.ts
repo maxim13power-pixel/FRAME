@@ -1,5 +1,11 @@
 // backend/src/users/users.service.ts
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { AccessRole } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -243,9 +249,65 @@ export class UsersService {
   //  • авторство в отчётах/складе/выходах обнуляется (createdBy = NULL);
   //  • объекты/проекты/материалы остаются у остальных участников.
   async deleteMe(userId: number) {
+    // ⭐ №364: нельзя оставить объект без администратора. Если пользователь —
+    // единственный активный CUSTOMER объекта с другими участниками, удаление
+    // аккаунта запрещаем: сначала пусть передаст админку. Личные демо-объекты
+    // (образцы, где нет других участников) удаляем вместе с аккаунтом.
+    const myObjects = await this.prisma.object.findMany({
+      where: {
+        accesses: {
+          some: {
+            userId,
+            projectId: null,
+            role: AccessRole.CUSTOMER,
+            revokedAt: null,
+          },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        isDemo: true,
+        accesses: {
+          where: { revokedAt: null },
+          select: { userId: true, projectId: true, role: true },
+        },
+      },
+    });
+    const blocking: string[] = [];
+    const demosToDelete: number[] = [];
+    for (const obj of myObjects) {
+      const others = obj.accesses.filter((a) => a.userId !== userId);
+      const otherAdmins = others.filter(
+        (a) => a.projectId == null && a.role === AccessRole.CUSTOMER,
+      );
+      if (otherAdmins.length > 0) continue;
+      if (obj.isDemo && others.length === 0) {
+        demosToDelete.push(obj.id);
+        continue;
+      }
+      blocking.push(obj.name);
+    }
+    if (blocking.length > 0) {
+      const list = blocking
+        .slice(0, 3)
+        .map((name) => `«${name}»`)
+        .join(', ');
+      const tail =
+        blocking.length > 3 ? ` и ещё ${blocking.length - 3}` : '';
+      throw new ConflictException(
+        `Вы единственный администратор объекта ${list}${tail}. ` +
+          'Передайте админку другому участнику (или удалите объект), прежде чем удалять аккаунт.',
+      );
+    }
+
     const anonPassword = await bcrypt.hash(randomUUID(), 10);
 
     await this.prisma.$transaction(async (tx) => {
+      // ⭐ №364: личные демо-объекты (без других участников) уходят с аккаунтом
+      if (demosToDelete.length > 0) {
+        await tx.object.deleteMany({ where: { id: { in: demosToDelete } } });
+      }
       // 1. Личные справочники: удаляем ЦЕЛИКОМ.
       //    Нельзя просто обнулить ownerId — справочник стал бы системным (ownerId=null).
       await tx.priceItem.deleteMany({ where: { ownerId: userId } });
