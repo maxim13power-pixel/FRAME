@@ -412,7 +412,7 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
               ➕ Пригласить участника
             </Typography>
             {/* ⭐ №303: только ссылка — email/телефон убраны (чужую почту никто не вписывает) */}
-              <Stack spacing={2}>
+              <Stack spacing={1.5}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="project-link-role-label">
                     Кого приглашаем
@@ -422,6 +422,8 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                     value={linkRole}
                     label="Кого приглашаем"
                     onChange={(e) => setLinkRole(e.target.value as AccessRole)}
+                    // ⭐ №348: шрифт как у подписи галочки (1rem)
+                    sx={{ fontSize: '1rem', '& .MuiSelect-select': { fontSize: '1rem' } }}
                   >
                     {/* ⭐ №304: «Администратор» — объектная роль, в ссылке в проект её нет */}
                     <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
@@ -430,6 +432,7 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                 </FormControl>
 
                 <FormControlLabel
+                  sx={{ '& .MuiFormControlLabel-label': { fontSize: '1rem' } }}
                   control={
                     <Checkbox
                       checked={linkHidePrices}

@@ -2704,7 +2704,7 @@ trailing: headerTrailing,
 
                 {/* ⭐ №303: приглашаем ТОЛЬКО ссылкой — табы и ввод email/телефона убраны:
                     люди пересылают ссылку в мессенджере, чужую почту никто не вписывает */}
-                <Stack spacing={2}>
+                <Stack spacing={1.5}>
                     <FormControl fullWidth size="small">
                       <InputLabel id="link-role-label">Кого приглашаем</InputLabel>
                       <Select
@@ -2712,6 +2712,8 @@ trailing: headerTrailing,
                         value={linkRole}
                         label="Кого приглашаем"
                         onChange={(e) => setLinkRole(e.target.value as AccessRole)}
+                        // ⭐ №348: шрифт как у подписей галочек (1rem)
+                        sx={{ fontSize: '1rem', '& .MuiSelect-select': { fontSize: '1rem' } }}
                       >
                         <MenuItem value="CUSTOMER">👑 Администратор объекта</MenuItem>
                         <MenuItem value="FOREMAN">👷 Прораб</MenuItem>
@@ -2721,6 +2723,7 @@ trailing: headerTrailing,
 
                     {/* ⭐ Флаг «скрыть цены» — для субподрядчиков */}
                     <FormControlLabel
+                      sx={{ '& .MuiFormControlLabel-label': { fontSize: '1rem' } }}
                       control={
                         <Checkbox
                           checked={linkHidePrices}
@@ -2735,6 +2738,7 @@ trailing: headerTrailing,
                     {linkRole === 'FOREMAN' && (
                       <>
                         <FormControlLabel
+                          sx={{ '& .MuiFormControlLabel-label': { fontSize: '1rem' } }}
                           control={
                             <Checkbox
                               checked={linkCanCreateProjects}
