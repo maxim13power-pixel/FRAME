@@ -22,7 +22,10 @@ import {
   FormControlLabel,
   Radio,
   RadioGroup,
+  Collapse,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import SearchIcon from '@mui/icons-material/Search';
 import AddHomeIcon from '@mui/icons-material/AddHome';
 import PlaceIcon from '@mui/icons-material/Place';
@@ -186,6 +189,9 @@ const [accessError, setAccessError] = useState('');
 const [accessProjects, setAccessProjects] = useState<ProjectData[]>([]);
 // ⭐ №197: «Команда проекта» — фильтр участников по области доступа
 const [memberScopeFilter, setMemberScopeFilter] = useState<'all' | 'object' | number>('all');
+// ⭐ №344: список участников в раскрывающейся панели с ограничением высоты,
+// чтобы модалка не разрасталась при большой команде
+const [membersExpanded, setMembersExpanded] = useState(true);
 // ⭐ Приглашение по ссылке (как в Google Docs)
 const [linkRole, setLinkRole] = useState<AccessRole>('FOREMAN');
 const [linkHidePrices, setLinkHidePrices] = useState(false);
@@ -2442,6 +2448,37 @@ trailing: headerTrailing,
               <Alert severity="info" sx={{ mb: 2 }}>Пока нет участников. Пригласите первого!</Alert>
             ) : (
               <Box sx={{ mb: 2 }}>
+                {/* ⭐ №344: карточки участников — в раскрывающейся панели с внутренним скроллом */}
+                <Box
+                  onClick={() => setMembersExpanded((v) => !v)}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    mb: membersExpanded ? 1 : 0,
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
+                    👥 Участники · {allPeopleCount}
+                  </Typography>
+                  <IconButton size="small" aria-label="Свернуть или развернуть список участников">
+                    {membersExpanded ? (
+                      <ExpandLessIcon fontSize="small" />
+                    ) : (
+                      <ExpandMoreIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Box>
+                <Collapse in={membersExpanded}>
+                <Box
+                  sx={{
+                    maxHeight: { xs: 260, md: 340 },
+                    overflowY: 'auto',
+                    pr: 0.5,
+                  }}
+                >
                 {/* ⭐ №197: «Команда проекта» — фильтр по области доступа.
                     Клик по проекту сразу подставляет его в форму приглашения. */}
                 <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1.5 }}>
@@ -2620,6 +2657,8 @@ trailing: headerTrailing,
                     </Box>
                   );
                 })}
+                </Box>
+                </Collapse>
               </Box>
             )}
 
