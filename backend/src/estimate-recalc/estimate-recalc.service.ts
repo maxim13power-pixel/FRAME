@@ -437,7 +437,13 @@ export class EstimateRecalcService {
 
   /** Версии пересчёта проекта (для отката) */
   async history(projectId: number, userId: number) {
-    await this.checkProjectAccess(projectId, userId);
+    const access = await this.checkProjectAccess(projectId, userId);
+    // ⭐ №359: история содержит суммы «до/после» — скрытым ценам её не показываем
+    if (this.mustHidePrices(access)) {
+      throw new ForbiddenException(
+        'Вам скрыты цены — история пересчёта недоступна. Попросите администратора объекта открыть цены.',
+      );
+    }
 
     const logs = await this.prisma.auditLog.findMany({
       where: {

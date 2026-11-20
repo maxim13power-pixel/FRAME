@@ -638,6 +638,17 @@ async function main() {
     expect(Array.isArray(res.data) && res.data.length >= 1, 'история пуста');
   });
 
+  await check('скрытому прорабу история пересчёта недоступна', async () => {
+    const link = await createLink({ role: 'FOREMAN', hidePrices: true });
+    expectStatus(await accept(link.token, pricesWorker), [200, 201], 'скрытый прораб');
+    const res = await api(
+      `/projects/${project1.id}/price-recalc/history`,
+      {},
+      pricesWorker.token,
+    );
+    expectStatus(res, 403, 'история для скрытого');
+  });
+
   const failed = results.filter((r) => !r.ok);
   console.log(
     `\nИтог: ${results.length - failed.length} ✅ / ${failed.length} ❌ из ${results.length}`,
