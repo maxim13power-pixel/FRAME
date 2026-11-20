@@ -19,7 +19,6 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import GroupsIcon from '@mui/icons-material/Groups';
 import Logo from './Logo';
-import { usePriceVisibility } from '../hooks/usePriceVisibility';
 
 interface DrawerMenuProps {
   open: boolean;
@@ -44,11 +43,6 @@ const menuItems = [
 
 const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) => {
   const { user } = useAuth();
-  // ⭐ №356: без видимых цен «Справочник цен» не нужен
-  const canSeePrices = usePriceVisibility();
-  const items = canSeePrices
-    ? menuItems
-    : menuItems.filter((item) => item.path !== '/price-list');
 
   // ⭐ №184/№189: клик по профилю ведёт в «Настройки» (это «я»), а не в «Мою команду»
   const handleGoProfile = () => {
@@ -84,7 +78,7 @@ const DrawerMenu: React.FC<DrawerMenuProps> = ({ open, onClose, onNavigate }) =>
             '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(0, 0, 0, 0.25)', borderRadius: 3 },
           }}
         >
-          {items.map((item) => (
+          {menuItems.map((item) => (
             <ListItem key={item.path} disablePadding>
               <ListItemButton onClick={() => { onNavigate(item.path); onClose(); }} sx={{ py: 0.8 }}>
                 <ListItemIcon sx={{ color: '#1976d2' }}>

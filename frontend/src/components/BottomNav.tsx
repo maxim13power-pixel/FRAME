@@ -12,7 +12,6 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import HandshakeIcon from '@mui/icons-material/Handshake';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import { safeParse } from '../utils/storage';
-import { usePriceVisibility } from '../hooks/usePriceVisibility';
 
 // ⭐ ВСЕ доступные табы (в Настройках юзер сможет выбрать любые 5)
 // ⭐ №169: список синхронизирован с боковым меню (DrawerMenu) — раньше здесь
@@ -67,11 +66,7 @@ const BottomNav: React.FC<BottomNavProps> = () => {
     return () => window.removeEventListener('frame:bottom-nav-changed', onChange);
   }, []);
 
-  // ⭐ №356: без видимых цен вкладка «Цены» не показывается
-  const canSeePrices = usePriceVisibility();
-  const tabs = ALL_BOTTOM_TABS.filter(
-    (t) => config.includes(t.value) && (canSeePrices || t.value !== 'price-list'),
-  );
+  const tabs = ALL_BOTTOM_TABS.filter(t => config.includes(t.value));
   const crowded = tabs.length >= 5;
 
   const isActive = (path: string) =>

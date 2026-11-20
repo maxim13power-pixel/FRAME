@@ -32,14 +32,6 @@ export class MeAccessController {
     return this.accessService.listMine(req.user.userId);
   }
 
-  // ⭐ №356: вижу ли я цены (если нет — прячем «Справочник цен» и цифры в нём)
-  @Get('price-visibility')
-  priceVisibility(@Req() req) {
-    return this.accessService
-      .canSeeMoney(req.user.userId)
-      .then((canSeeMoney) => ({ canSeeMoney }));
-  }
-
   // PATCH /me/access/:id — убрать/вернуть объект в ЛИЧНЫЙ архив
   @Patch(':id')
   setHidden(

@@ -173,7 +173,8 @@ describe('PriceListService — справочники объекта и прое
     );
   });
 
-  it('listCatalogs: наблюдатель видит объектный справочник, но не может писать', async () => {
+  // ⭐ №357: справочник объекта, где цены скрыты, наблюдателю не показываем вовсе
+  it('listCatalogs: объектный справочник скрыт от наблюдателя со скрытыми ценами', async () => {
     prisma.priceCatalog.findMany.mockResolvedValue([
       {
         id: 5,
@@ -189,9 +190,31 @@ describe('PriceListService — справочники объекта и прое
       { objectId: 10, projectId: null, role: 'VIEWER', hidePrices: true },
     ]);
 
+    const catalogs = await service.listCatalogs(7);
+
+    expect(catalogs).toHaveLength(0);
+  });
+
+  it('listCatalogs: прораб с видимыми ценами видит объектный справочник и может писать', async () => {
+    prisma.priceCatalog.findMany.mockResolvedValue([
+      {
+        id: 5,
+        name: 'Справочник объекта',
+        ownerId: 99,
+        createdAt: new Date(),
+        _count: { items: 3, projects: 0, objects: 1 },
+        objects: [{ id: 10, name: 'Объект' }],
+        projects: [],
+      },
+    ]);
+    prisma.objectAccess.findMany.mockResolvedValue([
+      { objectId: 10, projectId: null, role: 'FOREMAN', hidePrices: false },
+    ]);
+
     const [catalog] = await service.listCatalogs(7);
 
-    expect(catalog.canWrite).toBe(false);
+    expect(catalog).toBeDefined();
+    expect(catalog.canWrite).toBe(true);
   });
 
   it('getCategoriesWithItems: чужой справочник без доступа ⇒ NotFoundException', async () => {

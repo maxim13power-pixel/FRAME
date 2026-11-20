@@ -132,6 +132,8 @@ async function main() {
   const secondAdmin = await register('admin2');
   const hiddenAdmin = await register('hiddenadmin');
   const pricesWorker = await register('pricesworker');
+  // ⭐ №357: пользователь с «смешанными» ролями — наблюдатель здесь, админ своего объекта
+  const mixed = await register('mixed');
   const participants = [
     foreman,
     viewer,
@@ -266,16 +268,16 @@ async function main() {
     expect(Number(res.data.money.actual) > 0, `money.actual: ${res.data.money.actual}`);
   });
 
-  // ── 1b. Справочник цен (№356) ─────────────────────────────
+  // ── 1b. Справочник цен (№356/№357) ────────────────────────
   const flatItems = (payload) =>
     (Array.isArray(payload) ? payload : []).flatMap((c) => c.items ?? []);
 
-  await check('флаг «вижу цены»: наблюдатель — нет, админ — да', async () => {
-    const viewerFlag = await api('/me/access/price-visibility', {}, viewer.token);
-    expectStatus(viewerFlag, 200, 'флаг наблюдателя');
-    expect(viewerFlag.data.canSeeMoney === false, `наблюдатель: ${JSON.stringify(viewerFlag.data)}`);
-    const adminFlag = await api('/me/access/price-visibility', {}, admin.token);
-    expect(adminFlag.data.canSeeMoney === true, `админ: ${JSON.stringify(adminFlag.data)}`);
+  let adminCatalog;
+  await check('админ видит свой справочник в списке', async () => {
+    const res = await api('/price-list/catalogs', {}, admin.token);
+    expectStatus(res, 200, 'справочники админа');
+    adminCatalog = res.data.find((c) => c.ownerId === admin.userId);
+    expect(adminCatalog, 'у админа нет своего справочника');
   });
 
   let adminItem;
@@ -286,12 +288,19 @@ async function main() {
     expect(adminItem, 'у админа нет позиций с ценой');
   });
 
+  await check('объектный справочник скрыт от наблюдателя', async () => {
+    const res = await api('/price-list/catalogs', {}, viewer.token);
+    expectStatus(res, 200, 'справочники наблюдателя');
+    const foreign = res.data.filter((c) => c.ownerId !== viewer.userId);
+    expect(foreign.length === 0, `видны чужие справочники: ${foreign.map((c) => c.name).join(', ')}`);
+    const leaked = res.data.find((c) => c.id === adminCatalog.id);
+    expect(!leaked, 'справочник админа виден наблюдателю');
+  });
+
   await check('наблюдатель не видит цены в справочнике', async () => {
     const res = await api('/price-list/categories/full', {}, viewer.token);
     expectStatus(res, 200, 'справочник наблюдателя');
-    const items = flatItems(res.data);
-    expect(items.length > 0, 'справочник пуст (ожидали позиции без цен)');
-    const priced = items.filter((i) => i.price != null);
+    const priced = flatItems(res.data).filter((i) => i.price != null);
     expect(priced.length === 0, `позиций с ценой: ${priced.length}`);
   });
 
@@ -311,6 +320,20 @@ async function main() {
       viewer.token,
     );
     expectStatus(res, 403, 'правка цены наблюдателем');
+  });
+
+  // ⭐ №357: наблюдатель в одном объекте и админ в своём — свой справочник видит
+  await check('смешанные роли: свой справочник с ценами, чужой — скрыт', async () => {
+    const link = await createLink({ role: 'VIEWER', hidePrices: true });
+    expectStatus(await accept(link.token, mixed), [200, 201], 'наблюдатель в объекте');
+    const list = await api('/price-list/catalogs', {}, mixed.token);
+    expectStatus(list, 200, 'справочники смешанного');
+    expect(!list.data.some((c) => c.id === adminCatalog.id), 'чужой объектный справочник виден');
+    const own = list.data.find((c) => c.ownerId === mixed.userId);
+    expect(own, 'свой справочник пропал');
+    const full = await api(`/price-list/categories/full?catalogId=${own.id}`, {}, mixed.token);
+    const priced = flatItems(full.data).filter((i) => i.price != null);
+    expect(priced.length > 0, 'в своём справочнике цены спрятаны');
   });
 
   // ── 2. Проектный доступ ───────────────────────────────────

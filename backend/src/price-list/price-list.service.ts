@@ -123,7 +123,7 @@ export class PriceListService {
     const isAdmin = await this.isAdmin(userId);
     // ⭐ №279: образец (SYSTEM) — техническая библиотека-источник, а не «мой справочник».
     // Пользователю показываем только его базы; админу — всё (поддержка образца).
-    const visible = isAdmin ? catalogs : catalogs.filter((c) => c.kind !== 'SYSTEM');
+    const base = isAdmin ? catalogs : catalogs.filter((c) => c.kind !== 'SYSTEM');
     const grants = userId
       ? await this.prisma.objectAccess.findMany({
           where: { userId },
@@ -135,6 +135,23 @@ export class PriceListService {
           },
         })
       : [];
+
+    // ⭐ №357: чужой справочник, привязанный к объекту/проекту, где у человека СКРЫТЫ цены,
+    // ему не показываем (он всё равно увидел бы только «—»). Свои справочники остаются,
+    // поэтому человек, который в одном объекте наблюдатель, а в другом администратор,
+    // свой раздел и свои справочники видит.
+    const seesMoneyIn = (g: { role: string; hidePrices: boolean }) =>
+      !g.hidePrices && g.role !== AccessRole.VIEWER;
+    const visible = base.filter((c) => {
+      if (isAdmin) return true;
+      if (userId && c.ownerId === userId) return true;
+      const boundObjects = new Set<number>([
+        ...c.objects.map((o) => o.id),
+        ...c.projects.map((p) => p.objectId),
+      ]);
+      if (boundObjects.size === 0) return true;
+      return grants.some((g) => boundObjects.has(g.objectId) && seesMoneyIn(g));
+    });
 
     return visible.map((c) => {
       const isSystem = c.ownerId === null;
@@ -394,11 +411,6 @@ export class PriceListService {
     return grants.some(
       (g) => !g.hidePrices && g.role !== AccessRole.VIEWER,
     );
-  }
-
-  /** Публичная проверка для контроллера «можно ли мне смотреть цены» */
-  async canSeePrices(userId?: number): Promise<boolean> {
-    return this.canSeeMoneyAnywhere(userId);
   }
 
   /**
