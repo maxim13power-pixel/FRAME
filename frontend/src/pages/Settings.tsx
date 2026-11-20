@@ -11,7 +11,6 @@ import {
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DownloadIcon from '@mui/icons-material/Download';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
-import EmailIcon from '@mui/icons-material/Email';
 import PhoneIcon from '@mui/icons-material/Phone';
 import LogoutIcon from '@mui/icons-material/Logout';
 import DevicesIcon from '@mui/icons-material/Devices';
@@ -260,29 +259,30 @@ const goBack = useBackNavigation('/');
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#04164b' }} noWrap>
               {user?.name || 'Пользователь'}
             </Typography>
-            {user?.role && ROLE_LABELS[user.role] && (
+            {/* ⭐ №363: у аккаунта нет глобальной роли — в чипсе показываем e-mail,
+                роли живут на объектах (внизу, в «Моих доступах») */}
+            {(user?.email || user?.phone) && (
               <Chip
                 size="small"
-                label={ROLE_LABELS[user.role]}
-                sx={{ mt: 0.5, bgcolor: '#e3f2fd', color: '#1976d2', fontWeight: 600 }}
+                label={user.email || user.phone}
+                sx={{
+                  mt: 0.5,
+                  bgcolor: '#e3f2fd',
+                  color: '#1976d2',
+                  fontWeight: 600,
+                  maxWidth: '100%',
+                  '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' },
+                }}
               />
             )}
           </Box>
         </Box>
-        {(user?.email || user?.phone) && (
+        {user?.email && user?.phone && (
           <Stack spacing={1} sx={{ mt: 1.5 }}>
-            {user?.email && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <EmailIcon fontSize="small" color="action" />
-                <Typography variant="body2" color="text.secondary">{user.email}</Typography>
-              </Box>
-            )}
-            {user?.phone && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <PhoneIcon fontSize="small" color="action" />
-                <Typography variant="body2" color="text.secondary">{user.phone}</Typography>
-              </Box>
-            )}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <PhoneIcon fontSize="small" color="action" />
+              <Typography variant="body2" color="text.secondary">{user.phone}</Typography>
+            </Box>
           </Stack>
         )}
         {/* ⭐ №215: редактирование профиля и пароля — в том же окне, где выход */}
