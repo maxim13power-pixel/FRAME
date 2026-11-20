@@ -254,6 +254,14 @@ export const archivePriceCatalog = async (id: number): Promise<PriceCatalogData>
   return response.data;
 };
 
+// ⭐ №361: удалить справочник НАВСЕГДА (бэкенд разрешает только свободный — без объекта/проекта)
+export const deletePriceCatalogPermanently = async (
+  id: number,
+): Promise<{ success: boolean; itemsRemoved: number }> => {
+  const response = await api.delete(`/price-list/catalogs/${id}/permanent`);
+  return response.data;
+};
+
 // ============================================================
 // ⭐ №273 (§121): ИМПОРТ И ВЫГРУЗКА ПРАЙСА
 // ============================================================

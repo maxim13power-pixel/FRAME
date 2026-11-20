@@ -363,18 +363,43 @@ async function main() {
     expect(priced.length > 0, 'в своём справочнике цены спрятаны');
   });
 
-  // ⭐ №357: наблюдатель в одном объекте и админ в своём — свой справочник видит
-  await check('смешанные роли: свой справочник с ценами, чужой — скрыт', async () => {
-    const link = await createLink({ role: 'VIEWER', hidePrices: true });
-    expectStatus(await accept(link.token, mixed), [200, 201], 'наблюдатель в объекте');
-    const list = await api('/price-list/catalogs', {}, mixed.token);
-    expectStatus(list, 200, 'справочники смешанного');
-    expect(!list.data.some((c) => c.id === adminCatalog.id), 'чужой объектный справочник виден');
-    const own = list.data.find((c) => c.ownerId === mixed.userId);
-    expect(own, 'свой справочник пропал');
-    const full = await api(`/price-list/categories/full?catalogId=${own.id}`, {}, mixed.token);
-    const priced = flatItems(full.data).filter((i) => i.price != null);
-    expect(priced.length > 0, 'в своём справочнике цены спрятаны');
+  // ⭐ №361: жёсткое удаление справочника
+  await check('свободный справочник удаляется навсегда', async () => {
+    const created = await api(
+      '/price-list/catalogs',
+      { method: 'POST', body: { name: `Мусор ${Date.now()}` } },
+      admin.token,
+    );
+    expectStatus(created, [200, 201], 'создание справочника');
+    const del = await api(
+      `/price-list/catalogs/${created.data.id}/permanent`,
+      { method: 'DELETE' },
+      admin.token,
+    );
+    expectStatus(del, 200, 'жёсткое удаление');
+    const list = await api('/price-list/catalogs?includeArchived=1', {}, admin.token);
+    expect(
+      !list.data.some((c) => c.id === created.data.id),
+      'удалённый справочник остался в списке',
+    );
+  });
+
+  await check('привязанный или рабочий справочник удалить нельзя', async () => {
+    const res = await api(
+      `/price-list/catalogs/${adminCatalog.id}/permanent`,
+      { method: 'DELETE' },
+      admin.token,
+    );
+    expectStatus(res, 400, 'удаление привязанного справочника');
+  });
+
+  await check('чужой справочник удалить нельзя', async () => {
+    const res = await api(
+      `/price-list/catalogs/${adminCatalog.id}/permanent`,
+      { method: 'DELETE' },
+      viewer.token,
+    );
+    expectStatus(res, [403, 404], 'удаление чужого справочника');
   });
 
   // ── 2. Проектный доступ ───────────────────────────────────

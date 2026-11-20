@@ -30,6 +30,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import ArchiveIcon from '@mui/icons-material/Archive';
+import DeleteIcon from '@mui/icons-material/Delete';
 import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import LibraryAddIcon from '@mui/icons-material/LibraryAdd';
@@ -42,6 +43,7 @@ import { FAB_STYLE } from '../theme';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import {
   archivePriceCatalog,
+  deletePriceCatalogPermanently,
   copyPriceCatalog,
   createPriceCatalog,
   fetchPriceCatalogs,
@@ -239,6 +241,24 @@ const goBack = useBackNavigation('/');
       await load();
     } catch (err) {
       notifyError(getApiErrorText(err, 'Не удалось архивировать справочник'));
+    }
+  };
+
+  // ⭐ №361: удалить справочник НАВСЕГДА (только свободный — без объекта/проекта)
+  const handleDeletePermanently = async (catalog: PriceCatalogData) => {
+    const ok = await confirm({
+      title: 'Удалить справочник навсегда?',
+      text: `«${catalog.name}» (${catalog.itemsCount} расценок) будет удалён без возможности восстановления. Восстановить можно только из резервной копии базы.`,
+      confirmText: 'Удалить навсегда',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await deletePriceCatalogPermanently(catalog.id);
+      success(`Справочник «${catalog.name}» удалён`);
+      await load();
+    } catch (err) {
+      notifyError(getApiErrorText(err, 'Не удалось удалить справочник'));
     }
   };
 
@@ -661,6 +681,43 @@ const goBack = useBackNavigation('/');
               >
                 Архивировать
               </Button>
+            )}
+
+            {/* ⭐ №361: жёсткое удаление — только для свободного справочника */}
+            <Button
+              size="large"
+              fullWidth
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteIcon />}
+              disabled={
+                !actionsCatalog ||
+                actionsCatalog.canWrite === false ||
+                actionsCatalog.isSystem === true ||
+                actionsCatalog.isDefault === true ||
+                (actionsCatalog.objectsCount ?? 0) > 0 ||
+                (actionsCatalog.projectsCount ?? 0) > 0
+              }
+              onClick={() => {
+                const c = actionsCatalog;
+                setActionsCatalog(null);
+                if (c) void handleDeletePermanently(c);
+              }}
+            >
+              Удалить окончательно
+            </Button>
+            {actionsCatalog &&
+              ((actionsCatalog.objectsCount ?? 0) > 0 ||
+                (actionsCatalog.projectsCount ?? 0) > 0) && (
+                <Typography variant="caption" color="text.secondary">
+                  Справочник привязан к объекту или проекту — удалить нельзя.
+                  Сначала отвяжите его или удалите объект.
+                </Typography>
+              )}
+            {actionsCatalog?.isDefault && (
+              <Typography variant="caption" color="text.secondary">
+                Это ваш рабочий справочник — удалить его нельзя.
+              </Typography>
             )}
           </Stack>
         </Paper>

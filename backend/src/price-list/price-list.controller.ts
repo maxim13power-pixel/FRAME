@@ -98,6 +98,12 @@ export class PriceListController {
     return this.priceListService.archiveCatalog(id, req.user.userId);
   }
 
+  // ⭐ №361: жёсткое удаление справочника — только если он НЕ привязан к объекту/проекту
+  @Delete('catalogs/:id/permanent')
+  deleteCatalogPermanently(@Param('id', ParseIntPipe) id: number, @Req() req) {
+    return this.priceListService.deleteCatalogPermanently(id, req.user.userId);
+  }
+
   @Get('items/search')
   searchItems(
     @Query('search') search: string | undefined,

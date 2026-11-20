@@ -376,6 +376,51 @@ export class PriceListService {
     return this.prisma.priceCatalog.update({ where: { id }, data: { isArchived: true } });
   }
 
+  // ⭐ №361: жёсткое удаление справочника. Разрешено только владельцу (или админу системы),
+  // и только если справочник НЕ привязан к объекту/проекту и не является рабочей базой.
+  async deleteCatalogPermanently(id: number, userId?: number) {
+    const catalog = await this.prisma.priceCatalog.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        ownerId: true,
+        kind: true,
+        isDefault: true,
+        _count: { select: { items: true, objects: true, projects: true } },
+      },
+    });
+    if (!catalog) throw new NotFoundException('Справочник не найден');
+    if (catalog.kind === 'SYSTEM' || catalog.ownerId === null) {
+      throw new ForbiddenException('Системный справочник удалить нельзя');
+    }
+    const access = await loadCatalogAccess(this.prisma, id, userId);
+    if (!access || !access.canWrite) {
+      throw new ForbiddenException('Нет прав на удаление этого справочника');
+    }
+    if (!userId || (catalog.ownerId !== userId && !(await this.isAdmin(userId)))) {
+      throw new ForbiddenException('Удалять справочник может только его владелец');
+    }
+    if (catalog._count.objects > 0 || catalog._count.projects > 0) {
+      throw new BadRequestException(
+        'Справочник привязан к объекту или проекту — сначала отвяжите его (или удалите объект)',
+      );
+    }
+    if (catalog.isDefault) {
+      throw new BadRequestException(
+        'Это ваш рабочий справочник — удалить его нельзя. Сделайте рабочей другой справочник или удалите лишние.',
+      );
+    }
+    await this.prisma.priceCatalog.delete({ where: { id } });
+    if (userId) {
+      await this.audit.log(userId, 'price_catalog', id, 'delete', {
+        name: catalog.name,
+        items: catalog._count.items,
+      });
+    }
+    return { success: true, itemsRemoved: catalog._count.items };
+  }
+
   // ⭐ №179: вернуть справочник из архива (как «Вернуть из архива» у объектов)
   async restoreCatalog(id: number, userId?: number) {
     const access = await loadCatalogAccess(this.prisma, id, userId);
