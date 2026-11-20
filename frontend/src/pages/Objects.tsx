@@ -198,7 +198,7 @@ const [linkHidePrices, setLinkHidePrices] = useState(false);
 // ⭐ №303: «разрешить создавать проекты» теперь можно выдать и по ссылке
 const [linkCanCreateProjects, setLinkCanCreateProjects] = useState(false);
 const [createdLinkUrl, setCreatedLinkUrl] = useState<string | null>(null);
-// ⭐ №304: показываем, до какого числа действует созданная ссылка (по умолчанию 7 дней)
+// ⭐ №345: показываем, до какого момента действует созданная ссылка (по умолчанию 2 часа)
 const [createdLinkExpiresAt, setCreatedLinkExpiresAt] = useState<string | null>(null);
 const [activeLinks, setActiveLinks] = useState<InviteLink[]>([]);
 const [linkCopied, setLinkCopied] = useState(false);
@@ -1028,6 +1028,16 @@ const roleColor = (role: AccessRole): 'primary' | 'success' | 'default' => {
     default: return 'default';
   }
 };
+
+// ⭐ №345: ссылка живёт 2 часа — показываем дату И время, иначе «до 20.11.2026» врёт
+const formatLinkExpiry = (iso: string): string =>
+  new Date(iso).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
 // Обработчик открытия модалки для редактирования заметки
 const handleOpenNoteModal = (obj: ObjectData) => {
@@ -2734,11 +2744,11 @@ trailing: headerTrailing,
                         <Typography variant="body2" sx={{ wordBreak: 'break-all', my: 1, fontWeight: 600 }}>
                           {createdLinkUrl}
                         </Typography>
-                        {/* ⭐ №304: срок действия — теперь по умолчанию 7 дней */}
+                        {/* ⭐ №345: срок действия — 2 часа */}
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                           {createdLinkExpiresAt
-                            ? `Действует до ${new Date(createdLinkExpiresAt).toLocaleDateString('ru-RU')}`
-                            : 'Действует 7 дней'}
+                            ? `Действует до ${formatLinkExpiry(createdLinkExpiresAt)}`
+                            : 'Действует 2 часа'}
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                           <Button size="small" variant="contained" startIcon={<ShareIcon />} onClick={handleShareLink}>
@@ -2770,8 +2780,8 @@ trailing: headerTrailing,
                           Создать ссылку-приглашение
                         </Button>
                         <Typography variant="caption" color="text.secondary">
-                          Ссылка действует 7 дней. Отправьте её в мессенджере — человек
-                          войдёт по ней и получит доступ.
+                          Ссылка действует 2 часа. Отправьте её в мессенджере — человек
+                          войдёт по ней и получит доступ. Не успели — выпустите новую.
                         </Typography>
                       </>
                     )}
@@ -2792,9 +2802,9 @@ trailing: headerTrailing,
                               {link.canCreateProjects ? ' • 🏗 может создавать проекты' : ''}
                               {' • '}использований: {link.usesCount}
                               {link.maxUses ? `/${link.maxUses}` : ''}
-                              {/* ⭐ №304: срок действия ссылки */}
+                              {/* ⭐ №345: срок действия ссылки — с временем (живёт 2 часа) */}
                               {link.expiresAt
-                                ? ` • до ${new Date(link.expiresAt).toLocaleDateString('ru-RU')}`
+                                ? ` • до ${formatLinkExpiry(link.expiresAt)}`
                                 : ''}
                             </Typography>
                             <IconButton size="small" color="error" onClick={() => handleRevokeLink(link.id)}>

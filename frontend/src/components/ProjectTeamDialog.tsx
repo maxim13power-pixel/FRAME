@@ -94,7 +94,7 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
   const [linkRole, setLinkRole] = useState<AccessRole>('FOREMAN');
   const [linkHidePrices, setLinkHidePrices] = useState(false);
   const [createdLinkUrl, setCreatedLinkUrl] = useState<string | null>(null);
-  // ⭐ №304: срок действия созданной ссылки (по умолчанию 7 дней)
+  // ⭐ №345: срок действия созданной ссылки (по умолчанию 2 часа)
   const [createdLinkExpiresAt, setCreatedLinkExpiresAt] = useState<string | null>(null);
   const [activeLinks, setActiveLinks] = useState<InviteLink[]>([]);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -466,11 +466,17 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                     >
                       {createdLinkUrl}
                     </Typography>
-                    {/* ⭐ №304: срок действия — по умолчанию 7 дней */}
+                    {/* ⭐ №345: срок действия — 2 часа */}
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                       {createdLinkExpiresAt
-                        ? `Действует до ${new Date(createdLinkExpiresAt).toLocaleDateString('ru-RU')}`
-                        : 'Действует 7 дней'}
+                        ? `Действует до ${new Date(createdLinkExpiresAt).toLocaleString('ru-RU', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}`
+                        : 'Действует 2 часа'}
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       <Button
@@ -512,8 +518,8 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                       Создать ссылку-приглашение
                     </Button>
                     <Typography variant="caption" color="text.secondary">
-                      Ссылка действует 7 дней. Отправьте её в мессенджере — человек войдёт
-                      по ней и получит доступ к проекту.
+                      Ссылка действует 2 часа. Отправьте её в мессенджере — человек войдёт
+                      по ней и получит доступ к проекту. Не успели — выпустите новую.
                     </Typography>
                   </>
                 )}
@@ -546,9 +552,15 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                           {link.hidePrices ? ' • 🙈 без цен' : ''} •
                           использований: {link.usesCount}
                           {link.maxUses ? `/${link.maxUses}` : ''}
-                          {/* ⭐ №304: срок действия ссылки */}
+                          {/* ⭐ №345: срок действия — с временем (живёт 2 часа) */}
                           {link.expiresAt
-                            ? ` • до ${new Date(link.expiresAt).toLocaleDateString('ru-RU')}`
+                            ? ` • до ${new Date(link.expiresAt).toLocaleString('ru-RU', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}`
                             : ''}
                         </Typography>
                         <IconButton

@@ -10,8 +10,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { nanoid } from 'nanoid';
 
-/** ⭐ №304: сколько дней по умолчанию действует ссылка-приглашение. */
-export const DEFAULT_INVITE_TTL_DAYS = 7;
+/** ⭐ №345: сколько часов по умолчанию действует ссылка-приглашение (было 7 дней). */
+export const DEFAULT_INVITE_TTL_HOURS = 2;
 
 /** ⭐ №341: вес ролей для правил слияния (кто «сильнее») */
 const ROLE_WEIGHT: Record<AccessRole, number> = {
@@ -120,10 +120,10 @@ export class InviteService {
         role: dto.role,
         hidePrices: dto.hidePrices ?? false,
         canCreateProjects,
-        // ⭐ №304: по умолчанию ссылка живёт 7 дней (раньше — бессрочно)
+        // ⭐ №345: по умолчанию ссылка живёт 2 часа (было 7 дней)
         expiresAt: dto.expiresAt
           ? new Date(dto.expiresAt)
-          : new Date(Date.now() + DEFAULT_INVITE_TTL_DAYS * 86_400_000),
+          : new Date(Date.now() + DEFAULT_INVITE_TTL_HOURS * 3_600_000),
         maxUses: dto.maxUses ?? null,
       },
       include: {

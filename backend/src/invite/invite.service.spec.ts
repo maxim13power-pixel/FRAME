@@ -156,16 +156,16 @@ describe('InviteService — выдача ролей (№180)', () => {
     expect(prisma.inviteToken.create).not.toHaveBeenCalled();
   });
 
-  // ⭐ №304: срок жизни по умолчанию — 7 дней; «Администратор» не для ссылки в проект
-  it('по умолчанию ссылка живёт 7 дней', async () => {
+  // ⭐ №345: срок жизни по умолчанию — 2 часа; «Администратор» не для ссылки в проект
+  it('по умолчанию ссылка живёт 2 часа', async () => {
     givenAccess('CUSTOMER');
     const before = Date.now();
 
     await service.createInviteLink(1, { role: 'FOREMAN' } as CreateInviteDto, 7);
 
     const data = prisma.inviteToken.create.mock.calls[0][0].data;
-    const days = (data.expiresAt.getTime() - before) / 86_400_000;
-    expect(Math.round(days)).toBe(7);
+    const hours = (data.expiresAt.getTime() - before) / 3_600_000;
+    expect(Math.round(hours)).toBe(2);
   });
 
   it('для ссылки в проект роль «Администратор» недоступна', async () => {
