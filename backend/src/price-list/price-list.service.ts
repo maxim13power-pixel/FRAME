@@ -414,18 +414,15 @@ export class PriceListService {
   }
 
   /**
-   * ⭐ №220 (уточнение владельца): видит ли пользователь цены В КОНКРЕТНОМ справочнике.
-   *  • свой справочник — всегда видит;
-   *  • объектный/проектный — если в ЭТОМ объекте цены не скрыты;
-   *  • общий системный — только если привязан к объекту, где цены видны (иначе «—»);
-   *  • без catalogId (общий поиск) — «видит цены хотя бы где-то».
-   * Так наблюдатель, у которого есть свой демо-объект, не видит цены ЧУЖИХ справочников.
+   * ⭐ №220/№358: видит ли пользователь цены В КОНКРЕТНОМ справочнике.
+   *  • СВОЙ справочник — всегда видит (это его данные, даже если он наблюдатель в чужом объекте);
+   *  • объектный/проектный чужой — если в ЭТОМ объекте цены не скрыты;
+   *  • общий системный — только тем, кто видит деньги хотя бы где-то (иначе «—»);
+   *  • без catalogId (общий поиск) — решается ПО КАЖДОЙ ПОЗИЦИИ (см. itemPriceMask).
    */
   private async pricesVisibleFor(catalogId: number | undefined, userId?: number): Promise<boolean> {
     if (!userId) return false;
     if (await this.isAdmin(userId)) return true;
-    // ⭐ №356: не видит деньги нигде → не видит их ни в одном справочнике
-    if (!(await this.canSeeMoneyAnywhere(userId))) return false;
     const grants = await this.prisma.objectAccess.findMany({
       where: { userId, revokedAt: null },
       select: { objectId: true, role: true, hidePrices: true },
@@ -444,14 +441,39 @@ export class PriceListService {
     });
     if (!catalog) return false;
     if (catalog.ownerId === userId) return true;
-    // ⭐ №277: образец (SYSTEM) ни к чему не привязан — иначе его цены «исчезали»
-    // у всех, кроме админа. Показываем их тем, кто в принципе видит деньги.
+    // ⭐ №277: образец (SYSTEM) ни к чему не привязан — показываем цены тем, кто видит деньги.
     if (catalog.kind === 'SYSTEM') return grants.some(sees);
     const objectIds = new Set<number>([
       ...(catalog.objects ?? []).map((o) => o.id),
       ...(catalog.projects ?? []).map((p) => p.objectId),
     ]);
     return grants.some((g) => objectIds.has(g.objectId) && sees(g));
+  }
+
+  /**
+   * ⭐ №358: маска «можно ли показывать цену этой позиции».
+   *  • в конкретном справочнике — по правилу этого справочника;
+   *  • без catalogId (поиск «свои + системные») — по КАЖДОЙ позиции: свои цены остаются,
+   *    системные прячутся, если человек не видит деньги нигде.
+   */
+  private async itemPriceMask(
+    catalogId: number | undefined,
+    userId?: number,
+  ): Promise<(item: { catalogId?: number | null }) => boolean> {
+    if (!userId) return () => false;
+    if (await this.isAdmin(userId)) return () => true;
+    if (catalogId != null) {
+      const visible = await this.pricesVisibleFor(catalogId, userId);
+      return () => visible;
+    }
+    const own = await this.prisma.priceCatalog.findMany({
+      where: { ownerId: userId },
+      select: { id: true },
+    });
+    const ownIds = new Set(own.map((c) => c.id));
+    const canSeeSystem = await this.canSeeMoneyAnywhere(userId);
+    return (item) =>
+      (item.catalogId != null && ownIds.has(item.catalogId)) || canSeeSystem;
   }
 
   /** Прячет цифры в позициях справочника (названия и артикулы остаются). */
@@ -483,12 +505,16 @@ export class PriceListService {
         },
       },
     }).then(async (categories) => {
-      // ⭐ №219: цифры прячем всем, кто не видит деньги нигде (VIEWER / hidePrices)
-      const hidePrices = !(await this.pricesVisibleFor(catalogId, userId));
+      // ⭐ №358: цены маскируем ПО КАЖДОЙ ПОЗИЦИИ — свой справочник остаётся с цифрами,
+      // чужие/системные скрываются по своим правилам.
+      const canShowPrice = await this.itemPriceMask(catalogId, userId);
       const withPrices = (list: typeof categories) =>
-        hidePrices
-          ? list.map((c) => ({ ...c, items: this.stripItemPrices(c.items) }))
-          : list;
+        list.map((c) => ({
+          ...c,
+          items: c.items.map((item) =>
+            canShowPrice(item) ? item : { ...item, price: null },
+          ),
+        }));
 
       // ⭐ №211: категории живут глобально, а позиции — в справочнике. Из-за этого
       // в «Демо-справочнике» виднелись пустые категории чужих справочников.
@@ -590,8 +616,10 @@ export class PriceListService {
     if (catalogId && !(await this.canReadCatalog(catalogId, userId))) {
       throw new NotFoundException('Справочник не найден или нет доступа');
     }
+    // ⭐ №358: маска по позициям (свой справочник — с ценами, системные — по правилу)
+    const canShowPrice = await this.itemPriceMask(catalogId, userId);
     // ⭐ №219: если пользователь не видит деньги — не ищем и по цене (иначе подбор
-    // цифр в поиске выдаёт реальные цены), а сами цифры в ответе прячем.
+    // цифр в поиске выдаёт реальные цены)
     const hidePrices = !(await this.pricesVisibleFor(catalogId, userId));
     // ⭐ №179: цифры в запросе ищем ещё и по цене
     const priceIds =
@@ -638,7 +666,9 @@ export class PriceListService {
       // остальные категории не видны. Теперь сортировка по порядку категорий и 50 строк.
       orderBy: [{ category: { sortOrder: 'asc' } }, { name: 'asc' }],
       take: 50,
-    }).then((items) => (hidePrices ? this.stripItemPrices(items) : items));
+    }).then((items) =>
+      items.map((item) => (canShowPrice(item) ? item : { ...item, price: null })),
+    );
   }
 
   // Создание категории (общая — без владельца)
@@ -688,12 +718,6 @@ export class PriceListService {
 
   // Создание расценки → в выбранный справочник (по умолчанию — личный справочник юзера)
   async createItem(dto: CreatePriceItemDto, userId?: number) {
-    // ⭐ №356: кто не видит цены — не может их и назначать
-    if (userId && !(await this.canSeeMoneyAnywhere(userId))) {
-      throw new ForbiddenException(
-        'Цены скрыты администратором объекта — изменять справочник нельзя',
-      );
-    }
     // Проверяем что категория существует (категории общие)
     const category = await this.prisma.priceCategory.findFirst({
       where: { id: dto.categoryId },
@@ -712,6 +736,12 @@ export class PriceListService {
         catalog.ownerId === null
           ? 'В системный справочник может добавлять только владелец системы. Выберите свой справочник.'
           : 'Нет прав на изменение этого справочника',
+      );
+    }
+    // ⭐ №358: в чужой справочник со скрытыми ценами писать нельзя (свой — всегда можно)
+    if (userId && !(await this.pricesVisibleFor(catalog.id, userId))) {
+      throw new ForbiddenException(
+        'Цены в этом справочнике скрыты администратором объекта — изменять его нельзя',
       );
     }
 
@@ -775,15 +805,19 @@ export class PriceListService {
     dto: Partial<CreatePriceItemDto>,
     userId?: number,
   ) {
-    // ⭐ №356: кто не видит цены — не может их и менять
-    if (userId && !(await this.canSeeMoneyAnywhere(userId))) {
-      throw new ForbiddenException(
-        'Цены скрыты администратором объекта — изменять справочник нельзя',
-      );
-    }
     const item = await this.prisma.priceItem.findUnique({ where: { id } });
     if (!item)
       throw new NotFoundException('Расценка не найдена или нет доступа');
+    // ⭐ №358: менять можно только тот справочник, цены которого видишь
+    // (свой — всегда; чужой объектный со скрытыми ценами — нельзя)
+    if (
+      userId &&
+      !(await this.pricesVisibleFor(item.catalogId ?? undefined, userId))
+    ) {
+      throw new ForbiddenException(
+        'Цены в этом справочнике скрыты администратором объекта — изменять его нельзя',
+      );
+    }
     await this.assertCanEditItem(item.catalogId, userId);
     const updated = await this.prisma.priceItem.update({
       where: { id },

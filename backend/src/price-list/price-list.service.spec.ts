@@ -9,6 +9,7 @@ describe('PriceListService — поиск в справочнике проект
     priceCatalog: {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn(),
       create: jest.fn(),
     },
     object: { findFirst: jest.fn() },
@@ -25,6 +26,7 @@ describe('PriceListService — поиск в справочнике проект
     jest.clearAllMocks();
     prisma.priceItem.findMany.mockResolvedValue([]);
     prisma.object.findFirst.mockResolvedValue(null);
+    prisma.priceCatalog.findMany.mockResolvedValue([]);
     // ⭐ №220: по умолчанию цены видимы (есть активный грант без hidePrices)
     prisma.user.findUnique.mockResolvedValue({ role: 'FOREMAN' });
     prisma.objectAccess.findFirst.mockResolvedValue({ id: 1 });
@@ -136,6 +138,9 @@ describe('PriceListService — справочники объекта и прое
     id: 5,
     name: 'Справочник объекта',
     ownerId: 99,
+    kind: 'USER',
+    objects: [{ id: 10 }],
+    projects: [],
     isArchived: false,
   };
 
@@ -398,13 +403,13 @@ describe('PriceListService — скрытие цен (№220)', () => {
     expect(rows[0].price).toBe(320);
   });
 
-  // ⭐ №356: если цены не видны НИГДЕ — прячем даже в собственном справочнике
-  it('цены скрыты нигде не видны → собственный справочник тоже без цен', async () => {
+  // ⭐ №358: свой справочник — всегда с ценами, даже если в чужих объектах цены скрыты
+  it('цены скрыты в чужих объектах → собственный справочник всё равно с ценами', async () => {
     const { service } = build({ seesPrices: false, ownerId: 7 });
 
     const rows = await service.searchItems(undefined, undefined, 'WORK', 7, 18);
 
-    expect(rows[0].price).toBeNull();
+    expect(rows[0].price).toBe(320);
   });
 
   it('цены видны хоть где-то → собственный справочник показывает цены', async () => {
