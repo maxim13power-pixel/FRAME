@@ -93,6 +93,7 @@ describe('AnalyticsService', () => {
       const res = await service.getBudgetVsActual(7, 42);
 
       expect(res[0]).toEqual({
+        projectId: 1,
         projectName: 'A', budget: 1000, actual: 1200, percent: 120, status: 'over',
       });
       expect(res[1].percent).toBeNull();

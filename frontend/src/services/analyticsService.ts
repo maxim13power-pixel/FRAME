@@ -19,6 +19,8 @@ export interface AnalyticsSummary {
 }
 
 export interface BudgetVsActualItem {
+  // ⭐ №369: id проекта — стабильный ключ (одноимённые проекты не сливаются)
+  projectId?: number;
   projectName: string;
   budget: number;
   actual: number;
@@ -33,6 +35,7 @@ export interface MonthlyTrendItem {
 }
 
 export interface TopOverrunItem {
+  projectId?: number;
   projectName: string;
   budget: number;
   actual: number;

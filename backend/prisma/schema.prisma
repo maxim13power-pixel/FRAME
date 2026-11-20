@@ -212,6 +212,10 @@ model MaterialFix {
   userId      Int?      // кто зафиксировал
   isEdited    Boolean   @default(false)
   editedAt    DateTime?
+  // ⭐ №369: снимок цен на момент фиксации — по нему считается историческая
+  // «Динамика расходов» (пересчёт цен задним числом её больше не переписывает).
+  unitPrice         Decimal? @db.Decimal(14, 2)
+  materialUnitPrice Decimal? @db.Decimal(14, 2)
 
   @@index([fixedAt])
   @@index([materialId, fixedAt])
@@ -589,6 +593,9 @@ model Rental {
   endDate     DateTime
   price       Decimal              @db.Decimal(14, 2) // цена аренды при создании
   totalSpent  Decimal              @db.Decimal(14, 2) // всего потрачено (price + все продления)
+  // ⭐ №368: «завершена» — дата закрытия; null = активна. Продлевать/менять цену
+  // у завершённой нельзя, пока её не вернут в работу.
+  closedAt    DateTime?
   note        String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -1,7 +1,7 @@
 // backend/src/rentals/dto/extend-rental.dto.ts
 // ⭐ Раздел «Аренда»: DTO продления аренды.
 // newEndDate строго больше текущей endDate — проверяется в сервисе (нужна БД).
-import { IsISO8601, IsNumber, Min } from 'class-validator';
+import { IsISO8601, IsNumber, Max, Min } from 'class-validator';
 
 export class ExtendRentalDto {
   @IsISO8601({}, { message: 'newEndDate: обязательная ISO-дата' })
@@ -9,5 +9,6 @@ export class ExtendRentalDto {
 
   @IsNumber({}, { message: 'price: обязательное число' })
   @Min(0, { message: 'price: число не меньше 0' })
+  @Max(1000000000, { message: 'price: слишком большая сумма' })
   price!: number;
 }

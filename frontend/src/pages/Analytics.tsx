@@ -98,7 +98,6 @@ const goBack = useBackNavigation('/');
 
   useEffect(() => {
     loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadAll]);
 
   const summaryCards: { label: string; value: string; color: string; hint?: string }[] =
@@ -188,9 +187,10 @@ const goBack = useBackNavigation('/');
         ))}
       </Menu>
       {/* ⭐ №197: одноразовая подсказка раздела */}
-      <SectionIntro id="analytics" version={1}>
+      <SectionIntro id="analytics" version={2}>
         Считается по объектам, где у вас есть доступ. «Бюджет» — смета, «Факт» — фиксации.
         Демо-объект искажает цифры — его лучше убрать в архив.
+        Фильтр «Объект» влияет только на блок «Бюджет vs факт»; сводка, динамика и топ-5 — по всем объектам.
       </SectionIntro>
       {/* ⭐ №198: стикер про демо-объект — ПОД подсказкой раздела (её можно скрыть крестиком),
           а не над заголовком. Клик ведёт в «Объекты». */}
@@ -283,7 +283,7 @@ const goBack = useBackNavigation('/');
             <Stack spacing={1}>
               {topOverrun.map((t) => (
                 <Paper
-                  key={t.projectName}
+                  key={t.projectId ?? t.projectName}
                   variant="outlined"
                   sx={{ p: 1.5, borderRadius: 2, bgcolor: t.percent !== null && t.percent > 50 ? 'error.light' : 'transparent' }}
                 >
@@ -308,7 +308,7 @@ const goBack = useBackNavigation('/');
                 </TableHead>
                 <TableBody>
                   {topOverrun.map((t) => (
-                    <TableRow key={t.projectName} sx={{ bgcolor: t.percent !== null && t.percent > 50 ? 'error.light' : 'transparent' }}>
+                    <TableRow key={t.projectId ?? t.projectName} sx={{ bgcolor: t.percent !== null && t.percent > 50 ? 'error.light' : 'transparent' }}>
                       <TableCell>{t.projectName}</TableCell>
                       <TableCell align="right">{fmtMoney(t.budget)} ₽</TableCell>
                       <TableCell align="right">{fmtMoney(t.actual)} ₽</TableCell>

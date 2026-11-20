@@ -63,7 +63,7 @@ const Brigades: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 const goBack = useBackNavigation('/');
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   // ⭐ №224: askConfirm — наш диалог подтверждения (вместо браузерного confirm)
   const { confirm: askConfirm } = useFeedback();
 
@@ -547,6 +547,15 @@ const goBack = useBackNavigation('/');
     }
   };
 
+  // ⭐ №367: управлять объектной бригадой может только участник с доступом
+  // на весь объект; «мобильной» — её создатель. Проектный прораб — только свои выходы.
+  const canManageBrigade = (brigade: BrigadeData | null): boolean => {
+    if (!brigade) return false;
+    if (brigade.objectId == null) return brigade.createdBy === user?.id;
+    const obj = objects.find((o) => o.id === brigade.objectId);
+    return obj?.hasObjectAccess === true && obj?.canWrite !== false;
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
@@ -615,9 +624,11 @@ const goBack = useBackNavigation('/');
                 <GroupsIcon sx={{ color: '#1976d2' }} />
                 <Typography variant="h5" sx={{ flexGrow: 1 }}>{selectedBrigade.name}</Typography>
                 {selectedBrigade.specialty && <Chip size="small" label={selectedBrigade.specialty} />}
-                <IconButton size="small" onClick={() => openEdit(selectedBrigade)} sx={{ bgcolor: 'action.hover' }}>
-                  <SettingsIcon fontSize="small" />
-                </IconButton>
+                {canManageBrigade(selectedBrigade) && (
+                  <IconButton size="small" onClick={() => openEdit(selectedBrigade)} sx={{ bgcolor: 'action.hover' }}>
+                    <SettingsIcon fontSize="small" />
+                  </IconButton>
+                )}
               </Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                 Бригадир: {selectedBrigade.foremanName || '—'}
@@ -643,9 +654,11 @@ const goBack = useBackNavigation('/');
               <Paper sx={{ p: 2, borderRadius: 2 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                   <Typography variant="subtitle1" fontWeight={700}>Состав бригады</Typography>
-                  <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => { setMFullName(''); setMRole(''); setMPhone(''); setFormError(''); setMemberOpen(true); }}>
-                    Добавить рабочего
-                  </Button>
+                  {canManageBrigade(selectedBrigade) && (
+                    <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => { setMFullName(''); setMRole(''); setMPhone(''); setFormError(''); setMemberOpen(true); }}>
+                      Добавить рабочего
+                    </Button>
+                  )}
                 </Box>
                 {selectedBrigade.members && selectedBrigade.members.length > 0 ? (
                   <Stack spacing={0.5}>
@@ -658,9 +671,11 @@ const goBack = useBackNavigation('/');
                             <Typography variant="caption">{m.phone}</Typography>
                           </a>
                         )}
-                        <IconButton size="small" color="error" onClick={() => setDeletingMemberId(m.id)}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                        {canManageBrigade(selectedBrigade) && (
+                          <IconButton size="small" color="error" onClick={() => setDeletingMemberId(m.id)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        )}
                       </Box>
                     ))}
                   </Stack>
@@ -729,12 +744,16 @@ const goBack = useBackNavigation('/');
                             {fmtDate(s.date)} • {fmtNum(s.hoursWorked)} ч
                             {s.outputValue != null ? ` • ${fmtNum(s.outputValue)} ₽` : ''}
                           </Typography>
-                          <IconButton size="small" onClick={() => openShiftModal(s)} sx={{ bgcolor: 'action.hover' }}>
-                            <SettingsIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton size="small" color="error" onClick={() => setDeletingShift(s)}>
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                          {(canManageBrigade(selectedBrigade) || s.createdBy === user?.id) && (
+                            <>
+                              <IconButton size="small" onClick={() => openShiftModal(s)} sx={{ bgcolor: 'action.hover' }}>
+                                <SettingsIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton size="small" color="error" onClick={() => setDeletingShift(s)}>
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </>
+                          )}
                         </Box>
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                           {s.project?.name || 'Без проекта'}
@@ -798,12 +817,16 @@ const goBack = useBackNavigation('/');
                               {s.comment || '—'}
                             </TableCell>
                             <TableCell align="center">
-                              <IconButton size="small" onClick={() => openShiftModal(s)} sx={{ bgcolor: 'action.hover' }}>
-                                <SettingsIcon fontSize="small" />
-                              </IconButton>
-                              <IconButton size="small" color="error" onClick={() => setDeletingShift(s)}>
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
+                              {(canManageBrigade(selectedBrigade) || s.createdBy === user?.id) && (
+                                <>
+                                  <IconButton size="small" onClick={() => openShiftModal(s)} sx={{ bgcolor: 'action.hover' }}>
+                                    <SettingsIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton size="small" color="error" onClick={() => setDeletingShift(s)}>
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                </>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1045,37 +1068,41 @@ const goBack = useBackNavigation('/');
             >
               Открыть бригаду
             </Button>
-            <Button
-              size="large"
-              fullWidth
-              variant="outlined"
-              startIcon={<SettingsIcon />}
-              onClick={() => {
-                const b = actionsBrigade;
-                setActionsBrigade(null);
-                if (b) openEdit(b);
-              }}
-            >
-              Редактировать
-            </Button>
-            <Button
-              size="large"
-              fullWidth
-              variant="outlined"
-              color="error"
-              startIcon={<DeleteIcon />}
-              onClick={() => {
-                const b = actionsBrigade;
-                setActionsBrigade(null);
-                if (b) {
-                  // подтверждение использует selectedBrigade — выставляем перед открытием
-                  setSelectedBrigade(b);
-                  setDeletingBrigade(true);
-                }
-              }}
-            >
-              Удалить бригаду
-            </Button>
+            {canManageBrigade(actionsBrigade) && (
+              <>
+                <Button
+                  size="large"
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<SettingsIcon />}
+                  onClick={() => {
+                    const b = actionsBrigade;
+                    setActionsBrigade(null);
+                    if (b) openEdit(b);
+                  }}
+                >
+                  Редактировать
+                </Button>
+                <Button
+                  size="large"
+                  fullWidth
+                  variant="outlined"
+                  color="error"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => {
+                    const b = actionsBrigade;
+                    setActionsBrigade(null);
+                    if (b) {
+                      // подтверждение использует selectedBrigade — выставляем перед открытием
+                      setSelectedBrigade(b);
+                      setDeletingBrigade(true);
+                    }
+                  }}
+                >
+                  Удалить бригаду
+                </Button>
+              </>
+            )}
           </Stack>
         </Paper>
       </Modal>

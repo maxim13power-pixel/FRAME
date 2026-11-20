@@ -391,6 +391,9 @@ export class MaterialsService {
           note: dto.note ?? null,
           userId: userId ?? null,
           fixedAt, // ⭐ №174: дата фиксации (сейчас или «задним числом»)
+          // ⭐ №369: снимок цен на момент фиксации (историческая динамика)
+          unitPrice: material.unitPrice,
+          materialUnitPrice: material.materialUnitPrice,
         },
       });
 

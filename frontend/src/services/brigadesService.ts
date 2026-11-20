@@ -49,6 +49,8 @@ export interface BrigadeData {
   _count?: { members: number };
   members?: BrigadeMemberData[];
   shifts?: BrigadeShiftData[];
+  // ⭐ №367: владелец «мобильной» бригады (objectId = null)
+  createdBy?: number | null;
 }
 
 export interface BrigadeStats {

@@ -8,6 +8,8 @@ import {
   IsString,
   MaxLength,
   Min,
+
+  Max,
   MinLength,
   Validate,
   ValidationArguments,
@@ -53,6 +55,7 @@ export class CreateRentalDto {
 
   @IsNumber({}, { message: 'price: обязательное число' })
   @Min(0, { message: 'price: число не меньше 0' })
+  @Max(1000000000, { message: 'price: слишком большая сумма' })
   price!: number;
 
   @IsOptional()

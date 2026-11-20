@@ -30,10 +30,12 @@ import PersonIcon from '@mui/icons-material/Person';
 import EngineeringIcon from '@mui/icons-material/Engineering';
 import UpdateIcon from '@mui/icons-material/Update';
 import SettingsIcon from '@mui/icons-material/Settings';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
+import UndoIcon from '@mui/icons-material/Undo';
 import SortIcon from '@mui/icons-material/Sort';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { fetchRentals, createRental, extendRental, updateRental, deleteRental } from '../services/rentalsService';
-import type { RentalData } from '../services/rentalsService';
+import { fetchRentals, createRental, extendRental, updateRental, deleteRental, closeRental, reopenRental } from '../services/rentalsService';
+import type { RentalData, RentalStatusFilter } from '../services/rentalsService';
 import { useAuth } from '../contexts/AuthContext';
 import { useBackNavigation } from '../hooks/useBackNavigation';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
@@ -103,6 +105,8 @@ const Rentals: React.FC = () => {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('nearest'); // 'nearest' (дефолт), 'newest', 'name', 'price'
+  // ⭐ №368: фильтр «активные / завершённые / все»
+  const [statusFilter, setStatusFilter] = useState<RentalStatusFilter>('active');
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [sortAnchorEl, setSortAnchorEl] = useState<null | HTMLElement>(null);
@@ -138,6 +142,8 @@ const Rentals: React.FC = () => {
   const [editStartDate, setEditStartDate] = useState('');
   const [editEndDate, setEditEndDate] = useState('');
   const [editNote, setEditNote] = useState('');
+  // ⭐ №368: цену можно исправить при редактировании
+  const [editPrice, setEditPrice] = useState('');
   const [editError, setEditError] = useState('');
 
   // Загрузка аренд при монтировании
@@ -151,7 +157,7 @@ const Rentals: React.FC = () => {
     const loadRentals = async () => {
       try {
         setLoading(true);
-        const data = await fetchRentals();
+        const data = await fetchRentals(statusFilter);
         setRentals(data);
         setError('');
       } catch (err: unknown) {
@@ -162,7 +168,7 @@ const Rentals: React.FC = () => {
       }
     };
     loadRentals();
-  }, [token]);
+  }, [token, statusFilter]);
 
   // Фильтрация по name/location + сортировка
   const filteredAndSortedRentals = useMemo(() => {
@@ -338,11 +344,12 @@ const Rentals: React.FC = () => {
     setEditStartDate(toInputDate(rental.startDate));
     setEditEndDate(toInputDate(rental.endDate));
     setEditNote(rental.note ?? '');
+    setEditPrice(String(rental.price ?? ''));
     setEditError('');
     setEditModalOpen(true);
   };
 
-  // ⭐ Сохранить редактирование: price/totalSpent не трогаем (финансовая история)
+  // ⭐ Сохранить редактирование; цену можно исправить (totalSpent сервер пересчитает)
   const handleUpdateRental = async () => {
     if (!token || !editingRental) return;
     if (!editName.trim()) {
@@ -357,6 +364,11 @@ const Rentals: React.FC = () => {
       setEditError('Дата окончания не может быть раньше даты начала');
       return;
     }
+    const price = parseFloat(editPrice.replace(',', '.'));
+    if (Number.isNaN(price) || price < 0) {
+      setEditError('Цена должна быть числом не меньше 0');
+      return;
+    }
     try {
       setSaving(true);
       const updated = await updateRental(editingRental.id, {
@@ -366,6 +378,7 @@ const Rentals: React.FC = () => {
         startDate: editStartDate,
         endDate: editEndDate,
         note: editNote.trim(),
+        price,
       });
       setRentals((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       setEditModalOpen(false);
@@ -388,6 +401,29 @@ const Rentals: React.FC = () => {
       setDeleteConfirmOpen(false);
       setDeletingRental(null);
       setEditModalOpen(false); // ⭐ удалили из модалки редактирования — закрываем её тоже
+    }
+  };
+
+  // ⭐ №368: завершить аренду / вернуть в работу
+  const handleCloseRental = async (rental: RentalData) => {
+    try {
+      await closeRental(rental.id);
+      setRentals((prev) =>
+        statusFilter === 'active' ? prev.filter((r) => r.id !== rental.id) : prev,
+      );
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Не удалось завершить аренду'));
+    }
+  };
+
+  const handleReopenRental = async (rental: RentalData) => {
+    try {
+      await reopenRental(rental.id);
+      setRentals((prev) =>
+        statusFilter === 'closed' ? prev.filter((r) => r.id !== rental.id) : prev,
+      );
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Не удалось вернуть аренду в работу'));
     }
   };
 
@@ -504,6 +540,28 @@ const Rentals: React.FC = () => {
         </Alert>
       )}
 
+      {/* ⭐ №368: фильтр «активные / завершённые / все» */}
+      <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+        <Chip
+          label="Активные"
+          color={statusFilter === 'active' ? 'primary' : 'default'}
+          variant={statusFilter === 'active' ? 'filled' : 'outlined'}
+          onClick={() => setStatusFilter('active')}
+        />
+        <Chip
+          label="Завершённые"
+          color={statusFilter === 'closed' ? 'primary' : 'default'}
+          variant={statusFilter === 'closed' ? 'filled' : 'outlined'}
+          onClick={() => setStatusFilter('closed')}
+        />
+        <Chip
+          label="Все"
+          color={statusFilter === 'all' ? 'primary' : 'default'}
+          variant={statusFilter === 'all' ? 'filled' : 'outlined'}
+          onClick={() => setStatusFilter('all')}
+        />
+      </Stack>
+
       {/* Список аренд – красивые карточки */}
       <Stack spacing={isMobile ? 1 : 2}>
         {filteredAndSortedRentals.length > 0 ? (
@@ -539,13 +597,32 @@ const Rentals: React.FC = () => {
                   <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1, fontSize: { xs: '1.05rem', md: '1.15rem' } }}>
                     {rental.name}
                   </Typography>
+                  {/* ⭐ №368: завершённая — бейдж, продлевать нельзя */}
+                  {rental.closedAt && (
+                    <Chip size="small" label="Завершена" color="default" sx={{ mr: 1 }} />
+                  )}
+                  {!rental.closedAt && (
+                    <IconButton
+                      size="small"
+                      onClick={() => handleOpenExtend(rental)}
+                      title="Продлить"
+                      sx={{ mr: 0.5, color: '#1976d2', bgcolor: 'rgba(0, 0, 0, 0.06)', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
+                    >
+                      <UpdateIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                  {/* ⭐ №368: завершить / вернуть в работу */}
                   <IconButton
                     size="small"
-                    onClick={() => handleOpenExtend(rental)}
-                    title="Продлить"
-                    sx={{ mr: 0.5, color: '#1976d2', bgcolor: 'rgba(0, 0, 0, 0.06)', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
+                    onClick={() =>
+                      rental.closedAt
+                        ? void handleReopenRental(rental)
+                        : void handleCloseRental(rental)
+                    }
+                    title={rental.closedAt ? 'Вернуть в работу' : 'Завершить аренду'}
+                    sx={{ mr: 0.5, color: rental.closedAt ? '#2e7d32' : '#424242', bgcolor: 'rgba(0, 0, 0, 0.06)', '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.10)' } }}
                   >
-                    <UpdateIcon fontSize="small" />
+                    {rental.closedAt ? <UndoIcon fontSize="small" /> : <TaskAltIcon fontSize="small" />}
                   </IconButton>
                   {/* ⭐ Шестерёнка: редактирование + удаление (внутри модалки) */}
                   <IconButton
@@ -573,18 +650,16 @@ const Rentals: React.FC = () => {
                   </Box>
                 )}
 
-                {/* Кто ответственный + цена аренды справа */}
-                {rental.responsible && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <PersonIcon fontSize="small" color="action" />
-                    <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
-                      {rental.responsible}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Цена аренды: {formatMoney(rental.price)} ₽
-                    </Typography>
-                  </Box>
-                )}
+                {/* Кто ответственный (необязательно) + цена аренды всегда */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  {rental.responsible && <PersonIcon fontSize="small" color="action" />}
+                  <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
+                    {rental.responsible || ''}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Цена аренды: {formatMoney(rental.price)} ₽
+                  </Typography>
+                </Box>
 
                 {/* Прогресс: прошедшие дни / всего дней (clamp 0..100) */}
                 <LinearProgress
@@ -877,6 +952,15 @@ const Rentals: React.FC = () => {
               value={editEndDate}
               onChange={(e) => setEditEndDate(e.target.value)}
               required
+            />
+            <TextField
+              fullWidth
+              label="Цена аренды, ₽"
+              type="number"
+              value={editPrice}
+              onChange={(e) => setEditPrice(e.target.value)}
+              inputProps={{ min: 0, step: 0.01 }}
+              helperText="Исправление меняет «всего потрачено» на разницу"
             />
             <TextField
               fullWidth

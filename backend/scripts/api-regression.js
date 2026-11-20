@@ -146,6 +146,8 @@ async function main() {
   const secondAdmin = await register('admin2');
   const hiddenAdmin = await register('hiddenadmin');
   const pricesWorker = await register('pricesworker');
+  // ⭐ №367: прораб только на одном проекте (проверка среза выходов и прав)
+  const projForeman = await register('projforeman');
   // ⭐ №357: пользователь с «смешанными» ролями — наблюдатель здесь, админ своего объекта
   const mixed = await register('mixed');
   const participants = [
@@ -157,6 +159,7 @@ async function main() {
     secondAdmin,
     hiddenAdmin,
     pricesWorker,
+    projForeman,
   ];
 
   // ⭐ При регистрации каждому создаётся демо-объект — у участников его убираем,
@@ -787,6 +790,84 @@ async function main() {
     );
   });
 
+  // ⭐ №367: доступ на проект — свои выходы, без управления бригадой
+  await check('проектный прораб: срез выходов и запрет управления бригадой', async () => {
+    const link = await createLink({ role: 'FOREMAN', projectId: project1.id });
+    expectStatus(await accept(link.token, projForeman), [200, 201], 'прораб на проект');
+
+    const foreignShift = await api(
+      `/brigades/${brigadeId}/shifts`,
+      { method: 'POST', body: { date: today, hoursWorked: 4, projectId: project2.id } },
+      admin.token,
+    );
+    expectStatus(foreignShift, [200, 201], 'выход по чужому проекту');
+
+    const ownShift = await api(
+      `/brigades/${brigadeId}/shifts`,
+      { method: 'POST', body: { date: today, hoursWorked: 5, projectId: project1.id } },
+      projForeman.token,
+    );
+    expectStatus(ownShift, [200, 201], 'свой выход');
+
+    const list = await api(`/brigades/${brigadeId}/shifts`, {}, projForeman.token);
+    expectStatus(list, 200, 'выходы проектного прораба');
+    expect(
+      !list.data.some((s) => s.id === foreignShift.data.id),
+      'видит выход чужого проекта',
+    );
+    expect(
+      list.data.some((s) => s.id === ownShift.data.id),
+      'не видит свой выход',
+    );
+
+    expectStatus(
+      await api(
+        `/brigades/${brigadeId}/shifts/${foreignShift.data.id}`,
+        { method: 'PATCH', body: { date: today, hoursWorked: 4, projectId: project2.id } },
+        projForeman.token,
+      ),
+      403,
+      'правка чужого выхода',
+    );
+    expectStatus(
+      await api(
+        `/brigades/${brigadeId}/shifts/${ownShift.data.id}`,
+        { method: 'PATCH', body: { date: today, hoursWorked: 6, projectId: project1.id } },
+        projForeman.token,
+      ),
+      200,
+      'правка своего выхода',
+    );
+
+    expectStatus(
+      await api(
+        `/brigades/${brigadeId}`,
+        { method: 'PATCH', body: { name: 'Взлом' } },
+        projForeman.token,
+      ),
+      403,
+      'правка карточки бригады',
+    );
+    expectStatus(
+      await api(
+        `/brigades/${brigadeId}/members`,
+        { method: 'POST', body: { fullName: 'Новый рабочий' } },
+        projForeman.token,
+      ),
+      403,
+      'добавление рабочего',
+    );
+    expectStatus(
+      await api(
+        `/brigades/${brigadeId}/members`,
+        { method: 'POST', body: { fullName: 'Новый рабочий' } },
+        admin.token,
+      ),
+      [200, 201],
+      'добавление рабочего админом',
+    );
+  });
+
   // ⭐ №364: удаление аккаунта не должно оставлять объект без администратора
   await check('нельзя удалить аккаунт единственного админа объекта', async () => {
     // понижаем ВСЕХ остальных админов, чтобы admin остался единственным CUSTOMER
@@ -824,6 +905,128 @@ async function main() {
       await api('/objects', {}, self.token),
       401,
       'старый токен после удаления',
+    );
+  });
+
+  // ── 9. Аренда: статус, правка цены, лимиты ────────────────
+  console.log('\n9. Аренда');
+
+  await check('аренда: завершение, фильтр и правка цены', async () => {
+    const created = await api(
+      '/rentals',
+      {
+        method: 'POST',
+        body: {
+          name: `Аренда ${stamp}`,
+          startDate: '2026-11-01',
+          endDate: '2026-11-10',
+          price: 1000,
+        },
+      },
+      admin.token,
+    );
+    expectStatus(created, [200, 201], 'создание аренды');
+    const rentalId = created.data.id;
+
+    const active = await api('/rentals?status=active', {}, admin.token);
+    expectStatus(active, 200, 'активные');
+    expect(active.data.some((r) => r.id === rentalId), 'новая аренда не в активных');
+
+    expectStatus(
+      await api(`/rentals/${rentalId}/close`, { method: 'POST' }, admin.token),
+      201,
+      'завершение аренды',
+    );
+    const activeAfter = await api('/rentals?status=active', {}, admin.token);
+    expect(!activeAfter.data.some((r) => r.id === rentalId), 'завершённая осталась в активных');
+    const closed = await api('/rentals?status=closed', {}, admin.token);
+    expect(closed.data.some((r) => r.id === rentalId), 'завершённой нет в «Завершённых»');
+
+    // продлить завершённую нельзя
+    expectStatus(
+      await api(
+        `/rentals/${rentalId}/extend`,
+        { method: 'PATCH', body: { newEndDate: '2026-11-20', price: 100 } },
+        admin.token,
+      ),
+      400,
+      'продление завершённой',
+    );
+
+    // вернули в работу и исправили цену
+    expectStatus(
+      await api(`/rentals/${rentalId}/reopen`, { method: 'POST' }, admin.token),
+      201,
+      'возврат в работу',
+    );
+    const updated = await api(
+      `/rentals/${rentalId}`,
+      { method: 'PATCH', body: { price: 1500 } },
+      admin.token,
+    );
+    expectStatus(updated, 200, 'правка цены');
+    expect(Number(updated.data.price) === 1500, 'цена не изменилась');
+    expect(Number(updated.data.totalSpent) === 1500, 'totalSpent не пересчитан');
+
+    expectStatus(
+      await api(
+        `/rentals/${rentalId}/extend`,
+        { method: 'PATCH', body: { newEndDate: '2026-11-20', price: 1e12 } },
+        admin.token,
+      ),
+      400,
+      'слишком большая сумма',
+    );
+  });
+
+  // ── 10. Аналитика: историческая цена фиксации ─────────────
+  console.log('\n10. Аналитика');
+
+  await check('динамика считает по цене на момент фиксации', async () => {
+    const materialId = material.id;
+    const materialRow = await prisma.material.findUnique({
+      where: { id: materialId },
+      select: { unitPrice: true, materialUnitPrice: true },
+    });
+    expect(materialRow, 'материал не найден');
+
+    const fix = await api(
+      `/materials/${materialId}/fix`,
+      { method: 'POST', body: { amount: 2 } },
+      admin.token,
+    );
+    expectStatus(fix, [200, 201], 'фиксация объёма');
+
+    const trend = await api('/analytics/monthly-trend', {}, admin.token);
+    expectStatus(trend, 200, 'динамика');
+    const spent = Number(trend.data[trend.data.length - 1].spent);
+    const perUnit = Number(materialRow.unitPrice) + Number(materialRow.materialUnitPrice);
+    expect(
+      spent >= perUnit * 2 - 0.01,
+      `динамика не учла фиксацию: ${spent} < ${perUnit * 2}`,
+    );
+
+    // меняем текущую цену строки напрямую — динамика НЕ должна пересчитаться
+    await prisma.material.update({
+      where: { id: materialId },
+      data: { unitPrice: 9999 },
+    });
+    const trendAfter = await api('/analytics/monthly-trend', {}, admin.token);
+    const spentAfter = Number(trendAfter.data[trendAfter.data.length - 1].spent);
+    expect(
+      Math.abs(spentAfter - spent) < 0.01,
+      `динамика пересчиталась по новой цене: ${spent} → ${spentAfter}`,
+    );
+    await prisma.material.update({
+      where: { id: materialId },
+      data: { unitPrice: materialRow.unitPrice },
+    });
+
+    const budget = await api('/analytics/budget-vs-actual', {}, admin.token);
+    expectStatus(budget, 200, 'бюджет vs факт');
+    expect(
+      budget.data.every((r) => typeof r.projectId === 'number'),
+      'в ответе нет projectId',
     );
   });
 

@@ -211,7 +211,7 @@ export class AnalyticsService {
             : actual >= budget * 0.9
               ? 'on-track'
               : 'under';
-      return { projectName: r.name, budget, actual, percent, status };
+      return { projectId: r.project_id, projectName: r.name, budget, actual, percent, status };
     });
   }
 
@@ -236,7 +236,10 @@ export class AnalyticsService {
           ),
           'YYYY-MM'
         ) AS month,
-        COALESCE(SUM(f.amount * (m."unitPrice" + m."materialUnitPrice")), 0)::float AS spent
+        COALESCE(SUM(f.amount * (
+          COALESCE(f."unitPrice", m."unitPrice") +
+          COALESCE(f."materialUnitPrice", m."materialUnitPrice")
+        )), 0)::float AS spent
       FROM material_fixes f
       INNER JOIN materials m ON m.id = f."materialId"
       INNER JOIN "Project" p ON p.id = m."projectId"
@@ -264,6 +267,7 @@ export class AnalyticsService {
         const budget = round2(r.budget);
         const actual = round2(r.actual);
         return {
+          projectId: r.project_id,
           projectName: r.name,
           budget,
           actual,

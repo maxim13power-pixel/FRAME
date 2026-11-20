@@ -1,20 +1,33 @@
 // backend/src/rentals/rentals.service.ts
 // ⭐ Раздел «Аренда»: личное оборудование ПОЛЬЗОВАТЕЛЯ (userId из JWT).
 // Никаких ролей/ObjectAccess/объектов — владелец = автор запроса.
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRentalDto } from './dto/create-rental.dto';
 import { ExtendRentalDto } from './dto/extend-rental.dto';
 import { UpdateRentalDto } from './dto/update-rental.dto';
+
+export type RentalStatusFilter = 'active' | 'closed' | 'all';
 
 @Injectable()
 export class RentalsService {
   constructor(private prisma: PrismaService) {}
 
   // ─── Все аренды юзера, ближайшие по endDate сверху ───
-  async list(userId: number) {
+  async list(userId: number, status: RentalStatusFilter = 'active') {
     return this.prisma.rental.findMany({
-      where: { userId },
+      where: {
+        userId,
+        ...(status === 'active'
+          ? { closedAt: null }
+          : status === 'closed'
+            ? { closedAt: { not: null } }
+            : {}),
+      },
       orderBy: { endDate: 'asc' },
     });
   }
@@ -50,6 +63,12 @@ export class RentalsService {
         'newEndDate: должна быть строго больше текущей даты окончания',
       );
     }
+    // ⭐ №368: завершённую аренду не продлеваем — сначала вернуть в работу
+    if (rental.closedAt) {
+      throw new BadRequestException(
+        'Аренда завершена — верните её в работу, чтобы продлить',
+      );
+    }
     // ⭐ $transaction: атомарно двигаем дату и наращиваем сумму
     return this.prisma.$transaction(async (tx) => {
       return tx.rental.update({
@@ -83,14 +102,58 @@ export class RentalsService {
       where: { id: rental.id },
       data: {
         name: dto.name !== undefined ? dto.name.trim() : undefined,
-        location: dto.location !== undefined ? dto.location.trim() || null : undefined,
+        location:
+          dto.location !== undefined ? dto.location.trim() || null : undefined,
         responsible:
-          dto.responsible !== undefined ? dto.responsible.trim() || null : undefined,
+          dto.responsible !== undefined
+            ? dto.responsible.trim() || null
+            : undefined,
         startDate: dto.startDate ? start : undefined,
         endDate: dto.endDate ? end : undefined,
         note: dto.note !== undefined ? dto.note.trim() || null : undefined,
-        // ⭐ price и totalSpent НЕ ТРОГАЕМ — финансовая история («всего потрачено»)
+        // ⭐ №368: цену можно исправить — «всего потрачено» пересчитываем
+        // на разницу (продления остаются учтёнными)
+        ...(dto.price !== undefined
+          ? {
+              price: dto.price,
+              totalSpent:
+                Math.round(
+                  (Number(rental.totalSpent) +
+                    dto.price -
+                    Number(rental.price)) *
+                    100,
+                ) / 100,
+            }
+          : {}),
       },
+    });
+  }
+
+  /** ⭐ №368: завершить аренду (в список «Активные» больше не попадает) */
+  async close(userId: number, id: number) {
+    const rental = await this.prisma.rental.findFirst({
+      where: { id, userId },
+    });
+    if (!rental) {
+      throw new NotFoundException('Аренда не найдена');
+    }
+    return this.prisma.rental.update({
+      where: { id: rental.id },
+      data: { closedAt: new Date() },
+    });
+  }
+
+  /** ⭐ №368: вернуть завершённую аренду в работу */
+  async reopen(userId: number, id: number) {
+    const rental = await this.prisma.rental.findFirst({
+      where: { id, userId },
+    });
+    if (!rental) {
+      throw new NotFoundException('Аренда не найдена');
+    }
+    return this.prisma.rental.update({
+      where: { id: rental.id },
+      data: { closedAt: null },
     });
   }
 

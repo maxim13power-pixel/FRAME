@@ -2,7 +2,16 @@
 // ⭐ Раздел «Аренда»: DTO редактирования аренды (все поля опциональны).
 // ⭐ ВАЖНО: price и totalSpent здесь НЕТ — финансовая история не редактируется руками
 // (totalSpent растёт только через продления).
-import { IsISO8601, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsISO8601,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class UpdateRentalDto {
   @IsOptional()
@@ -10,6 +19,13 @@ export class UpdateRentalDto {
   @MinLength(1, { message: 'name: минимум 1 символ' })
   @MaxLength(200, { message: 'name: максимум 200 символов' })
   name?: string;
+
+  // ⭐ №368: цену можно исправить (totalSpent пересчитается на разницу)
+  @IsOptional()
+  @IsNumber({}, { message: 'price: обязательное число' })
+  @Min(0, { message: 'price: число не меньше 0' })
+  @Max(1000000000, { message: 'price: слишком большая сумма' })
+  price?: number;
 
   @IsOptional()
   @IsString({ message: 'location: строка или ничего' })

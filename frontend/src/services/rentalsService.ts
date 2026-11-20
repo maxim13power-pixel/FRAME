@@ -17,6 +17,8 @@ export interface RentalData {
   totalSpent: number;            // всего потрачено (price + продления)
   note?: string | null;
   createdAt?: string;
+  // ⭐ №368: дата завершения (null = активна)
+  closedAt?: string | null;
 }
 
 // 🔒 P1-3: Decimal (строка с бэкенда) -> number на границе API
@@ -26,10 +28,25 @@ const normalizeRental = (r: RentalData): RentalData => ({
   totalSpent: parseDecimal(r.totalSpent),
 });
 
-// Получить все аренды текущего пользователя
-export const fetchRentals = async (): Promise<RentalData[]> => {
-  const response = await api.get('/rentals');
+export type RentalStatusFilter = 'active' | 'closed' | 'all';
+
+// ⭐ №368: список с фильтром «активные / завершённые / все»
+export const fetchRentals = async (
+  status: RentalStatusFilter = 'active',
+): Promise<RentalData[]> => {
+  const response = await api.get('/rentals', { params: { status } });
   return response.data.map(normalizeRental);
+};
+
+// ⭐ №368: завершить аренду / вернуть в работу
+export const closeRental = async (id: number): Promise<RentalData> => {
+  const response = await api.post(`/rentals/${id}/close`);
+  return normalizeRental(response.data);
+};
+
+export const reopenRental = async (id: number): Promise<RentalData> => {
+  const response = await api.post(`/rentals/${id}/reopen`);
+  return normalizeRental(response.data);
 };
 
 // Создать аренду
@@ -57,7 +74,7 @@ export const extendRental = async (
   return normalizeRental(response.data);
 };
 
-// Редактировать аренду (все поля опциональны; price/totalSpent не трогаем)
+// Редактировать аренду (все поля опциональны; цену можно исправить — №368)
 export const updateRental = async (
   id: number,
   data: {
@@ -67,6 +84,7 @@ export const updateRental = async (
     startDate?: string;
     endDate?: string;
     note?: string;
+    price?: number;
   }
 ) => {
   const response = await api.patch(`/rentals/${id}`, data);

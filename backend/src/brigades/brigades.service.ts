@@ -200,6 +200,67 @@ export class BrigadesService {
     return my;
   }
 
+  /** ⭐ №367: управлять объектной бригадой (карточка, состав, удаление) может только
+   *  участник с доступом на ВЕСЬ объект. Проектный доступ — только свои выходы. */
+  private async checkObjectManager(objectId: number, userId: number, action: string) {
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const my = resolveObjectRole(grants, objectId);
+    if (!my.role) {
+      throw new NotFoundException('Объект не найден');
+    }
+    if (my.revoked) {
+      throw new ForbiddenException(REVOKED_ACCESS_MESSAGE);
+    }
+    if (!my.hasObjectAccess) {
+      throw new ForbiddenException(
+        'Управлять бригадой объекта может только участник с доступом на весь объект',
+      );
+    }
+    this.assertWritable(my, action);
+  }
+
+  /**
+   * ⭐ №367: проектный «срез» для чтения выходов.
+   * null — доступ на весь объект (фильтра нет), иначе — id проектов, к которым есть доступ.
+   */
+  private async myProjectScope(
+    brigade: { objectId: number | null },
+    userId: number,
+  ): Promise<number[] | null> {
+    if (brigade.objectId == null) return null;
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const my = resolveObjectRole(grants, brigade.objectId);
+    if (my.hasObjectAccess) return null;
+    return grants
+      .filter(
+        (g) =>
+          g.objectId === brigade.objectId && g.projectId != null && !g.revokedAt,
+      )
+      .map((g) => g.projectId as number);
+  }
+
+  /** ⭐ №367: проектный прораб правит только СВОИ выходы своего проекта. */
+  private async assertCanEditShift(
+    brigade: { objectId: number | null },
+    shift: { createdBy: number | null; projectId: number | null },
+    userId: number,
+    action: string,
+  ) {
+    if (brigade.objectId == null) return;
+    const grants = await loadAccessGrants(this.prisma, userId);
+    const my = resolveObjectRole(grants, brigade.objectId);
+    if (my.hasObjectAccess) return;
+    if (shift.createdBy !== userId || shift.projectId == null) {
+      throw new ForbiddenException(
+        `Можно ${action} только свои выходы по своему проекту`,
+      );
+    }
+    const project = resolveProjectAccess(grants, brigade.objectId, shift.projectId);
+    if (!project.role) {
+      throw new NotFoundException('Выход не найден');
+    }
+  }
+
   // ⭐ №204 (A#2): владелец «мобильной» бригады (objectId = null) — создатель;
   // глобальный ADMIN FRAME может всё; легаси-строки (createdBy = null) остаются общими.
   private async isAdmin(userId: number): Promise<boolean> {
@@ -268,7 +329,8 @@ export class BrigadesService {
   }
 
   async detail(userId: number, id: number) {
-    await this.checkBrigadeAccess(id, userId);
+    const brigade = await this.checkBrigadeAccess(id, userId);
+    const projectIds = await this.myProjectScope(brigade, userId);
     const [full, members, shifts] = await Promise.all([
       // ⭐ №169: без include object карточка объекта показывала «Мобильная бригада»
       this.prisma.brigade.findUniqueOrThrow({ where: { id }, include: BRIGADE_INCLUDE }),
@@ -277,7 +339,10 @@ export class BrigadesService {
         orderBy: { createdAt: 'asc' },
       }),
       this.prisma.brigadeShift.findMany({
-        where: { brigadeId: id },
+        where: {
+          brigadeId: id,
+          ...(projectIds ? { projectId: { in: projectIds } } : {}),
+        },
         orderBy: { date: 'desc' },
         take: 20,
         include: SHIFT_INCLUDE,
@@ -292,7 +357,7 @@ export class BrigadesService {
 
   async create(userId: number, dto: CreateBrigadeDto) {
     if (dto.objectId != null) {
-      await this.checkObjectAccess(dto.objectId, userId, 'создавать бригады на объекте');
+      await this.checkObjectManager(dto.objectId, userId, 'создавать бригады на объекте');
     }
     return this.prisma.brigade.create({
       data: {
@@ -310,8 +375,15 @@ export class BrigadesService {
 
   async update(userId: number, id: number, dto: UpdateBrigadeDto) {
     const brigade = await this.checkBrigadeAccess(id, userId, 'изменять бригаду');
+    if (brigade.objectId != null) {
+      await this.checkObjectManager(brigade.objectId, userId, 'изменять бригаду');
+    } else {
+      await this.assertBrigadeOwner(brigade, userId, 'изменять её');
+    }
     if (dto.objectId !== undefined && dto.objectId !== brigade.objectId) {
-      await this.checkObjectAccess(dto.objectId, userId, 'переносить бригаду на объект');
+      if (dto.objectId != null) {
+        await this.checkObjectManager(dto.objectId, userId, 'переносить бригаду на объект');
+      }
     }
     return this.prisma.brigade.update({
       where: { id },
@@ -328,14 +400,24 @@ export class BrigadesService {
   }
 
   async remove(userId: number, id: number) {
-    await this.checkBrigadeAccess(id, userId, 'удалять бригады');
+    const brigade = await this.checkBrigadeAccess(id, userId, 'удалять бригады');
+    if (brigade.objectId != null) {
+      await this.checkObjectManager(brigade.objectId, userId, 'удалять бригады');
+    } else {
+      await this.assertBrigadeOwner(brigade, userId, 'удалять её');
+    }
     await this.prisma.brigade.delete({ where: { id } });
     return { success: true };
   }
 
   // ─── Состав ───
   async addMember(userId: number, brigadeId: number, dto: AddMemberDto) {
-    await this.checkBrigadeAccess(brigadeId, userId, 'изменять состав бригады');
+    const brigade = await this.checkBrigadeAccess(brigadeId, userId, 'изменять состав бригады');
+    if (brigade.objectId != null) {
+      await this.checkObjectManager(brigade.objectId, userId, 'изменять состав бригады');
+    } else {
+      await this.assertBrigadeOwner(brigade, userId, 'изменять её состав');
+    }
     return this.prisma.brigadeMember.create({
       data: {
         brigadeId,
@@ -347,7 +429,12 @@ export class BrigadesService {
   }
 
   async removeMember(userId: number, brigadeId: number, memberId: number) {
-    await this.checkBrigadeAccess(brigadeId, userId, 'изменять состав бригады');
+    const brigade = await this.checkBrigadeAccess(brigadeId, userId, 'изменять состав бригады');
+    if (brigade.objectId != null) {
+      await this.checkObjectManager(brigade.objectId, userId, 'изменять состав бригады');
+    } else {
+      await this.assertBrigadeOwner(brigade, userId, 'изменять её состав');
+    }
     const member = await this.prisma.brigadeMember.findFirst({
       where: { id: memberId, brigadeId },
     });
@@ -367,13 +454,18 @@ export class BrigadesService {
     projectId?: number,
   ) {
     const brigade = await this.checkBrigadeAccess(brigadeId, userId);
+    // ⭐ №367: у кого доступ только к проектам — видит лишь выходы своих проектов
+    const projectIds = await this.myProjectScope(brigade, userId);
     // ⭐ №365: выработка — деньги. Скрытые цены видят только СВОИ выходы,
     // наблюдатель и отозванный — ничего.
     const hideOutput =
       brigade.objectId != null
         ? (await this.checkObjectAccess(brigade.objectId, userId)).hidePrices
         : false;
-    const where: Prisma.BrigadeShiftWhereInput = { brigadeId };
+    const where: Prisma.BrigadeShiftWhereInput = {
+      brigadeId,
+      ...(projectIds ? { projectId: { in: projectIds } } : {}),
+    };
     if (from || to) {
       this.assertIsoDateRange(from, to);
       where.date = {
@@ -415,10 +507,13 @@ export class BrigadesService {
 
   async logShift(userId: number, brigadeId: number, dto: LogShiftDto) {
     // ⭐ №172: прораб, приглашённый на проект, теперь может фиксировать выходы
-    await this.checkBrigadeAccess(brigadeId, userId, 'фиксировать выходы бригады');
+    const brigade = await this.checkBrigadeAccess(brigadeId, userId, 'фиксировать выходы бригады');
     const date = this.parseShiftDate(dto.date);
     if (dto.projectId != null) {
       await this.checkProjectAccess(dto.projectId, userId, 'фиксировать выход по этому проекту');
+    } else if (brigade.objectId != null) {
+      // ⭐ №367: выход «без проекта» — только для доступа на весь объект
+      await this.checkObjectManager(brigade.objectId, userId, 'фиксировать выходы бригады');
     }
     // ⭐ №169: состав бригады — источник истины по часам (сумма считается здесь)
     const memberRows = await this.resolveShiftMembers(brigadeId, dto.members);
@@ -463,13 +558,14 @@ export class BrigadesService {
   }
 
   async updateShift(userId: number, brigadeId: number, shiftId: number, dto: LogShiftDto) {
-    await this.checkBrigadeAccess(brigadeId, userId, 'изменять выходы бригады');
+    const brigade = await this.checkBrigadeAccess(brigadeId, userId, 'изменять выходы бригады');
     const shift = await this.prisma.brigadeShift.findFirst({
       where: { id: shiftId, brigadeId },
     });
     if (!shift) {
       throw new NotFoundException('Выход не найден');
     }
+    await this.assertCanEditShift(brigade, shift, userId, 'изменять');
     const date = this.parseShiftDate(dto.date);
     if (dto.projectId != null) {
       await this.checkProjectAccess(dto.projectId, userId, 'фиксировать выход по этому проекту');
@@ -506,13 +602,14 @@ export class BrigadesService {
   }
 
   async removeShift(userId: number, brigadeId: number, shiftId: number) {
-    await this.checkBrigadeAccess(brigadeId, userId, 'удалять выходы бригады');
+    const brigade = await this.checkBrigadeAccess(brigadeId, userId, 'удалять выходы бригады');
     const shift = await this.prisma.brigadeShift.findFirst({
       where: { id: shiftId, brigadeId },
     });
     if (!shift) {
       throw new NotFoundException('Выход не найден');
     }
+    await this.assertCanEditShift(brigade, shift, userId, 'удалять');
     await this.prisma.brigadeShift.delete({ where: { id: shiftId } });
     return { success: true };
   }
@@ -520,13 +617,18 @@ export class BrigadesService {
   // ─── Статистика ───
   async stats(userId: number, brigadeId: number) {
     const brigade = await this.checkBrigadeAccess(brigadeId, userId);
+    // ⭐ №367: проектный прораб видит статистику только своих проектов
+    const projectIds = await this.myProjectScope(brigade, userId);
     // ⭐ №365: итог по деньгам — только тем, кто видит цены
     const hideOutput =
       brigade.objectId != null
         ? (await this.checkObjectAccess(brigade.objectId, userId)).hidePrices
         : false;
     const agg = await this.prisma.brigadeShift.aggregate({
-      where: { brigadeId },
+      where: {
+        brigadeId,
+        ...(projectIds ? { projectId: { in: projectIds } } : {}),
+      },
       _sum: { hoursWorked: true, outputValue: true, outputArea: true },
       _count: { id: true },
     });
