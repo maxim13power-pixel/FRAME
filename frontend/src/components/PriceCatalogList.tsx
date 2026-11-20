@@ -74,6 +74,9 @@ const goBack = useBackNavigation('/');
   const [copySource, setCopySource] = useState<PriceCatalogData | null>(null);
   const [copyName, setCopyName] = useState('');
   const [copySaving, setCopySaving] = useState(false);
+  // ⭐ №362: наценка/скидка при копировании (как в копировании объекта)
+  const [copyWorkMarkup, setCopyWorkMarkup] = useState('0');
+  const [copyMaterialMarkup, setCopyMaterialMarkup] = useState('0');
   // ⭐ №179: поиск по справочникам (имя / объект / проект)
   const [search, setSearch] = useState('');
   // ⭐ №179: архив справочников — как у объектов (кнопка «Архив» в шапке + возврат)
@@ -278,6 +281,13 @@ const goBack = useBackNavigation('/');
   const handleOpenCopy = (catalog: PriceCatalogData) => {
     setCopySource(catalog);
     setCopyName(`Копия «${catalog.name}»`);
+    setCopyWorkMarkup('0');
+    setCopyMaterialMarkup('0');
+  };
+
+  const parsePercent = (raw: string): number => {
+    const value = Number(String(raw).replace(',', '.'));
+    return Number.isFinite(value) ? value : 0;
   };
 
   const handleCopyConfirm = async () => {
@@ -286,6 +296,8 @@ const goBack = useBackNavigation('/');
     try {
       const created = await copyPriceCatalog(copySource.id, {
         name: copyName.trim() || undefined,
+        workMarkupPercent: parsePercent(copyWorkMarkup),
+        materialMarkupPercent: parsePercent(copyMaterialMarkup),
       });
       success(
         `Скопировано расценок: ${created.itemsCount ?? 0} → «${created.name}»`,
@@ -787,6 +799,27 @@ const goBack = useBackNavigation('/');
               onChange={(e) => setCopyName(e.target.value)}
               inputProps={{ maxLength: 80 }}
             />
+            {/* ⭐ №362: копия с наценкой/скидкой — как при копировании объекта */}
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Наценка на работы, %"
+                value={copyWorkMarkup}
+                onChange={(e) => setCopyWorkMarkup(e.target.value)}
+                inputProps={{ min: -90, max: 500, step: 0.1 }}
+                helperText="0 — без наценки, минус — скидка"
+              />
+              <TextField
+                fullWidth
+                type="number"
+                label="Наценка на материалы, %"
+                value={copyMaterialMarkup}
+                onChange={(e) => setCopyMaterialMarkup(e.target.value)}
+                inputProps={{ min: -90, max: 500, step: 0.1 }}
+                helperText="Цены меняются только в копии"
+              />
+            </Stack>
           </Stack>
           <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
             <Button onClick={() => setCopySource(null)}>Отмена</Button>

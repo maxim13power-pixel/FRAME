@@ -402,6 +402,50 @@ async function main() {
     expectStatus(res, [403, 404], 'удаление чужого справочника');
   });
 
+  // ⭐ №362: копия справочника с наценкой/скидкой
+  await check('копия справочника с наценкой и скидкой', async () => {
+    const copied = await api(
+      `/price-list/catalogs/${adminCatalog.id}/copy`,
+      {
+        method: 'POST',
+        body: {
+          name: `Копия с наценкой ${Date.now()}`,
+          workMarkupPercent: 10,
+          materialMarkupPercent: -10,
+        },
+      },
+      admin.token,
+    );
+    expectStatus(copied, [200, 201], 'копия справочника');
+    const src = await api(
+      `/price-list/categories/full?catalogId=${adminCatalog.id}`,
+      {},
+      admin.token,
+    );
+    const dst = await api(
+      `/price-list/categories/full?catalogId=${copied.data.id}`,
+      {},
+      admin.token,
+    );
+    const key = (i) => `${i.kind}|${i.name}|${i.unit}`;
+    const srcMap = new Map(flatItems(src.data).map((i) => [key(i), i]));
+    const dstMap = new Map(flatItems(dst.data).map((i) => [key(i), i]));
+    let checked = 0;
+    for (const [k, s] of srcMap) {
+      const d = dstMap.get(k);
+      if (!d || s.price == null) continue;
+      const pct = s.kind === 'WORK' ? 10 : -10;
+      const expected = Math.round(Number(s.price) * (1 + pct / 100) * 100) / 100;
+      expect(
+        Math.abs(Number(d.price) - expected) < 0.011,
+        `${k}: ${d.price} вместо ${expected}`,
+      );
+      checked += 1;
+      if (checked >= 200) break;
+    }
+    expect(checked > 0, 'нечего сравнивать — копия пустая');
+  });
+
   // ── 2. Проектный доступ ───────────────────────────────────
   console.log('\n2. Проектный доступ');
 
