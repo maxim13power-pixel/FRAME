@@ -102,7 +102,9 @@ export class InviteService {
     // доступа (access.service): только прораб и только ссылка на весь объект.
     // Выдавать это право может лишь администратор объекта — нельзя делегировать больше, чем имеешь.
     const canCreateProjects =
-      dto.projectId == null && dto.role === 'FOREMAN' ? !!dto.canCreateProjects : false;
+      dto.projectId == null && dto.role === 'FOREMAN'
+        ? !!dto.canCreateProjects
+        : false;
     if (canCreateProjects && myAccess.role !== 'CUSTOMER') {
       throw new ForbiddenException(
         'Разрешить создание проектов по ссылке может только администратор объекта',
@@ -243,6 +245,8 @@ export class InviteService {
           id: true,
           projectId: true,
           role: true,
+          hidePrices: true,
+          canCreateProjects: true,
           revokedAt: true,
         },
         orderBy: { id: 'asc' },
@@ -250,8 +254,55 @@ export class InviteService {
       const live = grants.filter((g) => !g.revokedAt);
       const objectGrant = live.find((g) => g.projectId == null);
 
-      // 1) Доступ на весь объект уже есть — ссылка не срабатывает, но и не «сгорает»
+      // 1) Доступ на весь объект уже есть.
+      // ⭐ №342: если объектная ссылка принесла другие настройки (роль/цены/право создавать
+      // проекты) — применяем их: админ меняет доступ ссылкой, а не только «выдаёт впервые».
       if (objectGrant) {
+        if (invite.projectId == null) {
+          const nextCanCreate =
+            invite.role === 'FOREMAN' ? invite.canCreateProjects : false;
+          const roleChanged = invite.role !== objectGrant.role;
+          const pricesChanged = invite.hidePrices !== objectGrant.hidePrices;
+          const canCreateChanged =
+            nextCanCreate !== objectGrant.canCreateProjects;
+          if (roleChanged || pricesChanged || canCreateChanged) {
+            await tx.objectAccess.update({
+              where: { id: objectGrant.id },
+              data: {
+                role: invite.role,
+                hidePrices: invite.hidePrices,
+                canCreateProjects: nextCanCreate,
+              },
+            });
+            await tx.auditLog.create({
+              data: {
+                actorId: userId,
+                entity: 'object',
+                entityId: invite.objectId,
+                action: 'access_update_by_link',
+                before: {
+                  role: objectGrant.role,
+                  hidePrices: objectGrant.hidePrices,
+                  canCreateProjects: objectGrant.canCreateProjects,
+                } as unknown as Prisma.InputJsonValue,
+                after: {
+                  role: invite.role,
+                  hidePrices: invite.hidePrices,
+                  canCreateProjects: nextCanCreate,
+                  inviteId: invite.id,
+                },
+              },
+            });
+            await this.bumpUses(tx, token);
+            return {
+              updated: true as const,
+              objectId: invite.objectId,
+              role: invite.role,
+              hidePrices: invite.hidePrices,
+              message: 'Права обновлены по ссылке',
+            };
+          }
+        }
         return {
           alreadyHasAccess: true as const,
           scope: 'object' as const,
@@ -297,7 +348,9 @@ export class InviteService {
         ROLE_WEIGHT[invite.role] < ROLE_WEIGHT[strongestProjectRole];
       if (downgrade && !opts.confirmDowngrade) {
         const projects = await tx.project.findMany({
-          where: { id: { in: projectGrants.map((g) => g.projectId as number) } },
+          where: {
+            id: { in: projectGrants.map((g) => g.projectId as number) },
+          },
           select: { name: true },
         });
         throw new ConflictException({
@@ -320,7 +373,9 @@ export class InviteService {
             entity: 'object',
             entityId: invite.objectId,
             action: 'access_merge_to_object',
-            before: { grants: projectGrants } as unknown as Prisma.InputJsonValue,
+            before: {
+              grants: projectGrants,
+            } as unknown as Prisma.InputJsonValue,
             after: { role: invite.role, inviteId: invite.id },
           },
         });
@@ -426,11 +481,43 @@ export class InviteService {
       const invite = await this.loadActiveInvite(tx, token);
       const grants = await tx.objectAccess.findMany({
         where: { userId, objectId: invite.objectId },
-        select: { projectId: true, role: true, revokedAt: true },
+        select: {
+          projectId: true,
+          role: true,
+          hidePrices: true,
+          canCreateProjects: true,
+          revokedAt: true,
+        },
       });
       const live = grants.filter((g) => !g.revokedAt);
       const objectGrant = live.find((g) => g.projectId == null);
       if (objectGrant) {
+        // ⭐ №342: объектная ссылка может поменять роль/цены/право создавать проекты
+        if (invite.projectId == null) {
+          const nextCanCreate =
+            invite.role === 'FOREMAN' ? invite.canCreateProjects : false;
+          const changes = {
+            role:
+              invite.role !== objectGrant.role
+                ? { from: objectGrant.role, to: invite.role }
+                : null,
+            hidePrices:
+              invite.hidePrices !== objectGrant.hidePrices
+                ? { from: objectGrant.hidePrices, to: invite.hidePrices }
+                : null,
+            canCreateProjects:
+              nextCanCreate !== objectGrant.canCreateProjects
+                ? { from: objectGrant.canCreateProjects, to: nextCanCreate }
+                : null,
+          };
+          if (changes.role || changes.hidePrices || changes.canCreateProjects) {
+            return {
+              alreadyHasAccess: 'object' as const,
+              role: objectGrant.role,
+              changes,
+            };
+          }
+        }
         return {
           alreadyHasAccess: 'object' as const,
           role: objectGrant.role,
@@ -454,7 +541,9 @@ export class InviteService {
         ROLE_WEIGHT[invite.role] < ROLE_WEIGHT[strongest]
       ) {
         const projects = await tx.project.findMany({
-          where: { id: { in: projectGrants.map((g) => g.projectId as number) } },
+          where: {
+            id: { in: projectGrants.map((g) => g.projectId as number) },
+          },
           select: { name: true },
         });
         return {

@@ -61,8 +61,15 @@ const AcceptInvite: React.FC = () => {
   const [status, setStatus] = useState<{
     alreadyHasAccess: 'object' | 'project' | null;
     role?: AccessRole;
+    changes?: {
+      role: { from: AccessRole; to: AccessRole } | null;
+      hidePrices: { from: boolean; to: boolean } | null;
+      canCreateProjects: { from: boolean; to: boolean } | null;
+    };
     downgrade?: { fromRole: AccessRole; toRole: AccessRole; projects: string[] };
   } | null>(null);
+  // ⭐ №342: текст экрана после успеха (принятие или обновление прав)
+  const [resultText, setResultText] = useState('Приглашение принято!');
 
   // ⭐ Загружаем инфу о приглашении (публичный эндпоинт, без JWT)
   useEffect(() => {
@@ -110,6 +117,13 @@ const AcceptInvite: React.FC = () => {
           alreadyHasAccess: acceptedInvite.scope ?? 'object',
           role: acceptedInvite.role,
         });
+        return;
+      }
+      if (acceptedInvite.updated) {
+        // ⭐ №342: ссылка поменяла роль/цены у существующего объектного доступа
+        setResultText('Права обновлены по ссылке');
+        setAccepted(true);
+        setTimeout(() => navigate('/objects'), 1500);
         return;
       }
       setAccepted(true);
@@ -180,7 +194,7 @@ const AcceptInvite: React.FC = () => {
           /* Успешное принятие */
           <>
             <CheckCircleIcon sx={{ fontSize: 64, color: '#4caf50', mb: 2 }} />
-            <Typography variant="h6" gutterBottom>Приглашение принято!</Typography>
+            <Typography variant="h6" gutterBottom>{resultText}</Typography>
             <Typography color="text.secondary">Перенаправляем вас в список объектов…</Typography>
           </>
         ) : info ? (
@@ -226,7 +240,62 @@ const AcceptInvite: React.FC = () => {
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
             {token ? (
-              status?.alreadyHasAccess ? (
+              status?.changes ? (
+                (() => {
+                  const roleWeight: Record<AccessRole, number> = {
+                    CUSTOMER: 3,
+                    FOREMAN: 2,
+                    VIEWER: 1,
+                  };
+                  const c = status.changes;
+                  const worse =
+                    (c.role != null && roleWeight[c.role.to] < roleWeight[c.role.from]) ||
+                    (c.hidePrices?.to === true && c.hidePrices?.from === false) ||
+                    (c.canCreateProjects?.from === true &&
+                      c.canCreateProjects?.to === false);
+                  const lines: string[] = [];
+                  if (c.role) {
+                    lines.push(
+                      `сейчас роль «${roleLabel(c.role.from)}», по ссылке — «${roleLabel(c.role.to)}»`,
+                    );
+                  }
+                  if (c.hidePrices) {
+                    lines.push(
+                      c.hidePrices.to
+                        ? 'цены будут скрыты'
+                        : 'цены будут открыты',
+                    );
+                  }
+                  if (c.canCreateProjects) {
+                    lines.push(
+                      c.canCreateProjects.to
+                        ? 'появится право создавать проекты'
+                        : 'право создавать проекты будет снято',
+                    );
+                  }
+                  return (
+                    <>
+                      <Alert severity={worse ? 'warning' : 'info'} sx={{ mb: 2, textAlign: 'left' }}>
+                        Ссылка изменит ваш доступ: {lines.join('; ')}.
+                        {worse ? ' Это уменьшит ваши права.' : ''}
+                      </Alert>
+                      <Button
+                        variant="contained"
+                        size="large"
+                        fullWidth
+                        color={worse ? 'warning' : 'primary'}
+                        onClick={() => void handleAccept(false)}
+                        disabled={accepting}
+                      >
+                        {accepting ? <CircularProgress size={24} /> : 'Применить изменения'}
+                      </Button>
+                      <Button fullWidth sx={{ mt: 1 }} onClick={() => navigate('/objects')}>
+                        Отмена
+                      </Button>
+                    </>
+                  );
+                })()
+              ) : status?.alreadyHasAccess ? (
                 <>
                   <Alert severity="info" sx={{ mb: 2, textAlign: 'left' }}>
                     {status.alreadyHasAccess === 'object'

@@ -73,6 +73,8 @@ export const acceptInvite = async (
   projectName?: string | null;
   role: AccessRole;
   alreadyHasAccess?: boolean;
+  updated?: boolean;
+  hidePrices?: boolean;
   scope?: 'object' | 'project';
   mergedProjects?: number;
 }> => {
@@ -82,12 +84,20 @@ export const acceptInvite = async (
   return response.data;
 };
 
-// 5. ⭐ №341: что будет, если принять ссылку (уже есть доступ / понижение роли)
+/** ⭐ №342: какие настройки поменяет ссылка у человека с объектным доступом */
+export interface InviteStatusChanges {
+  role: { from: AccessRole; to: AccessRole } | null;
+  hidePrices: { from: boolean; to: boolean } | null;
+  canCreateProjects: { from: boolean; to: boolean } | null;
+}
+
+// 5. ⭐ №341/№342: что будет, если принять ссылку
 export const getInviteStatus = async (
   inviteToken: string,
 ): Promise<{
   alreadyHasAccess: 'object' | 'project' | null;
   role?: AccessRole;
+  changes?: InviteStatusChanges;
   downgrade?: {
     fromRole: AccessRole;
     toRole: AccessRole;
