@@ -1038,6 +1038,13 @@ const formatLinkExpiry = (iso: string): string =>
     minute: '2-digit',
   });
 
+// ⭐ №349: в списке активных ссылок достаточно времени («до 10:54») — срок всего 2 часа
+const formatLinkExpiryTime = (iso: string): string =>
+  new Date(iso).toLocaleTimeString('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
 // Обработчик открытия модалки для редактирования заметки
 const handleOpenNoteModal = (obj: ObjectData) => {
   setEditingNoteObject(obj);
@@ -2817,9 +2824,9 @@ trailing: headerTrailing,
                               {link.canCreateProjects ? ' • 🏗 может создавать проекты' : ''}
                               {' • '}использований: {link.usesCount}
                               {link.maxUses ? `/${link.maxUses}` : ''}
-                              {/* ⭐ №345: срок действия ссылки — с временем (живёт 2 часа) */}
+                              {/* ⭐ №349: срок — только время (ссылка живёт 2 часа) */}
                               {link.expiresAt
-                                ? ` • до ${formatLinkExpiry(link.expiresAt)}`
+                                ? ` • до ${formatLinkExpiryTime(link.expiresAt)}`
                                 : ''}
                             </Typography>
                             <IconButton size="small" color="error" onClick={() => handleRevokeLink(link.id)}>

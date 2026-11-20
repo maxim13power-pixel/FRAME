@@ -546,12 +546,9 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
                           {link.hidePrices ? ' • 🙈 без цен' : ''} •
                           использований: {link.usesCount}
                           {link.maxUses ? `/${link.maxUses}` : ''}
-                          {/* ⭐ №345: срок действия — с временем (живёт 2 часа) */}
+                          {/* ⭐ №349: срок — только время (ссылка живёт 2 часа) */}
                           {link.expiresAt
-                            ? ` • до ${new Date(link.expiresAt).toLocaleString('ru-RU', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
+                            ? ` • до ${new Date(link.expiresAt).toLocaleTimeString('ru-RU', {
                                 hour: '2-digit',
                                 minute: '2-digit',
                               })}`
