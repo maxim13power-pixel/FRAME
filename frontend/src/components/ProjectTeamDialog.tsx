@@ -10,9 +10,6 @@ import {
   Chip,
   CircularProgress,
   Collapse,
-  Dialog,
-  DialogContent,
-  DialogTitle,
   Divider,
   FormControl,
   FormControlLabel,
@@ -29,10 +26,7 @@ import {
   Stack,
   TextField,
   Typography,
-  useMediaQuery,
-  useTheme,
 } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -90,8 +84,6 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
   canManage,
   onChanged,
 }) => {
-  const theme = useTheme();
-  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const { confirm, notify, error: notifyError } = useFeedback();
 
   const [members, setMembers] = useState<AccessMember[]>([]);
@@ -342,27 +334,25 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      fullWidth
-      maxWidth="sm"
-      fullScreen={fullScreen}
-    >
-      <DialogTitle sx={{ pr: 6, position: 'relative' }}>
-        Участники проекта
-        <Typography variant="body2" color="text.secondary" noWrap>
-          {project?.name || ''}
+    // ⭐ №353: оформление как у модалки участников объекта (тот же Modal + Paper, 92% на телефоне)
+    <Modal open={open} onClose={onClose}>
+      <Paper
+        sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '92%', sm: 520 },
+          maxHeight: '85vh',
+          overflowY: 'auto',
+          p: 3,
+          borderRadius: 3,
+          outline: 'none',
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          👥 Участники проекта «{project?.name || ''}»
         </Typography>
-        <IconButton
-          aria-label="Закрыть"
-          onClick={onClose}
-          sx={{ position: 'absolute', right: 8, top: 8 }}
-        >
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent dividers>
         {!canManage && (
           <Alert severity="info" sx={{ mb: 2 }}>
             Участниками проекта управляет администратор объекта. Здесь доступен
@@ -902,8 +892,13 @@ const ProjectTeamDialog: React.FC<ProjectTeamDialogProps> = ({
 
           </>
         )}
-      </DialogContent>
-    </Dialog>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+          <Button variant="outlined" onClick={onClose}>
+            Закрыть
+          </Button>
+        </Box>
+      </Paper>
+    </Modal>
   );
 };
 
