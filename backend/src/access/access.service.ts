@@ -87,6 +87,97 @@ export class AccessService {
     });
   }
 
+  /**
+   * ⭐ №350: люди из команды всех моих объектов — чтобы добавлять их напрямую,
+   * без пересылки ссылок. Возвращает всех, у кого есть активный доступ к объектам,
+   * где я администратор (CUSTOMER), с пометкой «уже в этом объекте».
+   */
+  async getCandidates(objectId: number, actorUserId: number) {
+    await this.assertManager(objectId, actorUserId);
+
+    const myObjects = await this.prisma.objectAccess.findMany({
+      where: {
+        userId: actorUserId,
+        projectId: null,
+        role: AccessRole.CUSTOMER,
+        revokedAt: null,
+      },
+      select: { objectId: true },
+    });
+    const objectIds = [
+      ...new Set([objectId, ...myObjects.map((o) => o.objectId)]),
+    ];
+
+    const rows = await this.prisma.objectAccess.findMany({
+      where: {
+        objectId: { in: objectIds },
+        revokedAt: null,
+        userId: { not: actorUserId },
+      },
+      select: {
+        userId: true,
+        objectId: true,
+        projectId: true,
+        role: true,
+        user: {
+          select: { id: true, fullName: true, email: true, phone: true },
+        },
+      },
+      orderBy: { userId: 'asc' },
+    });
+
+    const byUser = new Map<
+      number,
+      {
+        userId: number;
+        fullName: string | null;
+        email: string | null;
+        phone: string | null;
+        objects: Set<number>;
+        projects: Set<number>;
+        inObject: boolean;
+        roleInObject: AccessRole | null;
+      }
+    >();
+    for (const row of rows) {
+      const entry = byUser.get(row.userId) ?? {
+        userId: row.userId,
+        fullName: row.user.fullName,
+        email: row.user.email,
+        phone: row.user.phone,
+        objects: new Set<number>(),
+        projects: new Set<number>(),
+        inObject: false,
+        roleInObject: null,
+      };
+      entry.objects.add(row.objectId);
+      if (row.projectId != null) entry.projects.add(row.projectId);
+      if (row.objectId === objectId) {
+        entry.inObject = true;
+        entry.roleInObject = row.role;
+      }
+      byUser.set(row.userId, entry);
+    }
+
+    return [...byUser.values()]
+      .map((c) => ({
+        userId: c.userId,
+        fullName: c.fullName,
+        email: c.email,
+        phone: c.phone,
+        objectsCount: c.objects.size,
+        projectsCount: c.projects.size,
+        inObject: c.inObject,
+        roleInObject: c.roleInObject,
+      }))
+      .sort((a, b) =>
+        (a.fullName || a.email || '').localeCompare(
+          b.fullName || b.email || '',
+          'ru',
+        ),
+      );
+  }
+
   // 2. Пригласить пользователя (ТЗ 3.5)
   // ⭐ №207: приглашает только администратор объекта. Устаревшая отозванная запись
   // переиспользуется (без дубля), но настройки берутся из формы приглашения:

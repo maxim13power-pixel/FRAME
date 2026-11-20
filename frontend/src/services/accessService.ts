@@ -79,6 +79,25 @@ export const fetchAccessList = async (
 };
 
 // 2. Пригласить пользователя (или вернуть ранее отозванного — тем же запросом)
+// ⭐ №350: люди из команды моих объектов — для прямого добавления без ссылки
+export interface AccessCandidate {
+  userId: number;
+  fullName: string | null;
+  email: string | null;
+  phone: string | null;
+  objectsCount: number;
+  projectsCount: number;
+  inObject: boolean;
+  roleInObject: AccessRole | null;
+}
+
+export const fetchAccessCandidates = async (
+  objectId: number,
+): Promise<AccessCandidate[]> => {
+  const response = await api.get(`/objects/${objectId}/access/candidates`);
+  return response.data;
+};
+
 export const addAccess = async (
   objectId: number,
   payload: AddAccessPayload,

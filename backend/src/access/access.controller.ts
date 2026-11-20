@@ -29,6 +29,13 @@ export class AccessController {
     return this.accessService.getAccessList(objectId, req.user.userId);
   }
 
+  // ⭐ №350: GET /objects/:objectId/access/candidates — люди из команды моих объектов
+  // (для прямого добавления без ссылки). Объявлен ДО параметризованных маршрутов.
+  @Get('candidates')
+  getCandidates(@Param('objectId', ParseIntPipe) objectId: number, @Req() req) {
+    return this.accessService.getCandidates(objectId, req.user.userId);
+  }
+
   // POST /objects/:objectId/access — пригласить
   @Post()
   addAccess(

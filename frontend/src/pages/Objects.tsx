@@ -45,13 +45,15 @@ import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 import SettingsIcon from '@mui/icons-material/Settings';
 import PeopleIcon from '@mui/icons-material/People';
+import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CloseIcon from '@mui/icons-material/Close';
 import LinkIcon from '@mui/icons-material/Link';
 import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import EditIcon from '@mui/icons-material/Edit';
-import { fetchAccessList, updateAccess, removeAccess, removeAccessScope, setMyAccessHidden } from '../services/accessService';
+import { fetchAccessList, updateAccess, removeAccess, removeAccessScope, setMyAccessHidden, addAccess, fetchAccessCandidates } from '../services/accessService';
+import type { AccessCandidate } from '../services/accessService';
 import { APP_URL } from '../config';
 import type { AccessMember, AccessRole } from '../services/accessService';
 import { createInviteLink, fetchInviteLinks, revokeInviteLink } from '../services/inviteService';
@@ -201,6 +203,13 @@ const [createdLinkUrl, setCreatedLinkUrl] = useState<string | null>(null);
 const [createdLinkExpiresAt, setCreatedLinkExpiresAt] = useState<string | null>(null);
 const [activeLinks, setActiveLinks] = useState<InviteLink[]>([]);
 const [linkCopied, setLinkCopied] = useState(false);
+// ⭐ №350: прямой выбор участника из команды моих объектов (без ссылки)
+const [candidatesOpen, setCandidatesOpen] = useState(false);
+const [candidates, setCandidates] = useState<AccessCandidate[]>([]);
+const [candidatesLoading, setCandidatesLoading] = useState(false);
+const [candidatesError, setCandidatesError] = useState('');
+const [candidatesQuery, setCandidatesQuery] = useState('');
+const [candidateBusyId, setCandidateBusyId] = useState<number | null>(null);
 // ⭐ №178: заявки на право создавать проекты (входящие — для менеджера/админа)
 const [accessRequests, setAccessRequests] = useState<AccessRequestData[]>([]);
 const [accessRequestBusy, setAccessRequestBusy] = useState<number | null>(null);
@@ -995,6 +1004,53 @@ const handleShareLink = async () => {
     if ((err as { name?: string })?.name !== 'AbortError') {
       await handleCopyLink();
     }
+  }
+};
+
+// ⭐ №350: список людей из команды моих объектов — добавляем напрямую, без ссылки
+const openCandidates = async () => {
+  if (!token || !accessObject) return;
+  setCandidatesOpen(true);
+  setCandidatesLoading(true);
+  setCandidatesError('');
+  setCandidatesQuery('');
+  try {
+    setCandidates(await fetchAccessCandidates(accessObject.id));
+  } catch (err: unknown) {
+    setCandidates([]);
+    setCandidatesError(getApiErrorMessage(err, 'Не удалось загрузить список участников'));
+  } finally {
+    setCandidatesLoading(false);
+  }
+};
+
+const handleAddCandidate = async (candidate: AccessCandidate) => {
+  if (!token || !accessObject) return;
+  setCandidateBusyId(candidate.userId);
+  setCandidatesError('');
+  try {
+    await addAccess(accessObject.id, {
+      userId: candidate.userId,
+      role: linkRole,
+      hidePrices: linkHidePrices,
+      canCreateProjects: linkRole === 'FOREMAN' ? linkCanCreateProjects : false,
+    });
+    notify(
+      `Добавлен: ${candidate.fullName || candidate.email || candidate.phone || 'участник'}`,
+      'success',
+    );
+    setCandidates((prev) =>
+      prev.map((c) =>
+        c.userId === candidate.userId
+          ? { ...c, inObject: true, roleInObject: linkRole }
+          : c,
+      ),
+    );
+    await loadAccessMembers(accessObject.id);
+  } catch (err: unknown) {
+    setCandidatesError(getApiErrorMessage(err, 'Не удалось добавить участника'));
+  } finally {
+    setCandidateBusyId(null);
   }
 };
 
@@ -2793,14 +2849,26 @@ trailing: headerTrailing,
                       </Box>
                     ) : (
                       <>
-                        <Button
-                          variant="contained"
-                          startIcon={<LinkIcon />}
-                          onClick={handleCreateLink}
-                          disabled={accessLoading}
-                        >
-                          Создать ссылку-приглашение
-                        </Button>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                          <Button
+                            variant="outlined"
+                            startIcon={<PersonSearchIcon />}
+                            onClick={() => void openCandidates()}
+                            disabled={accessLoading}
+                            sx={{ flex: 1 }}
+                          >
+                            Выбрать участника
+                          </Button>
+                          <Button
+                            variant="contained"
+                            startIcon={<LinkIcon />}
+                            onClick={handleCreateLink}
+                            disabled={accessLoading}
+                            sx={{ flex: 1 }}
+                          >
+                            Создать ссылку
+                          </Button>
+                        </Stack>
                         <Typography variant="caption" color="text.secondary">
                           Ссылка действует 2 часа. Отправьте её в мессенджере — человек
                           войдёт по ней и получит доступ. Не успели — выпустите новую.
@@ -2837,6 +2905,121 @@ trailing: headerTrailing,
                       </Box>
                     )}
                   </Stack>
+
+                {/* ⭐ №350: прямой выбор участника из команды моих объектов */}
+                <Modal
+                  open={candidatesOpen}
+                  onClose={() => setCandidatesOpen(false)}
+                  disableRestoreFocus
+                >
+                  <Paper
+                    sx={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: { xs: '92%', sm: 520 },
+                      maxHeight: '85vh',
+                      overflowY: 'auto',
+                      p: 3,
+                      borderRadius: 3,
+                      outline: 'none',
+                    }}
+                  >
+                    <Typography variant="h6" gutterBottom>
+                      👥 Выбрать участника
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                      Люди из команды ваших объектов. Добавим с ролью «{roleLabel(linkRole)}»
+                      {linkHidePrices ? ', без цен' : ''}
+                      {linkRole === 'FOREMAN' && linkCanCreateProjects
+                        ? ', с правом создавать проекты'
+                        : ''}
+                      .
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      placeholder="Поиск по имени или e-mail"
+                      value={candidatesQuery}
+                      onChange={(e) => setCandidatesQuery(e.target.value)}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <SearchIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ mb: 1.5 }}
+                    />
+                    {candidatesError && (
+                      <Alert severity="error" sx={{ mb: 1.5 }}>
+                        {candidatesError}
+                      </Alert>
+                    )}
+                    {candidatesLoading ? (
+                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                        <CircularProgress />
+                      </Box>
+                    ) : candidates.length === 0 ? (
+                      <Alert severity="info">
+                        Пока нет людей в ваших объектах — пригласите первого по ссылке.
+                      </Alert>
+                    ) : (
+                      <Stack spacing={1} sx={{ maxHeight: '50vh', overflowY: 'auto', pr: 0.5 }}>
+                        {candidates
+                          .filter((c) => {
+                            const q = candidatesQuery.trim().toLowerCase();
+                            if (!q) return true;
+                            return `${c.fullName ?? ''} ${c.email ?? ''} ${c.phone ?? ''}`
+                              .toLowerCase()
+                              .includes(q);
+                          })
+                          .map((c) => (
+                            <Box
+                              key={c.userId}
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1,
+                                p: 1,
+                                borderRadius: 2,
+                                bgcolor: '#f5f7fa',
+                              }}
+                            >
+                              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                                  {c.fullName || c.email || c.phone || 'Без имени'}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" noWrap>
+                                  {c.email || c.phone || ''}
+                                  {' · '}объектов: {c.objectsCount}
+                                  {c.projectsCount > 0 ? ` · проектов: ${c.projectsCount}` : ''}
+                                </Typography>
+                              </Box>
+                              {c.inObject ? (
+                                <Chip size="small" label="уже в объекте" />
+                              ) : (
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  disabled={candidateBusyId === c.userId}
+                                  onClick={() => void handleAddCandidate(c)}
+                                >
+                                  Добавить
+                                </Button>
+                              )}
+                            </Box>
+                          ))}
+                      </Stack>
+                    )}
+                    <Stack direction="row" justifyContent="flex-end" sx={{ mt: 2 }}>
+                      <Button variant="outlined" onClick={() => setCandidatesOpen(false)}>
+                        Закрыть
+                      </Button>
+                    </Stack>
+                  </Paper>
+                </Modal>
 
                 {/* Кнопка закрытия */}
                 <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
