@@ -645,14 +645,25 @@ export class PriceListService {
       select: { id: true },
     });
     if (asObject) return true;
-    const linked = await this.prisma.project.findFirst({
-      where: {
-        catalogId,
-        object: { accesses: { some: { userId } } },
-      },
-      select: { id: true },
+    // ⭐ №375: проектный справочник читают только те, у кого есть доступ
+    // ИМЕННО к этому проекту (или ко всему объекту), а не любой участник объекта.
+    const projects = await this.prisma.project.findMany({
+      where: { catalogId },
+      select: { id: true, objectId: true },
     });
-    return !!linked;
+    for (const project of projects) {
+      const grant = await this.prisma.objectAccess.findFirst({
+        where: {
+          userId,
+          objectId: project.objectId,
+          revokedAt: null,
+          OR: [{ projectId: null }, { projectId: project.id }],
+        },
+        select: { id: true },
+      });
+      if (grant) return true;
+    }
+    return false;
   }
   // ⭐ №179: поиск по цене. Прораб часто помнит только сумму («5 400»), а не название.
   // Возвращаем id расценок, у которых цена содержит введённые цифры.

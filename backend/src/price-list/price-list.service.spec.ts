@@ -13,7 +13,7 @@ describe('PriceListService — поиск в справочнике проект
       create: jest.fn(),
     },
     object: { findFirst: jest.fn() },
-    project: { findFirst: jest.fn() },
+    project: { findFirst: jest.fn(), findMany: jest.fn() },
     // ⭐ №219/№220: проверка «видны ли цены в справочнике» ходит в user/objectAccess/priceCatalog
     user: { findUnique: jest.fn() },
     objectAccess: { findFirst: jest.fn(), findMany: jest.fn() },
@@ -81,20 +81,30 @@ describe('PriceListService — поиск в справочнике проект
 
   it('чужой личный справочник, привязанный к проекту пользователя, доступен', async () => {
     prisma.priceCatalog.findUnique.mockResolvedValue({ ownerId: 99 });
-    prisma.project.findFirst.mockResolvedValue({ id: 3 });
+    prisma.project.findMany.mockResolvedValue([{ id: 3, objectId: 1 }]);
+    prisma.objectAccess.findFirst.mockResolvedValue({ id: 11 });
 
     await expect(
       service.searchItems(undefined, undefined, 'WORK', 7, 5),
     ).resolves.toEqual([]);
-    expect(prisma.project.findFirst).toHaveBeenCalledWith({
-      where: { catalogId: 5, object: { accesses: { some: { userId: 7 } } } },
+    expect(prisma.project.findMany).toHaveBeenCalledWith({
+      where: { catalogId: 5 },
+      select: { id: true, objectId: true },
+    });
+    expect(prisma.objectAccess.findFirst).toHaveBeenCalledWith({
+      where: {
+        userId: 7,
+        objectId: 1,
+        revokedAt: null,
+        OR: [{ projectId: null }, { projectId: 3 }],
+      },
       select: { id: true },
     });
   });
 
   it('чужой личный справочник без привязки к проекту ⇒ NotFoundException', async () => {
     prisma.priceCatalog.findUnique.mockResolvedValue({ ownerId: 99 });
-    prisma.project.findFirst.mockResolvedValue(null);
+    prisma.project.findMany.mockResolvedValue([]);
 
     await expect(
       service.searchItems(undefined, undefined, 'WORK', 7, 5),
