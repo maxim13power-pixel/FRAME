@@ -565,6 +565,15 @@ export class EstimateRecalcService {
 
     const created = await this.prisma.$transaction(async (tx) => {
       for (const row of targetRows) {
+        // ⭐ №374: фиксация могла пройти между чтением и откатом —
+        // блокируем строку и пересчитываем стоимость по актуальному totalUsed.
+        const [locked] = await tx.$queryRaw<{ id: number; totalUsed: number }[]>`
+          SELECT id, "totalUsed" FROM materials
+          WHERE id = ${row.materialId}
+          FOR UPDATE
+        `;
+        if (!locked) continue;
+        const used = Number(locked.totalUsed);
         await tx.material.update({
           where: { id: row.materialId },
           data: {
@@ -572,8 +581,8 @@ export class EstimateRecalcService {
             materialUnitPrice: row.materialUnitPrice,
             priceItemId: row.priceItemId,
             materialItemId: row.materialItemId,
-            totalCost: row.totalCost,
-            materialTotalCost: row.materialTotalCost,
+            totalCost: roundMoney(used * row.unitPrice),
+            materialTotalCost: roundMoney(used * row.materialUnitPrice),
           },
         });
       }

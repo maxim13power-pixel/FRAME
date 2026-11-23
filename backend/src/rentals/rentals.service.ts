@@ -51,26 +51,29 @@ export class RentalsService {
 
   // ─── Продлить аренду: endDate = newEndDate, totalSpent += price ───
   async extend(userId: number, id: number, dto: ExtendRentalDto) {
-    // ⭐ Проверка владения: 404 вместо 403 — не раскрываем существование чужих записей
-    const rental = await this.prisma.rental.findFirst({
-      where: { id, userId },
-    });
-    if (!rental) {
-      throw new NotFoundException('Аренда не найдена');
-    }
-    if (new Date(dto.newEndDate).getTime() <= rental.endDate.getTime()) {
-      throw new BadRequestException(
-        'newEndDate: должна быть строго больше текущей даты окончания',
-      );
-    }
-    // ⭐ №368: завершённую аренду не продлеваем — сначала вернуть в работу
-    if (rental.closedAt) {
-      throw new BadRequestException(
-        'Аренда завершена — верните её в работу, чтобы продлить',
-      );
-    }
-    // ⭐ $transaction: атомарно двигаем дату и наращиваем сумму
+    // ⭐ №374: блокируем строку и перепроверяем внутри транзакции —
+    // два параллельных продления больше не теряют одно из начислений.
     return this.prisma.$transaction(async (tx) => {
+      const [locked] = await tx.$queryRaw<{ id: number }[]>`
+        SELECT id FROM rentals
+        WHERE id = ${id} AND "userId" = ${userId}
+        FOR UPDATE
+      `;
+      if (!locked) {
+        throw new NotFoundException('Аренда не найдена');
+      }
+      const rental = await tx.rental.findFirstOrThrow({ where: { id } });
+      if (new Date(dto.newEndDate).getTime() <= rental.endDate.getTime()) {
+        throw new BadRequestException(
+          'newEndDate: должна быть строго больше текущей даты окончания',
+        );
+      }
+      // ⭐ №368: завершённую аренду не продлеваем — сначала вернуть в работу
+      if (rental.closedAt) {
+        throw new BadRequestException(
+          'Аренда завершена — верните её в работу, чтобы продлить',
+        );
+      }
       return tx.rental.update({
         where: { id: rental.id },
         data: {
@@ -81,51 +84,57 @@ export class RentalsService {
     });
   }
 
-  // ─── Редактировать аренду (name/location/responsible/даты/note) ───
+  // ─── Редактировать аренду (name/location/responsible/даты/note/price) ───
   async update(userId: number, id: number, dto: UpdateRentalDto) {
-    // ⭐ Проверка владения: 404 вместо 403 — не раскрываем существование чужих записей
-    const rental = await this.prisma.rental.findFirst({
-      where: { id, userId },
-    });
-    if (!rental) {
-      throw new NotFoundException('Аренда не найдена');
-    }
+    // ⭐ №374: правка цены пересчитывает totalSpent — считаем под блокировкой,
+    // иначе параллельное продление потеряется.
+    return this.prisma.$transaction(async (tx) => {
+      const [locked] = await tx.$queryRaw<{ id: number }[]>`
+        SELECT id FROM rentals
+        WHERE id = ${id} AND "userId" = ${userId}
+        FOR UPDATE
+      `;
+      if (!locked) {
+        throw new NotFoundException('Аренда не найдена');
+      }
+      const rental = await tx.rental.findFirstOrThrow({ where: { id } });
 
-    // ⭐ Мердж дат: если передана только одна — вторая берётся из записи
-    const start = dto.startDate ? new Date(dto.startDate) : rental.startDate;
-    const end = dto.endDate ? new Date(dto.endDate) : rental.endDate;
-    if (end.getTime() < start.getTime()) {
-      throw new BadRequestException('endDate: не может быть раньше startDate');
-    }
+      // ⭐ Мердж дат: если передана только одна — вторая берётся из записи
+      const start = dto.startDate ? new Date(dto.startDate) : rental.startDate;
+      const end = dto.endDate ? new Date(dto.endDate) : rental.endDate;
+      if (end.getTime() < start.getTime()) {
+        throw new BadRequestException('endDate: не может быть раньше startDate');
+      }
 
-    return this.prisma.rental.update({
-      where: { id: rental.id },
-      data: {
-        name: dto.name !== undefined ? dto.name.trim() : undefined,
-        location:
-          dto.location !== undefined ? dto.location.trim() || null : undefined,
-        responsible:
-          dto.responsible !== undefined
-            ? dto.responsible.trim() || null
-            : undefined,
-        startDate: dto.startDate ? start : undefined,
-        endDate: dto.endDate ? end : undefined,
-        note: dto.note !== undefined ? dto.note.trim() || null : undefined,
-        // ⭐ №368: цену можно исправить — «всего потрачено» пересчитываем
-        // на разницу (продления остаются учтёнными)
-        ...(dto.price !== undefined
-          ? {
-              price: dto.price,
-              totalSpent:
-                Math.round(
-                  (Number(rental.totalSpent) +
-                    dto.price -
-                    Number(rental.price)) *
-                    100,
-                ) / 100,
-            }
-          : {}),
-      },
+      return tx.rental.update({
+        where: { id: rental.id },
+        data: {
+          name: dto.name !== undefined ? dto.name.trim() : undefined,
+          location:
+            dto.location !== undefined ? dto.location.trim() || null : undefined,
+          responsible:
+            dto.responsible !== undefined
+              ? dto.responsible.trim() || null
+              : undefined,
+          startDate: dto.startDate ? start : undefined,
+          endDate: dto.endDate ? end : undefined,
+          note: dto.note !== undefined ? dto.note.trim() || null : undefined,
+          // ⭐ №368: цену можно исправить — «всего потрачено» пересчитываем
+          // на разницу (продления остаются учтёнными)
+          ...(dto.price !== undefined
+            ? {
+                price: dto.price,
+                totalSpent:
+                  Math.round(
+                    (Number(rental.totalSpent) +
+                      dto.price -
+                      Number(rental.price)) *
+                      100,
+                  ) / 100,
+              }
+            : {}),
+        },
+      });
     });
   }
 

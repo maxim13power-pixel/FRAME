@@ -575,6 +575,8 @@ const [editMatPricePrice, setEditMatPricePrice] = useState('');
   const [fixNote, setFixNote] = useState('');
   // ⭐ №174: за какой день фиксация — 0 = сегодня, 1..3 = предыдущие календарные дни
   const [fixDayOffset, setFixDayOffset] = useState(0);
+  // ⭐ №374: защита от двойного клика — фиксация не должна задвоиться
+  const [fixSaving, setFixSaving] = useState(false);
   // ⭐ №174: подсветка/скролл к только что скопированной строке
   const [flashId, setFlashId] = useState<number | null>(null);
 
@@ -1194,12 +1196,14 @@ setPriceLoading(false);
       //const updated = await addFix(fixingMaterial.id, {
         //amount: fixAmount,
   const handleAddFix = async () => {
+    if (fixSaving) return;
     const amount = parseFloat(fixAmount);
     if (!token || !fixingMaterial || isNaN(amount) || amount <= 0) {
       notify('Введите объём больше нуля', 'warning');
       return;
     }
     try {
+      setFixSaving(true);
       const updated = await addFix(fixingMaterial.id, {
         amount,
         note: fixNote || undefined,
@@ -1211,6 +1215,8 @@ setPriceLoading(false);
       handleCloseFixModal();
     } catch (err: unknown) {
       notifyError('Ошибка фиксации: ' + getApiErrorText(err, 'неизвестная ошибка'));
+    } finally {
+      setFixSaving(false);
     }
   };
 
@@ -3706,7 +3712,9 @@ renderInput={(params) => (
             />
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
               <Button variant="outlined" onClick={handleCloseFixModal}>Отмена</Button>
-              <Button variant="contained" onClick={handleAddFix}>Зафиксировать</Button>
+              <Button variant="contained" onClick={handleAddFix} disabled={fixSaving}>
+                Зафиксировать
+              </Button>
             </Box>
           </Stack>
         </Paper>

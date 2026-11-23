@@ -339,6 +339,9 @@ export class ReportsService {
     const total = round2(quantity * price);
 
     return this.prisma.$transaction(async (tx) => {
+      // ⭐ №374: сериализуем мутации позиций одного отчёта —
+      // иначе параллельные addItem/updateItem теряют часть суммы.
+      await tx.$queryRaw`SELECT id FROM "Report" WHERE id = ${reportId} FOR UPDATE`;
       const item = await tx.reportItem.create({
         data: {
           reportId,
@@ -367,6 +370,7 @@ export class ReportsService {
     const hideMoney = this.mustHidePrices(access);
 
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Report" WHERE id = ${reportId} FOR UPDATE`;
       const existing = await tx.reportItem.findFirst({
         where: { id: itemId, reportId },
       });
@@ -413,6 +417,7 @@ export class ReportsService {
     this.assertWritable(access, 'удалять позиции отчёта');
 
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Report" WHERE id = ${reportId} FOR UPDATE`;
       const existing = await tx.reportItem.findFirst({
         where: { id: itemId, reportId },
       });
