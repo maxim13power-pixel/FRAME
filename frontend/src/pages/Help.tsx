@@ -130,7 +130,7 @@ const Help: React.FC = () => {
                           ))}
                         </List>
                         {guide.links && guide.links.length > 0 && (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1.5 }}>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1.25, mt: 1.5 }}>
                             {guide.links.map((link) => (
                               <Link
                                 key={link.href}
@@ -138,7 +138,7 @@ const Help: React.FC = () => {
                                 target={link.href.startsWith('mailto:') ? undefined : '_blank'}
                                 rel="noopener noreferrer"
                                 underline="hover"
-                                sx={{ fontSize: 13, fontWeight: 600 }}
+                                sx={{ fontSize: 14, fontWeight: 600, py: 0.5 }}
                               >
                                 {link.label}
                               </Link>
