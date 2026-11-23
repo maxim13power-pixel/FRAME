@@ -119,7 +119,11 @@ describe('PriceListService — справочники объекта и прое
       create: jest.fn(),
       update: jest.fn(),
     },
-    priceCategory: { findMany: jest.fn() },
+    priceCategory: {
+    findMany: jest.fn().mockResolvedValue([]),
+    findFirst: jest.fn().mockResolvedValue(null),
+    create: jest.fn().mockResolvedValue({ id: 9 }),
+  },
     objectAccess: { findMany: jest.fn() },
     object: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     project: {

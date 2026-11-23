@@ -118,7 +118,9 @@ export class InviteService {
         projectId: dto.projectId ?? null,
         createdBy: actorUserId,
         role: dto.role,
-        hidePrices: dto.hidePrices ?? false,
+        // ⭐ №372 (P0): скрытый участник не может выпустить ссылку с открытыми ценами —
+        // иначе второй аккаунт принимает её и видит все суммы.
+        hidePrices: Boolean(dto.hidePrices) || myAccess.hidePrices,
         canCreateProjects,
         // ⭐ №345: по умолчанию ссылка живёт 2 часа (было 7 дней)
         expiresAt: dto.expiresAt
@@ -141,6 +143,12 @@ export class InviteService {
     const access = await this.checkObjectAccess(objectId, userId);
     if (access.role === 'VIEWER') {
       return []; // VIEWER не видит инвайт-ссылок
+    }
+    // ⭐ №372 (P0): отозванный участник не должен видеть активные токены
+    if (access.revokedAt) {
+      throw new ForbiddenException(
+        'Доступ отозван: просмотр ссылок-приглашений недоступен',
+      );
     }
 
     return this.prisma.inviteToken.findMany({
@@ -237,7 +245,13 @@ export class InviteService {
     opts: { confirmDowngrade?: boolean } = {},
   ) {
     return this.prisma.$transaction(async (tx) => {
+      // ⭐ №372 (P0): сериализуем одновременные accept одной ссылки — иначе
+      // два запроса проходят проверку maxUses и оба создают доступ.
+      await tx.$queryRaw`SELECT id FROM "invite_tokens" WHERE token = ${token} FOR UPDATE`;
       const invite = await this.loadActiveInvite(tx, token);
+      // И блокируем объект: понижение роли по ссылке не должно гоняться
+      // с другим accept/понижением (инвариант «≥1 администратор»).
+      await tx.$queryRaw`SELECT id FROM "Object" WHERE id = ${invite.objectId} FOR UPDATE`;
 
       const grants = await tx.objectAccess.findMany({
         where: { userId, objectId: invite.objectId },

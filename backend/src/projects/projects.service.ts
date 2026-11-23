@@ -477,7 +477,13 @@ export class ProjectsService {
 
     // Проекты, доступные юзеру внутри объекта
     const allowedProjectIds = grants
-      .filter((g) => g.objectId === objectId && g.projectId != null)
+      .filter(
+        (g) =>
+          g.objectId === objectId &&
+          g.projectId != null &&
+          // ⭐ №372 (P1): отозванный проектный грант не должен открывать проект
+          !g.revokedAt,
+      )
       .map((g) => g.projectId as number);
     const projectFilter = my.hasObjectAccess
       ? {}
@@ -494,7 +500,13 @@ export class ProjectsService {
       orderBy: { createdAt: 'desc' },
       include: {
         materials: {
-          select: { specQuantity: true, totalUsed: true, totalCost: true },
+          select: {
+            specQuantity: true,
+            totalUsed: true,
+            totalCost: true,
+            // ? �372 (P1): ���� ������� = ������ + ���������
+            materialTotalCost: true,
+          },
         },
         catalog: { select: { id: true, name: true } },
         // ⭐ №164: справочник объекта — фолбэк, если у проекта свой не выбран
@@ -519,7 +531,8 @@ export class ProjectsService {
         0,
       );
       const sumCost = p.materials.reduce(
-        (a, m) => a + Number(m.totalCost || 0),
+        (a, m) =>
+          a + Number(m.totalCost || 0) + Number(m.materialTotalCost || 0),
         0,
       );
       const { materials, object, ...rest } = p;
@@ -565,7 +578,13 @@ export class ProjectsService {
       where: { id },
       include: {
         materials: {
-          select: { specQuantity: true, totalUsed: true, totalCost: true },
+          select: {
+            specQuantity: true,
+            totalUsed: true,
+            totalCost: true,
+            // ? �372 (P1): ���� ������� = ������ + ���������
+            materialTotalCost: true,
+          },
         },
         catalog: { select: { id: true, name: true } },
         // ⭐ №164: справочник объекта — фолбэк для сметы
@@ -605,7 +624,7 @@ export class ProjectsService {
       0,
     );
     const sumCost = project.materials.reduce(
-      (a, m) => a + Number(m.totalCost || 0),
+      (a, m) => a + Number(m.totalCost || 0) + Number(m.materialTotalCost || 0),
       0,
     );
     const { materials, object, ...rest } = project;

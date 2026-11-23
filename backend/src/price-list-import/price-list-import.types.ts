@@ -11,6 +11,9 @@ export interface PriceImportRow {
   sheet: string;
   row: number;
   id: number | null;
+  /** ⭐ №372: id существующей позиции В ЭТОМ справочнике (для update);
+   *  id из файла не использовать — он может принадлежать чужому каталогу */
+  targetId?: number | null;
   name: string;
   article: string | null;
   unitRaw: string | null;

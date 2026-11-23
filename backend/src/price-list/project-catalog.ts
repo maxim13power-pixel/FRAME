@@ -16,19 +16,53 @@ const norm = (value?: string | null) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+/** ⭐ №373 (B2): скопировать категорию источника в целевой справочник */
+async function copyCategoryToCatalog(
+  tx: Prisma.TransactionClient,
+  sourceCategoryId: number,
+  catalogId: number,
+): Promise<number> {
+  const source = await tx.priceCategory.findUnique({
+    where: { id: sourceCategoryId },
+  });
+  if (!source) {
+    return defaultCategory(tx, PriceKind.WORK, catalogId);
+  }
+  if (source.catalogId === catalogId) return source.id;
+  const existing = await tx.priceCategory.findFirst({
+    where: { catalogId, name: source.name, kind: source.kind },
+    select: { id: true },
+  });
+  if (existing) return existing.id;
+  const created = await tx.priceCategory.create({
+    data: {
+      name: source.name,
+      kind: source.kind,
+      sortOrder: source.sortOrder,
+      catalogId,
+    },
+    select: { id: true },
+  });
+  return created.id;
+}
+
 async function defaultCategory(
   tx: Prisma.TransactionClient,
   kind: PriceKind,
+  catalogId: number,
 ): Promise<number> {
-  const category = await tx.priceCategory.upsert({
-    where: {
-      name_kind: { name: DEFAULT_PRICE_CATEGORY, kind },
-    },
-    update: {},
-    create: {
+  const existing = await tx.priceCategory.findFirst({
+    where: { catalogId, name: DEFAULT_PRICE_CATEGORY, kind },
+    select: { id: true },
+  });
+  if (existing) return existing.id;
+  const category = await tx.priceCategory.create({
+    data: {
       name: DEFAULT_PRICE_CATEGORY,
       kind,
       sortOrder: 999,
+      // ⭐ №373 (B2): категория принадлежит справочнику
+      catalogId,
     },
     select: { id: true },
   });
@@ -158,7 +192,8 @@ export async function resolveProjectPriceItem(
         price: source.price,
         // ⭐ №321: копия расценки сохраняет упаковку (раньше терялась)
         packSize: opts.packSize ?? source.packSize ?? null,
-        categoryId: source.categoryId,
+        // ⭐ №373 (B2): категория должна быть из целевого справочника
+        categoryId: await copyCategoryToCatalog(tx, source.categoryId, catalogId),
         kind: source.kind,
         isActive: true,
       },
@@ -166,7 +201,7 @@ export async function resolveProjectPriceItem(
     return { item: copied, catalogId, copied: true, priceUpdated: false };
   }
 
-  const categoryId = opts.categoryId ?? (await defaultCategory(tx, opts.kind));
+  const categoryId = opts.categoryId ?? (await defaultCategory(tx, opts.kind, catalogId));
   const existing = await findTargetItem(tx, catalogId, {
     name: opts.name,
     article: opts.article,

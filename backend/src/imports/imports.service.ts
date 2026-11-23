@@ -295,7 +295,26 @@ export class ImportsService {
       select: { id: true },
     });
 
-    return { batchId: batch.id, ...payload };
+    // ⭐ №372 (P0): скрытому участнику не отдаём цены даже в предпросмотре
+    return {
+      batchId: batch.id,
+      ...(moneyVisible ? payload : this.maskPreview(payload)),
+    };
+  }
+
+  /** ⭐ №372: убрать все деньги из предпросмотра импорта */
+  private maskPreview(payload: PreviewPayload): PreviewPayload {
+    return {
+      ...payload,
+      rows: payload.rows.map((row) => ({
+        ...row,
+        filePrice: null,
+        fileMaterialPrice: null,
+        priceDeltaPct: null,
+        work: { ...row.work, price: null },
+      })),
+      totals: { ...payload.totals, plannedCost: 0 },
+    };
   }
 
   /** ⭐ №208: ключ строки уникален ВНУТРИ партии импорта.
@@ -375,20 +394,34 @@ export class ImportsService {
       const matItemByRow = new Map<number, { id: number; price: number }>();
       if (pricedWork.length > 0 || pricedMat.length > 0) {
         // ⭐ №271: импорт пишет цены в справочник ЭТОГО проекта, а не в отдельный каталог.
-        catalog = await ensureProjectCatalog(tx, batch.projectId, input.userId);
-        // Позиция прайса живёт в категории — для импорта заводим служебные (работы и материалы)
-        const workCategory = await tx.priceCategory.upsert({
-          where: { name_kind: { name: 'Импорт из Excel', kind: 'WORK' } },
-          create: { name: 'Импорт из Excel', kind: 'WORK', sortOrder: 999 },
-          update: {},
-          select: { id: true },
-        });
-        const matCategory = await tx.priceCategory.upsert({
-          where: { name_kind: { name: 'Импорт из Excel', kind: 'MATERIAL' } },
-          create: { name: 'Импорт из Excel', kind: 'MATERIAL', sortOrder: 999 },
-          update: {},
-          select: { id: true },
-        });
+        const targetCatalog = await ensureProjectCatalog(
+          tx,
+          batch.projectId,
+          input.userId,
+        );
+        catalog = targetCatalog;
+        // Позиция прайса живёт в категории — для импорта заводим служебные
+        // ⭐ №373 (B2): категории принадлежат справочнику проекта
+        const ensureCategory = async (kind: 'WORK' | 'MATERIAL') => {
+          const found = await tx.priceCategory.findFirst({
+            where: { catalogId: targetCatalog.id, name: 'Импорт из Excel', kind },
+            select: { id: true },
+          });
+          return (
+            found ??
+            (await tx.priceCategory.create({
+              data: {
+                name: 'Импорт из Excel',
+                kind,
+                sortOrder: 999,
+                catalogId: targetCatalog.id,
+              },
+              select: { id: true },
+            }))
+          );
+        };
+        const workCategory = await ensureCategory('WORK');
+        const matCategory = await ensureCategory('MATERIAL');
         for (const r of pricedWork) {
           const item = await tx.priceItem.create({
             data: {
@@ -398,7 +431,7 @@ export class ImportsService {
               price: new Prisma.Decimal(r.filePrice as number),
               kind: 'WORK',
               ownerId: input.userId,
-              catalogId: catalog.id,
+              catalogId: targetCatalog.id,
               categoryId: workCategory.id,
             },
             select: { id: true },
@@ -415,7 +448,7 @@ export class ImportsService {
               price: new Prisma.Decimal(r.fileMaterialPrice as number),
               kind: 'MATERIAL',
               ownerId: input.userId,
-              catalogId: catalog.id,
+              catalogId: targetCatalog.id,
               categoryId: matCategory.id,
             },
             select: { id: true },
@@ -546,8 +579,13 @@ export class ImportsService {
   async getBatch(batchId: number, userId: number) {
     const batch = await this.prisma.importBatch.findUnique({ where: { id: batchId } });
     if (!batch) throw new NotFoundException('Партия импорта не найдена');
-    await this.assertCanImport(batch.projectId, userId);
-    return batch;
+    const { moneyVisible } = await this.assertCanImport(batch.projectId, userId);
+    if (moneyVisible) return batch;
+    // ⭐ №372 (P0): скрытому участнику — предпросмотр без цен
+    const preview = batch.preview
+      ? this.maskPreview(batch.preview as unknown as PreviewPayload)
+      : null;
+    return { ...batch, preview };
   }
 
   async listHistory(projectId: number, userId: number) {

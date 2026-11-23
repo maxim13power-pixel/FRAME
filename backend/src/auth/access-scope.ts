@@ -163,7 +163,18 @@ export async function findProjectAccess(
     orderBy: { id: 'asc' },
   });
   const live = rows.filter((r) => !r.revokedAt);
+  // ⭐ №372 (P1): один резолвер для чтения и записи — выбираем СИЛЬНЕЙШУЮ
+  // активную роль среди объектного и проектного грантов. Раньше проектный
+  // VIEWER перекрывал объектного CUSTOMER и админ терял права.
+  const rank: Record<string, number> = { CUSTOMER: 3, FOREMAN: 2, VIEWER: 1 };
+  const candidates = live.filter(
+    (r) => r.projectId === null || r.projectId === projectId,
+  );
+  const best = candidates.sort(
+    (a, b) => (rank[b.role] ?? 0) - (rank[a.role] ?? 0),
+  )[0];
   return (
+    best ??
     live.find((r) => r.projectId === projectId) ??
     live.find((r) => r.projectId === null) ??
     rows.find((r) => r.projectId === projectId) ??

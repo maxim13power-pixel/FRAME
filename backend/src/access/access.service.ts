@@ -640,11 +640,15 @@ export class AccessService {
       let catalogCopied = false;
       let snapshots = 0;
       for (const grant of jobs) {
-        const copies = await this.createSnapshot(tx, grant, now);
+        const hidePrices = grant.hidePrices || grant.role === AccessRole.VIEWER;
+        const copies = await this.createSnapshot(
+          tx,
+          { ...grant, hidePrices },
+          now,
+        );
         templates += copies.templates;
         catalogCopied = catalogCopied || copies.catalogCopied;
 
-        const hidePrices = grant.hidePrices || grant.role === AccessRole.VIEWER;
         const blind = await buildSnapshotPayload(tx, {
           objectId: grant.objectId,
           projectId: grant.projectId,
@@ -793,9 +797,18 @@ export class AccessService {
    */
   private async createSnapshot(
     tx: Prisma.TransactionClient,
-    access: { objectId: number; projectId: number | null; userId: number },
+    access: {
+      objectId: number;
+      projectId: number | null;
+      userId: number;
+      hidePrices?: boolean;
+    },
     now: Date,
   ) {
+    // ⭐ №372 (P0): скрытому участнику личные копии создаём БЕЗ цен
+    // (шаблоны и справочник — с нулевыми ценами), иначе отзыв доступа
+    // превращался в способ узнать все суммы.
+    const hideMoney = Boolean(access.hidePrices);
     const object = await tx.object.findUnique({
       where: { id: access.objectId },
       select: { id: true, name: true, catalogId: true },
@@ -837,8 +850,8 @@ export class AccessService {
               name: m.name,
               unit: m.unit,
               quantity: m.specQuantity,
-              unitPrice: m.unitPrice,
-              materialUnitPrice: m.materialUnitPrice,
+              unitPrice: hideMoney ? 0 : m.unitPrice,
+              materialUnitPrice: hideMoney ? 0 : m.materialUnitPrice,
               priceItemId: m.priceItemId,
               materialItemId: m.materialItemId,
               sortOrder: idx,
@@ -865,7 +878,7 @@ export class AccessService {
                 name: i.name,
                 article: i.article,
                 unit: i.unit,
-                price: i.price,
+                price: hideMoney ? 0 : i.price,
                 categoryId: i.categoryId,
                 isActive: i.isActive,
                 kind: i.kind,

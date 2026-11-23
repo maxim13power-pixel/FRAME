@@ -115,8 +115,15 @@ export async function buildSnapshotPayload(
 
   // Склад: только позиции этого объекта. «Общие» позиции (objectId = null)
   // ничьи — в снимок участника не попадают (см. A#2 аудита).
+  // ⭐ №372 (P0): при проектном снимке склад — только позиции, которые
+  // реально списывались на доступный проект, и только их операции.
   const warehouseItems = await tx.warehouseItem.findMany({
-    where: { objectId },
+    where: {
+      objectId,
+      ...(projectId != null
+        ? { transactions: { some: { projectId } } }
+        : {}),
+    },
     orderBy: { id: 'asc' },
     select: {
       name: true,
@@ -129,7 +136,10 @@ export async function buildSnapshotPayload(
   });
 
   const warehouseTransactions = await tx.warehouseTransaction.findMany({
-    where: { warehouseItem: { objectId } },
+    where: {
+      warehouseItem: { objectId },
+      ...(projectId != null ? { projectId } : {}),
+    },
     orderBy: { createdAt: 'asc' },
     select: {
       type: true,
@@ -142,8 +152,15 @@ export async function buildSnapshotPayload(
     },
   });
 
+  // ⭐ №372 (P0): бригады и выходы — только те, что связаны с доступным проектом;
+  // состав бригады — только те, кто выходил на этот проект.
   const brigades = await tx.brigade.findMany({
-    where: { objectId },
+    where: {
+      objectId,
+      ...(projectId != null
+        ? { shifts: { some: { projectId } } }
+        : {}),
+    },
     orderBy: { id: 'asc' },
     select: {
       name: true,
@@ -152,10 +169,15 @@ export async function buildSnapshotPayload(
       phone: true,
       comment: true,
       members: {
+        where:
+          projectId != null
+            ? { shiftLogs: { some: { shift: { projectId } } } }
+            : undefined,
         orderBy: { id: 'asc' },
         select: { fullName: true, role: true, phone: true },
       },
       shifts: {
+        where: projectId != null ? { projectId } : undefined,
         orderBy: { date: 'asc' },
         select: {
           date: true,

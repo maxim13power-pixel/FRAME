@@ -66,9 +66,12 @@ export class EstimateTemplatesService {
     if (!name) {
       throw new BadRequestException('Название шаблона обязательно');
     }
-    await this.checkProjectAccess(dto.projectId, userId);
     // ℹ️ №168: create оставлен «читательским» намеренно — отозванный участник
     // сохраняет снимок проекта в личные шаблоны (см. revoke в access.service).
+    // ⭐ №372 (P0): если цены скрыты, в шаблон пишем НУЛИ — иначе шаблон
+    // становился способом узнать все суммы.
+    const access = await this.checkProjectAccess(dto.projectId, userId);
+    const hideMoney = Boolean(access.hidePrices) || access.role === 'VIEWER';
 
     const materials = await this.prisma.material.findMany({
       where: { projectId: dto.projectId },
@@ -93,8 +96,8 @@ export class EstimateTemplatesService {
             name: m.name,
             unit: m.unit,
             quantity: m.specQuantity,
-            unitPrice: m.unitPrice,
-            materialUnitPrice: m.materialUnitPrice,
+            unitPrice: hideMoney ? 0 : m.unitPrice,
+            materialUnitPrice: hideMoney ? 0 : m.materialUnitPrice,
             priceItemId: m.priceItemId,
             materialItemId: m.materialItemId,
             sortOrder: idx,

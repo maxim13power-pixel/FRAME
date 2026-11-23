@@ -12,4 +12,9 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsIn(['WORK', 'MATERIAL'], { message: 'Некорректный тип расценки' })
   kind?: string;
+
+  // ⭐ №373 (B2): категория создаётся в конкретном справочнике
+  @IsOptional()
+  @IsInt({ message: 'catalogId: целое число' })
+  catalogId?: number;
 }

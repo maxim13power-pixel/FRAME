@@ -102,7 +102,7 @@ export const fetchCategoriesWithItems = async (
 // Создать категорию
 // POST /price-list/categories
 export const createCategory = async (
-  data: { name: string; sortOrder?: number; kind?: 'WORK' | 'MATERIAL' }
+  data: { name: string; sortOrder?: number; kind?: 'WORK' | 'MATERIAL'; catalogId?: number }
 ): Promise<PriceCategoryData> => {
   const response = await api.post('/price-list/categories', data);
   return response.data;

@@ -166,13 +166,22 @@ export class MaterialsService {
   // История фиксаций одного материала
   async findFixes(materialId: number, userId: number) {
     // ⭐ Проверяем доступ к материалу
-    await this.checkMaterialAccess(materialId, userId);
+    const access = await this.checkMaterialAccess(materialId, userId);
     // 🔒 P1-2: tie-break по id — две фиксации могут получить одинаковый fixedAt,
     // без второго ключа порядок на клиенте «прыгает» между запросами.
-    return this.prisma.materialFix.findMany({
+    const fixes = await this.prisma.materialFix.findMany({
       where: { materialId },
       orderBy: [{ fixedAt: 'desc' }, { id: 'desc' }],
     });
+    // ⭐ №372 (P0): снимок цен в истории — это деньги; скрытому участнику не отдаём
+    if (this.mustHidePrices(access)) {
+      return fixes.map((f) => ({
+        ...f,
+        unitPrice: null,
+        materialUnitPrice: null,
+      }));
+    }
+    return fixes;
   }
 
   // ⭐ №191 (F6): id расценки приходит из body — проверяем, что её справочник доступен.

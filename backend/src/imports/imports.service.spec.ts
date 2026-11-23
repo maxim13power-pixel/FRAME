@@ -68,7 +68,10 @@ const makeService = (
       }),
       update: jest.fn(),
     },
-    priceCategory: { upsert: jest.fn().mockResolvedValue({ id: 9 }) },
+    priceCategory: {
+    findFirst: jest.fn().mockResolvedValue({ id: 9 }),
+    create: jest.fn().mockResolvedValue({ id: 9 }),
+  },
   };
   const prisma = {
     project: { findUnique: jest.fn().mockResolvedValue({ objectId: 5 }) },

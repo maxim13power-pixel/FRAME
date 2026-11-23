@@ -254,7 +254,7 @@ export class WarehouseService {
     } else {
       await this.assertAnyWritable(userId, 'создавать общую позицию склада');
     }
-    return this.prisma.warehouseItem.create({
+    const created = await this.prisma.warehouseItem.create({
       data: {
         name: dto.name.trim(),
         unit: dto.unit?.trim() || 'шт',
@@ -267,13 +267,17 @@ export class WarehouseService {
       },
       include: ITEM_INCLUDE,
     });
+    // ⭐ №372 (P0): ответ мутации тоже маскируем — иначе скрытый FOREMAN
+    // получает цену через ответ создания.
+    const hide = await this.hidePricesFor(created.objectId, userId);
+    return hide ? { ...created, price: null } : created;
   }
 
   // ─── Редактировать (name/unit/category/comment; quantity — только операциями) ───
   async update(userId: number, id: number, dto: UpdateWarehouseItemDto) {
     const item = await this.checkItemAccess(id, userId);
     await this.assertItemWritable(item, userId, 'изменять позицию склада');
-    return this.prisma.warehouseItem.update({
+    const updated = await this.prisma.warehouseItem.update({
       where: { id },
       data: {
         name: dto.name !== undefined ? dto.name.trim() : undefined,
@@ -285,6 +289,8 @@ export class WarehouseService {
       },
       include: ITEM_INCLUDE,
     });
+    const hide = await this.hidePricesFor(updated.objectId, userId);
+    return hide ? { ...updated, price: null } : updated;
   }
 
   // ─── Удалить позицию (реально; операции каскадно onDelete: Cascade) ───
@@ -316,10 +322,18 @@ export class WarehouseService {
     const item = await this.checkItemAccess(dto.warehouseItemId, userId);
     await this.assertItemWritable(item, userId, 'проводить операции по складу');
     if (isOutcome) {
-      this.assertWritable(
-        await this.checkProjectAccess(dto.projectId as number, userId),
-        'списывать материалы',
+      const projectAccess = await this.checkProjectAccess(
+        dto.projectId as number,
+        userId,
       );
+      // ⭐ №372 (P1): списывать можно только в проект ТОГО ЖЕ объекта.
+      // Иначе позиция объекта A уходила в проект объекта B.
+      if (item.objectId != null && projectAccess.objectId !== item.objectId) {
+        throw new BadRequestException(
+          'Проект принадлежит другому объекту — списание невозможно',
+        );
+      }
+      this.assertWritable(projectAccess, 'списывать материалы');
     }
 
     // ⭐ $transaction: атомарное изменение остатка (гонка исключена).
@@ -352,7 +366,7 @@ export class WarehouseService {
         });
       }
 
-      return tx.warehouseTransaction.create({
+      const txRow = await tx.warehouseTransaction.create({
         data: {
           warehouseItemId: dto.warehouseItemId,
           type,
@@ -363,6 +377,9 @@ export class WarehouseService {
           createdBy: userId,
         },
       });
+      // ⭐ №372 (P0): цена операции — тоже деньги, скрываем в ответе
+      const hide = await this.hidePricesFor(item.objectId, userId);
+      return hide ? { ...txRow, price: null } : txRow;
     });
   }
 

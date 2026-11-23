@@ -11,7 +11,11 @@ const makeTx = () => ({
     findUnique: jest.fn().mockResolvedValue({ id: 1, catalogId: 9, catalog }),
     update: jest.fn(),
   },
-  priceCategory: { upsert: jest.fn().mockResolvedValue({ id: 3 }) },
+  priceCategory: {
+    findFirst: jest.fn().mockResolvedValue(null),
+    findUnique: jest.fn().mockResolvedValue(null),
+    create: jest.fn().mockResolvedValue({ id: 3 }),
+  },
   priceItem: {
     findUnique: jest.fn(),
     findFirst: jest.fn(),

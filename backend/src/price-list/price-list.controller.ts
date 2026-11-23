@@ -26,9 +26,18 @@ import { CopyCatalogDto } from './dto/copy-catalog.dto';
 export class PriceListController {
   constructor(private readonly priceListService: PriceListService) {}
 
+  // ⭐ №373 (B2): ?catalogId= — вернуть системные + категории этого справочника
   @Get('categories')
-  getCategories(@Query('kind') kind: string | undefined, @Req() req) {
-    return this.priceListService.getCategories(kind, req.user.userId);
+  getCategories(
+    @Query('kind') kind: string | undefined,
+    @Query('catalogId') catalogId: string | undefined,
+    @Req() req,
+  ) {
+    return this.priceListService.getCategories(
+      kind,
+      req.user.userId,
+      catalogId ? parseInt(catalogId) : undefined,
+    );
   }
 
   @Get('categories/full')

@@ -355,7 +355,7 @@ const PriceListInner: React.FC = () => {
       return;
     }
     try {
-      const created = await createCategory({ name: newCatName.trim(), kind: activeTab });
+      const created = await createCategory({ name: newCatName.trim(), kind: activeTab, catalogId });
       setCategories(prev => [...prev, { ...created, items: [] }]);
       handleCloseCatModal();
     } catch (err: unknown) {
@@ -449,7 +449,7 @@ const PriceListInner: React.FC = () => {
         let categoryId: number;
             if (itemCategoryId === NEW_CATEGORY_VALUE) {
         // 1) Сначала создаём категорию
-        const createdCat = await createCategory({ name: newCategoryName.trim(), kind: activeTab });
+        const createdCat = await createCategory({ name: newCategoryName.trim(), kind: activeTab, catalogId });
           setCategories(prev => [...prev, { ...createdCat, items: [] }]);
           setCollapsed(prev => ({ ...prev, [createdCat.id]: false }));
           categoryId = createdCat.id;

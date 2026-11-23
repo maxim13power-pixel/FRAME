@@ -17,6 +17,8 @@ const makeTx = (overrides: Record<string, unknown> = {}) => {
     revokedAt: null as Date | null,
   };
   const tx = {
+    // ⭐ №372: acceptInvite блокирует строку ссылки и объект через FOR UPDATE
+    $queryRaw: jest.fn().mockResolvedValue([]),
     inviteToken: {
       findUnique: jest.fn().mockResolvedValue({
         id: 5,

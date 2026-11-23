@@ -253,9 +253,14 @@ model PriceCategory {
   name      String
   sortOrder Int           @default(0)
   kind      PriceKind     @default(WORK)
+  // ⭐ №373 (B2): категория принадлежит справочнику. null — системная
+  // (эталон демо-базы), менять её может только ADMIN.
+  catalogId Int?
+  catalog   PriceCatalog? @relation(fields: [catalogId], references: [id], onDelete: Cascade)
   items     PriceItem[]
 
-  @@unique([name, kind])
+  @@unique([catalogId, name, kind])
+  @@index([catalogId])
   @@map("price_categories")
 }
 
@@ -325,6 +330,8 @@ model PriceCatalog {
   items      PriceItem[]
   projects   Project[]
   objects    Object[]         @relation("ObjectCatalog") // ⭐ №164: справочник как «объектный»
+  // ⭐ №373 (B2): свои категории у каждого справочника
+  categories PriceCategory[]
 
   @@index([ownerId])
   @@index([ownerId, isDefault])

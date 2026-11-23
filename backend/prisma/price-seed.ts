@@ -559,12 +559,21 @@ export async function seedSystemPriceCatalog(
   for (const [kind, catalogGroups] of groups) {
     for (const [categoryName, rows] of Object.entries(catalogGroups)) {
       categories += 1;
-      const category = await prisma.priceCategory.upsert({
-        where: { name_kind: { name: categoryName, kind } },
-        update: { sortOrder: categories },
-        create: { name: categoryName, kind, sortOrder: categories },
+      const existingCategory = await prisma.priceCategory.findFirst({
+        where: { name: categoryName, kind, catalogId: null },
         select: { id: true },
       });
+      const category = existingCategory
+        ? await prisma.priceCategory.update({
+            where: { id: existingCategory.id },
+            data: { sortOrder: categories },
+            select: { id: true },
+          })
+        : await prisma.priceCategory.create({
+            // ⭐ №373 (B2): эталон демо-базы — системная категория
+            data: { name: categoryName, kind, sortOrder: categories },
+            select: { id: true },
+          });
 
       for (const [name, unit, price, packSize] of rows) {
         const key = `${kind}|${normName(name)}|${unit}`;

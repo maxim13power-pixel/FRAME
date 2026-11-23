@@ -266,6 +266,7 @@ export class ReportsService {
   async update(userId: number, id: number, dto: UpdateReportDto) {
     const { report, access } = await this.checkReportAccess(id, userId);
     this.assertWritable(access, 'изменять отчёт');
+    const hideMoney = this.mustHidePrices(access);
     if (dto.status && !REPORT_STATUSES.includes(dto.status)) {
       throw new BadRequestException('status: draft / sent / approved / rejected');
     }
@@ -291,7 +292,7 @@ export class ReportsService {
       );
     }
 
-    return updated;
+    return hideMoney ? this.stripPrices(updated) : updated;
   }
 
   async remove(userId: number, id: number) {
@@ -315,6 +316,7 @@ export class ReportsService {
   async addItem(userId: number, reportId: number, dto: AddReportItemDto) {
     const { access } = await this.checkReportAccess(reportId, userId);
     this.assertWritable(access, 'добавлять позиции в отчёт');
+    const hideMoney = this.mustHidePrices(access);
     const quantity = dto.quantity;
     let name: string;
     let unit: string;
@@ -349,7 +351,8 @@ export class ReportsService {
         },
       });
       await this.recalcTotal(tx, reportId);
-      return item;
+      // ⭐ №372 (P0): ответ мутации — тоже деньги, маскируем
+      return hideMoney ? { ...item, price: 0, total: 0 } : item;
     });
   }
 
@@ -361,6 +364,7 @@ export class ReportsService {
   ) {
     const { access } = await this.checkReportAccess(reportId, userId);
     this.assertWritable(access, 'изменять позиции отчёта');
+    const hideMoney = this.mustHidePrices(access);
 
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.reportItem.findFirst({
@@ -400,7 +404,7 @@ export class ReportsService {
         },
       });
       await this.recalcTotal(tx, reportId);
-      return item;
+      return hideMoney ? { ...item, price: 0, total: 0 } : item;
     });
   }
 

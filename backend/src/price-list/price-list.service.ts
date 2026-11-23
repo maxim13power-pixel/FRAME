@@ -314,13 +314,37 @@ export class PriceListService {
     });
 
     if (items.length > 0) {
+      // ⭐ №373 (B2): копируем категории в новый справочник и перенаправляем расценки
+      const categoryIds = [
+        ...new Set(
+          items
+            .map((i) => i.categoryId)
+            .filter((id): id is number => id != null),
+        ),
+      ];
+      const sourceCategories = await this.prisma.priceCategory.findMany({
+        where: { id: { in: categoryIds } },
+      });
+      const categoryMap = new Map<number, number>();
+      for (const category of sourceCategories) {
+        const createdCategory = await this.prisma.priceCategory.create({
+          data: {
+            name: category.name,
+            sortOrder: category.sortOrder,
+            kind: category.kind,
+            catalogId: created.id,
+          },
+          select: { id: true },
+        });
+        categoryMap.set(category.id, createdCategory.id);
+      }
       await this.prisma.priceItem.createMany({
         data: items.map((i) => ({
           name: i.name,
           article: i.article,
           unit: i.unit,
           price: markupPrice(i.price, i.kind, markup),
-          categoryId: i.categoryId,
+          categoryId: categoryMap.get(i.categoryId) ?? i.categoryId,
           kind: i.kind,
           isActive: true,
           catalogId: created.id,
@@ -431,14 +455,33 @@ export class PriceListService {
     return this.prisma.priceCatalog.update({ where: { id }, data: { isArchived: false } });
   }
 
-  // Все категории (для селектов). Категории ОБЩИЕ — без владельца.
-  async getCategories(kind?: string, userId?: number) {
-    return this.prisma.priceCategory.findMany({
+  // Все категории (для селектов): системные + категории выбранного справочника.
+  async getCategories(kind?: string, userId?: number, catalogId?: number) {
+    const rows = await this.prisma.priceCategory.findMany({
       where: {
         ...(kind ? { kind: kind as PriceKind } : {}),
+        ...(catalogId
+          ? { OR: [{ catalogId: null }, { catalogId }] }
+          : {}),
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
+    return this.dedupeCategories(rows);
+  }
+
+  /** ⭐ №373 (B2): при совпадении имени своя категория справочника важнее системной */
+  private dedupeCategories<
+    T extends { name: string; kind: string; catalogId: number | null },
+  >(rows: T[]): T[] {
+    const byKey = new Map<string, T>();
+    for (const row of rows) {
+      const key = `${row.kind}|${row.name}`;
+      const current = byKey.get(key);
+      if (!current || (row.catalogId != null && current.catalogId == null)) {
+        byKey.set(key, row);
+      }
+    }
+    return [...byKey.values()];
   }
 
   /**
@@ -537,6 +580,10 @@ export class PriceListService {
     return this.prisma.priceCategory.findMany({
       where: {
         ...(kind ? { kind: kind as PriceKind } : {}),
+        // ⭐ №373 (B2): только системные и категории этого справочника
+        ...(catalogId
+          ? { OR: [{ catalogId: null }, { catalogId }] }
+          : {}),
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: {
@@ -549,7 +596,11 @@ export class PriceListService {
           orderBy: { name: 'asc' },
         },
       },
-    }).then(async (categories) => {
+    }).then(async (allCategories) => {
+      // ⭐ №373 (B2): убираем дубли «системная + своя» по имени
+      const categories = catalogId
+        ? this.dedupeCategories(allCategories)
+        : allCategories;
       // ⭐ №358: цены маскируем ПО КАЖДОЙ ПОЗИЦИИ — свой справочник остаётся с цифрами,
       // чужие/системные скрываются по своим правилам.
       const canShowPrice = await this.itemPriceMask(catalogId, userId);
@@ -716,23 +767,43 @@ export class PriceListService {
     );
   }
 
-  // Создание категории (общая — без владельца)
+  // Создание категории (⭐ №373 B2: в своём справочнике; системные — только ADMIN)
   async createCategory(dto: CreateCategoryDto, userId?: number) {
+    const catalogId = dto.catalogId ?? null;
+    if (catalogId != null) {
+      if (userId) await this.assertCanEditItem(catalogId, userId);
+    } else if (userId && !(await this.isAdmin(userId))) {
+      throw new ForbiddenException(
+        'Системные категории может создавать только владелец системы',
+      );
+    }
     return this.prisma.priceCategory.create({
       data: {
         name: dto.name.trim(),
         sortOrder: dto.sortOrder ?? 0,
         kind: (dto.kind as PriceKind) ?? 'WORK',
+        catalogId,
       },
     });
   }
 
-  // Переименование категории (категории общие)
+  // Переименование категории: своя — по правам справочника, системная — только ADMIN
   async updateCategory(id: number, dto: UpdateCategoryDto, userId?: number) {
     const category = await this.prisma.priceCategory.findFirst({
       where: { id },
     });
     if (!category) throw new NotFoundException('Категория не найдена');
+    if (userId) {
+      if (category.catalogId == null) {
+        if (!(await this.isAdmin(userId))) {
+          throw new ForbiddenException(
+            'Системные категории может изменять только владелец системы',
+          );
+        }
+      } else {
+        await this.assertCanEditItem(category.catalogId, userId);
+      }
+    }
     return this.prisma.priceCategory.update({
       where: { id },
       data: { name: dto.name.trim() },
@@ -740,7 +811,6 @@ export class PriceListService {
   }
 
   // Удаление категории — ТОЛЬКО если в ней нет АКТИВНЫХ расценок
-  // (иначе Cascade удалил бы расценки, а нам это не надо)
   async removeCategory(id: number, userId?: number) {
     const category = await this.prisma.priceCategory.findFirst({
       where: { id },
@@ -753,6 +823,17 @@ export class PriceListService {
       },
     });
     if (!category) throw new NotFoundException('Категория не найдена');
+    if (userId) {
+      if (category.catalogId == null) {
+        if (!(await this.isAdmin(userId))) {
+          throw new ForbiddenException(
+            'Системные категории может удалять только владелец системы',
+          );
+        }
+      } else {
+        await this.assertCanEditItem(category.catalogId, userId);
+      }
+    }
     if (category._count.items > 0) {
       throw new BadRequestException(
         'Нельзя удалить категорию: в ней есть расценки. Сначала удалите или перенесите их.',
@@ -912,6 +993,15 @@ export class PriceListService {
     const item = await this.prisma.priceItem.findUnique({ where: { id } });
     if (!item)
       throw new NotFoundException('Расценка не найдена или нет доступа');
+    // ⭐ №372 (P0): как и в updateItem — при скрытых ценах менять расценку нельзя
+    if (
+      userId &&
+      !(await this.pricesVisibleFor(item.catalogId ?? undefined, userId))
+    ) {
+      throw new ForbiddenException(
+        'Цены этого справочника скрыты для вашей роли — изменять расценки нельзя',
+      );
+    }
     await this.assertCanEditItem(item.catalogId, userId);
     const updated = await this.prisma.priceItem.update({
       where: { id },

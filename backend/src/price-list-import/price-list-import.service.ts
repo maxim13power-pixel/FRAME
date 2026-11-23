@@ -231,13 +231,26 @@ export class PriceListImportService {
           needsClarification: true,
         },
       }),
-      this.prisma.priceCategory.findMany({ where: { kind }, select: { id: true, name: true } }),
+      this.prisma.priceCategory.findMany({
+        where: { kind, OR: [{ catalogId }, { catalogId: null }] },
+        select: { id: true, name: true, catalogId: true },
+      }),
     ]);
 
     const index = this.buildIndex(
       items.map((item) => ({ ...item, price: Number(item.price) })),
     );
-    const categoryByName = new Map(categories.map((c) => [normalizeText(c.name), c]));
+    // ⭐ №373 (B2): своя категория справочника приоритетнее системной
+    const categoryByName = new Map<
+      string,
+      { id: number; name: string; catalogId: number | null }
+    >();
+    for (const category of categories) {
+      const key = normalizeText(category.name);
+      if (!categoryByName.has(key) || category.catalogId != null) {
+        categoryByName.set(key, category);
+      }
+    }
 
     const rows: PriceImportRow[] = [];
     const groups = new Map<string, { raw: string; count: number }>();
@@ -298,6 +311,7 @@ export class PriceListImportService {
           sheet: sheet.sheet,
           row: parsed.row,
           id: parsed.id,
+          targetId: target?.id ?? null,
           name: parsed.name,
           article: parsed.article,
           unitRaw: parsed.unitRaw,
@@ -429,7 +443,7 @@ export class PriceListImportService {
     const result = await this.prisma.$transaction(
       async (tx) => {
         const existing = await tx.priceCategory.findMany({
-          where: { kind: input.kind },
+          where: { kind: input.kind, catalogId: input.catalogId },
           select: { id: true, name: true },
         });
         const categoryIds = new Map(existing.map((c) => [normalizeText(c.name), c.id]));
@@ -439,13 +453,15 @@ export class PriceListImportService {
           const key = normalizeText(name);
           if (categoryIds.has(key)) continue;
           const max = await tx.priceCategory.aggregate({
-            where: { kind: input.kind },
+            where: { kind: input.kind, catalogId: input.catalogId },
             _max: { sortOrder: true },
           });
           const created = await tx.priceCategory.create({
             data: {
               name: name.trim().slice(0, 120),
               kind: input.kind,
+              // ⭐ №373 (B2): категория импорта живёт в этом справочнике
+              catalogId: input.catalogId,
               sortOrder: (max._max.sortOrder ?? 0) + 1,
             },
             select: { id: true },
@@ -462,7 +478,19 @@ export class PriceListImportService {
 
         let updated = 0;
         for (const row of toUpdate) {
-          if (row.id == null) continue;
+          // ⭐ №372 (P0): обновляем ТОЛЬКО позицию из этого справочника.
+          // `row.id` — id из Excel-файла, его нельзя использовать для update:
+          // подставив чужой id, можно было перезаписать расценку другого каталога.
+          if (row.targetId == null) continue;
+          const target = await tx.priceItem.findFirst({
+            where: { id: row.targetId, catalogId: input.catalogId },
+            select: { id: true },
+          });
+          if (!target) {
+            throw new BadRequestException(
+              `Строка ${row.row}: позиция больше не существует в этом справочнике — повторите предпросмотр`,
+            );
+          }
           const data: Prisma.PriceItemUncheckedUpdateInput = {
             name: row.name.trim(),
             article: row.article?.trim() || null,
@@ -475,7 +503,7 @@ export class PriceListImportService {
             data.needsClarification = false;
             data.isActive = true;
           }
-          await tx.priceItem.update({ where: { id: row.id }, data });
+          await tx.priceItem.update({ where: { id: target.id }, data });
           updated += 1;
         }
 

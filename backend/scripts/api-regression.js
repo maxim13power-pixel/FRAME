@@ -982,8 +982,7 @@ async function main() {
   // ── 10. Аналитика: историческая цена фиксации ─────────────
   console.log('\n10. Аналитика');
 
-  await check('динамика считает по цене на момент фиксации', async () => {
-    const materialId = material.id;
+  await check('динамика считает по цене на момент фиксации', async () => {    const materialId = material.id;
     const materialRow = await prisma.material.findUnique({
       where: { id: materialId },
       select: { unitPrice: true, materialUnitPrice: true },
@@ -1028,6 +1027,116 @@ async function main() {
       budget.data.every((r) => typeof r.projectId === 'number'),
       'в ответе нет projectId',
     );
+  });
+
+  // ── 11. P0-фиксы аудита (№372) ────────────────────────────
+  console.log('\n11. P0-фиксы');
+
+  await check('скрытый прораб не выпускает ссылку с открытыми ценами', async () => {
+    const link = await api(
+      `/objects/${object.id}/invite-link`,
+      { method: 'POST', body: { role: 'VIEWER', hidePrices: false, maxUses: 1 } },
+      pricesWorker.token,
+    );
+    expectStatus(link, [200, 201], 'создание ссылки скрытым прорабом');
+    expect(link.data.hidePrices === true, 'скрытый прораб выпустил ссылку с ценами');
+  });
+
+  await check('история фиксаций скрывает ценовые снимки', async () => {
+    const fixes = await api(`/materials/${material.id}/fixes`, {}, pricesWorker.token);
+    expectStatus(fixes, 200, 'история фиксаций');
+    expect(fixes.data.length > 0, 'у материала нет фиксаций');
+    expect(
+      fixes.data.every((f) => f.unitPrice == null && f.materialUnitPrice == null),
+      'скрытому прорабу отдали цены из истории',
+    );
+  });
+
+  await check('ответ PATCH склада не раскрывает цену', async () => {
+    const created = await api(
+      '/warehouse/items',
+      {
+        method: 'POST',
+        body: { name: `Склад ${stamp}`, unit: 'шт', quantity: 1, price: 777, objectId: object.id },
+      },
+      admin.token,
+    );
+    expectStatus(created, [200, 201], 'создание позиции склада');
+    const updated = await api(
+      `/warehouse/items/${created.data.id}`,
+      { method: 'PATCH', body: { comment: 'проверка маскировки' } },
+      pricesWorker.token,
+    );
+    expectStatus(updated, 200, 'правка склада скрытым прорабом');
+    expect(updated.data.price == null, 'скрытый прораб увидел цену в ответе PATCH');
+  });
+
+  await check('факт проекта включает материалы', async () => {
+    const rows = await prisma.material.findMany({
+      where: { projectId: project1.id },
+      select: { totalCost: true, materialTotalCost: true },
+    });
+    const expected = rows.reduce(
+      (sum, m) => sum + Number(m.totalCost) + Number(m.materialTotalCost),
+      0,
+    );
+    const project = await api(`/projects/${project1.id}`, {}, admin.token);
+    expectStatus(project, 200, 'карточка проекта');
+    expect(
+      Math.abs(Number(project.data.totalCost) - expected) < 0.01,
+      `факт проекта ${project.data.totalCost} ≠ ${expected}`,
+    );
+  });
+
+  // ── 12. Категории справочника (B2) ────────────────────────
+  console.log('\n12. Категории справочника');
+
+  await check('категория создаётся в своём справочнике и не дублируется', async () => {
+    const created = await api(
+      '/price-list/categories',
+      {
+        method: 'POST',
+        body: { name: `Категория ${stamp}`, kind: 'WORK', catalogId: adminCatalog.id },
+      },
+      admin.token,
+    );
+    expectStatus(created, [200, 201], 'создание категории');
+    expect(
+      created.data.catalogId === adminCatalog.id,
+      'категория создана не в справочнике',
+    );
+
+    const renamed = await api(
+      `/price-list/categories/${created.data.id}`,
+      { method: 'PATCH', body: { name: `Категория ${stamp} (изм.)` } },
+      admin.token,
+    );
+    expectStatus(renamed, 200, 'переименование своей категории');
+
+    const full = await api(
+      `/price-list/categories/full?kind=WORK&catalogId=${adminCatalog.id}`,
+      {},
+      admin.token,
+    );
+    expectStatus(full, 200, 'категории справочника');
+    const names = full.data.map((c) => c.name);
+    expect(new Set(names).size === names.length, 'в списке есть дубли категорий');
+
+    const system = await prisma.priceCategory.findFirst({
+      where: { catalogId: null, kind: 'WORK' },
+      select: { id: true },
+    });
+    if (system) {
+      expectStatus(
+        await api(
+          `/price-list/categories/${system.id}`,
+          { method: 'PATCH', body: { name: 'Взлом' } },
+          pricesWorker.token,
+        ),
+        403,
+        'переименование системной категории скрытым прорабом',
+      );
+    }
   });
 
   const failed = results.filter((r) => !r.ok);
