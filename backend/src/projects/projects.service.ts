@@ -257,48 +257,58 @@ export class ProjectsService {
       );
     }
 
-    const existing = await this.prisma.material.count({
-      where: { projectId: targetProjectId },
-    });
-    // ⭐ №290: при создании проекта копируем только в пустой проект (защита от дублей),
-    // а кнопка «Добавить из шаблона» в смете дополняет непустую смету (append = true).
-    if (existing > 0 && dto.append !== true) {
-      throw new BadRequestException(
-        'В проекте уже есть позиции — смету можно копировать только в пустой проект',
-      );
-    }
+    // ⭐ №377: проверка «проект пуст» и вставка — в одной транзакции с блокировкой
+    // проекта, иначе два параллельных copy-estimate дублируют смету.
+    return this.prisma.$transaction(async (tx) => {
+      const [locked] = await tx.$queryRaw<{ id: number }[]>`
+        SELECT id FROM "Project" WHERE id = ${targetProjectId} FOR UPDATE
+      `;
+      if (!locked) {
+        throw new NotFoundException('Проект не найден');
+      }
+      const existing = await tx.material.count({
+        where: { projectId: targetProjectId },
+      });
+      // ⭐ №290: при создании проекта копируем только в пустой проект (защита от дублей),
+      // а кнопка «Добавить из шаблона» в смете дополняет непустую смету (append = true).
+      if (existing > 0 && dto.append !== true) {
+        throw new BadRequestException(
+          'В проекте уже есть позиции — смету можно копировать только в пустой проект',
+        );
+      }
 
-    const rows = await this.prisma.material.findMany({
-      where: { projectId: dto.sourceProjectId },
-      orderBy: { id: 'asc' },
-      select: {
-        name: true,
-        article: true,
-        unit: true,
-        specQuantity: true,
-        unitPrice: true,
-        materialUnitPrice: true,
-        priceItemId: true,
-        materialItemId: true,
-      },
-    });
-    if (rows.length === 0) return { created: 0 };
+      const rows = await tx.material.findMany({
+        where: { projectId: dto.sourceProjectId },
+        orderBy: { id: 'asc' },
+        select: {
+          name: true,
+          article: true,
+          unit: true,
+          specQuantity: true,
+          unitPrice: true,
+          materialUnitPrice: true,
+          priceItemId: true,
+          materialItemId: true,
+        },
+      });
+      if (rows.length === 0) return { created: 0 };
 
-    await this.prisma.material.createMany({
-      data: rows.map((m) => ({
-        name: m.name,
-        article: m.article,
-        unit: m.unit,
-        specQuantity: dto.zeroQuantities ? 0 : m.specQuantity,
-        unitPrice: m.unitPrice,
-        materialUnitPrice: m.materialUnitPrice,
-        priceItemId: m.priceItemId,
-        materialItemId: m.materialItemId,
-        projectId: targetProjectId,
-        isSpecLocked: true, // защита спецификации, как у обычных позиций
-      })),
+      await tx.material.createMany({
+        data: rows.map((m) => ({
+          name: m.name,
+          article: m.article,
+          unit: m.unit,
+          specQuantity: dto.zeroQuantities ? 0 : m.specQuantity,
+          unitPrice: m.unitPrice,
+          materialUnitPrice: m.materialUnitPrice,
+          priceItemId: m.priceItemId,
+          materialItemId: m.materialItemId,
+          projectId: targetProjectId,
+          isSpecLocked: true, // защита спецификации, как у обычных позиций
+        })),
+      });
+      return { created: rows.length };
     });
-    return { created: rows.length };
   }
 
   /**

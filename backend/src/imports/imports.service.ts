@@ -361,6 +361,28 @@ export class ImportsService {
       (input.resolutions ?? []).map((r) => [r.row, r]),
     );
 
+    // ⭐ №377: даже при явном «импортировать» повторно проверяем строку —
+    // ошибки предпросмотра и отрицательные значения не должны попасть в смету.
+    for (const row of preview.rows) {
+      const resolution = resolutions.get(row.row);
+      if (resolution?.action !== 'IMPORT') continue;
+      const errors = [...row.errors];
+      if (row.qty == null || row.qty <= 0) {
+        errors.push('Количество должно быть больше нуля');
+      }
+      if (row.filePrice != null && row.filePrice < 0) {
+        errors.push('Цена из файла не может быть отрицательной');
+      }
+      if (row.fileMaterialPrice != null && row.fileMaterialPrice < 0) {
+        errors.push('Цена материала не может быть отрицательной');
+      }
+      if (errors.length > 0) {
+        throw new BadRequestException(
+          `Строка ${row.row}: ${errors.join('; ')}. Исправьте строку в файле или пропустите её.`,
+        );
+      }
+    }
+
     const summary = await this.prisma.$transaction(async (tx) => {
       // Идемпотентность против двойного клика: «захватываем» партию атомарно
       const claimed = await tx.importBatch.updateMany({

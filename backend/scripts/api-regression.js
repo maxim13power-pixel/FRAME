@@ -1139,6 +1139,254 @@ async function main() {
     }
   });
 
+  // ── 13. Параллельные сценарии ─────────────────────────────
+  console.log('\n13. Параллельные сценарии');
+
+  await check('два accept одной ссылки с maxUses=1 — проходит только один', async () => {
+    const u1 = await register('racea');
+    const u2 = await register('raceb');
+    const link = await api(
+      `/objects/${object.id}/invite-link`,
+      { method: 'POST', body: { role: 'VIEWER', maxUses: 1 } },
+      admin.token,
+    );
+    expectStatus(link, [200, 201], 'ссылка maxUses=1');
+    const token = link.data.token;
+
+    const [a, b] = await Promise.all([
+      accept(token, u1),
+      accept(token, u2),
+    ]);
+    const ok = [a, b].filter((r) => r.status === 200 || r.status === 201).length;
+    expect(
+      ok === 1,
+      `приняли ссылку ${ok} раза вместо одного (${a.status}/${b.status}: ${a.data?.message ?? ''} | ${b.data?.message ?? ''})`,
+    );
+  });
+
+  await check('два copy-estimate в пустой проект — смета не дублируется', async () => {
+    const created = await api(
+      '/projects',
+      {
+        method: 'POST',
+        body: {
+          name: `Пустой ${stamp}`,
+          objectId: object.id,
+          startDate: '2026-11-01',
+          endDate: '2026-12-01',
+        },
+      },
+      admin.token,
+    );
+    expectStatus(created, [200, 201], 'создание пустого проекта');
+    const targetId = created.data.id;
+
+    const sourceRows = await prisma.material.count({
+      where: { projectId: project1.id },
+    });
+    const [first, second] = await Promise.all([
+      api(
+        `/projects/${targetId}/copy-estimate`,
+        { method: 'POST', body: { sourceProjectId: project1.id } },
+        admin.token,
+      ),
+      api(
+        `/projects/${targetId}/copy-estimate`,
+        { method: 'POST', body: { sourceProjectId: project1.id } },
+        admin.token,
+      ),
+    ]);
+    const ok = [first, second].filter((r) => r.status === 200 || r.status === 201).length;
+    expect(ok === 1, `copy-estimate прошёл ${ok} раза вместо одного`);
+    const rows = await prisma.material.count({ where: { projectId: targetId } });
+    expect(rows === sourceRows, `в смете ${rows} строк вместо ${sourceRows}`);
+  });
+
+  await check('два продления аренды не теряют начисление', async () => {
+    const created = await api(
+      '/rentals',
+      {
+        method: 'POST',
+        body: {
+          name: `Гонка ${stamp}`,
+          startDate: '2026-11-01',
+          endDate: '2026-11-10',
+          price: 1000,
+        },
+      },
+      admin.token,
+    );
+    expectStatus(created, [200, 201], 'создание аренды');
+    const id = created.data.id;
+    const [a, b] = await Promise.all([
+      api(
+        `/rentals/${id}/extend`,
+        { method: 'PATCH', body: { newEndDate: '2026-11-20', price: 100 } },
+        admin.token,
+      ),
+      api(
+        `/rentals/${id}/extend`,
+        { method: 'PATCH', body: { newEndDate: '2026-11-30', price: 100 } },
+        admin.token,
+      ),
+    ]);
+    const ok = [a, b].filter((r) => r.status === 200 || r.status === 201).length;
+    expect(ok >= 1, 'ни одно продление не прошло');
+    const row = await prisma.rental.findUnique({ where: { id } });
+    const expected = 1000 + 100 * ok;
+    expect(
+      Math.abs(Number(row.totalSpent) - expected) < 0.01,
+      `totalSpent ${row.totalSpent} вместо ${expected} (успешных ${ok})`,
+    );
+  });
+
+  await check('два администратора не могут понизить друг друга одновременно', async () => {
+    const created = await api(
+      '/objects',
+      {
+        method: 'POST',
+        body: {
+          name: `Гонка админов ${stamp}`,
+          address: 'Тест',
+          startDate: '2026-11-01',
+          endDate: '2026-12-01',
+        },
+      },
+      admin.token,
+    );
+    expectStatus(created, [200, 201], 'создание объекта');
+    const objectId = created.data.id;
+    createdObjectIds.push(objectId);
+
+    const added = await api(
+      `/objects/${objectId}/access`,
+      { method: 'POST', body: { userId: secondAdmin.userId, role: 'CUSTOMER' } },
+      admin.token,
+    );
+    expectStatus(added, [200, 201], 'второй администратор');
+
+    const grants = await accessList(objectId, admin.token);
+    const adminGrant = grants.find(
+      (g) => g.userId === admin.userId && g.projectId == null,
+    );
+    const secondGrant = grants.find(
+      (g) => g.userId === secondAdmin.userId && g.projectId == null,
+    );
+    expect(adminGrant && secondGrant, 'не нашли гранты администраторов');
+
+    const [a, b] = await Promise.all([
+      api(
+        `/objects/${objectId}/access/${secondGrant.id}`,
+        { method: 'PATCH', body: { role: 'FOREMAN' } },
+        admin.token,
+      ),
+      api(
+        `/objects/${objectId}/access/${adminGrant.id}`,
+        { method: 'PATCH', body: { role: 'FOREMAN' } },
+        secondAdmin.token,
+      ),
+    ]);
+    const ok = [a, b].filter((r) => r.status === 200).length;
+    expect(ok === 1, `понижений прошло ${ok} вместо одного (${a.status}/${b.status})`);
+    const otherAdmins = await prisma.objectAccess.count({
+      where: {
+        objectId,
+        projectId: null,
+        role: 'CUSTOMER',
+        revokedAt: null,
+      },
+    });
+    expect(otherAdmins === 1, `администраторов осталось ${otherAdmins}`);
+  });
+
+  await check('снимок проектного участника не содержит чужих данных (JSON)', async () => {
+    const snapUser = await register('snapuser');
+    const link = await api(
+      `/objects/${object.id}/invite-link`,
+      { method: 'POST', body: { role: 'FOREMAN', projectId: project1.id, hidePrices: true } },
+      admin.token,
+    );
+    expectStatus(link, [200, 201], 'ссылка в проект для снимка');
+    expectStatus(
+      await accept(link.data.token, snapUser),
+      [200, 201],
+      'принятие ссылки в проект',
+    );
+
+    // склад: позиция только для project2 и позиция, использованная в project1
+    const onlyOther = await api(
+      '/warehouse/items',
+      {
+        method: 'POST',
+        body: { name: `СкладB ${stamp}`, unit: 'шт', quantity: 5, price: 500, objectId: object.id },
+      },
+      admin.token,
+    );
+    expectStatus(onlyOther, [200, 201], 'позиция склада B');
+    expectStatus(
+      await api(
+        '/warehouse/transactions',
+        {
+          method: 'POST',
+          body: {
+            warehouseItemId: onlyOther.data.id,
+            type: 'write-off',
+            quantity: 1,
+            projectId: project2.id,
+          },
+        },
+        admin.token,
+      ),
+      [200, 201],
+      'списание в project2',
+    );
+
+    const grants = await accessList(object.id, admin.token);
+    const grant = grants.find(
+      (g) => g.userId === snapUser.userId && g.projectId === project1.id,
+    );
+    expect(grant, 'грант проектного участника не найден');
+    expectStatus(
+      await api(`/objects/${object.id}/access/${grant.id}`, { method: 'DELETE' }, admin.token),
+      200,
+      'удаление проектного участника',
+    );
+
+    const list = await api('/me/snapshots', {}, snapUser.token);
+    expectStatus(list, 200, 'список снимков');
+    const snap = list.data.find((s) => s.objectId === object.id);
+    expect(snap, 'снимок не создан');
+    const detail = await api(`/me/snapshots/${snap.id}`, {}, snapUser.token);
+    expectStatus(detail, 200, 'снимок');
+    const payload = detail.data.payload;
+
+    expect(
+      payload.projects.every((p) => p.id === project1.id),
+      'в снимке есть чужой проект',
+    );
+    const names = payload.warehouse.items.map((i) => i.name);
+    expect(
+      !names.includes(`СкладB ${stamp}`),
+      'в снимке есть складская позиция чужого проекта',
+    );
+    expect(
+      payload.brigades.every((b) =>
+        b.shifts.every((s) => s.projectName === project1.name),
+      ),
+      'в снимке есть выходы чужого проекта',
+    );
+    // цены скрыты — денежные поля пустые
+    const moneyFields = [
+      ...payload.projects.flatMap((p) => p.materials.flatMap((m) => [m.unitPrice, m.materialUnitPrice])),
+      ...payload.warehouse.items.map((i) => i.price),
+      ...payload.warehouse.transactions.map((t) => t.price),
+    ];
+    expect(
+      moneyFields.every((v) => v == null),
+      'в снимке скрытого участника остались цены',
+    );
+  });
+
   const failed = results.filter((r) => !r.ok);
   console.log(
     `\nИтог: ${results.length - failed.length} ✅ / ${failed.length} ❌ из ${results.length}`,

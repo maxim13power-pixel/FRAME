@@ -6,11 +6,16 @@ import { AccessService } from './access.service';
 
 describe('AccessService — понижение последнего администратора (№181)', () => {
   const prisma = {
+    // ⭐ №376: updateAccess/removeGrant выполняются в транзакции с блокировкой объекта
+    $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 3 }]),
     objectAccess: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
       update: jest.fn(),
+      delete: jest.fn(),
+      deleteMany: jest.fn(),
     },
   };
   const audit = { log: jest.fn() };
@@ -38,7 +43,9 @@ describe('AccessService — понижение последнего админи
     // 1-й findFirst — мой доступ (actor 7, администратор), 2-й — цель (userId 9)
     prisma.objectAccess.findFirst
       .mockResolvedValueOnce({ ...adminGrant })
-      .mockResolvedValueOnce({ ...adminGrant, id: 2, userId: 9 });
+      .mockResolvedValueOnce({ ...adminGrant, id: 2, userId: 9 })
+      // ⭐ №376: повторное чтение цели под блокировкой объекта
+      .mockResolvedValue({ ...adminGrant, id: 2, userId: 9 });
     prisma.objectAccess.update.mockResolvedValue({ id: 2 });
   });
 

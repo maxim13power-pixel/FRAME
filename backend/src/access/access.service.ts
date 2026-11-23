@@ -450,23 +450,32 @@ export class AccessService {
 
     // ⭐ №181: последнего администратора объекта нельзя понизить (инвариант «≥1 администратор»).
     // Раньше проверка стояла только на отзыве и удалении доступа — понижение роли её обходило.
-    if (target.role === AccessRole.CUSTOMER && nextRole !== AccessRole.CUSTOMER) {
-      await this.assertNotLastCustomer(objectId, target);
-    }
-
-    const updated = await this.prisma.objectAccess.update({
-      where: { id: accessId },
-      data: {
-        role: nextRole,
-        // ⭐ №351: цены можно менять; журнал ниже фиксирует и старые, и новые значения
-        hidePrices: nextHidePrices,
-        canCreateProjects: nextCanCreateProjects,
-      },
-      include: {
-        user: {
-          select: { id: true, fullName: true, email: true, phone: true },
+    // ⭐ №181/№376: последнего администратора нельзя понизить; проверка и запись —
+    // под блокировкой объекта, чтобы параллельные PATCH/accept не оставили объект без CUSTOMER.
+    const updated = await this.withObjectLock(objectId, async (tx) => {
+      const fresh = await tx.objectAccess.findFirst({
+        where: { id: accessId, objectId },
+      });
+      if (!fresh) {
+        throw new NotFoundException('Запись доступа не найдена');
+      }
+      if (fresh.role === AccessRole.CUSTOMER && nextRole !== AccessRole.CUSTOMER) {
+        await this.assertNotLastCustomer(objectId, fresh, tx);
+      }
+      return tx.objectAccess.update({
+        where: { id: accessId },
+        data: {
+          role: nextRole,
+          // ⭐ №351: цены можно менять; журнал ниже фиксирует и старые, и новые значения
+          hidePrices: nextHidePrices,
+          canCreateProjects: nextCanCreateProjects,
         },
-      },
+        include: {
+          user: {
+            select: { id: true, fullName: true, email: true, phone: true },
+          },
+        },
+      });
     });
     // ⭐ №131: журнал смены роли/прав
     await this.audit.log(
@@ -596,7 +605,17 @@ export class AccessService {
       // последняя живая запись — удаляем участника целиком (с копиями и снимком)
       return this.removeParticipant(objectId, accessId, actorUserId);
     }
-    await this.prisma.objectAccess.delete({ where: { id: target.id } });
+    // ⭐ №376: объектный CUSTOMER — это админ; его удаление не должно оставить
+    // объект без администратора (проверка под блокировкой объекта).
+    await this.withObjectLock(objectId, async (tx) => {
+      const fresh = await tx.objectAccess.findFirst({
+        where: { id: target.id },
+      });
+      if (fresh) {
+        await this.assertNotLastCustomer(objectId, fresh, tx);
+        await tx.objectAccess.delete({ where: { id: fresh.id } });
+      }
+    });
     await this.audit.log(
       actorUserId,
       'object_access',
@@ -626,16 +645,23 @@ export class AccessService {
     await this.assertNotLastCustomer(objectId, target);
 
     const now = new Date();
-    const grants = await this.prisma.objectAccess.findMany({
-      where: { objectId, userId: target.userId },
-      orderBy: { createdAt: 'asc' },
-    });
-    // Если есть объектная запись — она покрывает все проекты, отдельные снимки
-    // по проектам не нужны (иначе у человека появятся дубли шаблонов).
-    const objectWide = grants.find((g) => g.projectId == null);
-    const jobs = objectWide ? [objectWide] : grants;
 
     const result = await this.prisma.$transaction(async (tx) => {
+      // ⭐ №376: блокируем объект и перепроверяем last-admin уже под блокировкой
+      await tx.$queryRaw`SELECT id FROM "Object" WHERE id = ${objectId} FOR UPDATE`;
+      const fresh = await tx.objectAccess.findFirst({
+        where: { id: target.id },
+      });
+      if (fresh) await this.assertNotLastCustomer(objectId, fresh, tx);
+      const grants = await tx.objectAccess.findMany({
+        where: { objectId, userId: target.userId },
+        orderBy: { createdAt: 'asc' },
+      });
+      // Если есть объектная запись — она покрывает все проекты, отдельные снимки
+      // по проектам не нужны (иначе у человека появятся дубли шаблонов).
+      const objectWide = grants.find((g) => g.projectId == null);
+      const jobs = objectWide ? [objectWide] : grants;
+
       let templates = 0;
       let catalogCopied = false;
       let snapshots = 0;
@@ -690,20 +716,33 @@ export class AccessService {
       {
         userId: target.userId,
         role: target.role,
-        grants: grants.length,
+        grants: result.removed,
       },
       { userId: target.userId, ...result },
     );
     return { success: true, ...result };
   }
 
+  // ⭐ №376: единая сериализация операций, влияющих на «≥1 администратор»
+  private async withObjectLock<T>(
+    objectId: number,
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Object" WHERE id = ${objectId} FOR UPDATE`;
+      return fn(tx);
+    });
+  }
+
   // ⭐ №168: нельзя остаться без администратора объекта (инвариант И1)
   private async assertNotLastCustomer(
     objectId: number,
     target: { userId: number; role: AccessRole; projectId: number | null },
+    tx?: Prisma.TransactionClient,
   ) {
     if (target.role !== AccessRole.CUSTOMER || target.projectId != null) return;
-    const others = await this.prisma.objectAccess.count({
+    const client = tx ?? this.prisma;
+    const others = await client.objectAccess.count({
       where: {
         objectId,
         projectId: null,

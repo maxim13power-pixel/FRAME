@@ -84,6 +84,9 @@ describe('ProjectsService — карточка проекта (№204, A#10)', (
 });
 describe('ProjectsService — смета из другого проекта (№286)', () => {
   const prisma = {
+    // ⭐ №377: copy-estimate выполняется в транзакции с блокировкой проекта
+    $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 29 }]),
     project: { findUnique: jest.fn(), findMany: jest.fn() },
     objectAccess: { findMany: jest.fn() },
     material: { count: jest.fn(), findMany: jest.fn(), createMany: jest.fn() },

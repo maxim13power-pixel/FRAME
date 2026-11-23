@@ -393,6 +393,9 @@ export class ObjectDeletionService implements OnModuleInit, OnModuleDestroy {
                       userId: f.userId,
                       isEdited: f.isEdited,
                       editedAt: f.editedAt,
+                      // ⭐ №377: исторические снимки цен переносим в копию
+                      unitPrice: f.unitPrice,
+                      materialUnitPrice: f.materialUnitPrice,
                     })),
                   }
                 : undefined,
