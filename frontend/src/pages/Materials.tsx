@@ -109,6 +109,7 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import PrintIcon from '@mui/icons-material/Print';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 // ⭐ №170: пересчёт сметы по справочнику цен (превью «было → станет» + откат)
 import { PriceRecalcModal } from '../components/PriceRecalcModal';
 import EstimateImportModal from '../components/EstimateImportModal'; // ⭐ №202: импорт сметы из Excel
@@ -120,6 +121,9 @@ import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подск
 const BOTTOM_NAV_HEIGHT = 56; // высота BottomNav (MUI BottomNavigation по умолчанию)
 const SUMMARY_BAR_BOTTOM = BOTTOM_NAV_HEIGHT + 8; // плашка над меню с зазором 8px
 const SUMMARY_LIST_CLEARANCE_PX = 64; // доп. отступ списка, чтобы кнопка «Зафиксировать объём» не пряталась под плашку
+// ⭐ №384: варианты размера страницы сметы; выбор запоминается в localStorage
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+const PAGE_SIZE_KEY = 'materials-page-size';
 
 // ⭐ №177: запоминаем последний выбранный справочник цен (в модалке «Добавить позицию»)
 const PRICE_CATALOG_MEMO_KEY = 'frame:priceCatalogChoice';
@@ -700,13 +704,20 @@ const longPressFiredRef = useRef(false);
 // ⭐ №295: якорь для Shift+Click (индекс последней отмеченной строки)
 const lastSelectedIndexRef = useRef<number | null>(null);
 
-// ⭐ №383: длинная смета — окно отрисовки. Данные, поиск, сортировка, ИТОГО
+// ⭐ №383/384: длинная смета — окно отрисовки. Данные, поиск, сортировка, ИТОГО
 // и выделение считаются по ВСЕЙ смете; окно решает только, сколько строк рисуем.
-const PAGE_SIZE = isMobile ? 50 : 200;
+// Размер страницы выбирает пользователь (дефолт 50 на десктопе / 25 на мобилке).
+const [pageSize, setPageSize] = useState<number>(() => {
+  const saved = Number(localStorage.getItem(PAGE_SIZE_KEY) || '');
+  return PAGE_SIZE_OPTIONS.includes(saved) ? saved : isMobile ? 25 : 50;
+});
 const [windowStart, setWindowStart] = useState(0);
-const [windowSize, setWindowSize] = useState(PAGE_SIZE);
+const [windowSize, setWindowSize] = useState(pageSize);
 const [showAll, setShowAll] = useState(false);
 const [pageInput, setPageInput] = useState('1');
+// ⭐ №384: кнопка «вниз» к ИТОГО/страницам
+const footerSentinelRef = useRef<HTMLDivElement | null>(null);
+const [footerVisible, setFooterVisible] = useState(false);
 // ⭐ №383: печать из браузера — «вся смета» дорисовывает строки только на время печати
 const [printOnlyPage, setPrintOnlyPage] = useState(false);
 const [printingAll, setPrintingAll] = useState(false);
@@ -939,12 +950,12 @@ useEffect(() => {
       })),
     [visibleMaterials, sliceStart],
   );
-  const pageCount = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
-  const currentPage = Math.min(pageCount, Math.floor(sliceStart / PAGE_SIZE) + 1);
+  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
+  const currentPage = Math.min(pageCount, Math.floor(sliceStart / pageSize) + 1);
   const windowCoversAll = sliceStart === 0 && windowEnd >= totalRows;
   // ⭐ №383: плашка нужна и при ровно одной полной странице (200 строк = «Страница 1 из 1»),
   // иначе пользователь не понимает, есть ли вообще страницы.
-  const hasWindowBar = totalRows >= PAGE_SIZE || !windowCoversAll;
+  const hasWindowBar = totalRows >= pageSize || !windowCoversAll;
   // ⭐ №383: поиск/фильтр работают по всей смете — показываем, сколько нашлось из всех строк
   const filterActive = Boolean(searchQuery.trim()) || categoryFilter != null;
   const filterHint =
@@ -964,18 +975,18 @@ useEffect(() => {
     (page: number) => {
       const target = Math.min(pageCount, Math.max(1, Math.floor(page) || 1));
       setShowAll(false);
-      setWindowStart((target - 1) * PAGE_SIZE);
-      setWindowSize(PAGE_SIZE);
+      setWindowStart((target - 1) * pageSize);
+      setWindowSize(pageSize);
     },
-    [pageCount, PAGE_SIZE],
+    [pageCount, pageSize],
   );
 
   const showMoreRows = useCallback(() => {
     setShowAll(false);
     setWindowSize((size) =>
-      Math.max(PAGE_SIZE, Math.min(totalRows - windowStart, size + PAGE_SIZE)),
+      Math.max(pageSize, Math.min(totalRows - windowStart, size + pageSize)),
     );
-  }, [PAGE_SIZE, totalRows, windowStart]);
+  }, [pageSize, totalRows, windowStart]);
 
   const showAllRows = useCallback(async () => {
     if (totalRows > 1000) {
@@ -988,29 +999,96 @@ useEffect(() => {
     }
     setShowAll(true);
     setWindowStart(0);
-    setWindowSize(PAGE_SIZE);
-  }, [confirm, PAGE_SIZE, totalRows]);
+    setWindowSize(pageSize);
+  }, [confirm, pageSize, totalRows]);
 
   // ⭐ №383: сменили поиск/фильтр/сортировку — снова первая порция
   useEffect(() => {
     setWindowStart(0);
-    setWindowSize(PAGE_SIZE);
+    setWindowSize(pageSize);
     setShowAll(false);
-  }, [searchQuery, categoryFilter, sortBy, sortDirection, PAGE_SIZE]);
+  }, [searchQuery, categoryFilter, sortBy, sortDirection, pageSize]);
 
   // ⭐ №383: после удаления строк окно не должно «висеть» за концом списка
   useEffect(() => {
     if (showAll) return;
     if (windowStart > 0 && windowStart >= totalRows) {
       setWindowStart(0);
-      setWindowSize(PAGE_SIZE);
+      setWindowSize(pageSize);
     }
-  }, [totalRows, windowStart, showAll, PAGE_SIZE]);
+  }, [totalRows, windowStart, showAll, pageSize]);
 
   // ⭐ №383: поле «Страница» показывает текущую
   useEffect(() => {
     setPageInput(String(currentPage));
   }, [currentPage]);
+
+  // ⭐ №384: размер страницы выбирает пользователь; выбор запоминаем,
+  // а до первого выбора дефолт зависит от устройства (50 / 25).
+  const changePageSize = useCallback((next: number) => {
+    setPageSize(next);
+    localStorage.setItem(PAGE_SIZE_KEY, String(next));
+  }, []);
+
+  useEffect(() => {
+    if (localStorage.getItem(PAGE_SIZE_KEY)) return;
+    setPageSize(isMobile ? 25 : 50);
+  }, [isMobile]);
+
+  // ⭐ №384: видимость кнопки «вниз» — по расстоянию до низа страницы.
+  // Меряем после отрисовки (rAF) и при изменении высоты контента (ResizeObserver),
+  // иначе на первом кадре таблица ещё не отрисована и кнопка «прячется» зря.
+  useEffect(() => {
+    const measure = () => {
+      const doc = document.documentElement;
+      const distance = doc.scrollHeight - (window.scrollY + window.innerHeight);
+      setFooterVisible(distance <= 160);
+    };
+    const raf = window.requestAnimationFrame(measure);
+    window.addEventListener('scroll', measure, { passive: true });
+    window.addEventListener('resize', measure);
+    const observer =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(measure)
+        : null;
+    observer?.observe(document.body);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', measure);
+      window.removeEventListener('resize', measure);
+      observer?.disconnect();
+    };
+  }, []);
+
+  // ⭐ №384: автодогрузка на мобилке — ТОЛЬКО по реальному скроллу.
+  // Никаких вызовов при подписке/перезапуске эффекта: иначе список
+  // догружался сам до сотен строк ещё до того, как пользователь начал листать.
+  useEffect(() => {
+    if (!isMobile || fullRender || windowEnd >= totalRows) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        const doc = document.documentElement;
+        const distance =
+          doc.scrollHeight - (window.scrollY + window.innerHeight);
+        if (distance <= 320) showMoreRows();
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
+  }, [isMobile, fullRender, windowEnd, totalRows, showMoreRows]);
+
+  const scrollToFooter = useCallback(() => {
+    footerSentinelRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'end',
+    });
+  }, []);
 
   // Итоговая строка: суммы по спеке и факту, средний прогресс
 const totals = (() => {
@@ -1084,8 +1162,8 @@ useEffect(() => {
     const index = sortedMaterials.findIndex((m) => m.id === targetId);
     if (index < 0) return;
     if (index < windowStart || index >= windowStart + windowSize) {
-      setWindowStart(Math.floor(index / PAGE_SIZE) * PAGE_SIZE);
-      setWindowSize(PAGE_SIZE);
+      setWindowStart(Math.floor(index / pageSize) * pageSize);
+      setWindowSize(pageSize);
     }
   }, [
     highlightId,
@@ -1095,7 +1173,7 @@ useEffect(() => {
     fullRender,
     windowStart,
     windowSize,
-    PAGE_SIZE,
+    pageSize,
   ]);
 
   // ⭐ №161: подсветка строки, на которую перешли из виджета «Без расценки»
@@ -2201,6 +2279,7 @@ setSortAnchorEl(null);
   // Поиск, сортировка и ИТОГО при этом всегда считаются по всей смете.
   const paginationBar = hasWindowBar ? (
     <Paper
+      ref={footerSentinelRef}
       variant="outlined"
       className="no-print"
       sx={{
@@ -2220,10 +2299,32 @@ setSortAnchorEl(null);
           ? `Показано: все ${totalRows}`
           : `Показано ${sliceStart + 1}–${windowEnd} из ${totalRows}`}
       </Typography>
+      {/* ⭐ №384: размер страницы на выбор (запоминается) */}
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        <Typography variant="caption" color="text.secondary">
+          Строк:
+        </Typography>
+        <Select
+          size="small"
+          value={pageSize}
+          onChange={(e) => changePageSize(Number(e.target.value))}
+          sx={{
+            height: 30,
+            fontSize: 13,
+            '& .MuiSelect-select': { py: 0.25, px: 1 },
+          }}
+        >
+          {PAGE_SIZE_OPTIONS.map((n) => (
+            <MenuItem key={n} value={n} sx={{ fontSize: 13 }}>
+              {n}
+            </MenuItem>
+          ))}
+        </Select>
+      </Stack>
       <Box sx={{ flex: 1 }} />
       {!fullRender && windowEnd < totalRows && (
         <Button size="small" variant="outlined" onClick={showMoreRows}>
-          Показать ещё {Math.min(PAGE_SIZE, totalRows - windowEnd)}
+          Показать ещё {Math.min(pageSize, totalRows - windowEnd)}
         </Button>
       )}
       {!fullRender && (pageCount > 1 || windowStart > 0) && (
@@ -2856,6 +2957,51 @@ onClose={() => setFilterAnchorEl(null)}
               Отмена
             </Button>
           </Paper>
+        )}
+        {/* ⭐ №384: мини-пейджер сверху — не нужно листать до низа, чтобы сменить страницу */}
+        {selectedIds.size === 0 && !fullRender && pageCount > 1 && (
+          <Box
+            className="no-print"
+            sx={{
+              position: 'sticky',
+              top: 8,
+              zIndex: 4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              mb: 1,
+              px: 1,
+              py: 0.5,
+              borderRadius: 2,
+              bgcolor: 'rgba(255,255,255,0.96)',
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+            }}
+          >
+            <IconButton
+              size="small"
+              aria-label="Предыдущая страница"
+              disabled={currentPage <= 1}
+              onClick={() => goToPage(currentPage - 1)}
+            >
+              <ChevronLeftIcon fontSize="small" />
+            </IconButton>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {currentPage} / {pageCount}
+            </Typography>
+            <IconButton
+              size="small"
+              aria-label="Следующая страница"
+              disabled={currentPage >= pageCount}
+              onClick={() => goToPage(currentPage + 1)}
+            >
+              <ChevronRightIcon fontSize="small" />
+            </IconButton>
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+              Показано {sliceStart + 1}–{windowEnd} из {totalRows}
+            </Typography>
+            <Box sx={{ flex: 1 }} />
+          </Box>
         )}
         {/* ⭐ №383: шапка для печати — на экране скрыта, на бумаге объясняет, что за смета */}
         <Box className="print-only" sx={{ display: 'none', mb: 1 }}>
@@ -4391,6 +4537,29 @@ renderInput={(params) => (
         </Paper>
       </Modal>
 
+      {/* ⭐ №384: «вниз» к ИТОГО и переключателю страниц */}
+      {hasWindowBar && !footerVisible && (
+        <IconButton
+          className="no-print"
+          aria-label="К итогам и страницам"
+          title="К итогам и страницам"
+          onClick={scrollToFooter}
+          sx={{
+            position: 'fixed',
+            right: isMobile ? 16 : 24,
+            bottom: isMobile ? SUMMARY_BAR_BOTTOM + 132 : 24,
+            zIndex: 8,
+            width: 40,
+            height: 40,
+            bgcolor: 'background.paper',
+            border: '1px solid #e0e0e0',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+            '&:hover': { bgcolor: '#fff' },
+          }}
+        >
+          <KeyboardArrowDownIcon />
+        </IconButton>
+      )}
       {/* ⭐ Snackbar для экспорта (успех/ошибка) */}
       <Snackbar
         open={snackbar.open}
