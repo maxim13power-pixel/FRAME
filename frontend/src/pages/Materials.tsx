@@ -942,7 +942,22 @@ useEffect(() => {
   const pageCount = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
   const currentPage = Math.min(pageCount, Math.floor(sliceStart / PAGE_SIZE) + 1);
   const windowCoversAll = sliceStart === 0 && windowEnd >= totalRows;
-  const hasWindowBar = totalRows > 0 && (totalRows > PAGE_SIZE || !windowCoversAll);
+  // ⭐ №383: плашка нужна и при ровно одной полной странице (200 строк = «Страница 1 из 1»),
+  // иначе пользователь не понимает, есть ли вообще страницы.
+  const hasWindowBar = totalRows >= PAGE_SIZE || !windowCoversAll;
+  // ⭐ №383: поиск/фильтр работают по всей смете — показываем, сколько нашлось из всех строк
+  const filterActive = Boolean(searchQuery.trim()) || categoryFilter != null;
+  const filterHint =
+    filterActive && totalRows !== materials.length ? (
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        className="no-print"
+        sx={{ display: 'block', mt: 1 }}
+      >
+        Найдено: {totalRows} из {materials.length}
+      </Typography>
+    ) : null;
 
   // ⭐ №383: навигация по окну — страница, «ещё», «все»
   const goToPage = useCallback(
@@ -2211,7 +2226,7 @@ setSortAnchorEl(null);
           Показать ещё {Math.min(PAGE_SIZE, totalRows - windowEnd)}
         </Button>
       )}
-      {!fullRender && (
+      {!fullRender && (pageCount > 1 || windowStart > 0) && (
         <Button size="small" onClick={() => void showAllRows()}>
           Показать все
         </Button>
@@ -2221,7 +2236,7 @@ setSortAnchorEl(null);
           Свернуть
         </Button>
       )}
-      {!isMobile && !fullRender && pageCount > 1 && (
+      {!isMobile && !fullRender && (
         <Stack direction="row" spacing={0.5} alignItems="center">
           <IconButton
             size="small"
@@ -3088,6 +3103,7 @@ onClose={() => setFilterAnchorEl(null)}
 </TableFooter>
           </Table>
         </TableContainer>
+        {filterHint}
         {paginationBar}
         </>
       )}
@@ -3251,6 +3267,7 @@ onClose={() => setFilterAnchorEl(null)}
               </Typography>
             </Paper>
           )}
+          {filterHint}
           {paginationBar}
         </Stack>
       )}
