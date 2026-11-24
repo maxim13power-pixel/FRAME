@@ -5604,3 +5604,47 @@ SectionIntro на остальные разделы (пункт №4); (5) им�
   и пагинация больших списков — требуют UI-решений (бесконечная прокрутка/«показать ещё»).
 
 
+
+№380 — ИТОГИ СМЕТЫ В SQL (24.11.2026)
+ ЧТО СДЕЛАНО:
+ • новый `backend/src/materials/material-totals.ts`: `loadMaterialTotals(prisma, projectIds)`,
+   `loadMaterialTotalsForProject`, `toMaterialTotals`, `materialsProgressPercent`,
+   `emptyMaterialTotals`; Decimal → number на границе, `_count/_sum(specQuantity, totalUsed,
+   totalCost, materialTotalCost)`;
+ • `objects.findAll`: вместо `projects.include.materials` — отдельный запрос id доступных
+   проектов и один `groupBy`; `projectsCount` = число доступных проектов, проекты без строк
+   дают нули (иначе выпадали бы из списка);
+ • `projects.findAllByObject`: `project.findMany` + `groupBy` в `$transaction` с `RepeatableRead`
+   (счётчик и суммы — один снапшот, иначе «позиций 12, сумма как у 13»); убран неиспользуемый
+   join на справочник объекта;
+ • `projects.findOne`: `loadMaterialTotalsForProject`, без выгрузки строк проекта;
+ • контракт ответа не менялся: те же поля, значения — числа.
+ ПРОВЕРКИ: Jest **49 сьютов / 473 passed / 1 todo** (+6 тестов: 4 в `projects.service.spec.ts`,
+   2 в `objects.service.spec.ts`); `tsc --noEmit` — 0; регрессия **68/68** (+2: «итоги числами,
+   без строк материалов», «список и карточка дают одинаковые итоги»), тестовые данные убраны.
+ НЕ ДОВЕРЕНО: latency на реальных объёмах — dev-БД почти пустая (47 материалов);
+   бенч на 5 000 строк не делал.
+ ЗАМЕЧАНИЯ: `scripts/api-regression.js` теперь по умолчанию `127.0.0.1` (на Windows `localhost`
+   резолвится в ::1 → ECONNRESET ещё до первого запроса); попутно исправлены 2 битых
+   комментария (U+FFFD) в `projects.service.ts`.
+
+№381 — СОДЕРЖИМОЕ PDF (24.11.2026)
+ ЧТО СДЕЛАНО:
+ • `pdf.service.ts`: макет вынесен в `export function buildReportDocDefinition(report, items)`,
+   `generate()` только рендерит; интерфейсы `ReportLike`/`ItemLike` экспортированы;
+ • `pdf.service.spec.ts`: скрытые цены (price/total = 0) не попадают в макет, открытые — попадают
+   (проверка через JSON макета, с учётом неразрывного пробела ru-RU);
+ • регрессия: `pdf-parse@1.1.1` (dev-dependency backend) извлекает текст реального PDF —
+   проверяются `%PDF-`, размер > 1 КБ, «Итого», название отчёта и отсутствие цены 12345;
+ • раздел 14 регрессии переписан: было 167 символов U+FFFD (битая кодировка), стало 0.
+ ПРОВЕРКИ: Jest 49/473; `tsc` 0; регрессия 68/68 (проверка PDF — зелёная на реальном файле).
+ НЕ ДОВЕРЕНО: ручной просмотр скачанного PDF глазами (шрифты/вёрстка) — не делал.
+ ЗАМЕЧАНИЯ: `pdf-parse` использует старый pdf.js (1.10), но кириллица извлекается
+   (спайк в `%TEMP%`); если пакет начнёт ломаться — замена на `pdfjs-dist`.
+ ОБЩЕЕ (eslint): сервисные файлы, `material-totals.ts` и `pdf.service.spec.ts` — чисто;
+   в двух спек-файлах остаётся pre-existing долг (70 errors / 5 warnings, старый стиль моков
+   `as never`); новые строки замечаний не дают. Лечится отдельной задачей: типизация моков
+   или отключение `no-unsafe-*` для `*.spec.ts`.
+ ФОРМАТИРОВАНИЕ: `prettier --write` по затронутым файлам — в диффе есть чисто формовые правки
+   старых строк (в репозитории они были не по prettier); логика не менялась.
+

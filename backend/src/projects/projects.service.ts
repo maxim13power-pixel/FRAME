@@ -25,6 +25,12 @@ import {
 } from '../auth/access-scope'; // ⭐ №163, №193, №204
 import { ensureWorkingCatalog } from '../price-list/working-catalog'; // ⭐ №274
 import { loadCatalogAccess } from '../price-list/catalog-access';
+import {
+  emptyMaterialTotals,
+  loadMaterialTotals,
+  loadMaterialTotalsForProject,
+  materialsProgressPercent,
+} from '../materials/material-totals'; // ⭐ №380: итоги сметы в SQL
 
 @Injectable()
 export class ProjectsService {
@@ -88,7 +94,11 @@ export class ProjectsService {
 
   // ⭐ Нужно ли скрывать цены для этой записи доступа
   private mustHidePrices(
-    access?: { role?: string; hidePrices?: boolean; revokedAt?: Date | null } | null,
+    access?: {
+      role?: string;
+      hidePrices?: boolean;
+      revokedAt?: Date | null;
+    } | null,
   ): boolean {
     if (!access) return false;
     // ⭐ №168: отозванный доступ видит только снимок в шаблонах — живые цены скрыты
@@ -167,9 +177,15 @@ export class ProjectsService {
     // ⭐ №274 (§117): выбранный справочник — это ПРИВЯЗКА проекта, а не источник копии.
     // Не выбран → рабочая база создателя. Копий позиций нет: цены общие.
     const explicitCatalogId =
-      dto.catalogId != null ? await this.resolveCatalogId(dto.catalogId, userId) : null;
+      dto.catalogId != null
+        ? await this.resolveCatalogId(dto.catalogId, userId)
+        : null;
     if (explicitCatalogId != null) {
-      const catalogAccess = await loadCatalogAccess(this.prisma, explicitCatalogId, userId);
+      const catalogAccess = await loadCatalogAccess(
+        this.prisma,
+        explicitCatalogId,
+        userId,
+      );
       if (!catalogAccess?.canWrite) {
         throw new ForbiddenException(
           'Нет прав на изменение цен выбранного справочника — выберите свою базу',
@@ -178,7 +194,8 @@ export class ProjectsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const catalogId = explicitCatalogId ?? (await ensureWorkingCatalog(tx, userId)).id;
+      const catalogId =
+        explicitCatalogId ?? (await ensureWorkingCatalog(tx, userId)).id;
       return tx.project.create({
         data: {
           name: dto.name.trim(),
@@ -250,7 +267,10 @@ export class ProjectsService {
     const targetAccess = await this.checkProjectAccess(targetProjectId, userId);
     this.assertWritable(targetAccess, 'копировать смету в проект');
     // Источник: должен быть виден пользователю, а цены — не скрыты его ролью
-    const sourceAccess = await this.checkProjectAccess(dto.sourceProjectId, userId);
+    const sourceAccess = await this.checkProjectAccess(
+      dto.sourceProjectId,
+      userId,
+    );
     if (this.mustHidePrices(sourceAccess)) {
       throw new ForbiddenException(
         'Цены проекта-источника скрыты для вашей роли — смету скопировать нельзя',
@@ -346,7 +366,9 @@ export class ProjectsService {
       );
     }
 
-    const startDate = dto.startDate ? new Date(dto.startDate) : source.startDate;
+    const startDate = dto.startDate
+      ? new Date(dto.startDate)
+      : source.startDate;
     const endDate = dto.endDate ? new Date(dto.endDate) : source.endDate;
     if (isNaN(startDate.getTime())) {
       throw new BadRequestException('Невалидная дата начала');
@@ -434,7 +456,11 @@ export class ProjectsService {
     };
   }
 
-  async findAllByObject(objectId: number, userId: number, includeHidden = false) {
+  async findAllByObject(
+    objectId: number,
+    userId: number,
+    includeHidden = false,
+  ) {
     // ⭐ №163: участник, приглашённый в один проект, получает только его
     // (раньше checkObjectAccess требовал projectId=null и отдавал 403).
     const grants = await loadAccessGrants(this.prisma, userId);
@@ -447,7 +473,10 @@ export class ProjectsService {
     // в «Зафиксировать выход» и фильтры.
     // ⭐ №172: но из карточки бригады проекты нужны — там выбор идёт строго
     // внутри объекта бригады, поэтому фронт просит includeHidden=1.
-    if (!includeHidden && grants.some((g) => g.objectId === objectId && g.isHidden)) {
+    if (
+      !includeHidden &&
+      grants.some((g) => g.objectId === objectId && g.isHidden)
+    ) {
       return [];
     }
     const hidePrices = my.hidePrices;
@@ -468,8 +497,7 @@ export class ProjectsService {
         if (row.projectId == null) {
           objectWideUsers.add(row.userId);
         } else {
-          const set =
-            projectOnlyUsers.get(row.projectId) ?? new Set<number>();
+          const set = projectOnlyUsers.get(row.projectId) ?? new Set<number>();
           set.add(row.userId);
           projectOnlyUsers.set(row.projectId, set);
         }
@@ -499,60 +527,43 @@ export class ProjectsService {
       ? {}
       : { id: { in: allowedProjectIds } };
 
-    const projects = await this.prisma.project.findMany({
-      where: {
-        objectId,
-        ...projectFilter,
-        ...(includeHidden || hiddenIds.length === 0
-          ? {}
-          : { id: { notIn: hiddenIds } }),
-      },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        materials: {
-          select: {
-            specQuantity: true,
-            totalUsed: true,
-            totalCost: true,
-            // ? �372 (P1): ���� ������� = ������ + ���������
-            materialTotalCost: true,
+    // ⭐ №380: строки материалов больше не выгружаем — суммы считает SQL.
+    // RepeatableRead держит счётчик и суммы в одном снапшоте, иначе между
+    // двумя запросами может прилететь фиксация («позиций 12, сумма как у 13»).
+    const [projects, totalsByProject] = await this.prisma.$transaction(
+      async (tx) => {
+        const rows = await tx.project.findMany({
+          where: {
+            objectId,
+            ...projectFilter,
+            ...(includeHidden || hiddenIds.length === 0
+              ? {}
+              : { id: { notIn: hiddenIds } }),
           },
-        },
-        catalog: { select: { id: true, name: true } },
-        // ⭐ №164: справочник объекта — фолбэк, если у проекта свой не выбран
-        object: {
-          select: {
-            catalogId: true,
-            catalog: { select: { id: true, name: true } },
-          },
-        },
+          orderBy: { createdAt: 'desc' },
+          // ⭐ №380: object-справочник в списке не использовался (фронт читает
+          // effectiveCatalog*), поэтому лишний join убран вместе с materials.
+          include: { catalog: { select: { id: true, name: true } } },
+        });
+        const totals = await loadMaterialTotals(
+          tx,
+          rows.map((row) => row.id),
+        );
+        return [rows, totals] as const;
       },
-    });
+      { isolationLevel: 'RepeatableRead' },
+    );
 
     // ⭐ Честный процент: Σ Итого / Σ По спец × 100 по материалам проекта
     return projects.map((p) => {
-      // 🔒 P1-3: Decimal-поля приводим к number (иначе reduce склеивает строки)
-      const sumSpec = p.materials.reduce(
-        (a, m) => a + Number(m.specQuantity || 0),
-        0,
-      );
-      const sumUsed = p.materials.reduce(
-        (a, m) => a + Number(m.totalUsed || 0),
-        0,
-      );
-      const sumCost = p.materials.reduce(
-        (a, m) =>
-          a + Number(m.totalCost || 0) + Number(m.materialTotalCost || 0),
-        0,
-      );
-      const { materials, object, ...rest } = p;
+      // 🔒 Проект без строк остаётся в списке: groupBy его не возвращает.
+      const totals = totalsByProject.get(p.id) ?? emptyMaterialTotals();
       return {
-        ...rest,
-        materialsCount: p.materials.length,
-        progressPercent:
-          sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
+        ...p,
+        materialsCount: totals.count,
+        progressPercent: materialsProgressPercent(totals),
         // ⭐ Скрываем стоимость, если у юзера скрыты цены
-        totalCost: hidePrices ? 0 : sumCost,
+        totalCost: hidePrices ? 0 : totals.sumCost,
         // ⭐ №271: справочник проекта — собственный, без наследования объекта
         effectiveCatalogId: p.catalog?.id ?? null,
         effectiveCatalogName: p.catalog?.name ?? null,
@@ -587,23 +598,7 @@ export class ProjectsService {
     const project = await this.prisma.project.findUnique({
       where: { id },
       include: {
-        materials: {
-          select: {
-            specQuantity: true,
-            totalUsed: true,
-            totalCost: true,
-            // ? �372 (P1): ���� ������� = ������ + ���������
-            materialTotalCost: true,
-          },
-        },
         catalog: { select: { id: true, name: true } },
-        // ⭐ №164: справочник объекта — фолбэк для сметы
-        object: {
-          select: {
-            catalogId: true,
-            catalog: { select: { id: true, name: true } },
-          },
-        },
       },
     });
     if (!project) return null;
@@ -625,26 +620,14 @@ export class ProjectsService {
         })
       : null;
 
-    const sumSpec = project.materials.reduce(
-      (a, m) => a + Number(m.specQuantity || 0),
-      0,
-    );
-    const sumUsed = project.materials.reduce(
-      (a, m) => a + Number(m.totalUsed || 0),
-      0,
-    );
-    const sumCost = project.materials.reduce(
-      (a, m) => a + Number(m.totalCost || 0) + Number(m.materialTotalCost || 0),
-      0,
-    );
-    const { materials, object, ...rest } = project;
+    // ⭐ №380: суммы — одним groupBy, без выгрузки строк проекта.
+    const totals = await loadMaterialTotalsForProject(this.prisma, id);
     return {
-      ...rest,
-      materialsCount: project.materials.length,
-
-      progressPercent: sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
+      ...project,
+      materialsCount: totals.count,
+      progressPercent: materialsProgressPercent(totals),
       // ⭐ Скрываем стоимость, если у юзера скрыты цены
-      totalCost: hidePrices ? 0 : sumCost,
+      totalCost: hidePrices ? 0 : totals.sumCost,
       // ⭐ №271: справочник проекта — собственный, без наследования объекта
       effectiveCatalogId: project.catalog?.id ?? null,
       effectiveCatalogName: project.catalog?.name ?? null,
@@ -654,7 +637,9 @@ export class ProjectsService {
       canWrite: projectRole ? projectRole.canWrite : false,
       canManage: projectRole ? projectRole.canManage : false,
       hiddenForMe: !!hidden,
-      canEditCard: objectRole ? objectRole.hasObjectAccess && objectRole.canWrite : false,
+      canEditCard: objectRole
+        ? objectRole.hasObjectAccess && objectRole.canWrite
+        : false,
       canDeleteCard: objectRole ? objectRole.canManage : false,
     };
   }
@@ -675,7 +660,8 @@ export class ProjectsService {
     const my = resolveObjectRole(grants, project.objectId);
     if (!my.role) throw new NotFoundException('Объект не найден');
     if (my.revoked) throw new ForbiddenException(REVOKED_ACCESS_MESSAGE);
-    const allowed = mode === 'write' ? my.hasObjectAccess && my.canWrite : my.canManage;
+    const allowed =
+      mode === 'write' ? my.hasObjectAccess && my.canWrite : my.canManage;
     if (!allowed) {
       throw new ForbiddenException(
         mode === 'write'
@@ -694,7 +680,9 @@ export class ProjectsService {
     let nextCatalogId: number | undefined;
     if (dto.catalogId !== undefined) {
       if (dto.catalogId === null) {
-        nextCatalogId = userId ? (await ensureWorkingCatalog(this.prisma, userId)).id : undefined;
+        nextCatalogId = userId
+          ? (await ensureWorkingCatalog(this.prisma, userId)).id
+          : undefined;
       } else {
         const resolved = await this.resolveCatalogId(dto.catalogId, userId);
         const access = userId

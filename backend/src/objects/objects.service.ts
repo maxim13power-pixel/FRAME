@@ -16,6 +16,12 @@ import {
   REVOKED_ACCESS_MESSAGE,
   resolveObjectRole,
 } from '../auth/access-scope'; // ⭐ №163, №193
+import {
+  emptyMaterialTotals,
+  loadMaterialTotals,
+  materialsProgressPercent,
+  type MaterialTotals,
+} from '../materials/material-totals'; // ⭐ №380: итоги сметы в SQL
 
 @Injectable()
 export class ObjectsService {
@@ -54,7 +60,9 @@ export class ObjectsService {
   }) {
     const seesPrices = !my.hidePrices && my.role !== AccessRole.VIEWER;
     if (!my.canManage && !seesPrices) {
-      throw new ForbiddenException('У вас скрыты цены — менять справочник цен объекта нельзя');
+      throw new ForbiddenException(
+        'У вас скрыты цены — менять справочник цен объекта нельзя',
+      );
     }
   }
 
@@ -68,7 +76,9 @@ export class ObjectsService {
           { ownerId: null },
           { ownerId: userId },
           { objects: { some: { accesses: { some: { userId } } } } },
-          { projects: { some: { object: { accesses: { some: { userId } } } } } },
+          {
+            projects: { some: { object: { accesses: { some: { userId } } } } },
+          },
         ],
       },
       select: { id: true },
@@ -143,32 +153,46 @@ export class ObjectsService {
     });
     const hiddenProjectIds = hiddenRows.map((r) => r.projectId);
 
-    const objects = await this.prisma.object.findMany({
-      where: accessibleObjectWhere(scope, { includeArchived: true }),
-      orderBy: { createdAt: 'desc' },
-      include: {
-        // ⭐ №164: справочник цен объекта (наследуют проекты)
-        catalog: { select: { id: true, name: true } },
-        projects: {
-          where: {
-            ...accessibleProjectWhere(scope, { includeArchived: true }),
-            ...(hiddenProjectIds.length
-              ? { id: { notIn: hiddenProjectIds } }
-              : {}),
-          },
-          include: {
-            materials: {
-              select: {
-                specQuantity: true,
-                totalUsed: true,
-                totalCost: true,
-                materialTotalCost: true,
-              },
+    // ⭐ №380: материалы не выгружаем. Отдельным запросом берём только id
+    // доступных проектов (для projectsCount), итоги — одним groupBy.
+    const [objects, projectRows, totalsByProject] =
+      await this.prisma.$transaction(
+        async (tx) => {
+          const objectRows = await tx.object.findMany({
+            where: accessibleObjectWhere(scope, { includeArchived: true }),
+            orderBy: { createdAt: 'desc' },
+            include: {
+              // ⭐ №164: справочник цен объекта (наследуют проекты)
+              catalog: { select: { id: true, name: true } },
             },
-          },
+          });
+          const projects = objectRows.length
+            ? await tx.project.findMany({
+                where: {
+                  objectId: { in: objectRows.map((o) => o.id) },
+                  ...accessibleProjectWhere(scope, { includeArchived: true }),
+                  ...(hiddenProjectIds.length
+                    ? { id: { notIn: hiddenProjectIds } }
+                    : {}),
+                },
+                select: { id: true, objectId: true },
+              })
+            : [];
+          const totals = await loadMaterialTotals(
+            tx,
+            projects.map((p) => p.id),
+          );
+          return [objectRows, projects, totals] as const;
         },
-      },
-    });
+        { isolationLevel: 'RepeatableRead' },
+      );
+
+    const projectIdsByObject = new Map<number, number[]>();
+    for (const row of projectRows) {
+      const list = projectIdsByObject.get(row.objectId) ?? [];
+      list.push(row.id);
+      projectIdsByObject.set(row.objectId, list);
+    }
 
     // ⭐ №207: счётчик участников для кнопки «Участники» — считаем одним запросом
     // и только для объектов, где пользователь реально управляет командой.
@@ -190,26 +214,25 @@ export class ObjectsService {
 
     // Честный % из материалов доступных проектов
     return objects.map((o) => {
-      let sumSpec = 0;
-      let sumUsed = 0;
-      let sumCost = 0;
-      o.projects.forEach((p) =>
-        p.materials.forEach((m) => {
-          // 🔒 P1-3: поля Decimal — приводим к number, иначе += склеивает строки
-          sumSpec += Number(m.specQuantity || 0);
-          sumUsed += Number(m.totalUsed || 0);
-          sumCost += Number(m.totalCost || 0) + Number(m.materialTotalCost || 0);
-        }),
-      );
-      const { projects, ...rest } = o;
+      // ⭐ №380: итоги — из одного groupBy, без строк материалов в памяти
+      const totals = (
+        projectIdsByObject.get(o.id) ?? []
+      ).reduce<MaterialTotals>((acc, projectId) => {
+        const projectTotals =
+          totalsByProject.get(projectId) ?? emptyMaterialTotals();
+        acc.count += projectTotals.count;
+        acc.sumSpec += projectTotals.sumSpec;
+        acc.sumUsed += projectTotals.sumUsed;
+        acc.sumCost += projectTotals.sumCost;
+        return acc;
+      }, emptyMaterialTotals());
       const my = resolveObjectRole(grants, o.id);
       return {
-        ...rest,
-        projectsCount: projects.length, // ⭐ №163: проектов, доступных юзеру
-        progressPercent:
-          sumSpec > 0 ? Math.round((sumUsed / sumSpec) * 100) : 0,
+        ...o,
+        projectsCount: (projectIdsByObject.get(o.id) ?? []).length, // ⭐ №163
+        progressPercent: materialsProgressPercent(totals),
         // ⭐ Деньги прячем, объёмы/прогресс оставляем
-        totalCost: my.hidePrices ? 0 : sumCost,
+        totalCost: my.hidePrices ? 0 : totals.sumCost,
         // ⭐ Роль и флаги юзера на объекте — фронту для UI-правил
         role: my.role ?? undefined,
         hidePrices: my.hidePrices,
@@ -296,9 +319,7 @@ export class ObjectsService {
       canManage: my.canManage,
       // ⭐ №207: право создавать проекты (для кнопки «Добавить проект» / заявки)
       canCreateProjects: my.canCreateProjects,
-      participantsCount: my.canManage
-        ? await this.countParticipants(id)
-        : null,
+      participantsCount: my.canManage ? await this.countParticipants(id) : null,
     };
   }
 
@@ -318,7 +339,9 @@ export class ObjectsService {
     // ⭐ №219: пустое/битое тело раньше давало 500 (Invalid Date → Prisma) — теперь 400
     const parsed = newEndDate ? new Date(newEndDate) : new Date(Number.NaN);
     if (!newEndDate || Number.isNaN(parsed.getTime())) {
-      throw new BadRequestException('Дата окончания: ожидается строка вида ГГГГ-ММ-ДД');
+      throw new BadRequestException(
+        'Дата окончания: ожидается строка вида ГГГГ-ММ-ДД',
+      );
     }
     return this.prisma.object.update({
       where: { id },

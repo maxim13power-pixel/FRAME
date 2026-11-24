@@ -3,6 +3,10 @@
 import { ObjectsService } from './objects.service';
 import { CreateObjectDto } from './dto/create-object.dto';
 
+/** Первый аргумент вызова мока — без `any`-цепочек (eslint no-unsafe-*). */
+const firstArg = <T>(mock: { mock: { calls: unknown[][] } }): T =>
+  mock.mock.calls[0][0] as T;
+
 describe('ObjectsService — создание объекта (№181)', () => {
   const prisma = { object: { create: jest.fn() } };
   let service: ObjectsService;
@@ -40,29 +44,29 @@ describe('ObjectsService — создание объекта (№181)', () => {
   });
 });
 
-
 describe('ObjectsService — управление объектом (№220)', () => {
   const objectUpdate = jest.fn();
   const priceCatalog = { findFirst: jest.fn() };
 
-  const build = (role: 'FOREMAN' | 'CUSTOMER' | 'VIEWER', hidePrices = false) => {
+  const build = (
+    role: 'FOREMAN' | 'CUSTOMER' | 'VIEWER',
+    hidePrices = false,
+  ) => {
     const prisma = {
       object: { update: objectUpdate },
       objectAccess: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            {
-              id: 1,
-              objectId: 1,
-              projectId: null,
-              role,
-              hidePrices,
-              canCreateProjects: false,
-              isHidden: false,
-              revokedAt: null,
-            },
-          ]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 1,
+            objectId: 1,
+            projectId: null,
+            role,
+            hidePrices,
+            canCreateProjects: false,
+            isHidden: false,
+            revokedAt: null,
+          },
+        ]),
       },
       priceCatalog,
     };
@@ -94,7 +98,9 @@ describe('ObjectsService — управление объектом (№220)', ()
   it('прораб со скрытыми ценами НЕ может сменить справочник', async () => {
     const { service } = build('FOREMAN', true);
 
-    await expect(service.update(1, { catalogId: 18 }, 7)).rejects.toThrow(/скрыты цены/);
+    await expect(service.update(1, { catalogId: 18 }, 7)).rejects.toThrow(
+      /скрыты цены/,
+    );
     expect(objectUpdate).not.toHaveBeenCalled();
   });
 
@@ -117,7 +123,88 @@ describe('ObjectsService — управление объектом (№220)', ()
     const { service } = build('CUSTOMER');
 
     await expect(service.updateEndDate(1, '', 7)).rejects.toThrow(/ГГГГ-ММ-ДД/);
-    await expect(service.updateEndDate(1, 'не-дата', 7)).rejects.toThrow(/ГГГГ-ММ-ДД/);
+    await expect(service.updateEndDate(1, 'не-дата', 7)).rejects.toThrow(
+      /ГГГГ-ММ-ДД/,
+    );
     expect(objectUpdate).not.toHaveBeenCalled();
+  });
+});
+
+// ⭐ №380: итоги объекта — одним groupBy по доступным проектам
+describe('ObjectsService — итоги сметы в SQL (№380)', () => {
+  const prisma = {
+    $transaction: jest.fn(),
+    object: { findMany: jest.fn() },
+    project: { findMany: jest.fn() },
+    material: { groupBy: jest.fn() },
+    objectAccess: { findMany: jest.fn() },
+    projectHidden: { findMany: jest.fn() },
+  };
+  let service: ObjectsService;
+
+  const grant = (over: Record<string, unknown> = {}) => ({
+    id: 1,
+    objectId: 1,
+    projectId: null,
+    role: 'FOREMAN',
+    hidePrices: false,
+    isManager: false,
+    isHidden: false,
+    canCreateProjects: false,
+    revokedAt: null,
+    ...over,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => unknown)(prisma)
+        : Promise.all(arg as Promise<unknown>[]),
+    );
+    prisma.projectHidden.findMany.mockResolvedValue([]);
+    prisma.objectAccess.findMany.mockResolvedValue([grant()]);
+    prisma.object.findMany.mockResolvedValue([
+      { id: 1, name: 'Объект', catalog: null },
+    ]);
+    prisma.project.findMany.mockResolvedValue([
+      { id: 10, objectId: 1 },
+      { id: 11, objectId: 1 },
+    ]);
+    prisma.material.groupBy.mockResolvedValue([
+      {
+        projectId: 10,
+        _count: { _all: 2 },
+        _sum: {
+          specQuantity: '10',
+          totalUsed: '5',
+          totalCost: '100',
+          materialTotalCost: '100',
+        },
+      },
+    ]);
+    service = new ObjectsService(prisma as never);
+  });
+
+  it('счётчик проектов и суммы: проекты без строк не теряются', async () => {
+    const rows = await service.findAll(7);
+
+    expect(rows[0].projectsCount).toBe(2);
+    expect(rows[0].progressPercent).toBe(50); // 5 из 10
+    expect(rows[0].totalCost).toBe(200); // работы 100 + материалы 100
+
+    const args = firstArg<{ include: Record<string, unknown> }>(
+      prisma.object.findMany,
+    );
+    expect(args.include.projects).toBeUndefined();
+  });
+
+  it('скрытые цены: totalCost = 0, прогресс остаётся', async () => {
+    prisma.objectAccess.findMany.mockResolvedValue([grant({ role: 'VIEWER' })]);
+
+    const rows = await service.findAll(7);
+
+    expect(rows[0].totalCost).toBe(0);
+    expect(rows[0].progressPercent).toBe(50);
   });
 });

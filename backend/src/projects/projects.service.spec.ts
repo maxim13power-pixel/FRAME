@@ -3,6 +3,10 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 
+/** Первый аргумент вызова мока — без `any`-цепочек (eslint no-unsafe-*). */
+const firstArg = <T>(mock: { mock: { calls: unknown[][] } }): T =>
+  mock.mock.calls[0][0] as T;
+
 const grant = (over: Record<string, unknown> = {}) => ({
   objectId: 15,
   projectId: null as number | null,
@@ -64,7 +68,9 @@ describe('ProjectsService — карточка проекта (№204, A#10)', (
     prisma.objectAccess.findMany.mockResolvedValue([grant()]);
     jest.spyOn(service, 'findOne').mockResolvedValue({ id: 29 } as never);
 
-    await expect(service.update(29, { name: 'Новое имя' }, 7)).resolves.toBeTruthy();
+    await expect(
+      service.update(29, { name: 'Новое имя' }, 7),
+    ).resolves.toBeTruthy();
     expect(prisma.project.update).toHaveBeenCalled();
   });
 
@@ -76,7 +82,9 @@ describe('ProjectsService — карточка проекта (№204, A#10)', (
   });
 
   it('администратор объекта удаляет пустой проект', async () => {
-    prisma.objectAccess.findMany.mockResolvedValue([grant({ role: 'CUSTOMER' })]);
+    prisma.objectAccess.findMany.mockResolvedValue([
+      grant({ role: 'CUSTOMER' }),
+    ]);
 
     await expect(service.remove(29, 7)).resolves.toBeTruthy();
     expect(prisma.project.delete).toHaveBeenCalled();
@@ -98,7 +106,9 @@ describe('ProjectsService — смета из другого проекта (№
     jest.clearAllMocks();
     // цель (29) и источник (12) лежат в объекте 15
     prisma.project.findUnique.mockResolvedValue({ objectId: 15 });
-    prisma.objectAccess.findMany.mockResolvedValue([grant({ role: 'CUSTOMER' })]);
+    prisma.objectAccess.findMany.mockResolvedValue([
+      grant({ role: 'CUSTOMER' }),
+    ]);
     prisma.material.count.mockResolvedValue(0);
     prisma.material.createMany.mockResolvedValue({ count: 1 });
     service = new ProjectsService(prisma as never, audit as never);
@@ -148,7 +158,11 @@ describe('ProjectsService — смета из другого проекта (№
       },
     ]);
 
-    await service.copyEstimate(29, { sourceProjectId: 12, zeroQuantities: true }, 7);
+    await service.copyEstimate(
+      29,
+      { sourceProjectId: 12, zeroQuantities: true },
+      7,
+    );
 
     const data = prisma.material.createMany.mock.calls[0][0].data[0];
     expect(data.specQuantity).toBe(0);
@@ -200,15 +214,39 @@ describe('ProjectsService — смета из другого проекта (№
       grant({ objectId: 16, projectId: null, isHidden: true }),
     ]);
     prisma.project.findMany.mockResolvedValue([
-      { id: 29, name: 'Смета A', objectId: 15, object: { name: 'Объект' }, _count: { materials: 4 } },
-      { id: 30, name: 'Пустой', objectId: 15, object: { name: 'Объект' }, _count: { materials: 0 } },
-      { id: 31, name: 'Из архива', objectId: 16, object: { name: 'Архив' }, _count: { materials: 2 } },
+      {
+        id: 29,
+        name: 'Смета A',
+        objectId: 15,
+        object: { name: 'Объект' },
+        _count: { materials: 4 },
+      },
+      {
+        id: 30,
+        name: 'Пустой',
+        objectId: 15,
+        object: { name: 'Объект' },
+        _count: { materials: 0 },
+      },
+      {
+        id: 31,
+        name: 'Из архива',
+        objectId: 16,
+        object: { name: 'Архив' },
+        _count: { materials: 2 },
+      },
     ]);
 
     const rows = await service.listAvailableForCopy(7);
 
     expect(rows).toEqual([
-      { id: 29, name: 'Смета A', objectId: 15, objectName: 'Объект', materialsCount: 4 },
+      {
+        id: 29,
+        name: 'Смета A',
+        objectId: 15,
+        objectName: 'Объект',
+        materialsCount: 4,
+      },
     ]);
   });
 });
@@ -266,17 +304,26 @@ describe('ProjectsService — копия проекта (№307)', () => {
     prisma.objectAccess.findMany.mockResolvedValue([
       grant({ projectId: 29, role: 'CUSTOMER' }),
     ]);
-    prisma.objectAccess.findFirst.mockResolvedValue(grant({ role: 'CUSTOMER' }));
+    prisma.objectAccess.findFirst.mockResolvedValue(
+      grant({ role: 'CUSTOMER' }),
+    );
     // Транзакция просто прогоняет колбэк на тех же моках
-    prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
-      fn({ project: prisma.project, material: prisma.material }),
+    prisma.$transaction.mockImplementation(
+      async (fn: (tx: unknown) => unknown) =>
+        fn({ project: prisma.project, material: prisma.material }),
     );
     service = new ProjectsService(prisma as never, audit as never);
-    jest.spyOn(service, 'findOne').mockResolvedValue({ id: 99, name: 'Копия' } as never);
+    jest
+      .spyOn(service, 'findOne')
+      .mockResolvedValue({ id: 99, name: 'Копия' } as never);
   });
 
   it('без copyFacts копия «чистая»: план и цены есть, факт и прогресс = 0', async () => {
-    const result = await service.copyProject(29, { name: 'Смета A (копия)' }, 7);
+    const result = await service.copyProject(
+      29,
+      { name: 'Смета A (копия)' },
+      7,
+    );
 
     const rows = prisma.material.createMany.mock.calls[0][0].data;
     expect(rows).toHaveLength(1);
@@ -365,16 +412,23 @@ describe('ProjectsService — копия проекта (№307)', () => {
 
   it('дата окончания раньше начала ⇒ BadRequest', async () => {
     await expect(
-      service.copyProject(29, { startDate: '2026-12-10', endDate: '2026-12-01' }, 7),
+      service.copyProject(
+        29,
+        { startDate: '2026-12-10', endDate: '2026-12-01' },
+        7,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 // ⭐ №306: счётчик у кнопки «Участники проекта · N»
 describe('ProjectsService — счётчик команды проекта (№306)', () => {
+  // ⭐ №380: список читает данные в транзакции, итоги считает groupBy
   const prisma = {
+    $transaction: jest.fn(),
     project: { findMany: jest.fn(), findUnique: jest.fn() },
     projectHidden: { findMany: jest.fn() },
     objectAccess: { findMany: jest.fn() },
+    material: { groupBy: jest.fn() },
   };
   const audit = { log: jest.fn() };
   let service: ProjectsService;
@@ -390,8 +444,14 @@ describe('ProjectsService — счётчик команды проекта (№3
 
   beforeEach(() => {
     jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => unknown)(prisma)
+        : Promise.all(arg as Promise<unknown>[]),
+    );
     prisma.projectHidden.findMany.mockResolvedValue([]);
     prisma.project.findMany.mockResolvedValue([project(29), project(30)]);
+    prisma.material.groupBy.mockResolvedValue([]);
     service = new ProjectsService(prisma as never, audit as never);
   });
 
@@ -422,3 +482,102 @@ describe('ProjectsService — счётчик команды проекта (№3
   });
 });
 
+// ⭐ №380: итоги сметы считает SQL (groupBy), строки материалов не выгружаются
+describe('ProjectsService — итоги сметы в SQL (№380)', () => {
+  const prisma = {
+    $transaction: jest.fn(),
+    project: { findMany: jest.fn(), findUnique: jest.fn() },
+    projectHidden: { findMany: jest.fn() },
+    objectAccess: { findMany: jest.fn() },
+    material: { groupBy: jest.fn() },
+  };
+  const audit = { log: jest.fn() };
+  let service: ProjectsService;
+
+  const project = (id: number) => ({
+    id,
+    name: `Проект ${id}`,
+    objectId: 15,
+    catalog: null,
+  });
+
+  // Decimal с бэкенда приходит объектом/строкой — хелпер обязан дать number
+  const totalsRow = (projectId: number) => ({
+    projectId,
+    _count: { _all: 2 },
+    _sum: {
+      specQuantity: '10.000',
+      totalUsed: '4.000',
+      totalCost: '100.00',
+      materialTotalCost: '200.00',
+    },
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => unknown)(prisma)
+        : Promise.all(arg as Promise<unknown>[]),
+    );
+    prisma.projectHidden.findMany.mockResolvedValue([]);
+    prisma.project.findMany.mockResolvedValue([project(29), project(30)]);
+    prisma.material.groupBy.mockResolvedValue([totalsRow(29)]);
+    prisma.objectAccess.findMany.mockResolvedValue([
+      grant({ role: 'CUSTOMER' }),
+    ]);
+    prisma.project.findUnique.mockResolvedValue(project(29));
+    service = new ProjectsService(prisma as never, audit as never);
+  });
+
+  it('суммы берутся из groupBy, строки материалов не запрашиваются', async () => {
+    const rows = await service.findAllByObject(15, 1);
+
+    const list = rows.find((p) => p.id === 29);
+    expect(list?.materialsCount).toBe(2);
+    expect(list?.progressPercent).toBe(40); // 4 из 10
+    expect(list?.totalCost).toBe(300); // работы 100 + материалы 200
+
+    const args = firstArg<{ include: Record<string, unknown> }>(
+      prisma.project.findMany,
+    );
+    expect(args.include.materials).toBeUndefined();
+
+    const groupArgs = firstArg<{ where: { projectId: { in: number[] } } }>(
+      prisma.material.groupBy,
+    );
+    expect(groupArgs.where.projectId.in).toEqual([29, 30]);
+  });
+
+  it('проект без строк остаётся в списке с нулями', async () => {
+    const rows = await service.findAllByObject(15, 1);
+
+    const empty = rows.find((p) => p.id === 30);
+    expect(empty?.materialsCount).toBe(0);
+    expect(empty?.progressPercent).toBe(0);
+    expect(empty?.totalCost).toBe(0);
+  });
+
+  it('скрытые цены: totalCost = 0, а прогресс остаётся', async () => {
+    prisma.objectAccess.findMany.mockResolvedValue([grant({ role: 'VIEWER' })]);
+
+    const rows = await service.findAllByObject(15, 1);
+
+    const list = rows.find((p) => p.id === 29);
+    expect(list?.totalCost).toBe(0);
+    expect(list?.progressPercent).toBe(40);
+  });
+
+  it('карточка проекта тоже считает итоги groupBy', async () => {
+    const card = await service.findOne(29);
+
+    expect(card?.materialsCount).toBe(2);
+    expect(card?.totalCost).toBe(300);
+    expect(card?.progressPercent).toBe(40);
+
+    const args = firstArg<{ include: Record<string, unknown> }>(
+      prisma.project.findUnique,
+    );
+    expect(args.include.materials).toBeUndefined();
+  });
+});

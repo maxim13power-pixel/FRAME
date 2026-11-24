@@ -17,9 +17,12 @@ process.env.DATABASE_URL = env
 
 const { PrismaClient } = require('@prisma/client');
 const ExcelJS = require('exceljs');
+const pdfParse = require('pdf-parse'); // ⭐ №381: проверяем текст PDF, а не только статус
 const prisma = new PrismaClient();
 
-const BASE = process.env.API_BASE || 'http://localhost:3000';
+// ⭐ №380: 127.0.0.1, а не localhost — на Windows localhost резолвится в ::1,
+// а Nest слушает IPv4 → ECONNRESET ещё до первого запроса.
+const BASE = process.env.API_BASE || 'http://127.0.0.1:3000';
 const stamp = Date.now();
 
 const results = [];
@@ -186,6 +189,54 @@ async function main() {
   expectStatus(projectsRes, 200, 'проекты объекта');
   const [project1, project2] = projectsRes.data;
   expect(!!project1 && !!project2, 'нужно минимум 2 проекта для проверок');
+  // ⭐ №380: итоги сметы считает SQL (groupBy) — проверяем контракт ответа
+  await check('список проектов: итоги числами, без строк материалов', async () => {
+    const res = await api(`/projects/object/${object.id}`, {}, admin.token);
+    expectStatus(res, 200, 'проекты объекта');
+    const rows = res.data;
+    expect(rows.length > 0, 'в списке нет проектов');
+    for (const p of rows) {
+      expect(
+        p.materials === undefined,
+        `№380: в ответе остались строки материалов (проект ${p.id})`,
+      );
+      expect(
+        typeof p.materialsCount === 'number',
+        `materialsCount не число (проект ${p.id})`,
+      );
+      expect(
+        typeof p.totalCost === 'number',
+        `totalCost не число (проект ${p.id})`,
+      );
+      expect(
+        typeof p.progressPercent === 'number',
+        `progressPercent не число (проект ${p.id})`,
+      );
+    }
+  });
+
+  await check('список и карточка проекта дают одинаковые итоги', async () => {
+    const list = (await api(`/projects/object/${object.id}`, {}, admin.token))
+      .data;
+    for (const row of list.slice(0, 3)) {
+      const card = await api(`/projects/${row.id}`, {}, admin.token);
+      expectStatus(card, 200, `карточка проекта ${row.id}`);
+      expect(
+        card.data.materialsCount === row.materialsCount,
+        `materialsCount расходится: список ${row.materialsCount}, карточка ${card.data.materialsCount}`,
+      );
+      expect(
+        Math.abs(card.data.totalCost - row.totalCost) < 0.01,
+        `totalCost расходится: список ${row.totalCost}, карточка ${card.data.totalCost}`,
+      );
+      expect(
+        card.data.progressPercent === row.progressPercent,
+        `progressPercent расходится: список ${row.progressPercent}, карточка ${card.data.progressPercent}`,
+      );
+    }
+  });
+
+
 
   const createLink = async (body) => {
     const res = await api(`/objects/${object.id}/invite-link`, { method: 'POST', body }, admin.token);
@@ -1429,34 +1480,39 @@ async function main() {
   });
 
 
-  // -- 14. ������� ��� ������� ���������� --------------------
-  console.log('\n14. ������� ��� �������');
+  // -- 14. Экспорт под скрытыми ценами ----------------------------
+  console.log('\n14. Экспорт под скрытыми ценами');
 
-  await check('����� � XLSX/PDF �� �������� ��� ��� �������� FOREMAN', async () => {
+  await check('отчёт в XLSX/PDF не содержит цен под скрытым FOREMAN', async () => {
     const report = await api(
       '/reports',
       {
         method: 'POST',
-        body: { projectId: project1.id, objectId: object.id, type: 'estimate', title: `������� ${stamp}` },
+        body: {
+          projectId: project1.id,
+          objectId: object.id,
+          type: 'estimate',
+          title: `Отчёт ${stamp}`,
+        },
       },
       admin.token,
     );
-    expectStatus(report, [200, 201], '�������� ������');
+    expectStatus(report, [200, 201], 'создание отчёта');
     const item = await api(
       `/reports/${report.data.id}/items`,
       {
         method: 'POST',
-        body: { name: `������� ${stamp}`, unit: '��', quantity: 2, price: 12345 },
+        body: { name: `Позиция ${stamp}`, unit: 'шт', quantity: 2, price: 12345 },
       },
       admin.token,
     );
-    expectStatus(item, [200, 201], '������� ������');
+    expectStatus(item, [200, 201], 'добавление позиции');
 
     const xlsx = await fetch(
       `${BASE}/reports/${report.data.id}/export/xlsx`,
       { headers: { Authorization: `Bearer ${pricesWorker.token}` } },
     );
-    expect(xlsx.status === 200, `XLSX: ������ ${xlsx.status}`);
+    expect(xlsx.status === 200, `XLSX: статус ${xlsx.status}`);
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(Buffer.from(await xlsx.arrayBuffer()));
     const values = [];
@@ -1469,18 +1525,30 @@ async function main() {
     });
     expect(
       !values.some((v) => v.includes('12345')),
-      '� XLSX �������� ��������� �������� ���� 12345',
+      'в XLSX остались скрытые цены 12345',
     );
 
     const pdf = await fetch(
       `${BASE}/reports/${report.data.id}/export/pdf`,
       { headers: { Authorization: `Bearer ${pricesWorker.token}` } },
     );
-    expect(pdf.status === 200, `PDF: ������ ${pdf.status}`);
+    expect(pdf.status === 200, `PDF: статус ${pdf.status}`);
     expect(
       (pdf.headers.get('content-type') ?? '').includes('application/pdf'),
-      'PDF: �������� content-type',
+      'PDF: неверный content-type',
     );
+
+    // ⭐ №381: проверяем не только статус, но и содержимое PDF
+    const body = Buffer.from(await pdf.arrayBuffer());
+    expect(body.length > 1024, `PDF: слишком маленький файл ${body.length} Б`);
+    expect(
+      body.subarray(0, 5).toString() === '%PDF-',
+      'PDF: файл не начинается с %PDF-',
+    );
+    const text = (await pdfParse(body)).text;
+    expect(text.includes('Итого'), 'PDF: нет строки «Итого»');
+    expect(text.includes(String(stamp)), 'PDF: нет названия отчёта/позиции');
+    expect(!text.includes('12345'), 'PDF: остались скрытые цены 12345');
   });
 
   await check('фиксации проекта отдаются одним запросом и маскируются', async () => {
