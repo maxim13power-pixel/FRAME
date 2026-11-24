@@ -709,3 +709,96 @@ describe('MaterialsService — массовые операции над стро
   });
 });
 
+
+// ⭐ №390: скрытые цены — это запрет на ДЕНЬГИ, а не на работу.
+// Строки и фиксации разрешены роли FOREMAN; задавать цену — нельзя.
+describe('MaterialsService — скрытые цены: писать можно, цену задавать нельзя (№390)', () => {
+  const grant = (over: Record<string, unknown> = {}) => ({
+    id: 1,
+    objectId: 15,
+    projectId: 29,
+    role: 'FOREMAN',
+    hidePrices: true,
+    isManager: false,
+    isHidden: false,
+    revokedAt: null,
+    ...over,
+  });
+  const prisma = {
+    objectAccess: { findMany: jest.fn() },
+    project: { findUnique: jest.fn() },
+    $transaction: jest.fn(),
+    material: { create: jest.fn() },
+  };
+  const audit = { log: jest.fn() };
+  let service: MaterialsService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.objectAccess.findMany.mockResolvedValue([grant()]);
+    prisma.project.findUnique.mockResolvedValue({ objectId: 15 });
+    prisma.$transaction.mockImplementation(async (cb: unknown) =>
+      (cb as (tx: unknown) => unknown)(prisma),
+    );
+    prisma.material.create.mockResolvedValue({
+      id: 501,
+      name: 'Бетон',
+      unitPrice: 500,
+      materialUnitPrice: 0,
+      totalCost: 0,
+      materialTotalCost: 0,
+      priceItem: null,
+      materialItem: null,
+    });
+    service = new MaterialsService(prisma as never, audit as never);
+  });
+
+  it('скрытый прораб не может задать цену строки ⇒ Forbidden, строка не создаётся', async () => {
+    await expect(
+      service.create(
+        {
+          projectId: 29,
+          name: 'Бетон',
+          unit: 'PIECE',
+          specQuantity: 1,
+          workPrice: 500,
+        } as never,
+        7,
+      ),
+    ).rejects.toThrow(ForbiddenException);
+
+    expect(prisma.material.create).not.toHaveBeenCalled();
+  });
+
+  it('скрытый прораб создаёт строку без цены: цена 0, ответ без денег', async () => {
+    const created = (await service.create(
+      {
+        projectId: 29,
+        name: 'Бетон',
+        unit: 'PIECE',
+        specQuantity: 2,
+      } as never,
+      7,
+    )) as unknown as { unitPrice: number; materialUnitPrice: number };
+
+    const args = callArg<{
+      data: { unitPrice: number; materialUnitPrice: number };
+    }>(prisma.material.create);
+    expect(args.data.unitPrice).toBe(0);
+    expect(args.data.materialUnitPrice).toBe(0);
+    expect(created.unitPrice).toBe(0);
+    expect(created.materialUnitPrice).toBe(0);
+  });
+
+  it('VIEWER по-прежнему не создаёт строки ⇒ Forbidden', async () => {
+    prisma.objectAccess.findMany.mockResolvedValue([grant({ role: 'VIEWER' })]);
+
+    await expect(
+      service.create(
+        { projectId: 29, name: 'Бетон', unit: 'PIECE', specQuantity: 1 } as never,
+        7,
+      ),
+    ).rejects.toThrow(ForbiddenException);
+  });
+});
+

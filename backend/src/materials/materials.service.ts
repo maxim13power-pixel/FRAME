@@ -224,6 +224,17 @@ export class MaterialsService {
     if (access.role === 'VIEWER') {
       throw new ForbiddenException('Наблюдатель не может создавать материалы');
     }
+    // ⭐ №390: скрытые цены — это запрет на ДЕНЬГИ, а не на работу.
+    // Создавать строки и фиксировать объёмы можно; задавать цену — нельзя
+    // (иначе скрытый прораб мог бы «назначить» цену в обход офиса).
+    if (
+      this.mustHidePrices(access) &&
+      (dto.workPrice !== undefined || dto.materialPrice !== undefined)
+    ) {
+      throw new ForbiddenException(
+        'Вам скрыты цены — задать цену строки нельзя. Выберите расценку справочника или создайте строку без цены.',
+      );
+    }
     const unit = (dto.unit ?? 'PIECE') as Unit;
 
     // Проверяем выбранные расценки до транзакции: доступ + вид (работа/материал).

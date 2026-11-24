@@ -788,6 +788,65 @@ async function main() {
     expectStatus(res, 403, 'история для скрытого');
   });
 
+  // ⭐ №390: скрытые цены запрещают ДЕНЬГИ, а не работу.
+  await check('скрытый прораб добавляет без цены и фиксирует, но цену задать не может', async () => {
+    const link = await createLink({ role: 'FOREMAN', hidePrices: true });
+    expectStatus(await accept(link.token, pricesWorker), [200, 201], 'скрытый прораб');
+
+    const withPrice = await api(
+      '/materials',
+      {
+        method: 'POST',
+        body: {
+          projectId: project1.id,
+          name: `Цена скрыта ${stamp}`,
+          unit: 'PIECE',
+          specQuantity: 1,
+          workPrice: 500,
+        },
+      },
+      pricesWorker.token,
+    );
+    expectStatus(withPrice, 403, 'задать цену скрытому прорабу');
+
+    const plain = await api(
+      '/materials',
+      {
+        method: 'POST',
+        body: {
+          projectId: project1.id,
+          name: `Без цены ${stamp}`,
+          unit: 'PIECE',
+          specQuantity: 1,
+        },
+      },
+      pricesWorker.token,
+    );
+    expectStatus(plain, [200, 201], 'строка без цены');
+    expect(
+      plain.data.unitPrice === 0 && plain.data.materialUnitPrice === 0,
+      `скрытому вернули цены: ${plain.data.unitPrice}/${plain.data.materialUnitPrice}`,
+    );
+
+    const fix = await api(
+      `/materials/${plain.data.id}/fix`,
+      { method: 'POST', body: { amount: 1 } },
+      pricesWorker.token,
+    );
+    expectStatus(fix, [200, 201], 'фиксация скрытым прорабом');
+    expect(
+      !('unitPrice' in fix.data) || fix.data.unitPrice === 0,
+      'в ответе фиксации утекли цены',
+    );
+
+    expectStatus(
+      await api(`/materials/${plain.data.id}`, { method: 'DELETE' }, pricesWorker.token),
+      200,
+      'уборка тестовой строки',
+    );
+  });
+
+
   // ── 8. Бригады: выработка и права на деньги ───────────────
   console.log('\n8. Бригады');
 

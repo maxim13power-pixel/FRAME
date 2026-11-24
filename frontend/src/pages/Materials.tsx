@@ -653,6 +653,10 @@ const [matCategoryChoice, setMatCategoryChoice] = useState<number | ''>('');
 const [matCatalogCategories, setMatCatalogCategories] = useState<PriceCategoryData[]>([]);
 // ⭐ Определяем нужно ли скрывать цены (VIEWER или hidePrices=true)
 const hidePrices = currentObject?.hidePrices === true || currentObject?.role === 'VIEWER';
+const canWriteMaterials = currentProject?.canWrite === true;
+// ⭐ №390: право ПИСАТЬ — от роли, а не от видимости цен. Раньше кнопки скрывались
+// вместе с ценами, и скрытый прораб не мог ни добавить строку, ни зафиксировать объём,
+// хотя сервер это разрешает. Деньги при этом остаются скрытыми везде.
   // №159: смета работает в справочнике проекта — поиск и новые расценки идут в него.
   // ⭐ №164: действующий справочник = свой проекта → справочник объекта → нет.
   // Если справочник не выбран — поиск по всем доступным (прежнее поведение).
@@ -1295,6 +1299,21 @@ setPriceLoading(false);
     }
     const specQty = parseFloat(newSpecQuantity) || 0;
     try {
+      // ⭐ №390: скрытые цены — создаём строку без цен (их заполнит офис).
+      // Цен не спрашиваем, поэтому и «нулевое» подтверждение не нужно.
+      if (hidePrices) {
+        const created = await createMaterial({
+          name: newName,
+          article: newArticle || undefined,
+          unit: newUnit,
+          specQuantity: specQty,
+          note: newNote || undefined,
+          projectId: parseInt(projectId),
+        });
+        setMaterials(prev => [created, ...prev]);
+        handleCloseAddModal();
+        return;
+      }
       // ⭐ №271: одна форма — выбрал из справочника или ввёл цену руками.
       // Новая цена автоматически становится расценкой справочника проекта.
       let priceItemId: number | undefined = selectedPriceItem?.id;
@@ -2613,7 +2632,7 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
     {exporting ? <CircularProgress size={16} /> : <FileDownloadIcon fontSize="small" />}
   </Button>
 )}
-{!isMobile && !hidePrices && (
+{!isMobile && canWriteMaterials && (
   <Button
     variant="contained"
     startIcon={<AddIcon />}
@@ -3140,8 +3159,8 @@ onClose={() => setFilterAnchorEl(null)}
                     </Button>
                   </Badge>
                 </Box>
-                {/* ⭐ Кнопка "+ фикс" скрыта для VIEWER (и на бэке addFix кидает 403) */}
-                {!hidePrices && (
+                {/* ⭐ №390: фиксация — право роли, а не цен (диалог и так без денег) */}
+                {canWriteMaterials && (
                   <Button size="small" variant="outlined" onClick={() => handleOpenFixModal(m)} sx={{ textTransform: 'none', fontSize: 11, mt: 0.5 }}>
                     + фикс
                   </Button>
@@ -3390,8 +3409,8 @@ onClose={() => setFilterAnchorEl(null)}
                   <CameraAltIcon fontSize="small" />
                 </Button>
               </Badge>
-              {/* ⭐ Кнопка фиксации скрыта для VIEWER */}
-              {!hidePrices && (
+              {/* ⭐ №390: фиксация — право роли, а не цен */}
+              {canWriteMaterials && (
                 <Button
                   fullWidth
                   variant="contained"
@@ -3477,7 +3496,7 @@ onClose={() => setFilterAnchorEl(null)}
 )}
 {/* FAB для мобилки (поднят выше плашки итогов) — скрыт при hidePrices.
     ⭐ №294: в режиме выделения прячем, чтобы не мешал панели действий */}
-{isMobile && !hidePrices && selectedIds.size === 0 && (direction !== 'down' || footerVisible) && (
+{isMobile && canWriteMaterials && selectedIds.size === 0 && (direction !== 'down' || footerVisible) && (
   <Fab
     className="no-print"
     color="primary"
@@ -3643,6 +3662,9 @@ onClose={() => setFilterAnchorEl(null)}
           value={newNote}
           onChange={e => setNewNote(e.target.value)}
         />
+        {/* ⭐ №390: при скрытых ценах ценовые поля не показываем — строка создаётся без цены */}
+        {!hidePrices && (
+          <>
         <Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена работ</Typography></Divider>
         {/* ⭐ №319: два режима — «из справочника» и «своя цена». В ручном режиме
             справочник и категории скрыты, чтобы не путать: вводится одна цифра. */}
@@ -4033,6 +4055,8 @@ renderInput={(params) => (
     </Box>
   );
 })()}
+          </>
+        )}
 <Box sx={{
   display: 'flex', justifyContent: 'flex-end', gap: 2,
   position: 'sticky', bottom: 0, zIndex: 2,
