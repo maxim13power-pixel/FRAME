@@ -114,7 +114,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
           overflowX: { xs: 'auto', sm: 'visible' },
         }}
       >
-        <IconButton edge="start" color="primary" aria-label="menu" onClick={onMenuClick} sx={{ flexShrink: 0 }}>
+        <IconButton color="primary" aria-label="menu" onClick={onMenuClick} sx={{ flexShrink: 0 }}>
           <MenuIcon />
         </IconButton>
 
