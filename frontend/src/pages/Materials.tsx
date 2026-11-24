@@ -773,23 +773,36 @@ const handlePrint = useCallback(() => {
   }
   printStateRef.current = { start: windowStart, size: windowSize, all: showAll };
   setPrintingAll(true);
-  setTimeout(() => window.print(), 200);
 }, [printOnlyPage, showAll, windowSize, windowStart]);
 
-useEffect(() => {
-  const restore = () => {
-    const prev = printStateRef.current;
-    printStateRef.current = null;
-    setPrintingAll(false);
-    if (prev) {
-      setWindowStart(prev.start);
-      setWindowSize(prev.size);
-      setShowAll(prev.all);
-    }
-  };
-  window.addEventListener('afterprint', restore);
-  return () => window.removeEventListener('afterprint', restore);
+const restoreAfterPrint = useCallback(() => {
+  const prev = printStateRef.current;
+  printStateRef.current = null;
+  setPrintingAll(false);
+  if (prev) {
+    setWindowStart(prev.start);
+    setWindowSize(prev.size);
+    setShowAll(prev.all);
+  }
 }, []);
+
+useEffect(() => {
+  window.addEventListener('afterprint', restoreAfterPrint);
+  return () => window.removeEventListener('afterprint', restoreAfterPrint);
+}, [restoreAfterPrint]);
+
+// ⭐ №383: печатаем ПОСЛЕ того, как React отрисовал все строки (эффект — после коммита).
+// Firefox/Safari иногда не присылают afterprint — подстраховываемся восстановлением.
+useEffect(() => {
+  if (!printingAll) return;
+  const timer = window.setTimeout(() => {
+    window.print();
+    window.setTimeout(() => {
+      if (printStateRef.current) restoreAfterPrint();
+    }, 500);
+  }, 60);
+  return () => window.clearTimeout(timer);
+}, [printingAll, restoreAfterPrint]);
 // ⭐ Воронка — ТОЛЬКО категории, которые реально есть в смете этого проекта
   // (категория попадает сюда, если в проекте есть хотя бы одна позиция с ней)
   const projectCategories = useMemo(() => {
