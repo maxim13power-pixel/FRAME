@@ -103,7 +103,6 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
-import { downloadImportTemplate } from '../utils/importTemplate'; // ⭐ №208: пустой шаблон
 import PriceChangeIcon from '@mui/icons-material/PriceChange';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import PrintIcon from '@mui/icons-material/Print';
@@ -2670,7 +2669,11 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
         <MenuItem
           onClick={() => {
             setImportMenuAnchor(null);
-            downloadImportTemplate();
+            // ⭐ №385: xlsx-js-style грузим лениво — иначе он попадает в чанк сметы
+            // (870 КБ + предупреждение Vite про Node-модуль stream)
+            void import('../utils/importTemplate').then((m) =>
+              m.downloadImportTemplate(),
+            );
           }}
         >
           <FileDownloadOutlinedIcon fontSize="small" style={{ marginRight: 8 }} />
@@ -3453,7 +3456,7 @@ onClose={() => setFilterAnchorEl(null)}
       </Box>
     ) : (
       // Для остальных показываем всё
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', columnGap: 1, rowGap: 0.5 }}>
         <Box sx={{ textAlign: 'left' }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Смета</Typography>
           <Typography variant="body2" fontWeight={700} sx={{ whiteSpace: 'nowrap' }}>
@@ -3478,7 +3481,7 @@ onClose={() => setFilterAnchorEl(null)}
 )}
 {/* FAB для мобилки (поднят выше плашки итогов) — скрыт при hidePrices.
     ⭐ №294: в режиме выделения прячем, чтобы не мешал панели действий */}
-{isMobile && !hidePrices && selectedIds.size === 0 && (
+{isMobile && !hidePrices && selectedIds.size === 0 && direction !== 'down' && (
   <Fab
     className="no-print"
     color="primary"
@@ -4537,8 +4540,9 @@ renderInput={(params) => (
         </Paper>
       </Modal>
 
-      {/* ⭐ №384: «вниз» к ИТОГО и переключателю страниц */}
-      {hasWindowBar && !footerVisible && (
+      {/* ⭐ №384: «вниз» к ИТОГО и переключателю страниц.
+          ⭐ №385: при скролле вниз убираем — чтобы не закрывать цифры карточек. */}
+      {hasWindowBar && !footerVisible && direction !== 'down' && (
         <IconButton
           className="no-print"
           aria-label="К итогам и страницам"

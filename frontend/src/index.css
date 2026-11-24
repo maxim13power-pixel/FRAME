@@ -29,7 +29,8 @@ body,
 }
 
 body {
-  min-width: 320px;
+  /* ⭐ №385: без min-width — при сильном зуме (≈220 CSS px) страница
+     не обрезалась справа недоступным краем, а могла переflow/скроллиться. */
   min-height: 100vh;
   background-color: #f0f4fa;
 }

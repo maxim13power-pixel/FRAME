@@ -103,7 +103,17 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
         borderBottom: isHome ? 'none' : '1px solid rgba(0, 0, 0, 0.12)',
       }}
     >
-      <Toolbar sx={{ gap: 1, minHeight: 56 }}>
+      <Toolbar
+        sx={{
+          // ⭐ №385: на узких экранах шапке нужно ≤320 px — сжимаем отступы и зазор;
+          // ниже этого (сильный зум) шапка прокручивается по горизонтали,
+          // чтобы правые иконки оставались достижимыми, а не обрезались навсегда.
+          gap: { xs: 0.5, sm: 1 },
+          minHeight: 56,
+          px: { xs: 0.5, sm: 2 },
+          overflowX: { xs: 'auto', sm: 'visible' },
+        }}
+      >
         <IconButton edge="start" color="primary" aria-label="menu" onClick={onMenuClick} sx={{ flexShrink: 0 }}>
           <MenuIcon />
         </IconButton>
