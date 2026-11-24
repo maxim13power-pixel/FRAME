@@ -163,6 +163,15 @@ export function exportMaterialsPdf(
         },
       },
     ],
+    // ⭐ №383: номера страниц внизу справа. «ИТОГО» — последняя строка таблицы,
+    // поэтому печатается только на последней странице.
+    footer: (currentPage: number, pageCount: number) => ({
+      text: `Стр. ${currentPage} из ${pageCount}`,
+      alignment: 'right',
+      fontSize: 8,
+      color: '#616161',
+      margin: [0, 0, 16, 0],
+    }),
   };
 
   pdfMake.createPdf(docDefinition).download(

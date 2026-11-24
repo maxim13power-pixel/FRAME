@@ -106,6 +106,9 @@ import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import { downloadImportTemplate } from '../utils/importTemplate'; // ⭐ №208: пустой шаблон
 import PriceChangeIcon from '@mui/icons-material/PriceChange';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import PrintIcon from '@mui/icons-material/Print';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 // ⭐ №170: пересчёт сметы по справочнику цен (превью «было → станет» + откат)
 import { PriceRecalcModal } from '../components/PriceRecalcModal';
 import EstimateImportModal from '../components/EstimateImportModal'; // ⭐ №202: импорт сметы из Excel
@@ -696,6 +699,18 @@ const longPressTimerRef = useRef<number | null>(null);
 const longPressFiredRef = useRef(false);
 // ⭐ №295: якорь для Shift+Click (индекс последней отмеченной строки)
 const lastSelectedIndexRef = useRef<number | null>(null);
+
+// ⭐ №383: длинная смета — окно отрисовки. Данные, поиск, сортировка, ИТОГО
+// и выделение считаются по ВСЕЙ смете; окно решает только, сколько строк рисуем.
+const PAGE_SIZE = isMobile ? 50 : 200;
+const [windowStart, setWindowStart] = useState(0);
+const [windowSize, setWindowSize] = useState(PAGE_SIZE);
+const [showAll, setShowAll] = useState(false);
+const [pageInput, setPageInput] = useState('1');
+// ⭐ №383: печать из браузера — «вся смета» дорисовывает строки только на время печати
+const [printOnlyPage, setPrintOnlyPage] = useState(false);
+const [printingAll, setPrintingAll] = useState(false);
+const printStateRef = useRef<{ start: number; size: number; all: boolean } | null>(null);
 const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
   open: false,
   message: '',
@@ -747,6 +762,34 @@ const handleExport = useCallback(
   },
   [materials, currentObject, currentProject, projectId, hidePrices],
 );
+
+// ⭐ №383: печать из браузера. Галочка «только текущую страницу» печатает окно как есть,
+// иначе на время печати дорисовываем всю смету и возвращаем окно после.
+const handlePrint = useCallback(() => {
+  setExportModalOpen(false);
+  if (printOnlyPage) {
+    setTimeout(() => window.print(), 50);
+    return;
+  }
+  printStateRef.current = { start: windowStart, size: windowSize, all: showAll };
+  setPrintingAll(true);
+  setTimeout(() => window.print(), 200);
+}, [printOnlyPage, showAll, windowSize, windowStart]);
+
+useEffect(() => {
+  const restore = () => {
+    const prev = printStateRef.current;
+    printStateRef.current = null;
+    setPrintingAll(false);
+    if (prev) {
+      setWindowStart(prev.start);
+      setWindowSize(prev.size);
+      setShowAll(prev.all);
+    }
+  };
+  window.addEventListener('afterprint', restore);
+  return () => window.removeEventListener('afterprint', restore);
+}, []);
 // ⭐ Воронка — ТОЛЬКО категории, которые реально есть в смете этого проекта
   // (категория попадает сюда, если в проекте есть хотя бы одна позиция с ней)
   const projectCategories = useMemo(() => {
@@ -769,12 +812,15 @@ const handleExport = useCallback(
 const loadCategories = async () => {
   if (!token) return;
   try {
-    const [all, mats] = await Promise.all([
-      fetchCategoriesWithItems(),
-      fetchCategoriesWithItems('MATERIAL'),
-    ]);
+    // ⭐ №383: один запрос вместо двух — весь прайс больше не грузится дважды.
+    // Категории материала отбираем на клиенте (как это делает сервер при kind=MATERIAL).
+    const all = await fetchCategoriesWithItems();
     setAllCategories(all.map(c => ({ id: c.id, name: c.name })));
-    setMaterialCategories(mats.map(c => ({ id: c.id, name: c.name })));
+    setMaterialCategories(
+      all
+        .filter(c => c.kind === 'MATERIAL')
+        .map(c => ({ id: c.id, name: c.name })),
+    );
   } catch (e) {
     console.error('Не удалось загрузить категории', e);
   }
@@ -861,6 +907,83 @@ useEffect(() => {
     });
   }, [filteredMaterials, sortBy, sortDirection]);
 
+  // ⭐ №383: окно отрисовки. «Показать все»/печать рисуют весь список, но поиск,
+  // сортировка и ИТОГО всегда считаются по всей смете (filteredMaterials).
+  const totalRows = sortedMaterials.length;
+  const fullRender = showAll || printingAll;
+  const sliceStart = fullRender ? 0 : Math.min(windowStart, totalRows);
+  const windowEnd = fullRender
+    ? totalRows
+    : Math.min(windowStart + windowSize, totalRows);
+  const visibleMaterials = sortedMaterials.slice(sliceStart, windowEnd);
+  // ⭐ №383: строки с ГЛОБАЛЬНЫМ индексом — нумерация, Shift-диапазон и «протяжка»
+  // остаются сквозными по всей смете, а не по странице.
+  const visibleRows = useMemo(
+    () =>
+      visibleMaterials.map((material, offset) => ({
+        material,
+        index: sliceStart + offset,
+      })),
+    [visibleMaterials, sliceStart],
+  );
+  const pageCount = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  const currentPage = Math.min(pageCount, Math.floor(sliceStart / PAGE_SIZE) + 1);
+  const windowCoversAll = sliceStart === 0 && windowEnd >= totalRows;
+  const hasWindowBar = totalRows > 0 && (totalRows > PAGE_SIZE || !windowCoversAll);
+
+  // ⭐ №383: навигация по окну — страница, «ещё», «все»
+  const goToPage = useCallback(
+    (page: number) => {
+      const target = Math.min(pageCount, Math.max(1, Math.floor(page) || 1));
+      setShowAll(false);
+      setWindowStart((target - 1) * PAGE_SIZE);
+      setWindowSize(PAGE_SIZE);
+    },
+    [pageCount, PAGE_SIZE],
+  );
+
+  const showMoreRows = useCallback(() => {
+    setShowAll(false);
+    setWindowSize((size) =>
+      Math.max(PAGE_SIZE, Math.min(totalRows - windowStart, size + PAGE_SIZE)),
+    );
+  }, [PAGE_SIZE, totalRows, windowStart]);
+
+  const showAllRows = useCallback(async () => {
+    if (totalRows > 1000) {
+      const ok = await confirm({
+        title: `Показать все строки: ${totalRows}?`,
+        text: 'Страница отрисует всю смету целиком — на слабом устройстве это может занять пару секунд. Поиск, ИТОГО и экспорт не меняются.',
+        confirmText: 'Показать все',
+      });
+      if (!ok) return;
+    }
+    setShowAll(true);
+    setWindowStart(0);
+    setWindowSize(PAGE_SIZE);
+  }, [confirm, PAGE_SIZE, totalRows]);
+
+  // ⭐ №383: сменили поиск/фильтр/сортировку — снова первая порция
+  useEffect(() => {
+    setWindowStart(0);
+    setWindowSize(PAGE_SIZE);
+    setShowAll(false);
+  }, [searchQuery, categoryFilter, sortBy, sortDirection, PAGE_SIZE]);
+
+  // ⭐ №383: после удаления строк окно не должно «висеть» за концом списка
+  useEffect(() => {
+    if (showAll) return;
+    if (windowStart > 0 && windowStart >= totalRows) {
+      setWindowStart(0);
+      setWindowSize(PAGE_SIZE);
+    }
+  }, [totalRows, windowStart, showAll, PAGE_SIZE]);
+
+  // ⭐ №383: поле «Страница» показывает текущую
+  useEffect(() => {
+    setPageInput(String(currentPage));
+  }, [currentPage]);
+
   // Итоговая строка: суммы по спеке и факту, средний прогресс
 const totals = (() => {
   const sumSpecQuantity = filteredMaterials.reduce((acc, m) => acc + (Number(m.specQuantity) || 0), 0);
@@ -925,6 +1048,28 @@ useEffect(() => {
   // факт и проценты). Без этого правки второго участника видны только после F5.
   useRefreshOnFocus(refreshMaterials, { minIntervalMs: 10_000 });
 
+  // ⭐ №383: цель подсветки может быть за пределами окна — переезжаем на её страницу
+  useEffect(() => {
+    if (loading || fullRender) return;
+    const targetId = highlightId ?? flashId;
+    if (targetId == null) return;
+    const index = sortedMaterials.findIndex((m) => m.id === targetId);
+    if (index < 0) return;
+    if (index < windowStart || index >= windowStart + windowSize) {
+      setWindowStart(Math.floor(index / PAGE_SIZE) * PAGE_SIZE);
+      setWindowSize(PAGE_SIZE);
+    }
+  }, [
+    highlightId,
+    flashId,
+    loading,
+    sortedMaterials,
+    fullRender,
+    windowStart,
+    windowSize,
+    PAGE_SIZE,
+  ]);
+
   // ⭐ №161: подсветка строки, на которую перешли из виджета «Без расценки»
   useEffect(() => {
     if (!highlightId || loading || materials.length === 0) return;
@@ -934,7 +1079,7 @@ useEffect(() => {
     setHighlightVisible(true);
     const timer = setTimeout(() => setHighlightVisible(false), 2500);
     return () => clearTimeout(timer);
-  }, [highlightId, loading, materials.length]);
+  }, [highlightId, loading, materials.length, sliceStart, windowSize, fullRender]);
   // ⭐ №174: прокрутить к копии и подсветить её — копия создаётся сразу,
   // «вставлять» её никуда не надо (раньше копия молча терялась в отсортированном списке)
   useEffect(() => {
@@ -943,7 +1088,7 @@ useEffect(() => {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     const timer = setTimeout(() => setFlashId(null), 2500);
     return () => clearTimeout(timer);
-  }, [flashId, materials.length]);
+  }, [flashId, materials.length, sliceStart, windowSize, fullRender]);
 
 const handleOpenAddModal = () => {
   setAddModalOpen(true);
@@ -2024,6 +2169,92 @@ setSortAnchorEl(null);
     trailing: headerTrailing,
   });
 
+  // ⭐ №383: плашка «показано / страница» — под таблицей (десктоп) и под карточками.
+  // Поиск, сортировка и ИТОГО при этом всегда считаются по всей смете.
+  const paginationBar = hasWindowBar ? (
+    <Paper
+      variant="outlined"
+      className="no-print"
+      sx={{
+        mt: 1.5,
+        mb: 1,
+        px: 1.5,
+        py: 1,
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: 1,
+        borderRadius: 2,
+      }}
+    >
+      <Typography variant="body2" color="text.secondary">
+        {fullRender
+          ? `Показано: все ${totalRows}`
+          : `Показано ${sliceStart + 1}–${windowEnd} из ${totalRows}`}
+      </Typography>
+      <Box sx={{ flex: 1 }} />
+      {!fullRender && windowEnd < totalRows && (
+        <Button size="small" variant="outlined" onClick={showMoreRows}>
+          Показать ещё {Math.min(PAGE_SIZE, totalRows - windowEnd)}
+        </Button>
+      )}
+      {!fullRender && (
+        <Button size="small" onClick={() => void showAllRows()}>
+          Показать все
+        </Button>
+      )}
+      {fullRender && (
+        <Button size="small" onClick={() => goToPage(1)}>
+          Свернуть
+        </Button>
+      )}
+      {!isMobile && !fullRender && pageCount > 1 && (
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <IconButton
+            size="small"
+            aria-label="Предыдущая страница"
+            disabled={currentPage <= 1}
+            onClick={() => goToPage(currentPage - 1)}
+          >
+            <ChevronLeftIcon fontSize="small" />
+          </IconButton>
+          <Typography variant="body2" color="text.secondary">
+            Страница
+          </Typography>
+          <TextField
+            size="small"
+            type="number"
+            value={pageInput}
+            onChange={(e) => setPageInput(e.target.value)}
+            onBlur={() => goToPage(Number(pageInput))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                goToPage(Number(pageInput));
+                (e.currentTarget as HTMLInputElement).blur();
+              }
+            }}
+            inputProps={{
+              min: 1,
+              max: pageCount,
+              style: { width: 44, textAlign: 'center', padding: '4px 4px' },
+            }}
+          />
+          <Typography variant="body2" color="text.secondary">
+            из {pageCount}
+          </Typography>
+          <IconButton
+            size="small"
+            aria-label="Следующая страница"
+            disabled={currentPage >= pageCount}
+            onClick={() => goToPage(currentPage + 1)}
+          >
+            <ChevronRightIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+      )}
+    </Paper>
+  ) : null;
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
@@ -2035,7 +2266,7 @@ setSortAnchorEl(null);
   return (
     <Box>
       {/* Заголовок (десктоп; мобилка — в хэдере), крошки ниже */}
-            <Box sx={{ mb: { xs: 1, md: 0.5 }, mt: { xs: -2, md: -1.5 } }}> {/* ⭐ на десктопе тоже поднимаем выше */}
+            <Box className="no-print" sx={{ mb: { xs: 1, md: 0.5 }, mt: { xs: -2, md: -1.5 } }}> {/* ⭐ на десктопе тоже поднимаем выше */}
         {!isMobile && (
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <IconButton
@@ -2184,7 +2415,7 @@ setSortAnchorEl(null);
 
    {/* Поиск и кнопка добавления (десктоп; мобилка — в хэдере) */}
    {/* ⭐ №238: строго одна строка — без переноса; поиск сжимается, кнопки компактные */}
-   <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 1, minWidth: 0, mb: { xs: 0, md: 2 }, alignItems: 'center' }}>
+   <Box className="no-print" sx={{ display: 'flex', flexWrap: 'nowrap', gap: 1, minWidth: 0, mb: { xs: 0, md: 2 }, alignItems: 'center' }}>
         {!isMobile && (
           <TextField
             placeholder="Поиск материалов..."
@@ -2334,6 +2565,34 @@ onChange={(e) => setCategoryFilter(e.target.value === '' ? null : Number(e.targe
           <Stack spacing={1}>
             <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={() => { setExportModalOpen(false); handleExport('pdf'); }} fullWidth>PDF</Button>
             <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={() => { setExportModalOpen(false); handleExport('xlsx'); }} fullWidth>Excel</Button>
+            {/* ⭐ №383: печать из браузера — с галочкой «только текущую страницу» */}
+            {!isMobile && (
+              <>
+                <Divider sx={{ my: 0.5 }} />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={printOnlyPage}
+                      onChange={(e) => setPrintOnlyPage(e.target.checked)}
+                    />
+                  }
+                  label={<Typography variant="body2">Только текущую страницу</Typography>}
+                />
+                <Button
+                  variant="outlined"
+                  startIcon={<PrintIcon />}
+                  onClick={handlePrint}
+                  fullWidth
+                >
+                  Печать
+                </Button>
+                <Typography variant="caption" color="text.secondary">
+                  PDF и Excel — всегда все {materials.length} позиций. Печать:{' '}
+                  {printOnlyPage ? 'текущая страница' : 'вся смета'}.
+                </Typography>
+              </>
+            )}
           </Stack>
         </Paper>
       </Modal>
@@ -2501,6 +2760,7 @@ onClose={() => setFilterAnchorEl(null)}
             после выделения внизу приходится скроллить в самое начало сметы */}
         {selectedIds.size > 0 && (
           <Paper
+            className="no-print"
             sx={{
               position: 'sticky',
               top: 8,
@@ -2525,12 +2785,12 @@ onClose={() => setFilterAnchorEl(null)}
               checked={allVisibleSelected}
               indeterminate={someVisibleSelected}
               onChange={toggleSelectAll}
-              title="Выбрать все видимые строки / снять выделение"
+              title="Выбрать все строки с учётом поиска и фильтра / снять выделение"
               inputProps={{ 'aria-label': 'Выбрать все строки' }}
               sx={{ p: 0.25, ml: -0.75, mr: 0.25, alignSelf: 'center' }}
             />
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              Выбрано: {selectedIds.size}
+              Выбрано: {selectedIds.size} из {sortedMaterials.length}
               {!hidePrices && selectedTotals.count > 0 && (
                 <Typography
                   component="span"
@@ -2569,7 +2829,19 @@ onClose={() => setFilterAnchorEl(null)}
             </Button>
           </Paper>
         )}
-        <TableContainer component={Paper} sx={{ mb: 2 }}>
+        {/* ⭐ №383: шапка для печати — на экране скрыта, на бумаге объясняет, что за смета */}
+        <Box className="print-only" sx={{ display: 'none', mb: 1 }}>
+          <Typography sx={{ fontWeight: 700, fontSize: 14 }}>
+            Смета — {currentProject?.name ?? ''}
+          </Typography>
+          <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>
+            {currentObject?.name ?? ''} · печать {new Date().toLocaleString('ru-RU')}
+            {fullRender
+              ? ''
+              : ` · строки ${sliceStart + 1}–${windowEnd} из ${totalRows}`}
+          </Typography>
+        </Box>
+        <TableContainer component={Paper} className="print-area" sx={{ mb: 2 }}>
           <Table sx={{ minWidth: 1500, ...(dragSelecting ? { userSelect: 'none' } : {}) }}>
 <TableHead sx={{ bgcolor: '#f5f5f5' }}>
 <TableRow>
@@ -2625,7 +2897,7 @@ onClose={() => setFilterAnchorEl(null)}
         )}
 </TableHead>
             <TableBody>
-{sortedMaterials.map((m, idx) => (
+{visibleRows.map(({ material: m, index: idx }) => (
 <TableRow
   key={m.id}
   hover
@@ -2803,6 +3075,7 @@ onClose={() => setFilterAnchorEl(null)}
 </TableFooter>
           </Table>
         </TableContainer>
+        {paginationBar}
         </>
       )}
 
@@ -2812,7 +3085,7 @@ onClose={() => setFilterAnchorEl(null)}
       {/* ⭐ №294/№299: подсказка о жесте переехала в сворачиваемое пояснение раздела
           (SectionIntro выше), чтобы не занимать место в списке */}
       {sortedMaterials.length > 0 ? (
-        sortedMaterials.map((m) => (
+        visibleMaterials.map((m) => (
             <Paper
               key={m.id}
               id={`material-row-${m.id}`}
@@ -2965,6 +3238,7 @@ onClose={() => setFilterAnchorEl(null)}
               </Typography>
             </Paper>
           )}
+          {paginationBar}
         </Stack>
       )}
 
@@ -2972,6 +3246,7 @@ onClose={() => setFilterAnchorEl(null)}
     ⭐ №294: в режиме выделения её место занимает панель массовых действий */}
 {isMobile && selectedIds.size === 0 && (
   <Paper
+    className="no-print"
     elevation={8}
     sx={{
       position: direction === 'none' ? 'static' : 'fixed',
@@ -3029,6 +3304,7 @@ onClose={() => setFilterAnchorEl(null)}
     ⭐ №294: в режиме выделения прячем, чтобы не мешал панели действий */}
 {isMobile && !hidePrices && selectedIds.size === 0 && (
   <Fab
+    className="no-print"
     color="primary"
     sx={{ ...FAB_STYLE, bottom: 130 }}
     onClick={handleOpenAddModal}
@@ -3040,6 +3316,7 @@ onClose={() => setFilterAnchorEl(null)}
 {/* ⭐ №294: массовые действия на мобилке — панель над нижним меню */}
 {isMobile && selectedIds.size > 0 && (
   <Paper
+    className="no-print"
     elevation={8}
     sx={{
       position: 'fixed',
@@ -3061,12 +3338,12 @@ onClose={() => setFilterAnchorEl(null)}
         checked={allVisibleSelected}
         indeterminate={someVisibleSelected}
         onChange={toggleSelectAll}
-        title="Выбрать все видимые строки / снять выделение"
+        title="Выбрать все строки с учётом поиска и фильтра / снять выделение"
         inputProps={{ 'aria-label': 'Выбрать все строки' }}
         sx={{ p: 0.25, ml: -0.75, mr: 0.25 }}
       />
       <Typography variant="body2" sx={{ fontWeight: 700, flex: 1 }}>
-        Выбрано: {selectedIds.size}
+        Выбрано: {selectedIds.size} из {sortedMaterials.length}
         {!hidePrices && selectedTotals.count > 0 && (
           <Typography
             component="span"

@@ -70,3 +70,79 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* ⭐ №383: печать сметы из браузера.
+   Печатаем только таблицу: меню/плашки/кнопки скрыты, шапка таблицы повторяется
+   на каждой странице, строки не рвутся пополам. */
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  .no-print,
+  .MuiAppBar-root,
+  .MuiFab-root,
+  .MuiBottomNavigation-root,
+  .MuiSnackbar-root,
+  .MuiModal-root,
+  .MuiAccordion-root {
+    display: none !important;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  #root {
+    max-width: none !important;
+    padding: 0 !important;
+    text-align: left !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-area {
+    overflow: visible !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  .print-area table {
+    width: 100% !important;
+  }
+
+  .print-area thead {
+    display: table-header-group;
+  }
+
+  .print-area tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-area th,
+  .print-area td {
+    padding: 2px 4px !important;
+    font-size: 9px !important;
+  }
+
+  .print-area .MuiCheckbox-root {
+    display: none !important;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

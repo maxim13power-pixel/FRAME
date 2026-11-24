@@ -73,7 +73,7 @@ const BottomNav: React.FC<BottomNavProps> = () => {
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
 
   return (
-    <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10 }} elevation={3}>
+    <Paper className="no-print" sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10 }} elevation={3}>
       <BottomNavigation showLabels sx={{ bgcolor: '#fff' }}>
         {tabs.map(tab => {
           const active = isActive(tab.path);
