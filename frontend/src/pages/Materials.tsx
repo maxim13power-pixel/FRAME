@@ -1059,35 +1059,26 @@ useEffect(() => {
     };
   }, []);
 
-  // ⭐ №384: автодогрузка на мобилке — ТОЛЬКО по реальному скроллу.
-  // Никаких вызовов при подписке/перезапуске эффекта: иначе список
-  // догружался сам до сотен строк ещё до того, как пользователь начал листать.
-  useEffect(() => {
-    if (!isMobile || fullRender || windowEnd >= totalRows) return;
-    let raf = 0;
-    const onScroll = () => {
-      if (raf) return;
-      raf = window.requestAnimationFrame(() => {
-        raf = 0;
-        const doc = document.documentElement;
-        const distance =
-          doc.scrollHeight - (window.scrollY + window.innerHeight);
-        if (distance <= 320) showMoreRows();
-      });
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      if (raf) window.cancelAnimationFrame(raf);
-    };
-  }, [isMobile, fullRender, windowEnd, totalRows, showMoreRows]);
+  // ⭐ №386 (по жалобе владельца): автодогрузки на мобилке БОЛЬШЕ НЕТ.
+  // Она удлиняла список за 320 px до низа, и плашка страниц «убегала» — догнать её
+  // можно было только когда строки заканчивались. Теперь список растёт только по
+  // явному нажатию «Показать ещё N» (или «Показать все»).
 
   const scrollToFooter = useCallback(() => {
-    footerSentinelRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'end',
-    });
-  }, []);
+    const el = footerSentinelRef.current;
+    if (!el) return;
+    // ⭐ №386: `scrollIntoView` ставил плашку вплотную к низу, и кнопки уходили
+    // под фиксированные плашку итогов и нижнее меню — прокручиваем с запасом.
+    const bottomPadding = isMobile ? SUMMARY_BAR_BOTTOM + 72 : 32;
+    const rect = el.getBoundingClientRect();
+    const maxTop =
+      document.documentElement.scrollHeight - window.innerHeight;
+    const top = Math.min(
+      maxTop,
+      Math.max(0, window.scrollY + rect.bottom - window.innerHeight + bottomPadding),
+    );
+    window.scrollTo({ top, behavior: 'smooth' });
+  }, [isMobile]);
 
   // Итоговая строка: суммы по спеке и факту, средний прогресс
 const totals = (() => {
@@ -4541,8 +4532,9 @@ renderInput={(params) => (
       </Modal>
 
       {/* ⭐ №384: «вниз» к ИТОГО и переключателю страниц.
-          ⭐ №385: при скролле вниз убираем — чтобы не закрывать цифры карточек. */}
-      {hasWindowBar && !footerVisible && direction !== 'down' && (
+          ⭐ №386: кнопку больше не скрываем при скролле вниз — именно тогда она
+          и нужна, чтобы одним тапом добраться до плашки страниц. */}
+      {hasWindowBar && !footerVisible && (
         <IconButton
           className="no-print"
           aria-label="К итогам и страницам"
