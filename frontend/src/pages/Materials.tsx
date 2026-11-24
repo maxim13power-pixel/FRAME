@@ -78,6 +78,7 @@ import {
   duplicateMaterialsBulk,
   deleteMaterialsBulk,
   syncMaterialPrice,
+  toggleSpecLock,
 } from '../services/materialService';
 import type { MaterialData, MaterialFixData } from '../services/materialService';
 import { fetchProjectById } from '../services/materialService';
@@ -1969,6 +1970,25 @@ const handleEditMaterialPriceSearch = async (value: string) => {
 // ⭐ №326: норму расхода не отправляем — существующая в строке остаётся как есть (PATCH
 // без поля её не меняет), а цену материала задаёт расценка или калькулятор «своя цена».
 
+  // ⭐ №390: снять/поставить защиту спецификации прямо из окна редактирования.
+  const handleToggleSpecLock = async () => {
+    if (!settingsMaterial) return;
+    try {
+      const updated = await toggleSpecLock(settingsMaterial.id);
+      setSettingsMaterial(updated);
+      setMaterials(prev =>
+        prev.map(m => (m.id === updated.id ? mergeUpdatedMaterial(m, updated) : m)),
+      );
+      notify(
+        updated.isSpecLocked
+          ? 'Спецификация защищена'
+          : 'Спецификация открыта для изменения количества',
+      );
+    } catch (err: unknown) {
+      notifyError(getApiErrorText(err, 'Не удалось изменить защиту спецификации'));
+    }
+  };
+
 const handleSaveEdit = async () => {
   if (!token || !settingsMaterial) return;
   if (!editName.trim()) {
@@ -1982,6 +2002,19 @@ const handleSaveEdit = async () => {
   }
 
   try {
+    // ⭐ №390: скрытые цены — правим только «безденежные» поля, цены не трогаем.
+    if (hidePrices) {
+      const updated = await updateMaterial(settingsMaterial.id, {
+        name: editName.trim(),
+        article: editArticle,
+        unit: editUnit,
+        specQuantity: qty,
+        note: editNote,
+      });
+      setMaterials(prev => prev.map(m => m.id === updated.id ? mergeUpdatedMaterial(m, updated) : m));
+      setEditModalOpen(false);
+      return;
+    }
     let priceItemIdToSend: number | null | undefined = editPriceItemId;
 
     // Если включён режим создания новой расценки — сначала создаём её
@@ -3217,8 +3250,8 @@ onClose={() => setFilterAnchorEl(null)}
                 {((m.unitPrice + m.materialUnitPrice) * m.specQuantity) > 0 ? rub((m.unitPrice + m.materialUnitPrice) * m.specQuantity) : '—'}
               </TableCell>}
               <TableCell sx={{ textAlign: 'center' }}>
-                {/* ⭐ Шестерёнка настроек скрыта для VIEWER (и на бэке update/remove/editLastFix кидают 403) */}
-                {!hidePrices && (
+                {/* ⭐ Шестерёнка настроек — по праву записи (не по видимости цен) */}
+                {canWriteMaterials && (
                   <IconButton size="small" onClick={() => handleOpenSettings(m)} sx={{ bgcolor: 'action.hover' }}>
                     <SettingsIcon fontSize="small" />
                   </IconButton>
@@ -3329,8 +3362,8 @@ onClose={() => setFilterAnchorEl(null)}
               <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>
                 {m.name}
               </Typography>
-              {/* ⭐ Шестерёнка настроек скрыта для VIEWER */}
-              {!hidePrices && (
+              {/* ⭐ №390: шестерёнка — по праву записи, не по видимости цен */}
+              {canWriteMaterials && (
                 <IconButton size="small" onClick={() => handleOpenSettings(m)} sx={{ bgcolor: 'action.hover' }}>
                   <SettingsIcon fontSize="small" />
                 </IconButton>
@@ -4345,8 +4378,26 @@ textAlign: 'center',
     </Select>
   </FormControl>
 </Stack>
+{/* ⭐ №390: количество меняется только при снятой защите спецификации */}
+{settingsMaterial?.isSpecLocked && (
+  <Typography variant="caption" color="text.secondary">
+    Спецификация защищена — количество изменить нельзя, пока не снимете защиту.
+  </Typography>
+)}
+<Button
+  size="small"
+  variant="text"
+  onClick={() => void handleToggleSpecLock()}
+  sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
+>
+  {settingsMaterial?.isSpecLocked
+    ? '🔓 Снять защиту спецификации'
+    : '🔒 Защитить спецификацию'}
+</Button>
 <TextField fullWidth label="Примечание" multiline minRows={1} maxRows={6} value={editNote} onChange={e => setEditNote(e.target.value)} />
 
+{/* ⭐ №390: при скрытых ценах ценовые поля в редактировании не показываем */}
+{!hidePrices && (<>
 <Divider sx={{ my: 1 }}><Typography variant="caption" color="text.secondary">Цена работ</Typography></Divider>
 {!editCreatingNew ? (
   <>
@@ -4507,6 +4558,7 @@ renderInput={(params) => (
 <Button size="small" variant="text" onClick={() => setEditMatCreatingNew(false)}>← Выбрать из существующих</Button>
 </>
 )}
+</>)}
 <Box sx={{
   display: 'flex', justifyContent: 'flex-end', gap: 2,
   position: 'sticky', bottom: 0, zIndex: 2,
