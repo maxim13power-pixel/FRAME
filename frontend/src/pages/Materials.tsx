@@ -119,7 +119,9 @@ import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подск
 // ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено».
 const BOTTOM_NAV_HEIGHT = 56; // высота BottomNav (MUI BottomNavigation по умолчанию)
 const SUMMARY_BAR_BOTTOM = BOTTOM_NAV_HEIGHT + 8; // плашка над меню с зазором 8px
-const SUMMARY_LIST_CLEARANCE_PX = 64; // доп. отступ списка, чтобы кнопка «Зафиксировать объём» не пряталась под плашку
+// ⭐ №387: у низа страницы показываем плашку итогов И FAB — нужен запас, чтобы они
+// не накрыли кнопки «Показать ещё / Показать все» (плашка 64 + FAB 56 + зазоры).
+const SUMMARY_LIST_CLEARANCE_BOTTOM_PX = 190;
 // ⭐ №384: варианты размера страницы сметы; выбор запоминается в localStorage
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const PAGE_SIZE_KEY = 'materials-page-size';
@@ -3250,7 +3252,7 @@ onClose={() => setFilterAnchorEl(null)}
 
   {/* Карточки для мобилки */}
   {isMobile && (
-    <Stack spacing={1} sx={{ pb: selectedIds.size > 0 ? '150px' : direction === 'none' ? 0 : `${SUMMARY_LIST_CLEARANCE_PX}px` }}>
+    <Stack spacing={1} sx={{ pb: selectedIds.size > 0 ? '150px' : direction === 'none' ? 0 : `${SUMMARY_LIST_CLEARANCE_BOTTOM_PX}px` }}>
       {/* ⭐ №294/№299: подсказка о жесте переехала в сворачиваемое пояснение раздела
           (SectionIntro выше), чтобы не занимать место в списке */}
       {sortedMaterials.length > 0 ? (
@@ -3431,7 +3433,7 @@ onClose={() => setFilterAnchorEl(null)}
       border: '1px solid #e0e0e0',
       mt: direction === 'none' ? 1 : 0,
       transform:
-        direction === 'down'
+        direction === 'down' && !footerVisible
           ? `translateY(calc(100% + ${SUMMARY_BAR_BOTTOM}px))`
           : 'translateY(0)',
       transition: 'transform 0.2s ease',
@@ -3472,7 +3474,7 @@ onClose={() => setFilterAnchorEl(null)}
 )}
 {/* FAB для мобилки (поднят выше плашки итогов) — скрыт при hidePrices.
     ⭐ №294: в режиме выделения прячем, чтобы не мешал панели действий */}
-{isMobile && !hidePrices && selectedIds.size === 0 && direction !== 'down' && (
+{isMobile && !hidePrices && selectedIds.size === 0 && (direction !== 'down' || footerVisible) && (
   <Fab
     className="no-print"
     color="primary"
