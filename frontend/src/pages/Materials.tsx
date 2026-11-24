@@ -119,10 +119,10 @@ import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подск
 // ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено».
 const BOTTOM_NAV_HEIGHT = 56; // высота BottomNav (MUI BottomNavigation по умолчанию)
 const SUMMARY_BAR_BOTTOM = BOTTOM_NAV_HEIGHT + 8; // плашка над меню с зазором 8px
-// ⭐ №387/388: у низа страницы показывается плашка итогов; FAB там скрыт (есть «+» в шапке).
-// К отступу добавляется ещё ~64 px от layout под нижнее меню, поэтому 110 px дают
-// зазор ~50 px до плашки — без заметной пустоты.
-const SUMMARY_LIST_CLEARANCE_BOTTOM_PX = 110;
+// ⭐ №388/389: у низа списка FAB остаётся (владелец просил вернуть), но плашка страниц
+// резервирует справа 56 px под него — «Свернуть» и кнопки уезжают левее и не перекрываются.
+// Отступ списка 100 px (+ ~64 px от layout) даёт зазор ~42 px до панели итогов.
+const SUMMARY_LIST_CLEARANCE_BOTTOM_PX = 100;
 // ⭐ №384: варианты размера страницы сметы; выбор запоминается в localStorage
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const PAGE_SIZE_KEY = 'materials-page-size';
@@ -2279,6 +2279,8 @@ setSortAnchorEl(null);
         mt: 1.5,
         mb: 1,
         px: 1.5,
+        // ⭐ №389: справа место под FAB «+», чтобы он не накрыл «Свернуть» / кнопки
+        pr: { xs: 8, sm: 1.5 },
         py: 1,
         display: 'flex',
         flexWrap: 'wrap',
@@ -3475,7 +3477,7 @@ onClose={() => setFilterAnchorEl(null)}
 )}
 {/* FAB для мобилки (поднят выше плашки итогов) — скрыт при hidePrices.
     ⭐ №294: в режиме выделения прячем, чтобы не мешал панели действий */}
-{isMobile && !hidePrices && selectedIds.size === 0 && direction !== 'down' && !footerVisible && (
+{isMobile && !hidePrices && selectedIds.size === 0 && (direction !== 'down' || footerVisible) && (
   <Fab
     className="no-print"
     color="primary"
