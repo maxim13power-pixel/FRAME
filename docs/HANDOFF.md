@@ -717,6 +717,10 @@ npm run verify                           # tsc + jest + vite build (бэкенд
   «огромный текст и обрез справа» на смете в device-режиме — это page scale (пинч),
   а не overflow: при scale=2 `visualViewport.width=220`, а layout остаётся 440 и
   `scrollWidth == clientWidth`. Добавлен `touch-action: manipulation`.
+  Проверка жалобы «только на смете при включении F12»: в чистом профиле
+  `visualViewport.scale = 1` и при включении эмуляции на уже открытой смете, и на «Главной»;
+  в приложении нет `zoom`/`scale`. Симптом — сохранённый масштаб в профиле Chrome
+  (сброс `Ctrl+0` в device-режиме / инкогнито).
 
 
 
