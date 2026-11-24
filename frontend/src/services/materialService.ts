@@ -113,6 +113,14 @@ export const fetchFixesByMaterial = async (
   return response.data.map(normalizeFix);
 };
 
+// ⭐ №379: все фиксации проекта — один запрос вместо N (экспорт)
+export const fetchFixesByProject = async (
+  projectId: number,
+): Promise<MaterialFixData[]> => {
+  const response = await api.get(`/materials/project/${projectId}/fixes`);
+  return response.data.map(normalizeFix);
+};
+
 // Создание материала
 export const createMaterial = async (
   data: {

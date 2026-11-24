@@ -36,6 +36,18 @@ export class MaterialsController {
     return this.materialsService.findAllByProject(projectId, req.user.userId);
   }
 
+  // ⭐ №379: все фиксации проекта — для экспорта без N+1
+  @Get('project/:projectId/fixes')
+  findFixesByProject(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Req() req,
+  ) {
+    return this.materialsService.findFixesByProject(
+      projectId,
+      req.user.userId,
+    );
+  }
+
   @Get(':id/fixes')
   findFixes(@Param('id', ParseIntPipe) id: number, @Req() req) {
     return this.materialsService.findFixes(id, req.user.userId);

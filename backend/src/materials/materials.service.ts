@@ -163,6 +163,23 @@ export class MaterialsService {
     return withPhotoCount;
   }
 
+  // ⭐ №379: история фиксаций всего проекта одним запросом (экспорт без N+1)
+  async findFixesByProject(projectId: number, userId: number) {
+    const access = await this.checkProjectAccess(projectId, userId);
+    const fixes = await this.prisma.materialFix.findMany({
+      where: { material: { projectId } },
+      orderBy: [{ materialId: 'asc' }, { fixedAt: 'desc' }, { id: 'desc' }],
+    });
+    if (this.mustHidePrices(access)) {
+      return fixes.map((f) => ({
+        ...f,
+        unitPrice: null,
+        materialUnitPrice: null,
+      }));
+    }
+    return fixes;
+  }
+
   // История фиксаций одного материала
   async findFixes(materialId: number, userId: number) {
     // ⭐ Проверяем доступ к материалу

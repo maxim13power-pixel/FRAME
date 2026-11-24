@@ -1483,6 +1483,30 @@ async function main() {
     );
   });
 
+  await check('фиксации проекта отдаются одним запросом и маскируются', async () => {
+    const all = await api(
+      `/materials/project/${project1.id}/fixes`,
+      {},
+      admin.token,
+    );
+    expectStatus(all, 200, 'bulk-фиксации');
+    expect(Array.isArray(all.data) && all.data.length > 0, 'фиксаций нет');
+    expect(
+      all.data.every((f) => typeof f.materialId === 'number'),
+      'в bulk-фиксациях нет materialId',
+    );
+    const hidden = await api(
+      `/materials/project/${project1.id}/fixes`,
+      {},
+      pricesWorker.token,
+    );
+    expectStatus(hidden, 200, 'bulk-фиксации скрытым');
+    expect(
+      hidden.data.every((f) => f.unitPrice == null && f.materialUnitPrice == null),
+      'скрытому участнику отдали цены в bulk-фиксациях',
+    );
+  });
+
   const failed = results.filter((r) => !r.ok);
   console.log(
     `\nИтог: ${results.length - failed.length} ✅ / ${failed.length} ❌ из ${results.length}`,

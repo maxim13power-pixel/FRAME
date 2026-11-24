@@ -70,6 +70,7 @@ import {
   addFix,
   deleteMaterial,
   fetchFixesByMaterial,
+  fetchFixesByProject,
   editLastFix,
   updateMaterial,
   createPriceItemForMaterial,
@@ -721,16 +722,18 @@ const handleExport = useCallback(
       // ⭐ Библиотеки выгрузки подгружаем только при клике (ленивый чанк)
       const { exportMaterialsXlsx, exportMaterialsPdf } = await import('../utils/exportMaterials');
       if (kind === 'xlsx') {
+        // ⭐ №379: один bulk-запрос вместо N запросов по каждой строке
         const fixes: Record<number, MaterialFixData[]> = {};
-        await Promise.all(
-          materials.map(async (m) => {
-            try {
-              fixes[m.id] = await fetchFixesByMaterial(m.id);
-            } catch {
-              fixes[m.id] = [];
+        if (projectId) {
+          try {
+            const allFixes = await fetchFixesByProject(Number(projectId));
+            for (const fix of allFixes) {
+              (fixes[fix.materialId] ??= []).push(fix);
             }
-          }),
-        );
+          } catch {
+            // экспорт не должен падать из-за истории — колонка дат просто будет пустой
+          }
+        }
         exportMaterialsXlsx(materials, meta, includePrices, fixes);
       } else {
         exportMaterialsPdf(materials, meta, includePrices);
