@@ -1,5 +1,5 @@
-// backend/src/reports/reports.service.ts
-// ⭐ Раздел «Отчёты»: сметы и акты выполненных работ.
+﻿// backend/src/reports/reports.service.ts
+// в­ђ Р Р°Р·РґРµР» В«РћС‚С‡С‘С‚С‹В»: СЃРјРµС‚С‹ Рё Р°РєС‚С‹ РІС‹РїРѕР»РЅРµРЅРЅС‹С… СЂР°Р±РѕС‚.
 import {
   BadRequestException,
   ForbiddenException,
@@ -8,9 +8,9 @@ import {
 } from '@nestjs/common';
 import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { assertAccessActive, findLiveAccess, findProjectAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
-import { AuditService } from '../audit/audit.service'; // ⭐ №131
-import { findVisiblePriceItem } from '../price-list/catalog-access'; // ⭐ №191 (F6)
+import { assertAccessActive, findLiveAccess, findProjectAccess } from '../auth/access-scope'; // в­ђ в„–193 (Aв‚‚ F1)
+import { AuditService } from '../audit/audit.service'; // в­ђ в„–131
+import { findVisiblePriceItem } from '../price-list/catalog-access'; // в­ђ в„–191 (F6)
 import { CreateReportDto } from './dto/create-report.dto';
 import { UpdateReportDto } from './dto/update-report.dto';
 import { AddReportItemDto } from './dto/add-report-item.dto';
@@ -20,17 +20,17 @@ const REPORT_TYPES = ['estimate', 'act'];
 const REPORT_STATUSES = ['draft', 'sent', 'approved', 'rejected'];
 
 const UNIT_LABELS: Record<string, string> = {
-  PIECE: 'шт',
-  METER: 'м',
-  LINEAR_METER: 'пог. м',
-  SQUARE_METER: 'м²',
-  CUBIC_METER: 'м³',
-  KILOGRAM: 'кг',
-  LITER: 'л',
-  TON: 'т',
-  BAG: 'мешок',
-  PACKAGE: 'упак',
-  SET: 'компл',
+  PIECE: 'С€С‚',
+  METER: 'Рј',
+  LINEAR_METER: 'РїРѕРі. Рј',
+  SQUARE_METER: 'РјВІ',
+  CUBIC_METER: 'РјВі',
+  KILOGRAM: 'РєРі',
+  LITER: 'Р»',
+  TON: 'С‚',
+  BAG: 'РјРµС€РѕРє',
+  PACKAGE: 'СѓРїР°Рє',
+  SET: 'РєРѕРјРїР»',
 };
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -44,22 +44,22 @@ const REPORT_INCLUDE = {
 export class ReportsService {
   constructor(
     private prisma: PrismaService,
-    private audit: AuditService, // ⭐ №131
+    private audit: AuditService, // в­ђ в„–131
   ) {}
 
-  // ⭐ СКРЫТИЕ ЦЕН (флаг hidePrices + роль VIEWER) — как в materials.service.ts
+  // в­ђ РЎРљР Р«РўРР• Р¦Р•Рќ (С„Р»Р°Рі hidePrices + СЂРѕР»СЊ VIEWER) вЂ” РєР°Рє РІ materials.service.ts
   private mustHidePrices(
     access?: { role?: string; hidePrices?: boolean; revokedAt?: Date | null } | null,
   ): boolean {
     if (!access) return false;
-    // ⭐ №168: отозванный доступ видит только снимок в шаблонах — живые цены скрыты
+    // в­ђ в„–168: РѕС‚РѕР·РІР°РЅРЅС‹Р№ РґРѕСЃС‚СѓРї РІРёРґРёС‚ С‚РѕР»СЊРєРѕ СЃРЅРёРјРѕРє РІ С€Р°Р±Р»РѕРЅР°С… вЂ” Р¶РёРІС‹Рµ С†РµРЅС‹ СЃРєСЂС‹С‚С‹
     if (access.revokedAt) return true;
-    // Наблюдатель не видит деньги по определению роли
+    // РќР°Р±Р»СЋРґР°С‚РµР»СЊ РЅРµ РІРёРґРёС‚ РґРµРЅСЊРіРё РїРѕ РѕРїСЂРµРґРµР»РµРЅРёСЋ СЂРѕР»Рё
     if (access.role === 'VIEWER') return true;
     return access.hidePrices ?? false;
   }
 
-  /** Обнулить денежные поля отчёта и его позиций (для ответа клиенту) */
+  /** РћР±РЅСѓР»РёС‚СЊ РґРµРЅРµР¶РЅС‹Рµ РїРѕР»СЏ РѕС‚С‡С‘С‚Р° Рё РµРіРѕ РїРѕР·РёС†РёР№ (РґР»СЏ РѕС‚РІРµС‚Р° РєР»РёРµРЅС‚Сѓ) */
   private stripPrices<T>(report: T): T {
     const r = report as any;
     if (!r) return report;
@@ -74,18 +74,18 @@ export class ReportsService {
     return { ...r, totalAmount: 0, items } as T;
   }
 
-  // ⭐ №180: наблюдатель и отозванный доступ — только чтение (как в projects/brigades).
+  // в­ђ в„–180: РЅР°Р±Р»СЋРґР°С‚РµР»СЊ Рё РѕС‚РѕР·РІР°РЅРЅС‹Р№ РґРѕСЃС‚СѓРї вЂ” С‚РѕР»СЊРєРѕ С‡С‚РµРЅРёРµ (РєР°Рє РІ projects/brigades).
   private assertWritable(
     access: { role?: AccessRole | string; revokedAt?: Date | null },
     action: string,
   ) {
     if (access.revokedAt) {
       throw new ForbiddenException(
-        `Доступ отозван: ${action} недоступно. Отчёты открыты только на чтение.`,
+        `Р”РѕСЃС‚СѓРї РѕС‚РѕР·РІР°РЅ: ${action} РЅРµРґРѕСЃС‚СѓРїРЅРѕ. РћС‚С‡С‘С‚С‹ РѕС‚РєСЂС‹С‚С‹ С‚РѕР»СЊРєРѕ РЅР° С‡С‚РµРЅРёРµ.`,
       );
     }
     if (access.role === AccessRole.VIEWER) {
-      throw new ForbiddenException(`Наблюдатель не может ${action}`);
+      throw new ForbiddenException(`РќР°Р±Р»СЋРґР°С‚РµР»СЊ РЅРµ РјРѕР¶РµС‚ ${action}`);
     }
   }
 
@@ -95,7 +95,7 @@ export class ReportsService {
       select: { objectId: true },
     });
     if (!project) {
-      throw new NotFoundException('Проект не найден');
+      throw new NotFoundException('РџСЂРѕРµРєС‚ РЅРµ РЅР°Р№РґРµРЅ');
     }
     const access = await findProjectAccess(
       this.prisma,
@@ -104,32 +104,32 @@ export class ReportsService {
       projectId,
     );
     if (!access) {
-      throw new NotFoundException('Проект не найден');
+      throw new NotFoundException('РџСЂРѕРµРєС‚ РЅРµ РЅР°Р№РґРµРЅ');
     }
-    assertAccessActive(access); // ⭐ №193 (A₂ F1): отозванный доступ живых данных не читает
+    assertAccessActive(access); // в­ђ в„–193 (Aв‚‚ F1): РѕС‚РѕР·РІР°РЅРЅС‹Р№ РґРѕСЃС‚СѓРї Р¶РёРІС‹С… РґР°РЅРЅС‹С… РЅРµ С‡РёС‚Р°РµС‚
     return access;
   }
 
   private async checkReportAccess(reportId: number, userId: number) {
     const report = await this.prisma.report.findUnique({ where: { id: reportId } });
     if (!report) {
-      throw new NotFoundException('Отчёт не найден');
+      throw new NotFoundException('РћС‚С‡С‘С‚ РЅРµ РЅР°Р№РґРµРЅ');
     }
-    // ⭐ Возвращаем и отчёт, и запись доступа (role/hidePrices) — для скрытия цен.
+    // в­ђ Р’РѕР·РІСЂР°С‰Р°РµРј Рё РѕС‚С‡С‘С‚, Рё Р·Р°РїРёСЃСЊ РґРѕСЃС‚СѓРїР° (role/hidePrices) вЂ” РґР»СЏ СЃРєСЂС‹С‚РёСЏ С†РµРЅ.
     const access = await this.checkProjectAccess(report.projectId, userId);
     return { report, access };
   }
 
   private async resolvePriceItem(materialId: number, userId: number) {
-    // ⭐ №191 (F6): расценка должна быть из справочника, который пользователь видит.
-    // «Не найдено» — тот же ответ, что и для несуществующего id (не подтверждаем чужой id).
+    // в­ђ в„–191 (F6): СЂР°СЃС†РµРЅРєР° РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РёР· СЃРїСЂР°РІРѕС‡РЅРёРєР°, РєРѕС‚РѕСЂС‹Р№ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РІРёРґРёС‚.
+    // В«РќРµ РЅР°Р№РґРµРЅРѕВ» вЂ” С‚РѕС‚ Р¶Рµ РѕС‚РІРµС‚, С‡С‚Рѕ Рё РґР»СЏ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ id (РЅРµ РїРѕРґС‚РІРµСЂР¶РґР°РµРј С‡СѓР¶РѕР№ id).
     const item = await findVisiblePriceItem(this.prisma, materialId, userId);
     if (!item) {
-      throw new BadRequestException('Позиция справочника цен не найдена');
+      throw new BadRequestException('РџРѕР·РёС†РёСЏ СЃРїСЂР°РІРѕС‡РЅРёРєР° С†РµРЅ РЅРµ РЅР°Р№РґРµРЅР°');
     }
     return {
       name: item.name,
-      unit: UNIT_LABELS[item.unit] ?? 'шт',
+      unit: UNIT_LABELS[item.unit] ?? 'С€С‚',
       price: Number(item.price),
     };
   }
@@ -139,7 +139,7 @@ export class ReportsService {
     filters: { projectId?: number; objectId?: number; type?: string; status?: string },
   ) {
     const where: Prisma.ReportWhereInput = {};
-    // ⭐ №180: суммы скрываем и в списке — раньше hidePrices работал только в карточке.
+    // в­ђ в„–180: СЃСѓРјРјС‹ СЃРєСЂС‹РІР°РµРј Рё РІ СЃРїРёСЃРєРµ вЂ” СЂР°РЅСЊС€Рµ hidePrices СЂР°Р±РѕС‚Р°Р» С‚РѕР»СЊРєРѕ РІ РєР°СЂС‚РѕС‡РєРµ.
     let hideAll = false;
     let grants: Array<{
       objectId: number;
@@ -155,20 +155,20 @@ export class ReportsService {
       );
       where.projectId = filters.projectId;
     } else if (filters.objectId != null && !Number.isNaN(filters.objectId)) {
-      // ⭐ №193 (A₂ F1): отозванный доступ отчёты объекта не читает.
+      // в­ђ в„–193 (Aв‚‚ F1): РѕС‚РѕР·РІР°РЅРЅС‹Р№ РґРѕСЃС‚СѓРї РѕС‚С‡С‘С‚С‹ РѕР±СЉРµРєС‚Р° РЅРµ С‡РёС‚Р°РµС‚.
       const acc = await findLiveAccess(this.prisma, {
         userId,
         objectId: filters.objectId,
         projectId: null,
       });
       if (!acc) {
-        throw new NotFoundException('Объект не найден');
+        throw new NotFoundException('РћР±СЉРµРєС‚ РЅРµ РЅР°Р№РґРµРЅ');
       }
       assertAccessActive(acc);
       hideAll = this.mustHidePrices(acc);
       where.objectId = filters.objectId;
     } else {
-      // ⭐ №193 (A₂ F1): отозванные записи в выборку не попадают.
+      // в­ђ в„–193 (Aв‚‚ F1): РѕС‚РѕР·РІР°РЅРЅС‹Рµ Р·Р°РїРёСЃРё РІ РІС‹Р±РѕСЂРєСѓ РЅРµ РїРѕРїР°РґР°СЋС‚.
       grants = await this.prisma.objectAccess.findMany({
         where: { userId, revokedAt: null },
         select: {
@@ -202,7 +202,7 @@ export class ReportsService {
     if (hideAll) return reports.map((r) => this.stripPrices(r));
     if (grants.length === 0) return reports;
 
-    // Скрываем суммы там, где хотя бы одна выданная запись требует скрытия.
+    // РЎРєСЂС‹РІР°РµРј СЃСѓРјРјС‹ С‚Р°Рј, РіРґРµ С…РѕС‚СЏ Р±С‹ РѕРґРЅР° РІС‹РґР°РЅРЅР°СЏ Р·Р°РїРёСЃСЊ С‚СЂРµР±СѓРµС‚ СЃРєСЂС‹С‚РёСЏ.
     return reports.map((r) => {
       const own = grants.filter(
         (g) =>
@@ -225,8 +225,8 @@ export class ReportsService {
       },
     });
     const result = { ...report, items };
-    // ⭐ VIEWER / hidePrices — скрываем цены и в JSON, и в PDF/XLSX (контроллер
-    // вызывает detail() перед генерацией экспорта, поэтому обнуление работает везде).
+    // в­ђ VIEWER / hidePrices вЂ” СЃРєСЂС‹РІР°РµРј С†РµРЅС‹ Рё РІ JSON, Рё РІ PDF/XLSX (РєРѕРЅС‚СЂРѕР»Р»РµСЂ
+    // РІС‹Р·С‹РІР°РµС‚ detail() РїРµСЂРµРґ РіРµРЅРµСЂР°С†РёРµР№ СЌРєСЃРїРѕСЂС‚Р°, РїРѕСЌС‚РѕРјСѓ РѕР±РЅСѓР»РµРЅРёРµ СЂР°Р±РѕС‚Р°РµС‚ РІРµР·РґРµ).
     return this.mustHidePrices(access) ? this.stripPrices(result) : result;
   }
 
@@ -239,14 +239,14 @@ export class ReportsService {
       select: { objectId: true },
     });
     if (!project) {
-      throw new NotFoundException('Проект не найден');
+      throw new NotFoundException('РџСЂРѕРµРєС‚ РЅРµ РЅР°Р№РґРµРЅ');
     }
     if (project.objectId !== dto.objectId) {
-      throw new BadRequestException('objectId: проект не принадлежит этому объекту');
+      throw new BadRequestException('objectId: РїСЂРѕРµРєС‚ РЅРµ РїСЂРёРЅР°РґР»РµР¶РёС‚ СЌС‚РѕРјСѓ РѕР±СЉРµРєС‚Сѓ');
     }
     this.assertWritable(
       await this.checkProjectAccess(dto.projectId, userId),
-      'создавать отчёт',
+      'СЃРѕР·РґР°РІР°С‚СЊ РѕС‚С‡С‘С‚',
     );
 
     return this.prisma.report.create({
@@ -265,7 +265,7 @@ export class ReportsService {
 
   async update(userId: number, id: number, dto: UpdateReportDto) {
     const { report, access } = await this.checkReportAccess(id, userId);
-    this.assertWritable(access, 'изменять отчёт');
+    this.assertWritable(access, 'РёР·РјРµРЅСЏС‚СЊ РѕС‚С‡С‘С‚');
     const hideMoney = this.mustHidePrices(access);
     if (dto.status && !REPORT_STATUSES.includes(dto.status)) {
       throw new BadRequestException('status: draft / sent / approved / rejected');
@@ -280,7 +280,7 @@ export class ReportsService {
       include: REPORT_INCLUDE,
     });
 
-    // ⭐ №131: журнал смены статуса отчёта
+    // в­ђ в„–131: Р¶СѓСЂРЅР°Р» СЃРјРµРЅС‹ СЃС‚Р°С‚СѓСЃР° РѕС‚С‡С‘С‚Р°
     if (dto.status !== undefined && dto.status !== report.status) {
       await this.audit.log(
         userId,
@@ -297,7 +297,7 @@ export class ReportsService {
 
   async remove(userId: number, id: number) {
     const { access } = await this.checkReportAccess(id, userId);
-    this.assertWritable(access, 'удалять отчёт');
+    this.assertWritable(access, 'СѓРґР°Р»СЏС‚СЊ РѕС‚С‡С‘С‚');
     await this.prisma.report.delete({ where: { id } });
     return { success: true };
   }
@@ -315,7 +315,7 @@ export class ReportsService {
 
   async addItem(userId: number, reportId: number, dto: AddReportItemDto) {
     const { access } = await this.checkReportAccess(reportId, userId);
-    this.assertWritable(access, 'добавлять позиции в отчёт');
+    this.assertWritable(access, 'РґРѕР±Р°РІР»СЏС‚СЊ РїРѕР·РёС†РёРё РІ РѕС‚С‡С‘С‚');
     const hideMoney = this.mustHidePrices(access);
     const quantity = dto.quantity;
     let name: string;
@@ -329,19 +329,19 @@ export class ReportsService {
       price = pi.price;
     } else {
       if (!dto.name || !dto.name.trim()) {
-        throw new BadRequestException('name: обязателен без materialId');
+        throw new BadRequestException('name: РѕР±СЏР·Р°С‚РµР»РµРЅ Р±РµР· materialId');
       }
       name = dto.name.trim();
-      unit = dto.unit?.trim() || 'шт';
+      unit = dto.unit?.trim() || 'С€С‚';
       price = dto.price ?? 0;
     }
 
     const total = round2(quantity * price);
 
     return this.prisma.$transaction(async (tx) => {
-      // ⭐ №374: сериализуем мутации позиций одного отчёта —
-      // иначе параллельные addItem/updateItem теряют часть суммы.
-      await tx.$queryRaw`SELECT id FROM "Report" WHERE id = ${reportId} FOR UPDATE`;
+      // в­ђ в„–374: СЃРµСЂРёР°Р»РёР·СѓРµРј РјСѓС‚Р°С†РёРё РїРѕР·РёС†РёР№ РѕРґРЅРѕРіРѕ РѕС‚С‡С‘С‚Р° вЂ”
+      // РёРЅР°С‡Рµ РїР°СЂР°Р»Р»РµР»СЊРЅС‹Рµ addItem/updateItem С‚РµСЂСЏСЋС‚ С‡Р°СЃС‚СЊ СЃСѓРјРјС‹.
+      await tx.$queryRaw`SELECT id FROM "reports" WHERE id = ${reportId} FOR UPDATE`;
       const item = await tx.reportItem.create({
         data: {
           reportId,
@@ -354,7 +354,7 @@ export class ReportsService {
         },
       });
       await this.recalcTotal(tx, reportId);
-      // ⭐ №372 (P0): ответ мутации — тоже деньги, маскируем
+      // в­ђ в„–372 (P0): РѕС‚РІРµС‚ РјСѓС‚Р°С†РёРё вЂ” С‚РѕР¶Рµ РґРµРЅСЊРіРё, РјР°СЃРєРёСЂСѓРµРј
       return hideMoney ? { ...item, price: 0, total: 0 } : item;
     });
   }
@@ -366,16 +366,16 @@ export class ReportsService {
     dto: UpdateReportItemDto,
   ) {
     const { access } = await this.checkReportAccess(reportId, userId);
-    this.assertWritable(access, 'изменять позиции отчёта');
+    this.assertWritable(access, 'РёР·РјРµРЅСЏС‚СЊ РїРѕР·РёС†РёРё РѕС‚С‡С‘С‚Р°');
     const hideMoney = this.mustHidePrices(access);
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "Report" WHERE id = ${reportId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM "reports" WHERE id = ${reportId} FOR UPDATE`;
       const existing = await tx.reportItem.findFirst({
         where: { id: itemId, reportId },
       });
       if (!existing) {
-        throw new NotFoundException('Позиция отчёта не найдена');
+        throw new NotFoundException('РџРѕР·РёС†РёСЏ РѕС‚С‡С‘С‚Р° РЅРµ РЅР°Р№РґРµРЅР°');
       }
 
       let name = existing.name;
@@ -389,7 +389,7 @@ export class ReportsService {
         price = pi.price;
       } else {
         if (dto.name !== undefined) name = dto.name.trim();
-        if (dto.unit !== undefined) unit = dto.unit.trim() || 'шт';
+        if (dto.unit !== undefined) unit = dto.unit.trim() || 'С€С‚';
         if (dto.price !== undefined) price = dto.price;
       }
 
@@ -414,15 +414,15 @@ export class ReportsService {
 
   async removeItem(userId: number, reportId: number, itemId: number) {
     const { access } = await this.checkReportAccess(reportId, userId);
-    this.assertWritable(access, 'удалять позиции отчёта');
+    this.assertWritable(access, 'СѓРґР°Р»СЏС‚СЊ РїРѕР·РёС†РёРё РѕС‚С‡С‘С‚Р°');
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "Report" WHERE id = ${reportId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM "reports" WHERE id = ${reportId} FOR UPDATE`;
       const existing = await tx.reportItem.findFirst({
         where: { id: itemId, reportId },
       });
       if (!existing) {
-        throw new NotFoundException('Позиция отчёта не найдена');
+        throw new NotFoundException('РџРѕР·РёС†РёСЏ РѕС‚С‡С‘С‚Р° РЅРµ РЅР°Р№РґРµРЅР°');
       }
       await tx.reportItem.delete({ where: { id: itemId } });
       await this.recalcTotal(tx, reportId);
@@ -430,3 +430,4 @@ export class ReportsService {
     });
   }
 }
+

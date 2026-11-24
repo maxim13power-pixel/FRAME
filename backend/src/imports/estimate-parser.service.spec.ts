@@ -2,6 +2,7 @@
 // ⭐ №208: парсер должен читать НАШУ выгрузку («По спецификации», скрытый `_meta`)
 // и внятно ругаться, если шапки нет.
 import * as ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import { BadRequestException } from '@nestjs/common';
 import { EstimateParserService } from './estimate-parser.service';
 
@@ -109,5 +110,24 @@ describe('EstimateParserService (№208)', () => {
 
     await expect(parser.parseBuffer(buffer, 'bad.xlsx')).rejects.toThrow(BadRequestException);
     await expect(parser.parseBuffer(buffer, 'bad.xlsx')).rejects.toThrow(/заголовк/i);
+  });
+
+  it('XLSX-����� ����������� �� ExcelJS.load (�378)', async () => {
+    const zip = new JSZip();
+    zip.file(
+      'xl/workbook.xml',
+      '<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="����1" sheetId="1"/></sheets></workbook>',
+    );
+    zip.file(
+      'xl/worksheets/sheet1.xml',
+      '<?xml version="1.0"?><worksheet><dimension ref="A1:XFD1048576"/></worksheet>',
+    );
+    const buffer = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+    });
+    await expect(parser.parseBuffer(buffer, 'bomb.xlsx')).rejects.toThrow(
+      BadRequestException,
+    );
   });
 });

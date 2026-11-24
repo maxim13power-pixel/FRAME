@@ -3,6 +3,7 @@
 // Принимаем ЧУЖОЙ файл: ищем шапку в первых строках по синонимам, а не требуем свой шаблон.
 import { BadRequestException, Injectable } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
+import { assertWorkbookSafe, XLSX_LIMITS, XlsxLimitError } from './xlsx-guard';
 import type {
   DetectedColumns,
   ImportMetaInfo,
@@ -64,8 +65,13 @@ export class EstimateParserService {
     }
     const workbook = new ExcelJS.Workbook();
     try {
+      // ⭐ №378: проверяем ZIP/размерность ДО тяжёлого ExcelJS.load
+      await assertWorkbookSafe(buffer);
       await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
-    } catch {
+    } catch (error) {
+      if (error instanceof XlsxLimitError) {
+        throw new BadRequestException(error.message);
+      }
       throw new BadRequestException(
         'Не удалось прочитать файл. Нужен .xlsx (Excel 2007+) или .csv — старый .xls не поддержан.',
       );
@@ -93,6 +99,21 @@ export class EstimateParserService {
   ): ParsedEstimate {
     if (!Array.isArray(matrix) || matrix.length === 0) {
       throw new BadRequestException('Пустая таблица: нет строк для импорта.');
+    }
+    // ⭐ №378: единые лимиты и для CSV/вставки — не только для XLSX
+    if (matrix.length > XLSX_LIMITS.maxRows) {
+      throw new BadRequestException(
+        `Слишком много строк: ${matrix.length} (максимум ${XLSX_LIMITS.maxRows})`,
+      );
+    }
+    const maxCols = matrix.reduce(
+      (max, row) => Math.max(max, Array.isArray(row) ? row.length : 0),
+      0,
+    );
+    if (maxCols > XLSX_LIMITS.maxCols) {
+      throw new BadRequestException(
+        `Слишком много колонок: ${maxCols} (максимум ${XLSX_LIMITS.maxCols})`,
+      );
     }
     const { headerIndex, columns } = detectHeader(matrix);
     // ⭐ №208: без колонки «Наименование» импорт бессмысленен — говорим об этом прямо,

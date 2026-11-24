@@ -16,6 +16,7 @@ process.env.DATABASE_URL = env
   .trim();
 
 const { PrismaClient } = require('@prisma/client');
+const ExcelJS = require('exceljs');
 const prisma = new PrismaClient();
 
 const BASE = process.env.API_BASE || 'http://localhost:3000';
@@ -1162,6 +1163,11 @@ async function main() {
       ok === 1,
       `приняли ссылку ${ok} раза вместо одного (${a.status}/${b.status}: ${a.data?.message ?? ''} | ${b.data?.message ?? ''})`,
     );
+    const usedLink = await prisma.inviteToken.findUnique({
+      where: { token },
+      select: { usesCount: true },
+    });
+    expect(usedLink.usesCount === 1, `usesCount=${usedLink.usesCount} вместо 1`);
   });
 
   await check('два copy-estimate в пустой проект — смета не дублируется', async () => {
@@ -1226,17 +1232,52 @@ async function main() {
       ),
       api(
         `/rentals/${id}/extend`,
-        { method: 'PATCH', body: { newEndDate: '2026-11-30', price: 100 } },
+        { method: 'PATCH', body: { newEndDate: '2026-11-20', price: 100 } },
         admin.token,
       ),
     ]);
     const ok = [a, b].filter((r) => r.status === 200 || r.status === 201).length;
-    expect(ok >= 1, 'ни одно продление не прошло');
+    expect(ok === 1, `прошло ${ok} продлений вместо одного`);
     const row = await prisma.rental.findUnique({ where: { id } });
-    const expected = 1000 + 100 * ok;
     expect(
-      Math.abs(Number(row.totalSpent) - expected) < 0.01,
-      `totalSpent ${row.totalSpent} вместо ${expected} (успешных ${ok})`,
+      Math.abs(Number(row.totalSpent) - 1100) < 0.01,
+      `totalSpent ${row.totalSpent} вместо 1100`,
+    );
+  });
+
+  await check('продление параллельно с правкой цены не теряет сумму', async () => {
+    const created = await api(
+      '/rentals',
+      {
+        method: 'POST',
+        body: {
+          name: `Цена+продление ${stamp}`,
+          startDate: '2026-11-01',
+          endDate: '2026-11-10',
+          price: 1000,
+        },
+      },
+      admin.token,
+    );
+    expectStatus(created, [200, 201], 'создание аренды');
+    const id = created.data.id;
+    const [extend, price] = await Promise.all([
+      api(
+        `/rentals/${id}/extend`,
+        { method: 'PATCH', body: { newEndDate: '2026-11-20', price: 100 } },
+        admin.token,
+      ),
+      api(`/rentals/${id}`, { method: 'PATCH', body: { price: 1500 } }, admin.token),
+    ]);
+    expect(
+      [extend, price].every((r) => r.status === 200 || r.status === 201),
+      `запросы не прошли: ${extend.status}/${price.status}`,
+    );
+    const row = await prisma.rental.findUnique({ where: { id } });
+    // 1000 + продление 100 + разница цены (1500−1000)
+    expect(
+      Math.abs(Number(row.totalSpent) - 1600) < 0.01,
+      `totalSpent ${row.totalSpent} вместо 1600`,
     );
   });
 
@@ -1384,6 +1425,61 @@ async function main() {
     expect(
       moneyFields.every((v) => v == null),
       'в снимке скрытого участника остались цены',
+    );
+  });
+
+
+  // -- 14. ������� ��� ������� ���������� --------------------
+  console.log('\n14. ������� ��� �������');
+
+  await check('����� � XLSX/PDF �� �������� ��� ��� �������� FOREMAN', async () => {
+    const report = await api(
+      '/reports',
+      {
+        method: 'POST',
+        body: { projectId: project1.id, objectId: object.id, type: 'estimate', title: `������� ${stamp}` },
+      },
+      admin.token,
+    );
+    expectStatus(report, [200, 201], '�������� ������');
+    const item = await api(
+      `/reports/${report.data.id}/items`,
+      {
+        method: 'POST',
+        body: { name: `������� ${stamp}`, unit: '��', quantity: 2, price: 12345 },
+      },
+      admin.token,
+    );
+    expectStatus(item, [200, 201], '������� ������');
+
+    const xlsx = await fetch(
+      `${BASE}/reports/${report.data.id}/export/xlsx`,
+      { headers: { Authorization: `Bearer ${pricesWorker.token}` } },
+    );
+    expect(xlsx.status === 200, `XLSX: ������ ${xlsx.status}`);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(await xlsx.arrayBuffer()));
+    const values = [];
+    wb.eachSheet((ws) => {
+      ws.eachRow((row) => {
+        row.eachCell((cell) => {
+          values.push(String(cell.value ?? ''));
+        });
+      });
+    });
+    expect(
+      !values.some((v) => v.includes('12345')),
+      '� XLSX �������� ��������� �������� ���� 12345',
+    );
+
+    const pdf = await fetch(
+      `${BASE}/reports/${report.data.id}/export/pdf`,
+      { headers: { Authorization: `Bearer ${pricesWorker.token}` } },
+    );
+    expect(pdf.status === 200, `PDF: ������ ${pdf.status}`);
+    expect(
+      (pdf.headers.get('content-type') ?? '').includes('application/pdf'),
+      'PDF: �������� content-type',
     );
   });
 

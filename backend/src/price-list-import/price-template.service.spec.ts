@@ -1,6 +1,8 @@
 // backend/src/price-list-import/price-template.service.spec.ts
 import { PriceKind, Unit } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
+import JSZip from 'jszip';
+import { BadRequestException } from '@nestjs/common';
 import { PriceTemplateService } from './price-template.service';
 
 describe('PriceTemplateService — шаблон и разбор (§121)', () => {
@@ -97,5 +99,22 @@ describe('PriceTemplateService — шаблон и разбор (§121)', () => 
     const parsed = await service.parse(buffer);
     expect(parsed.sheets.map((s) => s.sheet)).toEqual(['Разное']);
     expect(parsed.kind).toBe('MATERIAL');
+  });
+
+  it('XLSX-����� ����������� �� ������� ������ (�378)', async () => {
+    const zip = new JSZip();
+    zip.file(
+      'xl/workbook.xml',
+      '<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="����1" sheetId="1"/></sheets></workbook>',
+    );
+    zip.file(
+      'xl/worksheets/sheet1.xml',
+      '<?xml version="1.0"?><worksheet><dimension ref="A1:XFD1048576"/></worksheet>',
+    );
+    const buffer = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+    });
+    await expect(service.parse(buffer)).rejects.toThrow(BadRequestException);
   });
 });

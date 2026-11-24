@@ -4,6 +4,7 @@
 // поэтому загрузить «не тот» файл можно распознать и сказать об этом прямо.
 import { BadRequestException, Injectable } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
+import { assertWorkbookSafe, XlsxLimitError } from '../imports/xlsx-guard';
 import type { PriceKind, Unit } from '@prisma/client';
 import { parseNumberRu } from '../imports/name-normalizer';
 import { unitLabelRu } from '../imports/unit-normalizer';
@@ -309,8 +310,13 @@ export class PriceTemplateService {
   async parse(buffer: Buffer): Promise<ParsedPriceWorkbook> {
     const wb = new ExcelJS.Workbook();
     try {
+      // ⭐ №378: ZIP/размерность проверяем ДО ExcelJS.load
+      await assertWorkbookSafe(buffer);
       await wb.xlsx.load(buffer as unknown as ArrayBuffer);
-    } catch {
+    } catch (error) {
+      if (error instanceof XlsxLimitError) {
+        throw new BadRequestException(error.message);
+      }
       throw new BadRequestException(
         'Не удалось прочитать файл. Нужен .xlsx (Excel 2007+); старый .xls не поддержан.',
       );
