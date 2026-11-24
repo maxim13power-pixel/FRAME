@@ -121,8 +121,8 @@ const BOTTOM_NAV_HEIGHT = 56; // высота BottomNav (MUI BottomNavigation п
 const SUMMARY_BAR_BOTTOM = BOTTOM_NAV_HEIGHT + 8; // плашка над меню с зазором 8px
 // ⭐ №388/389: у низа списка FAB остаётся (владелец просил вернуть), но плашка страниц
 // резервирует справа 56 px под него — «Свернуть» и кнопки уезжают левее и не перекрываются.
-// Отступ списка 100 px (+ ~64 px от layout) даёт зазор ~42 px до панели итогов.
-const SUMMARY_LIST_CLEARANCE_BOTTOM_PX = 100;
+// Отступ списка 65 px (+ ~57 px от layout) — зазор ~8 px до панели итогов (значение владельца).
+const SUMMARY_LIST_CLEARANCE_BOTTOM_PX = 65;
 // ⭐ №384: варианты размера страницы сметы; выбор запоминается в localStorage
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const PAGE_SIZE_KEY = 'materials-page-size';
