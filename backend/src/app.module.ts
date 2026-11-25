@@ -24,6 +24,8 @@ import { SnapshotsModule } from './snapshots/snapshots.module'; // ⭐ №194: �
 import { ImportsModule } from './imports/imports.module'; // ⭐ №202: импорт сметы из Excel
 import { PhotosModule } from './photos/photos.module'; // ⭐ №227: фото-фиксация материалов
 import { PriceListImportModule } from './price-list-import/price-list-import.module'; // ⭐ №273: импорт/выгрузка прайса
+import { AlertsModule } from './common/alerts/alerts.module'; // ⭐ №396: алерты в Telegram
+import { TelemetryModule } from './telemetry/telemetry.module'; // ⭐ №396: ошибки из браузера
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -52,6 +54,8 @@ import { PriceListImportModule } from './price-list-import/price-list-import.mod
     ImportsModule, // ⭐ №202: импорт сметы из Excel
     PriceListImportModule, // ⭐ №273: импорт/выгрузка прайса
     PhotosModule, // ⭐ №227: фото-фиксация материалов
+    AlertsModule, // ⭐ №396: алерты в Telegram (глобальный, без БД)
+    TelemetryModule, // ⭐ №396: приём ошибок из браузера
   ],
   controllers: [AppController],
   providers: [AppService],

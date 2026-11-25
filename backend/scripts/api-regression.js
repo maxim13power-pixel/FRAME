@@ -1764,6 +1764,38 @@ async function main() {
     );
   });
 
+  // ── 17. Телеметрия ошибок фронта (№396) ───────────────────────────────
+  console.log('\n17. Телеметрия ошибок фронта');
+
+  await check('ошибка фронта принимается без авторизации (204) и имеет лимиты', async () => {
+    // Публичный эндпоинт: падение может случиться до логина, токена нет намеренно.
+    const ok = await api('/telemetry/client-error', {
+      method: 'POST',
+      body: { message: 'Регресс-ошибка фронта', url: '/materials', context: 'window.error' },
+    });
+    expectStatus(ok, 204, 'ошибка фронта');
+
+    // Без обязательного message — 400 от ValidationPipe (эндпоинт не «всё принимает»).
+    expectStatus(
+      await api('/telemetry/client-error', { method: 'POST', body: { stack: 'без message' } }),
+      400,
+      'нет message',
+    );
+
+    // Flood с одного IP: сервис молча отбрасывает, но НЕ отвечает ошибкой (204 всегда).
+    const flood = [];
+    for (let i = 0; i < 12; i += 1) {
+      flood.push(await api('/telemetry/client-error', {
+        method: 'POST',
+        body: { message: `flood ${i}` },
+      }));
+    }
+    expect(
+      flood.every((res) => res.status === 204),
+      `flood: ожидали все 204, получили ${flood.map((r) => r.status).join(',')}`,
+    );
+  });
+
   const failed = results.filter((r) => !r.ok);
   console.log(
     `\nИтог: ${results.length - failed.length} ✅ / ${failed.length} ❌ из ${results.length}`,
