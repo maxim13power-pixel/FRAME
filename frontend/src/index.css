@@ -118,8 +118,17 @@ button:focus-visible {
 
   .print-area {
     overflow: visible !important;
+    max-height: none !important;
     box-shadow: none !important;
     border-radius: 0 !important;
+  }
+
+  /* ⭐ №401: на печати шапка и ИТОГО не «липнут» — повтор шапки делает table-header-group */
+  .print-area thead th,
+  .print-area tfoot td {
+    position: static !important;
+    top: auto !important;
+    bottom: auto !important;
   }
 
   .print-area table {

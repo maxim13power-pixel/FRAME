@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
@@ -663,6 +663,12 @@ const [showAll, setShowAll] = useState(false);
 const [pageInput, setPageInput] = useState('1');
 // ⭐ №384: кнопка «вниз» к ИТОГО/страницам
 const footerSentinelRef = useRef<HTMLDivElement | null>(null);
+// ⭐ №401: липкая шапка таблицы. Заголовки переносятся на 2–3 строки, поэтому высоту первого
+// ряда измеряем (ResizeObserver), а второй ряд приклеиваем под ним — иначе он «наезжает».
+const tableHeadRef = useRef<HTMLTableSectionElement | null>(null);
+const [tableHeadRowHeight, setTableHeadRowHeight] = useState(0);
+// ⭐ №401: контейнер таблицы со своей прокруткой — кнопка «вниз» должна прокрутить и его
+const tableScrollRef = useRef<HTMLDivElement | null>(null);
 // ⭐ №393: состояние «долистали до низа» живёт в `EstimateScrollChrome`, здесь — только ref
 // ⭐ №383: печать из браузера — «вся смета» дорисовывает строки только на время печати
 const [printOnlyPage, setPrintOnlyPage] = useState(false);
@@ -910,6 +916,25 @@ useEffect(() => {
   );
   const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
   const currentPage = Math.min(pageCount, Math.floor(sliceStart / pageSize) + 1);
+  // ⭐ №401: измеряем высоту первого ряда шапки — от неё зависит «top» второго ряда,
+  // чтобы подписи «За ед. / Итого руб.» не наезжали на заголовки при прокрутке.
+  useLayoutEffect(() => {
+    if (isMobile) return; // на мобилке таблицы нет — там карточки
+    const head = tableHeadRef.current;
+    if (!head) return;
+    const measure = () => {
+      const firstRow = head.querySelector('tr');
+      setTableHeadRowHeight(firstRow ? Math.round(firstRow.getBoundingClientRect().height) : 0);
+    };
+    measure();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    observer?.observe(head);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [isMobile, hidePrices, loading]);
   const windowCoversAll = sliceStart === 0 && windowEnd >= totalRows;
   // ⭐ №383: плашка нужна и при ровно одной полной странице (200 строк = «Страница 1 из 1»),
   // иначе пользователь не понимает, есть ли вообще страницы.
@@ -1002,6 +1027,12 @@ useEffect(() => {
   // явному нажатию «Показать ещё N» (или «Показать все»).
 
   const scrollToFooter = useCallback(() => {
+    // ⭐ №401: у таблицы своя прокрутка — сначала доводим её до конца (там ИТОГО и последние
+    // строки), потом прокручиваем страницу к плашке страниц.
+    const table = tableScrollRef.current;
+    if (table && table.scrollHeight > table.clientHeight) {
+      table.scrollTo({ top: table.scrollHeight, behavior: 'smooth' });
+    }
     const el = footerSentinelRef.current;
     if (!el) return;
     // ⭐ №386: `scrollIntoView` ставил плашку вплотную к низу, и кнопки уходили
@@ -2985,9 +3016,31 @@ onClose={() => setFilterAnchorEl(null)}
               : ` · строки ${sliceStart + 1}–${windowEnd} из ${totalRows}`}
           </Typography>
         </Box>
-        <TableContainer component={Paper} className="print-area" sx={{ mb: 2 }}>
-          <Table sx={{ minWidth: 1500, ...(dragSelecting ? { userSelect: 'none' } : {}) }}>
-<TableHead sx={{ bgcolor: '#f5f5f5' }}>
+        <TableContainer
+          component={Paper}
+          ref={tableScrollRef}
+          className="print-area"
+          // ⭐ №401: у таблицы своя вертикальная прокрутка — тогда шапка «липнет» и в Chrome,
+          // и в Safari/Firefox (при прокрутке страницы `position: sticky` на th не работает,
+          // потому что скроллится не контейнер таблицы). Высота — «экран минус шапка сайта
+          // и плашки», на печати ограничение снимается (index.css).
+          sx={{ mb: 2, maxHeight: { xs: 'none', md: 'calc(100vh - 230px)' }, overflow: 'auto' }}
+        >
+          <Table sx={{
+            minWidth: 1500,
+            ...(dragSelecting ? { userSelect: 'none' } : {}),
+            // ⭐ №401: липкая шапка. Первый ряд — к верхнему краю контейнера, второй («За ед.» /
+            // «Итого руб.») — под ним, на измеренную высоту первого ряда.
+            '& thead th': { position: 'sticky', zIndex: 3 },
+            '& thead tr:nth-of-type(1) th': { top: 0, backgroundColor: '#f5f5f5' },
+            '& thead tr:nth-of-type(2) th': {
+              top: `${tableHeadRowHeight}px`,
+              backgroundColor: '#e3f2fd',
+            },
+            // ⭐ №401: ИТОГО тоже «липнет» — снизу таблицы, чтобы суммы были видны при прокрутке
+            '& tfoot td': { position: 'sticky', bottom: 0, zIndex: 3, backgroundColor: '#FFF9C4' },
+          }}>
+<TableHead ref={tableHeadRef} sx={{ bgcolor: '#f5f5f5' }}>
 <TableRow>
 <TableCell rowSpan={2} sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
   {/* ⭐ №292: чекбокс «выбрать все» — в колонке «№», раскладка таблицы не меняется */}
