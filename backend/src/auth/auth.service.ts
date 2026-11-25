@@ -11,7 +11,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { CaptchaService } from '../captcha';
-import { EmailService } from './email.service'; // ⭐ P0-4
+import { EmailService, isTestRecipient } from './email.service'; // ⭐ P0-4 (⭐ №399: isTestRecipient)
 import { ForgotPasswordDto } from './dto/forgot-password.dto'; // ⭐ P0-4
 import { ResetPasswordDto } from './dto/reset-password.dto'; // ⭐ P0-4
 import { ChangePasswordDto } from './dto/change-password.dto'; // ⭐ №215
@@ -336,7 +336,10 @@ export class AuthService {
       data: { email, code, expiresAt },
     });
     await this.emailService.sendVerificationCode(email, code);
-    return { code, emailSent: this.emailService.isConfigured() };
+    // ⭐ №399: письмо на *@local.test не отправляется (защита SMTP), поэтому и devCode надо
+    // вернуть — иначе регрессия и smoke на тестовых адресах не смогут войти.
+    const emailSent = this.emailService.isConfigured() && !isTestRecipient(email);
+    return { code, emailSent };
   }
 
   /** ⭐ №206: в dev без SMTP отдаём код в ответе, иначе зарегистрироваться нельзя */
