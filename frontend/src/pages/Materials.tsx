@@ -928,12 +928,12 @@ useEffect(() => {
     const foot = tableFootRef.current;
     if (!container || !head) return;
 
-    let frame = 0;
     let lastHead = -1;
     let lastFoot = -1;
+    let scheduled = 0;
 
     const apply = () => {
-      frame = 0;
+      scheduled = 0;
       const rect = container.getBoundingClientRect();
       const headHeight = head.offsetHeight;
       const footHeight = foot ? foot.offsetHeight : 0;
@@ -965,21 +965,24 @@ useEffect(() => {
       }
     };
 
+    // ⭐ №401: на scroll пересчитываем СРАЗУ (без requestAnimationFrame) — иначе сдвиг шапки
+    // применялся кадром позже прокрутки, и при скролле она «дрожала» (отставала на кадр).
+    // rAF оставлен только для ResizeObserver: там важна не задержка, а «не чаще кадра».
     const schedule = () => {
-      if (frame === 0) frame = window.requestAnimationFrame(apply);
+      if (scheduled === 0) scheduled = window.requestAnimationFrame(apply);
     };
 
     apply();
-    window.addEventListener('scroll', schedule, { passive: true });
-    window.addEventListener('resize', schedule);
+    window.addEventListener('scroll', apply, { passive: true });
+    window.addEventListener('resize', apply);
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
     observer?.observe(container);
 
     return () => {
-      window.removeEventListener('scroll', schedule);
-      window.removeEventListener('resize', schedule);
+      window.removeEventListener('scroll', apply);
+      window.removeEventListener('resize', apply);
       observer?.disconnect();
-      if (frame) window.cancelAnimationFrame(frame);
+      if (scheduled) window.cancelAnimationFrame(scheduled);
       head.style.transform = '';
       if (foot) foot.style.transform = '';
     };

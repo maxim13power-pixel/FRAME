@@ -894,6 +894,11 @@ npm run verify                           # tsc + jest + vite build (бэкенд
   **поверх** шапки — `transform` создаёт слой, но `z-index` у статичного элемента не работает.
   Добавили `position: relative` + `z-index: 3` для `thead`/`tfoot`; проверено `elementFromPoint`
   (все точки в колонках шапки → `thead`, в `tbody` — ни одной).
+  Ещё дополнение: шапка «дрожала» при прокрутке (отставание на кадр) — сдвиг ставился в
+  `requestAnimationFrame`. Перевёл `scroll`/`resize` на синхронный пересчёт (rAF только у
+  `ResizeObserver`) + `will-change: transform` на `thead`/`tfoot` (на печати сбрасывается).
+  Замер: расхождений между фактическим и ожидаемым сдвигом нет (`lagFrames: 0` на 4 позициях).
+
 
 
 

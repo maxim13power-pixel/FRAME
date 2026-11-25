@@ -82,6 +82,13 @@ button:focus-visible {
   display: none;
 }
 
+/* ⭐ №401: шапка и ИТОГО сметы двигаются через transform — держим их на своём слое,
+   иначе при прокрутке шапка «дрожит» из-за перерисовки */
+.print-area thead,
+.print-area tfoot {
+  will-change: transform;
+}
+
 @media print {
   @page {
     size: A4 landscape;
@@ -127,6 +134,7 @@ button:focus-visible {
   .print-area thead,
   .print-area tfoot {
     transform: none !important;
+    will-change: auto !important;
   }
 
   .print-area table {
