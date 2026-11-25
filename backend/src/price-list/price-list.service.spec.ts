@@ -468,6 +468,9 @@ describe('PriceListService — пагинация поиска расценок 
         { objectId: 10, role: 'FOREMAN', hidePrices: false },
       ]),
     },
+    // ⭐ №393: `$queryRaw` используется поиском по цене — без него tsc падал на типах
+    // мока (jest шёл, потому что ts-jest не проверяет типы). Найдено при проверке №393.
+    $queryRaw: jest.fn().mockResolvedValue([]),
   };
   const audit = { log: jest.fn() };
   let service: PriceListService;
