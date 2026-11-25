@@ -6,6 +6,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 
+/** ⭐ №399: адреса *@local.test — тестовые. Реальную почту на них не отправляем (иначе регрессия
+ *  и smoke будут бомбить SMTP письмами на несуществующие домены и получат отказ/лимит). */
+export const isTestRecipient = (email: string | null | undefined): boolean =>
+  /@local\.test$/i.test((email || '').trim());
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -27,9 +32,7 @@ export class EmailService {
       'noreply@frame.app';
 
     if (!host || !user || !pass) {
-      this.logger.warn(
-        '⚠️ SMTP не настроен — письма отправляться не будут',
-      );
+      this.logger.warn('⚠️ SMTP не настроен — письма отправляться не будут');
       this.logger.warn(
         'Добавь в env: SMTP_HOST, SMTP_USER, SMTP_PASS (и SMTP_PORT/SMTP_FROM при необходимости)',
       );
@@ -45,6 +48,11 @@ export class EmailService {
         user,
         pass,
       },
+      // ⭐ №399: без таймаутов «зависший» SMTP держал отправку до 2 минут (а алерты ждут её),
+      // и ошибка всплывала поздно. 8 секунд на соединение/приветствие, 15 — на сокет.
+      connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT || 8000),
+      greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT || 8000),
+      socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 15000),
     });
   }
 
@@ -67,7 +75,7 @@ export class EmailService {
     email: string,
     resetLink: string,
   ): Promise<boolean> {
-    if (!this.transporter) {
+    if (!this.transporter || isTestRecipient(email)) {
       this.logger.warn(`[DEV MODE] Письмо для ${email}: ${resetLink}`);
       return true;
     }
@@ -103,8 +111,12 @@ export class EmailService {
 
   // ⭐ №396: произвольное письмо — резервный канал алертов, если Telegram недоступен из сети.
   // В dev без SMTP пишет текст в лог (как и остальные письма) — так проверка не требует почты.
-  async sendAlertEmail(to: string, subject: string, text: string): Promise<boolean> {
-    if (!this.transporter) {
+  async sendAlertEmail(
+    to: string,
+    subject: string,
+    text: string,
+  ): Promise<boolean> {
+    if (!this.transporter || isTestRecipient(to)) {
       this.logger.warn(`[DEV MODE] Алерт для ${to}: ${subject}\n${text}`);
       return true;
     }
@@ -132,7 +144,7 @@ export class EmailService {
 
   // ⭐ №122b: отправка 6-значного кода верификации email
   async sendVerificationCode(email: string, code: string): Promise<boolean> {
-    if (!this.transporter) {
+    if (!this.transporter || isTestRecipient(email)) {
       this.logger.warn(`[DEV MODE] Код верификации для ${email}: ${code}`);
       return true;
     }
