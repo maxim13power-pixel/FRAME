@@ -842,6 +842,17 @@ npm run verify                           # tsc + jest + vite build (бэкенд
   `EmailService` вынесен в `common/email/email.module.ts`, у сервиса `sendAlertEmail`, логика
   «Telegram → письмо на `ALERT_EMAIL_TO` → предупреждение в лог». Тестов +4 (53 сьюта / 529).
   Диагностика и варианты (проверить с прод-хостинга, включить почту, прокси) — в `docs/ALERTS.md`.
+- §231 — **staging-контур и smoke** (№397): `backend/scripts/smoke-staging.js`
+  (`npm run test:smoke`) — 7 шагов только по HTTP (health → регистрация по коду → демо-объект →
+  проект → строка сметы → фиксация с проверкой `totalUsed`/процента → удаление аккаунта),
+  принимает `API_BASE`, создаёт только `*@local.test`; годится как пост-деплойная проверка.
+  `docs/STAGING.md` — как поднять стенд (отдельная БД + `migrate deploy`, второй экземпляр на
+  своём порту, свой `PHOTO_STORAGE_DIR`, выключенные алерты), staging на Amvera, чего стенд не
+  закрывает. Проверено: пустая `frame_staging` → `migrate deploy` → `status` up to date,
+  `diff` к схеме пустой, 33 таблицы/44 FK; бэкенд :3101 → smoke **7/7** (dev :3000 — тоже 7/7).
+  Находка: `DELETE /users/me` — обезличивание (email = null), строка остаётся (на staging
+  вычищается SQL, на проде безвредно).
+
 
 
 

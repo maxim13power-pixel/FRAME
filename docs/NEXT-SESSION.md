@@ -128,6 +128,11 @@ PROJECT FRAME — SaaS для строительных смет: объекты 
   по всем таблицам). Политика и runbook — `docs/BACKUP.md`. Замер: дамп 239 мс, фото 82 мс,
   restore 628 мс, расхождений 0. **Фото лежат на диске** → на сервере `PHOTO_STORAGE_DIR`
   обязан быть постоянным томом.
+- **№397 — staging-контур и smoke**: отдельная БД `frame_staging` (пустая, 0 пользователей),
+  `backend/scripts/smoke-staging.js` (`npm run test:smoke`, 7 шагов по HTTP, принимает
+  `API_BASE` — годится как пост-деплойная проверка), runbook `docs/STAGING.md`.
+  Проверено: пустая БД → `migrate deploy` → status up to date + diff пустой; бэкенд на :3101 →
+  smoke 7/7. Находка: `DELETE /users/me` обезличивает аккаунт (email = null).
 - **№396 — Telegram-алерты об ошибках**: `TelegramAlertsService` (+ антифлуд, таймаут, тихий
   no-op без токена), `AlertingExceptionFilter` (5xx → канал, ответы API не меняются),
   `installFatalHandlers` (uncaught/unhandled → алерт → exit), публичный
@@ -260,7 +265,8 @@ PROJECT FRAME — SaaS для строительных смет: объекты 
 
 | # | Этап | Содержание | Оценка |
 |---|---|---|---|
-| 0 | **Стабилизация** (сейчас) | ~~№393 (перф сметы)~~ → ~~миграции под prod~~ (№394) → ~~бэкап + restore drill~~ (№395) → ~~мониторинг ошибок (Telegram)~~ (№396) → **SMTP-тест + staging-контур** → субботний живой тест | 3–5 дней |
+| 0 | **Стабилизация** (сейчас) | ~~№393 (перф сметы)~~ → ~~миграции под prod~~ (№394) → ~~бэкап + restore drill~~ (№395) → ~~мониторинг ошибок (Telegram)~~ (№396) → ~~staging + smoke~~ (№397) → **SMTP-тест + субботний живой тест** | 3–5 дней |
+
 
 
 
@@ -294,7 +300,10 @@ PROJECT FRAME — SaaS для строительных смет: объекты 
 - `backend/scripts/api-regression.js` — живая регрессия API.
 - `docs/MIGRATIONS.md` — миграции: baseline `0_init`, три сценария, как добавлять (№394).
 - `docs/BACKUP.md` — бэкапы базы и фото, restore drill, политика и восстановление (№395).
+- `docs/STAGING.md` — staging-контур и smoke-тест стенда (№397).
+- `backend/scripts/smoke-staging.js` — smoke по HTTP (`npm run test:smoke`), годится для прода.
 - `docs/ALERTS.md` — Telegram-алерты: создание бота, env, антифлуд, проверка (№396).
+
 - `backend/src/common/alerts/`, `backend/src/telemetry/` — алерты и приём ошибок браузера (№396).
 
 - `backend/scripts/db-backup.js`, `db-restore.js`, `db-cli.js` — бэкап/восстановление (№395).
