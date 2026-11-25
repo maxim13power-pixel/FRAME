@@ -154,6 +154,21 @@ const cleanup = async () => {
       await prisma.object.deleteMany({ where: { id: ctx.objectId } });
       console.log(`  объект #${ctx.objectId} удалён (каскадом: проекты, строки, фиксации)`);
     }
+    // ⭐ №400: у каждого участника есть СВОЙ демо-объект при регистрации — удаляем их тоже,
+    // иначе после уборки остаются «сироты» (поймано на живой проверке: +1 объект, +3 проекта).
+    if (userIds.length > 0) {
+      const demoObjects = await prisma.object.findMany({
+        where: {
+          name: { startsWith: 'Квартира-образец' },
+          accesses: { some: { userId: { in: userIds } } },
+        },
+        select: { id: true },
+      });
+      if (demoObjects.length > 0) {
+        await prisma.object.deleteMany({ where: { id: { in: demoObjects.map((o) => o.id) } } });
+        console.log(`  демо-объектов участников удалено: ${demoObjects.length}`);
+      }
+    }
     if (userIds.length > 0) {
       await prisma.priceCatalog.deleteMany({ where: { ownerId: { in: userIds } } }); // onDelete: Restrict
       await prisma.accessRequest.deleteMany({ where: { requesterId: { in: userIds } } });
