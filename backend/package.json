@@ -32,6 +32,7 @@
     "test:smoke": "node scripts/smoke-staging.js",
     "live:data": "node scripts/live-test-data.js",
     "live:cleanup": "node scripts/live-test-data.js --cleanup",
+    "mail:check": "node scripts/mail-check.js",
     "db:demo": "ts-node prisma/demo-object.ts",
     "postinstall": "npx prisma generate"
   },

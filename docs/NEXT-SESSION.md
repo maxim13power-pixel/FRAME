@@ -189,6 +189,9 @@ PROJECT FRAME — SaaS для строительных смет: объекты 
   Таймауты транспорта: `SMTP_CONNECTION_TIMEOUT`/`SMTP_GREETING_TIMEOUT` (8 с) и
   `SMTP_SOCKET_TIMEOUT` (15 с). Адреса `*@local.test` в SMTP **не отправляются** (тесты и
   регрессия), текст пишется в лог как `[DEV MODE]`.
+  **Проверка одной командой:** `npm run mail:check` (verify + письмо на `ALERT_EMAIL_TO`).
+  Из сети dev-машины SMTP-сессия висит (DPI) — запускать с домашней сети или с прода.
+
 
 
 
