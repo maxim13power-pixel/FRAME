@@ -663,13 +663,9 @@ const [showAll, setShowAll] = useState(false);
 const [pageInput, setPageInput] = useState('1');
 // ⭐ №384: кнопка «вниз» к ИТОГО/страницам
 const footerSentinelRef = useRef<HTMLDivElement | null>(null);
-// ⭐ №401: липкая шапка и ИТОГО. Страница скроллится как раньше, а шапка/итоги «подтягиваются»
-// через transform: `position: sticky` внутри контейнера таблицы не работает (у него есть
-// горизонтальная прокрутка, поэтому скролл-контейнер — он сам, а не окно).
+// ⭐ №401: липкая шапка сметы — нативный `position: sticky` (index.css). Здесь только ref на
+// `<thead>`: по нему меряем высоту первой строки, чтобы вторая липла ровно под ней.
 const tableHeadRef = useRef<HTMLTableSectionElement | null>(null);
-const tableFootRef = useRef<HTMLTableSectionElement | null>(null);
-// ⭐ №401: контейнер таблицы — кнопка «вниз» доводит таблицу до конца
-const tableScrollRef = useRef<HTMLDivElement | null>(null);
 // ⭐ №393: состояние «долистали до низа» живёт в `EstimateScrollChrome`, здесь — только ref
 // ⭐ №383: печать из браузера — «вся смета» дорисовывает строки только на время печати
 const [printOnlyPage, setPrintOnlyPage] = useState(false);
@@ -917,74 +913,32 @@ useEffect(() => {
   );
   const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
   const currentPage = Math.min(pageCount, Math.floor(sliceStart / pageSize) + 1);
-  // ⭐ №401: липкая шапка и строка ИТОГО через transform.
-  // Почему не `position: sticky` на th: у контейнера таблицы есть горизонтальная прокрутка,
-  // поэтому ближайший скролл-контейнер — он сам, и при прокрутке СТРАНИЦЫ шапка уезжает.
-  // Здесь страница скроллится как раньше, а шапка/итоги «подтягиваются» к краям экрана.
+  // ⭐ №401: липкая шапка сметы = НАТИВНЫЙ `position: sticky` (см. index.css), без сдвигов в JS.
+  // Причина: прокрутку Chrome выполняет на композиторном потоке, и любой `transform`, посчитанный
+  // по событию scroll, отстаёт на кадр — шапка «дёргалась» при прокрутке и вставала на место
+  // только после остановки. `sticky` двигает сам браузер, поэтому движение идеально плавное.
+  // Здесь только меряем высоту ПЕРВОЙ строки шапки: вторая строка липнет ровно под ней.
+  // Строка ИТОГО больше НЕ липнет — по просьбе владельца она остаётся внизу таблицы.
   useEffect(() => {
     if (isMobile) return; // на мобилке таблицы нет — там карточки
-    const container = tableScrollRef.current;
     const head = tableHeadRef.current;
-    const foot = tableFootRef.current;
-    if (!container || !head) return;
+    if (!head) return;
 
-    let lastHead = -1;
-    let lastFoot = -1;
-    let scheduled = 0;
-
-    const apply = () => {
-      scheduled = 0;
-      const rect = container.getBoundingClientRect();
-      const headHeight = head.offsetHeight;
-      const footHeight = foot ? foot.offsetHeight : 0;
-      const total = container.offsetHeight;
-
-      // шапка: не выше верхнего края таблицы и не ниже строки ИТОГО
-      const maxHead = Math.max(0, total - headHeight - footHeight);
-      const headOffset = Math.min(Math.max(0, -rect.top), maxHead);
-      if (headOffset !== lastHead) {
-        head.style.transform = headOffset > 0 ? `translateY(${headOffset}px)` : '';
-        // ⭐ №401: `transform` создаёт слой, но z-index у СТАТИЧНОГО элемента не работает —
-        // без `position: relative` позиционированные кнопки из строк (чекбокс, бейдж фото,
-        // «+ фикс») рисовались поверх шапки.
-        head.style.position = 'relative';
-        head.style.zIndex = '3';
-        lastHead = headOffset;
-      }
-
-      // ИТОГО: не ниже нижнего края таблицы и не выше шапки
-      if (foot) {
-        const maxFoot = Math.max(0, total - headHeight - footHeight);
-        const footOffset = Math.min(Math.max(0, rect.bottom - window.innerHeight), maxFoot);
-        if (footOffset !== lastFoot) {
-          foot.style.transform = footOffset > 0 ? `translateY(${-footOffset}px)` : '';
-          foot.style.position = 'relative';
-          foot.style.zIndex = '3';
-          lastFoot = footOffset;
-        }
-      }
+    const update = () => {
+      const row = head.rows[0];
+      if (!row) return;
+      head.style.setProperty('--est-head-row1', `${Math.round(row.getBoundingClientRect().height)}px`);
     };
 
-    // ⭐ №401: на scroll пересчитываем СРАЗУ (без requestAnimationFrame) — иначе сдвиг шапки
-    // применялся кадром позже прокрутки, и при скролле она «дрожала» (отставала на кадр).
-    // rAF оставлен только для ResizeObserver: там важна не задержка, а «не чаще кадра».
-    const schedule = () => {
-      if (scheduled === 0) scheduled = window.requestAnimationFrame(apply);
-    };
-
-    apply();
-    window.addEventListener('scroll', apply, { passive: true });
-    window.addEventListener('resize', apply);
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
-    observer?.observe(container);
+    update();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    observer?.observe(head);
+    window.addEventListener('resize', update);
 
     return () => {
-      window.removeEventListener('scroll', apply);
-      window.removeEventListener('resize', apply);
       observer?.disconnect();
-      if (scheduled) window.cancelAnimationFrame(scheduled);
-      head.style.transform = '';
-      if (foot) foot.style.transform = '';
+      window.removeEventListener('resize', update);
+      head.style.removeProperty('--est-head-row1');
     };
   }, [isMobile, loading]);
   const windowCoversAll = sliceStart === 0 && windowEnd >= totalRows;
@@ -1079,12 +1033,7 @@ useEffect(() => {
   // явному нажатию «Показать ещё N» (или «Показать все»).
 
   const scrollToFooter = useCallback(() => {
-    // ⭐ №401: у таблицы своя прокрутка — сначала доводим её до конца (там ИТОГО и последние
-    // строки), потом прокручиваем страницу к плашке страниц.
-    const table = tableScrollRef.current;
-    if (table && table.scrollHeight > table.clientHeight) {
-      table.scrollTo({ top: table.scrollHeight, behavior: 'smooth' });
-    }
+    // ⭐ №401: своего скролла у таблицы больше нет — прокручиваем страницу к плашке страниц.
     const el = footerSentinelRef.current;
     if (!el) return;
     // ⭐ №386: `scrollIntoView` ставил плашку вплотную к низу, и кнопки уходили
@@ -3070,12 +3019,14 @@ onClose={() => setFilterAnchorEl(null)}
         </Box>
         <TableContainer
           component={Paper}
-          ref={tableScrollRef}
           className="print-area"
-          sx={{ mb: 2 }}
+          // ⭐ №401: никакого собственного скролла — иначе шапка не может липнуть к окну
+          // (`position: sticky` цепляется к ближайшему скролл-контейнеру). Если таблица шире
+          // экрана, горизонтально прокручивается страница, а шапка едет вместе с колонками.
+          sx={{ mb: 2, overflow: 'visible' }}
         >
           <Table sx={{ minWidth: 1500, ...(dragSelecting ? { userSelect: 'none' } : {}) }}>
-<TableHead ref={tableHeadRef} sx={{ bgcolor: '#f5f5f5' }}>
+<TableHead ref={tableHeadRef} sx={{ bgcolor: '#f5f5f5', '& th': { bgcolor: '#f5f5f5' } }}>
 <TableRow>
 <TableCell rowSpan={2} sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
   {/* ⭐ №292: чекбокс «выбрать все» — в колонке «№», раскладка таблицы не меняется */}
@@ -3120,7 +3071,7 @@ onClose={() => setFilterAnchorEl(null)}
           <TableCell rowSpan={2} sx={{ fontWeight: 600, textAlign: 'center' }}>Действия</TableCell>
         </TableRow>
         {!hidePrices && (
-          <TableRow sx={{ bgcolor: '#e3f2fd' }}>
+          <TableRow sx={{ bgcolor: '#e3f2fd', '& th': { bgcolor: '#e3f2fd' } }}>
             <TableCell sx={{ fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9' }}>За ед.</TableCell>
             <TableCell sx={{ fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap' }}>Итого руб.</TableCell>
             <TableCell sx={{ fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9' }}>За ед.</TableCell>
@@ -3161,7 +3112,7 @@ onClose={() => setFilterAnchorEl(null)}
   </TableRow>
 )}
             </TableBody>
-<TableFooter ref={tableFootRef}>
+<TableFooter>
 <TableRow sx={{ bgcolor: '#FFF9C4' }}>
 <TableCell colSpan={4} sx={{ fontWeight: 700 }}>ИТОГО:</TableCell>
 <TableCell sx={{ textAlign: 'center', fontWeight: 700 }}>{totals.sumSpecQuantity}</TableCell>
