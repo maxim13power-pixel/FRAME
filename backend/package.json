@@ -30,6 +30,8 @@
     "db:cleanup:access": "ts-node prisma/cleanup-access-duplicates.ts",
     "test:api": "node scripts/api-regression.js",
     "test:smoke": "node scripts/smoke-staging.js",
+    "live:data": "node scripts/live-test-data.js",
+    "live:cleanup": "node scripts/live-test-data.js --cleanup",
     "db:demo": "ts-node prisma/demo-object.ts",
     "postinstall": "npx prisma generate"
   },
