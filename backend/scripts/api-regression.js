@@ -1714,6 +1714,56 @@ async function main() {
     );
   });
 
+  // -- 16. Серверный поиск прайса (№392) -------------------------
+  console.log('\n16. Серверный поиск прайса');
+
+  await check('поиск расценок: ?limit= — конверт, без limit — массив', async () => {
+    const q = encodeURIComponent('а');
+    const legacy = await api(`/price-list/items/search?search=${q}`, {}, admin.token);
+    expectStatus(legacy, 200, 'поиск без limit');
+    expect(Array.isArray(legacy.data), 'без limit ответ не массив');
+
+    const page = await api(
+      `/price-list/items/search?search=${q}&limit=2`,
+      {},
+      admin.token,
+    );
+    expectStatus(page, 200, 'страница поиска');
+    expect(Array.isArray(page.data.items), '?limit= не вернул { items }');
+    expect(page.data.items.length <= 2, 'limit не соблюдён');
+    expect(typeof page.data.total === 'number', 'нет total');
+    expect(typeof page.data.hasMore === 'boolean', 'нет hasMore');
+
+    if (page.data.total > 2) {
+      expect(page.data.hasMore === true, 'hasMore=false при total > limit');
+      const next = await api(
+        `/price-list/items/search?search=${q}&limit=2&offset=2`,
+        {},
+        admin.token,
+      );
+      expectStatus(next, 200, 'вторая страница поиска');
+      expect(Array.isArray(next.data.items), 'offset: нет items');
+      const firstIds = new Set(page.data.items.map((i) => i.id));
+      expect(
+        next.data.items.every((i) => !firstIds.has(i.id)),
+        'offset повторяет первую страницу',
+      );
+    }
+  });
+
+  await check('поиск расценок: limit=0 и offset=-1 — 400', async () => {
+    expectStatus(
+      await api('/price-list/items/search?limit=0', {}, admin.token),
+      400,
+      'limit=0',
+    );
+    expectStatus(
+      await api('/price-list/items/search?offset=-1', {}, admin.token),
+      400,
+      'offset=-1',
+    );
+  });
+
   const failed = results.filter((r) => !r.ok);
   console.log(
     `\nИтог: ${results.length - failed.length} ✅ / ${failed.length} ❌ из ${results.length}`,

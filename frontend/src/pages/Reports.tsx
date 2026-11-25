@@ -188,7 +188,6 @@ const Reports: React.FC = () => {
 
   useEffect(() => {
     loadReports();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadReports]);
 
   useEffect(() => {

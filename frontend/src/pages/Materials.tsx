@@ -131,6 +131,9 @@ const PAGE_SIZE_KEY = 'materials-page-size';
 // ⭐ №177: запоминаем последний выбранный справочник цен (в модалке «Добавить позицию»)
 const PRICE_CATALOG_MEMO_KEY = 'frame:priceCatalogChoice';
 
+// ⭐ №392: серверный поиск расценок отдаёт не больше 50 строк — подсказываем уточнить запрос
+const PRICE_SEARCH_LIMIT = 50;
+
 /**
  * ⭐ №240: ответы API материала (фиксация/правка/настройки) не содержат `photosCount` —
  * это агрегат списка. При замене строки сохраняем счётчик, иначе бейдж «пропадает»
@@ -3775,7 +3778,7 @@ filterOptions={(opts) => opts}
 renderOption={renderPriceOption}
 getOptionDisabled={isDraftPrice}
 renderInput={(params) => (
-<TextField {...params} label="Стоимость работ" placeholder="Название или цена..." />
+<TextField {...params} label="Стоимость работ" placeholder="Название или цена..." helperText={priceOptions.length >= PRICE_SEARCH_LIMIT ? 'Не больше 50 строк — уточните запрос' : undefined} />
 )}
 />
             {selectedPriceItem && (
@@ -3999,7 +4002,7 @@ renderInput={(params) => (
     renderOption={renderPriceOption}
     getOptionDisabled={isDraftPrice}
     renderInput={(params) => (
-    <TextField {...params} label="Стоимость материала на ед." placeholder="Название или цена..." />
+    <TextField {...params} label="Стоимость материала на ед." placeholder="Название или цена..." helperText={materialOptions.length >= PRICE_SEARCH_LIMIT ? 'Не больше 50 строк — уточните запрос' : undefined} />
     )}
     />
     {selectedMaterialItem && (
@@ -4428,7 +4431,7 @@ textAlign: 'center',
       renderOption={renderPriceOption}
       getOptionDisabled={isDraftPrice}
       renderInput={(params) => (
-        <TextField {...params} label="Работы из справочника" placeholder="Название или цена..." />
+        <TextField {...params} label="Работы из справочника" placeholder="Название или цена..." helperText={editPriceOptions.length >= PRICE_SEARCH_LIMIT ? 'Не больше 50 строк — уточните запрос' : undefined} />
       )}
       onOpen={() => { if (editPriceOptions.length === 0) handleEditPriceSearch(''); }}
     />
@@ -4512,7 +4515,7 @@ filterOptions={(opts) => opts}
 renderOption={renderPriceOption}
 getOptionDisabled={isDraftPrice}
 renderInput={(params) => (
-<TextField {...params} label="Материал из справочника" placeholder="Название или цена..." />
+<TextField {...params} label="Материал из справочника" placeholder="Название или цена..." helperText={editMaterialOptions.length >= PRICE_SEARCH_LIMIT ? 'Не больше 50 строк — уточните запрос' : undefined} />
 )}
 />
 {editSelectedMaterialItem && (

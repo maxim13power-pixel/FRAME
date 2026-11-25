@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useBackNavigation } from '../hooks/useBackNavigation';
 import {
@@ -66,6 +66,7 @@ import {
   createPriceItem,
   updatePriceItem,
   deletePriceItem,
+  searchPriceItemsPage,
 } from '../services/priceListService';
 import type { PriceCategoryData, PriceCatalogData, PriceItemData } from '../services/priceListService';
 import PriceCatalogList from '../components/PriceCatalogList';
@@ -94,6 +95,9 @@ const UNIT_OPTIONS = [
 // ⭐ Служебное значение для селекта: "создать новую категорию прямо отсюда"
 const NEW_CATEGORY_VALUE = '__new__';
 
+// ⭐ №392: размер страницы серверного поиска по справочнику
+const PRICE_SEARCH_LIMIT = 50;
+
 const PriceListInner: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -113,6 +117,13 @@ const PriceListInner: React.FC = () => {
   const [loading, setLoading] = useState(!!catalogId);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // ⭐ №392: результаты серверного поиска (null — обычное дерево категорий)
+  const [searchHits, setSearchHits] = useState<PriceItemData[] | null>(null);
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [searchHasMore, setSearchHasMore] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchSeq = useRef(0);
 
   // Какие категории свёрнуты (по умолчанию все раскрыты)
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
@@ -307,9 +318,97 @@ const PriceListInner: React.FC = () => {
   }, [token, activeTab, catalogId, reloadKey]);
 
   // ============================================================
+  // ⭐ №392: ПОИСК НА СЕРВЕРЕ (вместо фильтрации всего каталога на клиенте)
+  // ============================================================
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!token || !catalogId || query === '') {
+      setSearchHits(null);
+      setSearchTotal(0);
+      setSearchHasMore(false);
+      setSearchLoading(false);
+      return;
+    }
+    const seq = ++searchSeq.current;
+    setSearchLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const page = await searchPriceItemsPage({
+          search: query,
+          kind: activeTab,
+          catalogId,
+          limit: PRICE_SEARCH_LIMIT,
+          offset: 0,
+        });
+        if (seq !== searchSeq.current) return;
+        setSearchHits(page.items);
+        setSearchTotal(page.total);
+        setSearchHasMore(page.hasMore);
+        setError('');
+      } catch {
+        if (seq !== searchSeq.current) return;
+        setSearchHits([]);
+        setSearchTotal(0);
+        setSearchHasMore(false);
+        setError('Не удалось выполнить поиск');
+      } finally {
+        if (seq === searchSeq.current) setSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [token, catalogId, activeTab, searchQuery]);
+
+  const handleLoadMoreSearchHits = async () => {
+    if (!catalogId || searchLoading || !searchHits || !searchHasMore) return;
+    const seq = ++searchSeq.current;
+    setSearchLoading(true);
+    try {
+      const page = await searchPriceItemsPage({
+        search: searchQuery.trim(),
+        kind: activeTab,
+        catalogId,
+        limit: PRICE_SEARCH_LIMIT,
+        offset: searchHits.length,
+      });
+      if (seq !== searchSeq.current) return;
+      setSearchHits((prev) => {
+        const seen = new Set((prev ?? []).map((i) => i.id));
+        return [...(prev ?? []), ...page.items.filter((i) => !seen.has(i.id))];
+      });
+      setSearchTotal(page.total);
+      setSearchHasMore(page.hasMore);
+    } catch {
+      if (seq === searchSeq.current) setSearchHasMore(false);
+    } finally {
+      if (seq === searchSeq.current) setSearchLoading(false);
+    }
+  };
+
+  // Результаты поиска группируем по категориям — дерево рендерится как обычно
+  const searchCategories = useMemo<PriceCategoryData[] | null>(() => {
+    if (!searchHits) return null;
+    const map = new Map<number, PriceCategoryData>();
+    searchHits.forEach((item) => {
+      const cat = item.category;
+      const id = cat?.id ?? 0;
+      if (!map.has(id)) {
+        map.set(id, {
+          id,
+          name: cat?.name ?? 'Без категории',
+          sortOrder: cat?.sortOrder ?? 0,
+          kind: cat?.kind ?? activeTab,
+          items: [],
+        });
+      }
+      map.get(id)!.items!.push(item);
+    });
+    return [...map.values()];
+  }, [searchHits, activeTab]);
+
+  // ============================================================
   // ФИЛЬТРАЦИЯ ПО ПОИСКУ (локально, как в Materials)
   // ============================================================
-  const filteredCategories = categories
+  const localFilteredCategories = categories
     .map(cat => {
       let items = (cat.items || []).filter(
         item =>
@@ -331,6 +430,9 @@ const PriceListInner: React.FC = () => {
       return { ...cat, items };
     })
     .filter(cat => cat.items!.length > 0 || !searchQuery);
+
+  // ⭐ №392: при активном поиске показываем серверные результаты
+  const filteredCategories = searchCategories ?? localFilteredCategories;
 
   const isCategoryExpanded = (catId: number) =>
     searchQuery ? true : !collapsed[catId];
@@ -849,6 +951,27 @@ const PriceListInner: React.FC = () => {
       )}
 
       {/* Список категорий */}
+      {/* ⭐ №392: серверный поиск — счётчик найденного и «Показать ещё» */}
+      {searchHits && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+          <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
+            {searchLoading && searchHits.length === 0
+              ? 'Ищем по справочнику…'
+              : `Найдено: ${searchTotal}`}
+          </Typography>
+          {searchHasMore && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleLoadMoreSearchHits}
+              disabled={searchLoading}
+              sx={{ textTransform: 'none' }}
+            >
+              {searchLoading ? 'Загружаем…' : 'Показать ещё'}
+            </Button>
+          )}
+        </Box>
+      )}
       <Stack spacing={2}>
         {filteredCategories.map(cat => (
           <Paper key={cat.id} sx={{ borderRadius: 2, overflow: 'hidden' }}>
@@ -993,7 +1116,7 @@ const PriceListInner: React.FC = () => {
           </Paper>
         ))}
 
-        {filteredCategories.length === 0 && categories.length > 0 && (
+        {filteredCategories.length === 0 && (categories.length > 0 || searchHits !== null) && (
           <Paper sx={{ p: 3, textAlign: 'center' }}>
             <Typography color="text.secondary">Ничего не найдено</Typography>
           </Paper>

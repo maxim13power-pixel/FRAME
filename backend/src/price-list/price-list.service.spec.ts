@@ -5,7 +5,7 @@ import { PriceListService } from './price-list.service';
 
 describe('PriceListService — поиск в справочнике проекта (№159)', () => {
   const prisma = {
-    priceItem: { findMany: jest.fn() },
+    priceItem: { findMany: jest.fn(), count: jest.fn() },
     priceCatalog: {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
@@ -448,6 +448,128 @@ describe('PriceListService — скрытие цен (№220)', () => {
     await service.searchItems('320', undefined, 'WORK', 7, 18);
 
     expect(prisma.$queryRaw).toHaveBeenCalled();
+  });
+});
+
+// ⭐ №392: поиск расценок с ?limit=&offset= — конверт { items, total, hasMore }.
+describe('PriceListService — пагинация поиска расценок (№392)', () => {
+  const prisma = {
+    priceItem: { findMany: jest.fn(), count: jest.fn() },
+    priceCatalog: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    object: { findFirst: jest.fn().mockResolvedValue(null) },
+    project: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn() },
+    user: { findUnique: jest.fn().mockResolvedValue({ role: 'FOREMAN' }) },
+    objectAccess: {
+      findFirst: jest.fn().mockResolvedValue({ id: 1 }),
+      findMany: jest.fn().mockResolvedValue([
+        { objectId: 10, role: 'FOREMAN', hidePrices: false },
+      ]),
+    },
+  };
+  const audit = { log: jest.fn() };
+  let service: PriceListService;
+
+  const row = (id: number) => ({
+    id,
+    name: `Позиция ${id}`,
+    unit: 'PIECE',
+    price: 100,
+    categoryId: 3,
+    isActive: true,
+    kind: 'WORK',
+    category: { id: 3, name: 'Работы', sortOrder: 1, kind: 'WORK' },
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.priceItem.findMany.mockResolvedValue([]);
+    prisma.priceItem.count.mockResolvedValue(0);
+    service = new PriceListService(prisma as any, audit as any);
+  });
+
+  it('без ?limit= — прежний массив и 50 строк, total не считается', async () => {
+    prisma.priceItem.findMany.mockResolvedValue([row(1)]);
+
+    const result: any = await service.searchItems(undefined, undefined, 'WORK', 7);
+
+    expect(Array.isArray(result)).toBe(true);
+    expect(result[0].id).toBe(1);
+    const args = prisma.priceItem.findMany.mock.calls[0][0];
+    expect(args.take).toBe(50);
+    expect(args.skip).toBeUndefined();
+    expect(prisma.priceItem.count).not.toHaveBeenCalled();
+  });
+
+  it('?limit=2 — берёт 3 строки, отдаёт 2 и hasMore=true', async () => {
+    prisma.priceItem.findMany.mockResolvedValue([row(1), row(2), row(3)]);
+    prisma.priceItem.count.mockResolvedValue(9);
+
+    const result: any = await service.searchItems(
+      undefined,
+      undefined,
+      'WORK',
+      7,
+      undefined,
+      { limit: '2', offset: '0' },
+    );
+
+    expect(result.items.map((i: any) => i.id)).toEqual([1, 2]);
+    expect(result.total).toBe(9);
+    expect(result.hasMore).toBe(true);
+    const args = prisma.priceItem.findMany.mock.calls[0][0];
+    expect(args.take).toBe(3);
+    expect(args.skip).toBe(0);
+  });
+
+  it('offset и последняя страница: ровно limit строк ⇒ hasMore=false', async () => {
+    prisma.priceItem.findMany.mockResolvedValue([row(11), row(12)]);
+    prisma.priceItem.count.mockResolvedValue(12);
+
+    const result: any = await service.searchItems(
+      undefined,
+      undefined,
+      'WORK',
+      7,
+      undefined,
+      { limit: '2', offset: '10' },
+    );
+
+    expect(result.items).toHaveLength(2);
+    expect(result.total).toBe(12);
+    expect(result.hasMore).toBe(false);
+    expect(prisma.priceItem.findMany.mock.calls[0][0].skip).toBe(10);
+  });
+
+  it('limit=0 и отрицательный offset — 400, запроса к БД нет', async () => {
+    await expect(
+      service.searchItems(undefined, undefined, 'WORK', 7, undefined, { limit: '0' }),
+    ).rejects.toThrow('limit');
+    await expect(
+      service.searchItems(undefined, undefined, 'WORK', 7, undefined, { offset: '-1' }),
+    ).rejects.toThrow('offset');
+    expect(prisma.priceItem.findMany).not.toHaveBeenCalled();
+  });
+
+  it('предел поиска по цене равен limit — «хвост» не теряется молча', async () => {
+    prisma.priceItem.findMany.mockResolvedValue([row(1), row(2), row(3)]);
+    prisma.$queryRaw = jest.fn().mockResolvedValue([{ id: 1 }, { id: 2 }]);
+    prisma.priceItem.count.mockResolvedValue(3);
+
+    await service.searchItems(
+      '5000',
+      undefined,
+      'WORK',
+      7,
+      undefined,
+      { limit: '2' },
+    );
+
+    const sql = (prisma.$queryRaw as jest.Mock).mock.calls[0][0] as any;
+    expect(JSON.stringify(sql).includes('5000')).toBe(true);
+    expect(prisma.priceItem.findMany.mock.calls[0][0].take).toBe(3);
   });
 });
 

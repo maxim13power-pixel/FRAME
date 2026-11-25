@@ -119,6 +119,8 @@ export class PriceListController {
     @Query('categoryId') categoryId: string | undefined,
     @Query('kind') kind: string | undefined,
     @Query('catalogId') catalogId: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @Query('offset') offset: string | undefined,
     @Req() req,
   ) {
     return this.priceListService.searchItems(
@@ -127,6 +129,7 @@ export class PriceListController {
       kind,
       req.user.userId,
       catalogId ? parseInt(catalogId) : undefined,
+      { limit, offset }, // ⭐ №392: keyset-подобная страница поиска (?limit=&offset=)
     );
   }
 

@@ -18,6 +18,17 @@ import {
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreatePriceItemDto } from './dto/create-price-item.dto';
+import { parseLimit } from '../common/keyset'; // ⭐ №392: ?limit= для поиска расценок
+
+/** ⭐ №392: offset для «Показать ещё» — только целое ≥ 0. */
+function parseOffset(raw: unknown): number {
+  if (raw === undefined || raw === null || raw === '') return 0;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) {
+    throw new BadRequestException('offset: ожидается целое число ≥ 0');
+  }
+  return n;
+}
 
 @Injectable()
 export class PriceListService {
@@ -676,6 +687,7 @@ export class PriceListService {
       userId?: number;
       catalogId?: number;
     },
+    limit = 50,
   ): Promise<number[]> {
     const tokens = search.trim().split(/\s+/).filter(Boolean);
     const isNumber = (t: string) => /^\d[\d.,]*$/.test(t);
@@ -705,7 +717,7 @@ export class PriceListService {
       SELECT id FROM "price_items"
       WHERE ${Prisma.join(parts, ' AND ')}
       ORDER BY "name" ASC
-      LIMIT 50
+      LIMIT ${limit}
     `);
     return rows.map((r) => r.id);
   }
@@ -718,7 +730,12 @@ export class PriceListService {
     kind?: string,
     userId?: number,
     catalogId?: number,
+    page?: { limit?: unknown; offset?: unknown },
   ) {
+    // ⭐ №392: пагинация включается только при ?limit=; без него — прежние 50 и массив.
+    const limit = parseLimit(page?.limit, 200);
+    const offset = parseOffset(page?.offset);
+    const take = limit ?? 50;
     // ⭐ №159: смета ищет в справочнике проекта — проверяем, что он доступен пользователю
     if (catalogId && !(await this.canReadCatalog(catalogId, userId))) {
       throw new NotFoundException('Справочник не найден или нет доступа');
@@ -731,10 +748,13 @@ export class PriceListService {
     // ⭐ №179: цифры в запросе ищем ещё и по цене
     const priceIds =
       search && !hidePrices
-        ? await this.findIdsByPrice(search, { kind, categoryId, userId, catalogId })
+        ? await this.findIdsByPrice(
+            search,
+            { kind, categoryId, userId, catalogId },
+            take, // ⭐ №392: тот же предел, что и у основного запроса
+          )
         : [];
-    return this.prisma.priceItem.findMany({
-      where: {
+    const where: Prisma.PriceItemWhereInput = {
         AND: [
           // ⭐ №275: в справочнике проекта ищем и черновики (единица не уточнена):
           // UI покажет их серыми и не даст выбрать, пока единицу не уточнят.
@@ -767,15 +787,33 @@ export class PriceListService {
               ]
             : []),
         ],
-      },
-      include: { category: true },
-      // ⭐ №177: раньше отдавали первые 20 по алфавиту — в списке «стена бетона»,
-      // остальные категории не видны. Теперь сортировка по порядку категорий и 50 строк.
-      orderBy: [{ category: { sortOrder: 'asc' } }, { name: 'asc' }],
-      take: 50,
-    }).then((items) =>
-      items.map((item) => (canShowPrice(item) ? item : { ...item, price: null })),
-    );
+      };
+    const rows = await this.prisma.priceItem
+      .findMany({
+        where,
+        include: { category: true },
+        // ⭐ №177: раньше отдавали первые 20 по алфавиту — в списке «стена бетона»,
+        // остальные категории не видны. Теперь сортировка по порядку категорий и 50 строк.
+        // ⭐ №392: id — tie-break, иначе offset-страницы «плывут» на одинаковых названиях
+        orderBy: [
+          { category: { sortOrder: 'asc' } },
+          { name: 'asc' },
+          { id: 'asc' },
+        ],
+        // ⭐ №392: с ?limit= берём запас +1, чтобы честно сказать «есть ещё»
+        take: limit ? limit + 1 : 50,
+        skip: limit ? offset : undefined,
+      })
+      .then((items) =>
+        items.map((item) => (canShowPrice(item) ? item : { ...item, price: null })),
+      );
+    if (!limit) return rows;
+    const total = await this.prisma.priceItem.count({ where });
+    return {
+      items: rows.slice(0, limit),
+      total,
+      hasMore: rows.length > limit,
+    };
   }
 
   // Создание категории (⭐ №373 B2: в своём справочнике; системные — только ADMIN)

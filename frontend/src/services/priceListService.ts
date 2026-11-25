@@ -149,6 +149,44 @@ export const searchPriceItems = async (
   return response.data.map(normalizePriceItem);
 };
 
+// ⭐ №392: страница поиска с total/hasMore — для «Показано X из Y» и «Показать ещё».
+// Без `limit` сервер отвечает массивом (старый контракт) — оборачиваем его.
+export type PriceSearchPage = {
+  items: PriceItemData[];
+  total: number;
+  hasMore: boolean;
+};
+
+export const searchPriceItemsPage = async (params: {
+  search?: string;
+  categoryId?: number;
+  kind?: 'WORK' | 'MATERIAL';
+  catalogId?: number;
+  limit?: number;
+  offset?: number;
+}): Promise<PriceSearchPage> => {
+  const response = await api.get('/price-list/items/search', {
+    params: {
+      ...(params.search ? { search: params.search } : {}),
+      ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+      ...(params.kind ? { kind: params.kind } : {}),
+      ...(params.catalogId ? { catalogId: params.catalogId } : {}),
+      ...(params.limit ? { limit: params.limit } : {}),
+      ...(params.offset ? { offset: params.offset } : {}),
+    },
+  });
+  const data = response.data;
+  if (Array.isArray(data)) {
+    const items = data.map(normalizePriceItem);
+    return { items, total: items.length, hasMore: false };
+  }
+  return {
+    items: (data?.items ?? []).map(normalizePriceItem),
+    total: typeof data?.total === 'number' ? data.total : 0,
+    hasMore: data?.hasMore === true,
+  };
+};
+
 // Создать расценку
 // POST /price-list/items
 export const createPriceItem = async (
