@@ -128,6 +128,10 @@ PROJECT FRAME — SaaS для строительных смет: объекты 
   по всем таблицам). Политика и runbook — `docs/BACKUP.md`. Замер: дамп 239 мс, фото 82 мс,
   restore 628 мс, расхождений 0. **Фото лежат на диске** → на сервере `PHOTO_STORAGE_DIR`
   обязан быть постоянным томом.
+- **№398 — подготовка к живому тесту 28.11**: `npm run live:data [-- --rows N]` создаёт данные
+  (админ + прораб со скрытыми ценами, объект «Тест живой 28.11», проект на 300 строк с ценами
+  и фиксациями), `npm run live:cleanup` убирает всё и проверяет остаток `*@local.test`.
+  Сценарий на 2–3 часа — `docs/LIVE-TEST-2026-11-28.md` (9 блоков, красные флаги, шаблон P0/P1/P2).
 - **№397 — staging-контур и smoke**: отдельная БД `frame_staging` (пустая, 0 пользователей),
   `backend/scripts/smoke-staging.js` (`npm run test:smoke`, 7 шагов по HTTP, принимает
   `API_BASE` — годится как пост-деплойная проверка), runbook `docs/STAGING.md`.
@@ -301,6 +305,9 @@ PROJECT FRAME — SaaS для строительных смет: объекты 
 - `docs/MIGRATIONS.md` — миграции: baseline `0_init`, три сценария, как добавлять (№394).
 - `docs/BACKUP.md` — бэкапы базы и фото, restore drill, политика и восстановление (№395).
 - `docs/STAGING.md` — staging-контур и smoke-тест стенда (№397).
+- `docs/LIVE-TEST-2026-11-28.md` — сценарий живого теста 28.11 (№398).
+- `backend/scripts/live-test-data.js` — данные теста и уборка (`npm run live:data` / `live:cleanup`).
+
 - `backend/scripts/smoke-staging.js` — smoke по HTTP (`npm run test:smoke`), годится для прода.
 - `docs/ALERTS.md` — Telegram-алерты: создание бота, env, антифлуд, проверка (№396).
 
