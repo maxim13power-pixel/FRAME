@@ -944,6 +944,10 @@ useEffect(() => {
       const headOffset = Math.min(Math.max(0, -rect.top), maxHead);
       if (headOffset !== lastHead) {
         head.style.transform = headOffset > 0 ? `translateY(${headOffset}px)` : '';
+        // ⭐ №401: `transform` создаёт слой, но z-index у СТАТИЧНОГО элемента не работает —
+        // без `position: relative` позиционированные кнопки из строк (чекбокс, бейдж фото,
+        // «+ фикс») рисовались поверх шапки.
+        head.style.position = 'relative';
         head.style.zIndex = '3';
         lastHead = headOffset;
       }
@@ -954,6 +958,7 @@ useEffect(() => {
         const footOffset = Math.min(Math.max(0, rect.bottom - window.innerHeight), maxFoot);
         if (footOffset !== lastFoot) {
           foot.style.transform = footOffset > 0 ? `translateY(${-footOffset}px)` : '';
+          foot.style.position = 'relative';
           foot.style.zIndex = '3';
           lastFoot = footOffset;
         }
