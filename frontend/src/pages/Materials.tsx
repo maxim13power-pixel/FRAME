@@ -13,7 +13,6 @@ import {
   Autocomplete,
   Modal,
   TextField,
-  Fab,
   useMediaQuery,
   useTheme,
   InputAdornment,
@@ -30,19 +29,15 @@ import {
   Menu,
   FormControl,
   InputLabel,
-  LinearProgress,
   Divider,
   Snackbar,
   Drawer,
-  Badge,
   Checkbox,
   FormControlLabel,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import CheckIcon from '@mui/icons-material/Check';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import CancelIcon from '@mui/icons-material/Cancel';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import SearchIcon from '@mui/icons-material/Search';
@@ -53,17 +48,13 @@ import AddIcon from '@mui/icons-material/Add';
 //import LockOpenIcon from '@mui/icons-material/LockOpen';
 //import DeleteIcon from '@mui/icons-material/Delete';
 import DeleteIcon from '@mui/icons-material/Delete'; // ⭐ №290: удаление шаблона
-import SettingsIcon from '@mui/icons-material/Settings';
-import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import InventoryIcon from '@mui/icons-material/Inventory';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { useAuth } from '../contexts/AuthContext';
 import { useFeedback } from '../contexts/FeedbackContext';
 import PhotoGalleryDialog from '../components/PhotoGalleryDialog'; // ⭐ №228: фото-фиксация
 import PhotoCaptureDialog from '../components/PhotoCaptureDialog'; // ⭐ №228
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
-import { useScrollDirection } from '../hooks/useScrollDirection';
 import {
   fetchMaterialsByProject,
   createMaterial,
@@ -90,6 +81,14 @@ import { searchPriceItems } from '../services/priceListService';
 import type { PriceCatalogData, PriceCategoryData, PriceItemData } from '../services/priceListService';
 import { fetchCategoriesWithItems, fetchPriceCatalogs, updatePriceItem } from '../services/priceListService';
 import { getApiErrorText } from '../utils/errors';
+// ⭐ №393: dev-счётчик рендеров (в production-сборке — no-op)
+import { countRender } from '../utils/perf';
+// ⭐ №393: строка/карточка сметы и прокруточная обвязка вынесены в memo-компоненты
+import { MaterialRow } from '../components/materials/MaterialRow';
+import { MaterialCard } from '../components/materials/MaterialCard';
+import { EstimateScrollChrome } from '../components/materials/EstimateScrollChrome';
+import { UNIT_OPTIONS, rub, unitLabelOf } from '../components/materials/estimateFormat';
+import { SUMMARY_BAR_BOTTOM } from '../components/materials/estimateLayout';
 import { applyEstimateTemplate, deleteEstimateTemplate, fetchEstimateTemplates } from '../services/estimateTemplateService';
 import type { EstimateTemplate } from '../services/estimateTemplateService';
 // ⭐ №290: «Добавить из шаблона» — смета из любого доступного проекта (как при создании проекта)
@@ -98,7 +97,6 @@ import type { AvailableProject } from '../services/projectService';
 // ⭐ XLSX/PDF-генераторы грузим по требованию (внутри handleExport) — иначе xlsx+pdfmake
 // тянутся в бандл страницы «Сметы» и замедляют её открытие.
 import type { ExportMeta } from '../utils/exportMaterials';
-import { FAB_STYLE } from '../theme';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
@@ -109,7 +107,6 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import PrintIcon from '@mui/icons-material/Print';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 // ⭐ №170: пересчёт сметы по справочнику цен (превью «было → станет» + откат)
 import { PriceRecalcModal } from '../components/PriceRecalcModal';
 import EstimateImportModal from '../components/EstimateImportModal'; // ⭐ №202: импорт сметы из Excel
@@ -117,13 +114,12 @@ import EstimateImportModal from '../components/EstimateImportModal'; // ⭐ №2
 import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus';
 import SectionIntro from '../components/SectionIntro'; // ⭐ №197: подсказки разделов
 
-// ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено».
-const BOTTOM_NAV_HEIGHT = 56; // высота BottomNav (MUI BottomNavigation по умолчанию)
-const SUMMARY_BAR_BOTTOM = BOTTOM_NAV_HEIGHT + 8; // плашка над меню с зазором 8px
+// ⭐ Мобильный UX: размеры нижнего меню и сводной плашки «Смета/Факт/Освоено»
+// переехали в `components/materials/estimateLayout.ts` (⭐ №393) — их использует
+// и вынесенная прокруточная обвязка.
 // ⭐ №388/389: у низа списка FAB остаётся (владелец просил вернуть), но плашка страниц
 // резервирует справа 56 px под него — «Свернуть» и кнопки уезжают левее и не перекрываются.
 // Отступ списка 65 px (+ ~57 px от layout) — зазор ~8 px до панели итогов (значение владельца).
-const SUMMARY_LIST_CLEARANCE_BOTTOM_PX = 65;
 // ⭐ №384: варианты размера страницы сметы; выбор запоминается в localStorage
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const PAGE_SIZE_KEY = 'materials-page-size';
@@ -146,24 +142,10 @@ const mergeUpdatedMaterial = (prev: MaterialData, updated: MaterialData): Materi
 });
 
 /**
- * ⭐ №241: деньги на одной строке. Разряды `ru-RU` уже разделены неразрывным пробелом,
- * а перед «₽» стоял обычный пробел — из-за него валюта переносилась на новую строку.
+ * ⭐ №241 / ⭐ №393: `rub`, `UNIT_OPTIONS`, `unitLabelOf` и `InlinePriceEditor` переехали
+ * в `components/materials/estimateFormat.ts` — они нужны и странице, и вынесенным
+ * строке/карточке (иначе получился бы циклический импорт).
  */
-const rub = (value: number): string => `${value.toLocaleString('ru-RU')}\u00A0₽`;
-
-const UNIT_OPTIONS = [
-  { value: 'PIECE', label: 'шт' },
-  { value: 'METER', label: 'м' },
-  { value: 'LINEAR_METER', label: 'пог. м' },
-  { value: 'SQUARE_METER', label: 'м²' },
-  { value: 'CUBIC_METER', label: 'м³' },
-  { value: 'KILOGRAM', label: 'кг' },
-  { value: 'LITER', label: 'л' },
-  { value: 'TON', label: 'т' },
-  { value: 'BAG', label: 'мешок' },
-  { value: 'PACKAGE', label: 'упак' },
-  { value: 'SET', label: 'компл' },
-];
 
 /** ⭐ №275: черновик импорта (единица не уточнена) — показываем серым, выбрать нельзя */
 const isDraftPrice = (option: PriceItemData | { __new__?: boolean }): boolean =>
@@ -180,10 +162,6 @@ const money2 = (value: number): string =>
 
 /** ⭐ №321: «12,5» из поля ввода → 12.5 (пусто/мусор → 0) */
 const numOr0 = (value: string): number => Number(value.replace(',', '.')) || 0;
-
-/** Подпись единицы измерения по её коду (м², м, шт…) */
-const unitLabelOf = (value: string): string =>
-  UNIT_OPTIONS.find((u) => u.value === value)?.label ?? value;
 
 const renderPriceOption = (
   props: React.HTMLAttributes<HTMLLIElement>,
@@ -433,67 +411,11 @@ const PriceStepSelects: React.FC<PriceStepSelectsProps> = ({
  */
 type MaterialSortKey = 'name' | 'specQuantity' | 'totalPrice' | 'percentage' | 'lastFix';
 
-/**
- * ⭐ №301: инлайн-правка «За ед.» с явными кнопками сохранения и отмены —
- * по Enter ориентироваться было неочевидно. Enter/Esc по-прежнему работают.
- */
-interface InlinePriceEditorProps {
-  value: string;
-  onChange: (value: string) => void;
-  onCommit: () => void;
-  onCancel: () => void;
-}
-
-const InlinePriceEditor: React.FC<InlinePriceEditorProps> = ({
-  value,
-  onChange,
-  onCommit,
-  onCancel,
-}) => (
-  <Box
-    sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }}
-    onClick={(e) => e.stopPropagation()}
-  >
-    <TextField
-      size="small"
-      autoFocus
-      value={value}
-      placeholder="0"
-      onChange={(e) => onChange(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') onCommit();
-        if (e.key === 'Escape') onCancel();
-      }}
-      onFocus={(e) => e.target.select()}
-      inputProps={{
-        inputMode: 'decimal',
-        style: { textAlign: 'right', width: 64, padding: '4px 6px' },
-      }}
-    />
-    <IconButton
-      size="small"
-      color="success"
-      aria-label="Сохранить цену"
-      title="Сохранить (Enter)"
-      onClick={onCommit}
-      sx={{ p: 0.25 }}
-    >
-      <CheckCircleIcon fontSize="small" />
-    </IconButton>
-    <IconButton
-      size="small"
-      color="error"
-      aria-label="Отменить правку цены"
-      title="Отмена (Esc)"
-      onClick={onCancel}
-      sx={{ p: 0.25 }}
-    >
-      <CancelIcon fontSize="small" />
-    </IconButton>
-  </Box>
-);
+// ⭐ №393: `InlinePriceEditor` (⭐ №275/№301) вынесен в `components/materials/InlinePriceEditor.tsx`,
+// чтобы строка таблицы могла его импортировать без цикла со страницей.
 
 const Materials: React.FC = () => {
+  countRender('materials.page'); // ⭐ №393: точка замера «страница сметы»
   const { objectId, projectId } = useParams<{ objectId: string; projectId: string }>();
   const navigate = useNavigate();
 const goBack = useBackNavigation(`/objects/${objectId}/projects`);
@@ -501,7 +423,10 @@ const goBack = useBackNavigation(`/objects/${objectId}/projects`);
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { token } = useAuth();
   const { notify, error: notifyError, success, confirm } = useFeedback();
-  const direction = useScrollDirection();
+  // ⭐ №393: направление скролла и «долистали до низа» больше НЕ в странице —
+  // они внутри `EstimateScrollChrome` (иначе каждый жест перерисовывал всю смету).
+  const mobileListRef = useRef<HTMLDivElement | null>(null);
+
 
   // ⭐ №161: deep-link из виджета «Без расценки» → ?materialId=…
   const [searchParams] = useSearchParams();
@@ -606,6 +531,13 @@ const [editMatPricePrice, setEditMatPricePrice] = useState('');
     side: 'work' | 'material';
     value: string;
   } | null>(null);
+  // ⭐ №393: ref-зеркала состояния — колбэки, которые уходят в memo-строки, должны иметь
+  // СТАБИЛЬНУЮ идентичность. Через ref они не зависят от `materials`/`inlinePrice`
+  // (иначе каждый введённый символ в поле цены перерисовывал бы все строки сметы).
+  const inlinePriceRef = useRef(inlinePrice);
+  inlinePriceRef.current = inlinePrice;
+  const materialsRef = useRef<MaterialData[]>([]);
+  materialsRef.current = materials;
   const [priceConfirm, setPriceConfirm] = useState<{
     material: MaterialData;
     side: 'work' | 'material';
@@ -708,6 +640,10 @@ const [deletingTemplateId, setDeletingTemplateId] = useState<number | null>(null
 // ⭐ №292: массовое выделение строк сметы (чекбокс в колонке «№»)
 const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 const [bulkBusy, setBulkBusy] = useState(false);
+// ⭐ №393: «режим выделения» нужен колбэку тапа по карточке; через ref он не зависит
+// от самого набора и не ломает memo-карточки.
+const selectionCountRef = useRef(0);
+selectionCountRef.current = selectedIds.size;
 // ⭐ №294: мобилка — долгое нажатие на карточку включает выделение
 const longPressTimerRef = useRef<number | null>(null);
 const longPressFiredRef = useRef(false);
@@ -727,7 +663,7 @@ const [showAll, setShowAll] = useState(false);
 const [pageInput, setPageInput] = useState('1');
 // ⭐ №384: кнопка «вниз» к ИТОГО/страницам
 const footerSentinelRef = useRef<HTMLDivElement | null>(null);
-const [footerVisible, setFooterVisible] = useState(false);
+// ⭐ №393: состояние «долистали до низа» живёт в `EstimateScrollChrome`, здесь — только ref
 // ⭐ №383: печать из браузера — «вся смета» дорисовывает строки только на время печати
 const [printOnlyPage, setPrintOnlyPage] = useState(false);
 const [printingAll, setPrintingAll] = useState(false);
@@ -895,13 +831,16 @@ useEffect(() => {
 }, [token, addModalOpen, matEffectiveCatalogId]);
 
 // Поиск + фильтр по категории (двойная фильтрация)
-  const filteredMaterials = materials.filter(m =>
+  // ⭐ №393: массив мемоизирован — иначе каждая перерисовка страницы давала новый
+  // `filteredMaterials` → новый `sortedMaterials` → новые props у ВСЕХ строк,
+  // и React.memo в строке не срабатывал.
+  const filteredMaterials = useMemo(() => materials.filter(m =>
     (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.article?.toLowerCase().includes(searchQuery.toLowerCase())) &&
     (!categoryFilter ||
       m.priceItem?.category?.id === categoryFilter ||
       m.materialItem?.category?.id === categoryFilter)
-  );
+  ), [materials, searchQuery, categoryFilter]);
 
   // Сортировка материалов с помощью useMemo
   const sortedMaterials = useMemo(() => {
@@ -941,6 +880,12 @@ useEffect(() => {
     });
   }, [filteredMaterials, sortBy, sortDirection]);
 
+  // ⭐ №393: тот же порядок строк в ref — колбэки выделения (Shift-диапазон, «протяжка»,
+  // «выбрать все») читают его вместо массива, поэтому их идентичность не меняется
+  // при каждом обновлении сметы (иначе memo-строки сбрасывались бы после любой фиксации).
+  const sortedMaterialsRef = useRef<MaterialData[]>([]);
+  sortedMaterialsRef.current = sortedMaterials;
+
   // ⭐ №383: окно отрисовки. «Показать все»/печать рисуют весь список, но поиск,
   // сортировка и ИТОГО всегда считаются по всей смете (filteredMaterials).
   const totalRows = sortedMaterials.length;
@@ -949,7 +894,10 @@ useEffect(() => {
   const windowEnd = fullRender
     ? totalRows
     : Math.min(windowStart + windowSize, totalRows);
-  const visibleMaterials = sortedMaterials.slice(sliceStart, windowEnd);
+  const visibleMaterials = useMemo(
+    () => sortedMaterials.slice(sliceStart, windowEnd),
+    [sortedMaterials, sliceStart, windowEnd],
+  );
   // ⭐ №383: строки с ГЛОБАЛЬНЫМ индексом — нумерация, Shift-диапазон и «протяжка»
   // остаются сквозными по всей смете, а не по странице.
   const visibleRows = useMemo(
@@ -1045,30 +993,8 @@ useEffect(() => {
     setPageSize(isMobile ? 25 : 50);
   }, [isMobile]);
 
-  // ⭐ №384: видимость кнопки «вниз» — по расстоянию до низа страницы.
-  // Меряем после отрисовки (rAF) и при изменении высоты контента (ResizeObserver),
-  // иначе на первом кадре таблица ещё не отрисована и кнопка «прячется» зря.
-  useEffect(() => {
-    const measure = () => {
-      const doc = document.documentElement;
-      const distance = doc.scrollHeight - (window.scrollY + window.innerHeight);
-      setFooterVisible(distance <= 160);
-    };
-    const raf = window.requestAnimationFrame(measure);
-    window.addEventListener('scroll', measure, { passive: true });
-    window.addEventListener('resize', measure);
-    const observer =
-      typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(measure)
-        : null;
-    observer?.observe(document.body);
-    return () => {
-      window.cancelAnimationFrame(raf);
-      window.removeEventListener('scroll', measure);
-      window.removeEventListener('resize', measure);
-      observer?.disconnect();
-    };
-  }, []);
+  // ⭐ №384/№393: измерение «до низа страницы» переехало в `EstimateScrollChrome`
+  // вместе с кнопкой «вниз»: страница на скролл больше не перерисовывается.
 
   // ⭐ №386 (по жалобе владельца): автодогрузки на мобилке БОЛЬШЕ НЕТ.
   // Она удлиняла список за 320 px до низа, и плашка страниц «убегала» — догнать её
@@ -1092,7 +1018,9 @@ useEffect(() => {
   }, [isMobile]);
 
   // Итоговая строка: суммы по спеке и факту, средний прогресс
-const totals = (() => {
+// ⭐ №393: мемоизировано — итоги нужны плашке/футеру и прокруточной обвязке,
+// а пересчёт на каждый рендер 404 строк был чистой потерей.
+const totals = useMemo(() => {
   const sumSpecQuantity = filteredMaterials.reduce((acc, m) => acc + (Number(m.specQuantity) || 0), 0);
   const sumTotalUsed = filteredMaterials.reduce((acc, m) => acc + (Number(m.totalUsed) || 0), 0);
   const sumWorkCurrent = filteredMaterials.reduce((acc, m) => acc + (Number(m.totalCost) || 0), 0);
@@ -1112,7 +1040,7 @@ const totals = (() => {
       ? Math.round((sumTotalUsed / sumSpecQuantity) * 100)
       : 0,
   };
-})();
+}, [filteredMaterials]);
 useEffect(() => {
   if (!token || !projectId || !objectId) return;
   const loadData = async () => {
@@ -1421,15 +1349,15 @@ setPriceLoading(false);
     }
   };
 
-  const handleOpenFixModal = (material: MaterialData) => {
-    //setFixingMaterial(material);
-    //setFixAmount(0);
+  // ⭐ №393: колбэки строки — стабильные (useCallback с неизменными зависимостями),
+  // иначе React.memo в строке не срабатывает: новая функция = новый prop.
+  const handleOpenFixModal = useCallback((material: MaterialData) => {
     setFixingMaterial(material);
     setFixAmount('');
     setFixNote('');
     setFixDayOffset(0); // ⭐ №174: по умолчанию — сегодня
     setFixModalOpen(true);
-  };
+  }, []);
 
   const handleCloseFixModal = () => {
     setFixModalOpen(false);
@@ -1490,16 +1418,21 @@ setPriceLoading(false);
     }
   };
 
-  // Шестерёнка: открываем настройки материала
-  const handleOpenSettings = (material: MaterialData) => {
+  // Шестерёнка: открываем настройки материала (⭐ №393 — стабильный колбэк)
+  const handleOpenSettings = useCallback((material: MaterialData) => {
     setSettingsMaterial(material);
     setSettingsModalOpen(true);
-  };
+  }, []);
 
-  const handleCloseSettings = () => {
+  // ⭐ №393: фото-галерея и карточка/строка получают стабильные обработчики
+  const handleOpenPhotos = useCallback((material: MaterialData) => {
+    setPhotoGalleryMaterial(material);
+  }, []);
+
+  const handleCloseSettings = useCallback(() => {
     setSettingsModalOpen(false);
     setSettingsMaterial(null);
-  };
+  }, []);
 
   // Из настроек → подтверждение удаления (в стиле объектов/проектов)
   const handleDeleteRequest = () => {
@@ -1523,7 +1456,7 @@ setPriceLoading(false);
   // ⭐ №162: копирование строки — копия вставляется сразу под источником
   // ⭐ №275: правка «За ед.» прямо в смете. Меняется только строка (снапшот),
   // справочник остаётся прежним — для него есть отдельная галочка в подтверждении.
-  const handleInlinePriceStart = (material: MaterialData, side: 'work' | 'material') => {
+  const handleInlinePriceStart = useCallback((material: MaterialData, side: 'work' | 'material') => {
     if (hidePrices) return;
     const current = side === 'work' ? material.unitPrice : material.materialUnitPrice;
     setInlinePrice({
@@ -1532,20 +1465,29 @@ setPriceLoading(false);
       // ⭐ №301: ноль не подставляем — поле пустое, чтобы не стирать его вручную
       value: current > 0 ? String(current) : '',
     });
-  };
+  }, [hidePrices]);
 
-  const handleInlinePriceCommit = () => {
-    if (!inlinePrice) return;
-    const material = materials.find((row) => row.id === inlinePrice.materialId);
-    const raw = inlinePrice.value.trim().replace(',', '.');
+  // ⭐ №393: ввод цены обновляет только состояние — колбэк не зависит от `inlinePrice`,
+  // поэтому строка (и все остальные) не перерисовываются на каждый символ.
+  const handleInlinePriceChange = useCallback((value: string) => {
+    setInlinePrice((prev) => (prev ? { ...prev, value } : prev));
+  }, []);
+
+  const handleInlinePriceCancel = useCallback(() => setInlinePrice(null), []);
+
+  const handleInlinePriceCommit = useCallback(() => {
+    const current = inlinePriceRef.current;
+    if (!current) return;
+    const material = materialsRef.current.find((row) => row.id === current.materialId);
+    const raw = current.value.trim().replace(',', '.');
     const value = raw === '' ? 0 : Number(raw);
     if (!material || !Number.isFinite(value) || value < 0) {
       notify('Введите корректную цену', 'warning');
       return;
     }
     setInlinePrice(null);
-    setPriceConfirm({ material, side: inlinePrice.side, value, alsoCatalog: false });
-  };
+    setPriceConfirm({ material, side: current.side, value, alsoCatalog: false });
+  }, [notify]);
 
   const handlePriceSave = async () => {
     if (!priceConfirm) return;
@@ -1626,14 +1568,15 @@ setPriceLoading(false);
     (anchor: number, index: number) => {
       const from = Math.min(anchor, index);
       const to = Math.max(anchor, index);
-      const rangeIds = sortedMaterials.slice(from, to + 1).map((m) => m.id);
+      // ⭐ №393: порядок строк — из ref, чтобы колбэк был стабильным для memo-строк
+      const rangeIds = sortedMaterialsRef.current.slice(from, to + 1).map((m) => m.id);
       setSelectedIds((prev) => {
         const next = new Set(prev);
         rangeIds.forEach((rid) => next.add(rid));
         return next;
       });
     },
-    [sortedMaterials],
+    [],
   );
 
   // Чекбокс: сюда приходит только клавиатура (мышь обрабатывает ячейка, см. startDragSelect)
@@ -1657,21 +1600,21 @@ setPriceLoading(false);
     }
   }, []);
 
-  const startLongPress = useCallback(
-    (id: number) => (e: React.TouchEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest('button, a, input, [role="button"]')) return;
-      cancelLongPress();
-      longPressFiredRef.current = false;
-      longPressTimerRef.current = window.setTimeout(() => {
-        longPressTimerRef.current = null;
-        longPressFiredRef.current = true;
-        toggleSelected(id);
-        navigator.vibrate?.(10);
-      }, 500);
-    },
-    [cancelLongPress, toggleSelected],
-  );
+  // ⭐ №393: обработчик карточки принимает материал, а не возвращает новый колбэк на id —
+  // иначе memo-карточки получали бы новую функцию на каждый рендер списка.
+  const handleCardTouchStart = useCallback((material: MaterialData, e: React.TouchEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button, a, input, [role="button"]')) return;
+    cancelLongPress();
+    longPressFiredRef.current = false;
+    const id = material.id;
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null;
+      longPressFiredRef.current = true;
+      toggleSelected(id);
+      navigator.vibrate?.(10);
+    }, 500);
+  }, [cancelLongPress, toggleSelected]);
 
   // таймер не должен «выстрелить» после ухода со страницы
   useEffect(() => cancelLongPress, [cancelLongPress]);
@@ -1684,10 +1627,12 @@ setPriceLoading(false);
 
   const toggleSelectAll = useCallback(() => {
     setSelectedIds((prev) => {
-      const allSelected = sortedMaterials.length > 0 && sortedMaterials.every((m) => prev.has(m.id));
-      return allSelected ? new Set<number>() : new Set(sortedMaterials.map((m) => m.id));
+      // ⭐ №393: список — из ref, колбэк стабильный (см. applyRangeSelect)
+      const rows = sortedMaterialsRef.current;
+      const allSelected = rows.length > 0 && rows.every((m) => prev.has(m.id));
+      return allSelected ? new Set<number>() : new Set(rows.map((m) => m.id));
     });
-  }, [sortedMaterials]);
+  }, []);
 
   // Выделение не должно «залипать» на удалённых/отфильтрованных строках
   useEffect(() => {
@@ -1714,8 +1659,10 @@ setPriceLoading(false);
   const dragStateRef = useRef<{ anchor: number; id: number; dragged: boolean } | null>(null);
   const [dragSelecting, setDragSelecting] = useState(false);
 
-  const startDragSelect = useCallback(
-    (index: number, id: number) => (e: React.MouseEvent) => {
+  // ⭐ №393: колбэк принимает index/id аргументами (а не создаёт замыкание на строку),
+  // поэтому его идентичность одинакова для всех строк — memo не сбрасывается.
+  const handleNumberMouseDown = useCallback(
+    (e: React.MouseEvent, index: number, id: number) => {
       if (e.button !== 0 || bulkBusy) return;
       // отключаем выделение текста и нативное переключение чекбокса
       e.preventDefault();
@@ -1732,8 +1679,8 @@ setPriceLoading(false);
     [applyRangeSelect, bulkBusy, toggleSelected],
   );
 
-  const hoverDragSelect = useCallback(
-    (index: number) => () => {
+  const handleHoverRow = useCallback(
+    (index: number) => {
       const state = dragStateRef.current;
       if (!state || state.anchor === index) return;
       state.dragged = true;
@@ -1820,7 +1767,7 @@ setPriceLoading(false);
     }
   }, [projectId, selectedIds, confirm, clearSelection, notify, notifyError]);
 
-  const handleDuplicate = async (material: MaterialData) => {
+  const handleDuplicate = useCallback(async (material: MaterialData) => {
     if (!token) return;
     try {
       const copy = await duplicateMaterial(material.id);
@@ -1835,7 +1782,21 @@ setPriceLoading(false);
     } catch (err: unknown) {
       notifyError('Ошибка копирования: ' + getApiErrorText(err, 'неизвестная ошибка'));
     }
-  };
+  }, [token, handleCloseSettings, notify, notifyError]);
+
+  // ⭐ №294/№393: тап по карточке в режиме выделения. Проверка «режима» — через ref,
+  // сам обработчик стабилен и годится для memo-карточки.
+  const handleCardClick = useCallback((material: MaterialData, e: React.MouseEvent) => {
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false; // это был long-press, не считаем как тап
+      return;
+    }
+    if (selectionCountRef.current === 0) return;
+    // тапы по кнопкам внутри карточки (шестерёнка, «+ Фикс», фото) не считаем выбором
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button, a, input, [role="button"]')) return;
+    toggleSelected(material.id);
+  }, [toggleSelected]);
 
 // ✏️ Открыть правку последней фиксации (из шестерёнки)
 const handleOpenEditFix = async () => {
@@ -3126,153 +3087,28 @@ onClose={() => setFilterAnchorEl(null)}
 </TableHead>
             <TableBody>
 {visibleRows.map(({ material: m, index: idx }) => (
-<TableRow
-  key={m.id}
-  hover
-  id={`material-row-${m.id}`}
-  // ⭐ №297: тянем мышь по строкам — выделяется диапазон от нажатой строки
-  onMouseEnter={hoverDragSelect(idx)}
-  sx={(highlightId === m.id && highlightVisible) || flashId === m.id
-    ? { bgcolor: '#fff8e1', transition: 'background-color 0.3s' }
-    : selectedIds.has(m.id)
-      ? { bgcolor: 'rgba(25, 118, 210, 0.08)' }
-      : undefined}
->
-{/* ⭐ №292/№297: чекбокс + номер — клик, Shift+Click и «протяжка» мышью */}
-<TableCell
-  onMouseDown={startDragSelect(idx, m.id)}
-  title="Клик — выбрать, Shift+Click — диапазон, зажать и провести — несколько подряд"
-  sx={{ textAlign: 'center', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}
->
-  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-    <Checkbox
-      size="small"
-      checked={selectedIds.has(m.id)}
-      onChange={(e) => handleRowSelect(e, idx, m.id)}
-      inputProps={{ 'aria-label': `Выбрать строку ${idx + 1}` }}
-      // ⭐ №297: мышь обрабатывает ячейка (иначе браузер переключит чекбокс дважды),
-      // клавиатура (Tab + пробел) работает как обычно
-      sx={{ p: 0.25, pointerEvents: 'none' }}
-    />
-    {idx + 1}
-  </Box>
-</TableCell>
-<TableCell>{m.name}</TableCell>
-<TableCell sx={{ textAlign: 'center' }}>{m.article || '-'}</TableCell>
-<TableCell sx={{ textAlign: 'center' }}>{UNIT_OPTIONS.find(u => u.value === m.unit)?.label || m.unit}</TableCell>
-<TableCell sx={{ textAlign: 'center' }}>{m.specQuantity}</TableCell>
-<TableCell sx={{ textAlign: 'center', fontWeight: 600 }}>{m.totalUsed}</TableCell>
-              <TableCell sx={{ textAlign: 'center' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
-                  <Typography variant="body2" fontWeight={600}>{m.lastEntry ?? '—'}</Typography>
-                  {/* ⭐ №240: кнопка-прямоугольник со скруглением; бейдж — на углу КНОПКИ,
-                      а не поверх иконки */}
-                  <Badge
-                    badgeContent={m.photosCount ?? 0}
-                    color="primary"
-                    invisible={!m.photosCount}
-                    overlap="rectangular"
-                    anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-                    sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16, px: 0.5 } }}
-                  >
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => setPhotoGalleryMaterial(m)}
-                      aria-label="Фото материала"
-                      title="Фото материала"
-                      sx={{
-                        minWidth: 40,
-                        px: 1,
-                        py: 0.5,
-                        borderRadius: 2,
-                        color: m.photosCount ? '#1976d2' : '#757575',
-                        borderColor: m.photosCount ? '#90caf9' : '#bdbdbd',
-                        '&:hover': { borderColor: '#1976d2', bgcolor: 'rgba(25,118,210,0.04)' },
-                      }}
-                    >
-                      <CameraAltIcon sx={{ fontSize: 18 }} />
-                    </Button>
-                  </Badge>
-                </Box>
-                {/* ⭐ №390: фиксация — право роли, а не цен (диалог и так без денег) */}
-                {canWriteMaterials && (
-                  <Button size="small" variant="outlined" onClick={() => handleOpenFixModal(m)} sx={{ textTransform: 'none', fontSize: 11, mt: 0.5 }}>
-                    + фикс
-                  </Button>
-                )}
-              </TableCell>
-              <TableCell sx={{ textAlign: 'center', fontWeight: 600, color: m.progressPercent >= 100 ? '#4caf50' : '#1976d2' }}>{m.progressPercent}%</TableCell>
-              {/* ⭐ Денежные ячейки скрываем при hidePrices */}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{m.totalCost > 0 ? rub(m.totalCost) : '—'}</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{m.materialTotalCost > 0 ? rub(m.materialTotalCost) : '—'}</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>{(m.totalCost + m.materialTotalCost) > 0 ? rub(m.totalCost + m.materialTotalCost) : '—'}</TableCell>}
-              {!hidePrices && (
-                <TableCell
-                  sx={{ textAlign: 'right', whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9', cursor: 'pointer' }}
-                  onClick={() => handleInlinePriceStart(m, 'work')}
-                  title="Изменить цену работы (только в этой смете)"
-                >
-                  {inlinePrice?.materialId === m.id && inlinePrice.side === 'work' ? (
-                    <InlinePriceEditor
-                      value={inlinePrice.value}
-                      onChange={(v) => setInlinePrice({ ...inlinePrice, value: v })}
-                      onCommit={handleInlinePriceCommit}
-                      onCancel={() => setInlinePrice(null)}
-                    />
-                  ) : m.unitPrice > 0 ? (
-                    rub(m.unitPrice)
-                  ) : (
-                    '—'
-                  )}
-                </TableCell>
-              )}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{(m.unitPrice * m.specQuantity) > 0 ? rub(m.unitPrice * m.specQuantity) : '—'}</TableCell>}
-              {!hidePrices && (
-                <TableCell
-                  sx={{ textAlign: 'right', whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9', cursor: 'pointer' }}
-                  onClick={() => handleInlinePriceStart(m, 'material')}
-                  title="Изменить цену материала (только в этой смете)"
-                >
-                  {inlinePrice?.materialId === m.id && inlinePrice.side === 'material' ? (
-                    <InlinePriceEditor
-                      value={inlinePrice.value}
-                      onChange={(v) => setInlinePrice({ ...inlinePrice, value: v })}
-                      onCommit={handleInlinePriceCommit}
-                      onCancel={() => setInlinePrice(null)}
-                    />
-                  ) : m.materialUnitPrice > 0 ? (
-                    rub(m.materialUnitPrice)
-                  ) : (
-                    '—'
-                  )}
-                </TableCell>
-              )}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{(m.materialUnitPrice * m.specQuantity) > 0 ? rub(m.materialUnitPrice * m.specQuantity) : '—'}</TableCell>}
-              {!hidePrices && <TableCell sx={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap', borderLeft: '2px solid #90caf9' }}>
-                {((m.unitPrice + m.materialUnitPrice) * m.specQuantity) > 0 ? rub((m.unitPrice + m.materialUnitPrice) * m.specQuantity) : '—'}
-              </TableCell>}
-              <TableCell sx={{ textAlign: 'center' }}>
-                {/* ⭐ Шестерёнка настроек — по праву записи (не по видимости цен) */}
-                {canWriteMaterials && (
-                  <IconButton size="small" onClick={() => handleOpenSettings(m)} sx={{ bgcolor: 'action.hover' }}>
-                    <SettingsIcon fontSize="small" />
-                  </IconButton>
-                )}
-                {/* ⭐ №162: быстрое копирование строки (десктоп) */}
-                {!hidePrices && (
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDuplicate(m)}
-                    sx={{ bgcolor: 'action.hover', ml: 0.5 }}
-                    aria-label="Дублировать строку"
-                    title="Дублировать строку"
-                  >
-                    <ContentCopyIcon fontSize="small" />
-                  </IconButton>
-                )}
-              </TableCell>
-</TableRow>
+  <MaterialRow
+    key={m.id}
+    material={m}
+    index={idx}
+    selected={selectedIds.has(m.id)}
+    highlighted={(highlightId === m.id && highlightVisible) || flashId === m.id}
+    hidePrices={hidePrices}
+    canWrite={canWriteMaterials}
+    inlineSide={inlinePrice?.materialId === m.id ? inlinePrice.side : null}
+    inlineValue={inlinePrice?.materialId === m.id ? inlinePrice.value : ''}
+    onHoverRow={handleHoverRow}
+    onNumberMouseDown={handleNumberMouseDown}
+    onToggleRow={handleRowSelect}
+    onOpenPhotos={handleOpenPhotos}
+    onOpenFix={handleOpenFixModal}
+    onOpenSettings={handleOpenSettings}
+    onDuplicate={handleDuplicate}
+    onInlinePriceStart={handleInlinePriceStart}
+    onInlinePriceChange={handleInlinePriceChange}
+    onInlinePriceCommit={handleInlinePriceCommit}
+    onInlinePriceCancel={handleInlinePriceCancel}
+  />
 ))}
 {filteredMaterials.length === 0 && (
   <TableRow>
@@ -3310,156 +3146,34 @@ onClose={() => setFilterAnchorEl(null)}
 
   {/* Карточки для мобилки */}
   {isMobile && (
-    <Stack spacing={1} sx={{ pb: selectedIds.size > 0 ? '150px' : direction === 'none' ? 0 : `${SUMMARY_LIST_CLEARANCE_BOTTOM_PX}px` }}>
+    <Stack
+      ref={mobileListRef}
+      spacing={1}
+      // ⭐ №393: отступ под фиксированную плашку итогов задаёт `EstimateScrollChrome`
+      // через ref (CSS), чтобы смена направления скролла не перерисовывала список.
+      sx={{ pb: selectedIds.size > 0 ? '150px' : undefined }}
+    >
       {/* ⭐ №294/№299: подсказка о жесте переехала в сворачиваемое пояснение раздела
           (SectionIntro выше), чтобы не занимать место в списке */}
       {sortedMaterials.length > 0 ? (
-        visibleMaterials.map((m) => (
-            <Paper
-              key={m.id}
-              id={`material-row-${m.id}`}
-              // ⭐ №294: долгое нажатие включает выделение; тап по карточке в режиме
-              // выделения переключает выбор (обычный тап ничего не открывает и раньше)
-              onTouchStart={startLongPress(m.id)}
-              onTouchEnd={cancelLongPress}
-              onTouchCancel={cancelLongPress}
-              onTouchMove={cancelLongPress}
-              onClick={(e) => {
-                if (longPressFiredRef.current) {
-                  longPressFiredRef.current = false; // это был long-press, не считаем как тап
-                  return;
-                }
-                if (selectedIds.size === 0) return;
-                // тапы по кнопкам внутри карточки (шестерёнка, «+ Фикс», фото) не считаем выбором
-                const target = e.target as HTMLElement | null;
-                if (target?.closest('button, a, input, [role="button"]')) return;
-                toggleSelected(m.id);
-              }}
-              sx={{
-                p: 1.5,
-                borderRadius: 2,
-                // ⭐ №294: на iOS долгое нажатие не должно вызывать меню/выделение текста
-                WebkitTouchCallout: 'none',
-                WebkitUserSelect: 'none',
-                userSelect: 'none',
-                ...((highlightId === m.id && highlightVisible) || flashId === m.id
-                  ? { bgcolor: '#fff8e1', transition: 'background-color 0.3s' }
-                  : {}),
-                ...(selectedIds.has(m.id)
-                  ? { border: '2px solid #1976d2', bgcolor: 'rgba(25, 118, 210, 0.06)' }
-                  : {}),
-              }}
-            >
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-              {/* ⭐ №294: в режиме выделения у карточек появляются чекбоксы */}
-              {selectedIds.size > 0 && (
-                <Checkbox
-                  size="small"
-                  checked={selectedIds.has(m.id)}
-                  onChange={() => toggleSelected(m.id)}
-                  inputProps={{ 'aria-label': `Выбрать ${m.name}` }}
-                  sx={{ p: 0.25, ml: -0.75, mr: 0.5 }}
-                />
-              )}
-              <InventoryIcon sx={{ color: '#1976d2', mr: 1, fontSize: 22 }} />
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>
-                {m.name}
-              </Typography>
-              {/* ⭐ №390: шестерёнка — по праву записи, не по видимости цен */}
-              {canWriteMaterials && (
-                <IconButton size="small" onClick={() => handleOpenSettings(m)} sx={{ bgcolor: 'action.hover' }}>
-                  <SettingsIcon fontSize="small" />
-                </IconButton>
-              )}
-            </Box>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  {m.article || 'Без артикула'} • {UNIT_OPTIONS.find(u => u.value === m.unit)?.label}
-                </Typography>
-                {/* Прогресс-бар с процентом справа */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                  <LinearProgress
-                    variant="determinate"
-                    value={Math.min(m.progressPercent, 100)}
-                    sx={{
-                      height: 8, borderRadius: 4, flexGrow: 1, bgcolor: '#e0e0e0',
-                      '& .MuiLinearProgress-bar': {
-                        backgroundColor: m.progressPercent >= 100 ? '#4caf50' : '#1976d2',
-                        borderRadius: 4,
-                      },
-                    }}
-                  />
-                  <Typography variant="body2" fontWeight={700} sx={{ color: m.progressPercent >= 100 ? '#4caf50' : '#1976d2', minWidth: 40, textAlign: 'right' }}>
-                    {m.progressPercent}%
-                  </Typography>
-                </Box>
-                {/* Ключевые цифры в одну строку */}
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  <Box component="span" color="text.secondary">Спец:</Box> <b>{m.specQuantity}</b>
-                  {' • '}<Box component="span" color="text.secondary">Итого:</Box> <b>{m.totalUsed}</b>
-                  {' • '}<Box component="span" color="text.secondary">Посл.:</Box> <b>{m.lastEntry ?? '—'}</b>
-                </Typography>
-            {/* ⭐ Блок "На текущий момент" — полностью скрыт при hidePrices */}
-            {!hidePrices && (
-              <Box sx={{ bgcolor: '#f5f9ff', borderRadius: 1.5, p: 1, mb: 1, border: '1px solid #e3edf8' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
-                  <Typography variant="caption" color="text.secondary">Работы:</Typography>
-                  <Typography variant="caption" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>{m.totalCost > 0 ? rub(m.totalCost) : '—'}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
-                  <Typography variant="caption" color="text.secondary">Материалы:</Typography>
-                  <Typography variant="caption" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>{m.materialTotalCost > 0 ? rub(m.materialTotalCost) : '—'}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2" fontWeight={700}>Итого:</Typography>
-                  <Typography variant="body2" fontWeight={700} color="#1976d2" sx={{ whiteSpace: 'nowrap' }}>
-                    {(m.totalCost + m.materialTotalCost) > 0 ? rub(m.totalCost + m.materialTotalCost) : '—'}
-                  </Typography>
-                </Box>
-              </Box>
-            )}
-              <Box sx={{ display: 'flex', gap: 1 }}>
-              <Badge
-                badgeContent={m.photosCount ?? 0}
-                color="primary"
-                invisible={!m.photosCount}
-                overlap="rectangular"
-                anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-                sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16, px: 0.5 } }}
-              >
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => setPhotoGalleryMaterial(m)}
-                  aria-label="Фотофиксация"
-                  sx={{
-                    // ⭐ №240: шире на ~30 % (48 → 64), чтобы бейдж не перекрывал иконку
-                    minWidth: 64,
-                    px: 2,
-                    py: 0.75,
-                    borderRadius: 2,
-                    color: m.photosCount ? '#1976d2' : '#757575',
-                    borderColor: m.photosCount ? '#90caf9' : '#bdbdbd',
-                    '&:hover': { borderColor: '#1976d2', bgcolor: 'rgba(25,118,210,0.04)' },
-                  }}
-                >
-                  <CameraAltIcon fontSize="small" />
-                </Button>
-              </Badge>
-              {/* ⭐ №390: фиксация — право роли, а не цен */}
-              {canWriteMaterials && (
-                <Button
-                  fullWidth
-                  variant="contained"
-                  size="small"
-                  onClick={() => handleOpenFixModal(m)}
-                  sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' } }}
-                >
-                  + Зафиксировать объём
-                </Button>
-              )}
-            </Box>
-              </Paper>
-            ))
+visibleMaterials.map((m) => (
+  <MaterialCard
+    key={m.id}
+    material={m}
+    selected={selectedIds.has(m.id)}
+    highlighted={(highlightId === m.id && highlightVisible) || flashId === m.id}
+    selectionMode={selectedIds.size > 0}
+    hidePrices={hidePrices}
+    canWrite={canWriteMaterials}
+    onTouchStart={handleCardTouchStart}
+    onTouchEnd={cancelLongPress}
+    onCardClick={handleCardClick}
+    onToggle={toggleSelected}
+    onOpenPhotos={handleOpenPhotos}
+    onOpenFix={handleOpenFixModal}
+    onOpenSettings={handleOpenSettings}
+  />
+))
           ) : (
             <Paper sx={{ p: 3, textAlign: 'center' }}>
               <Typography color="text.secondary">
@@ -3472,76 +3186,21 @@ onClose={() => setFilterAnchorEl(null)}
         </Stack>
       )}
 
-{/* ⭐ 6.7 Липкая плашка итогов — деньги скрыты при hidePrices, процент остаётся.
-    ⭐ №294: в режиме выделения её место занимает панель массовых действий */}
-{isMobile && selectedIds.size === 0 && (
-  <Paper
-    className="no-print"
-    elevation={8}
-    sx={{
-      position: direction === 'none' ? 'static' : 'fixed',
-      bottom: SUMMARY_BAR_BOTTOM,
-      left: 8,
-      right: 8,
-      zIndex: 9, // < zIndex BottomNav (10) — при скролле плашка уезжает ПОД меню
-      borderRadius: 2,
-      bgcolor: '#fff',
-      px: 2,
-      py: 1,
-      border: '1px solid #e0e0e0',
-      mt: direction === 'none' ? 1 : 0,
-      transform:
-        direction === 'down' && !footerVisible
-          ? `translateY(calc(100% + ${SUMMARY_BAR_BOTTOM}px))`
-          : 'translateY(0)',
-      transition: 'transform 0.2s ease',
-    }}
-  >
-    {hidePrices ? (
-      // Для VIEWER показываем только процент
-      <Box sx={{ textAlign: 'center' }}>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Освоено</Typography>
-        <Typography variant="body2" fontWeight={700} color={totals.weightedPercent >= 100 ? '#4caf50' : '#ef6c00'}>
-          {totals.weightedPercent}%
-        </Typography>
-      </Box>
-    ) : (
-      // Для остальных показываем всё
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', columnGap: 1, rowGap: 0.5 }}>
-        <Box sx={{ textAlign: 'left' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Смета</Typography>
-          <Typography variant="body2" fontWeight={700} sx={{ whiteSpace: 'nowrap' }}>
-            {rub(totals.sumEstimate)}
-          </Typography>
-        </Box>
-        <Box sx={{ textAlign: 'center' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Факт</Typography>
-          <Typography variant="body2" fontWeight={700} color="#1976d2" sx={{ whiteSpace: 'nowrap' }}>
-            {rub(totals.sumCurrentTotal)}
-          </Typography>
-        </Box>
-        <Box sx={{ textAlign: 'right' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Освоено</Typography>
-          <Typography variant="body2" fontWeight={700} color={totals.weightedPercent >= 100 ? '#4caf50' : '#ef6c00'}>
-            {totals.weightedPercent}%
-          </Typography>
-        </Box>
-      </Box>
-    )}
-  </Paper>
-)}
-{/* FAB для мобилки (поднят выше плашки итогов) — скрыт при hidePrices.
-    ⭐ №294: в режиме выделения прячем, чтобы не мешал панели действий */}
-{isMobile && canWriteMaterials && selectedIds.size === 0 && (direction !== 'down' || footerVisible) && (
-  <Fab
-    className="no-print"
-    color="primary"
-    sx={{ ...FAB_STYLE, bottom: 130 }}
-    onClick={handleOpenAddModal}
-  >
-    <AddIcon />
-  </Fab>
-)}
+{/* ⭐ №393: плашка итогов + FAB «+» + кнопка «вниз» живут в отдельном компоненте
+    вместе с направлением скролла — страница на скролл больше не перерисовывается.
+    ⭐ 6.7: деньги скрыты при hidePrices, процент остаётся;
+    ⭐ №294: в режиме выделения место плашки занимает панель массовых действий. */}
+<EstimateScrollChrome
+  isMobile={isMobile}
+  hidePrices={hidePrices}
+  canWrite={canWriteMaterials}
+  selectionMode={selectedIds.size > 0}
+  totals={totals}
+  hasWindowBar={hasWindowBar}
+  listRef={mobileListRef}
+  onAddClick={handleOpenAddModal}
+  onScrollToFooter={scrollToFooter}
+/>
 
 {/* ⭐ №294: массовые действия на мобилке — панель над нижним меню */}
 {isMobile && selectedIds.size > 0 && (
@@ -4615,31 +4274,8 @@ renderInput={(params) => (
         </Paper>
       </Modal>
 
-      {/* ⭐ №384: «вниз» к ИТОГО и переключателю страниц.
-          ⭐ №386: кнопку больше не скрываем при скролле вниз — именно тогда она
-          и нужна, чтобы одним тапом добраться до плашки страниц. */}
-      {hasWindowBar && !footerVisible && (
-        <IconButton
-          className="no-print"
-          aria-label="К итогам и страницам"
-          title="К итогам и страницам"
-          onClick={scrollToFooter}
-          sx={{
-            position: 'fixed',
-            right: isMobile ? 16 : 24,
-            bottom: isMobile ? SUMMARY_BAR_BOTTOM + 132 : 24,
-            zIndex: 8,
-            width: 40,
-            height: 40,
-            bgcolor: 'background.paper',
-            border: '1px solid #e0e0e0',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-            '&:hover': { bgcolor: '#fff' },
-          }}
-        >
-          <KeyboardArrowDownIcon />
-        </IconButton>
-      )}
+      {/* ⭐ №384/№386: кнопка «вниз» к ИТОГО и плашке страниц переехала в
+          `EstimateScrollChrome` (⭐ №393) вместе с состоянием «долистали до низа». */}
       {/* ⭐ Snackbar для экспорта (успех/ошибка) */}
       <Snackbar
         open={snackbar.open}
