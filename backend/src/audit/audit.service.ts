@@ -7,6 +7,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  buildKeysetPage,
+  keysetWhere,
+  parseCursor,
+  parseLimit,
+} from '../common/keyset'; // ⭐ №391
 
 @Injectable()
 export class AuditService {
@@ -119,6 +125,7 @@ export class AuditService {
     entity?: string,
     entityId?: number,
     actorRole?: string,
+    page?: { limit?: unknown; cursor?: unknown },
   ) {
     // ⭐ №180: запрос без области возвращал последние 100 записей ЖУРНАЛА ВСЕЙ СИСТЕМЫ
     // (цены, отзывы доступов, e-mail акторов). Теперь — только администратору,
@@ -135,12 +142,20 @@ export class AuditService {
     const where: any = {};
     if (entity) where.entity = entity;
     if (entityId != null) where.entityId = entityId;
+    // ⭐ №391: пагинация только при ?limit=; без него — прежние 100 записей.
+    const limit = parseLimit(page?.limit);
+    const cursor = parseCursor(page?.cursor);
 
     const logs = await this.prisma.auditLog.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: 100,
+      where: limit
+        ? { AND: [where, ...(cursor ? [keysetWhere(cursor, 'createdAt')] : [])] }
+        : where,
+      // ⭐ №391: id — tie-break для одинаковых createdAt
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      // без ?limit= — прежние 100 последних записей
+      ...(limit ? { take: limit + 1 } : { take: 100 }),
     });
+    const total = limit ? await this.prisma.auditLog.count({ where }) : 0;
 
     // ⭐ Подтянуть имена акторов (actorId → fullName/email).
     const actorIds = [...new Set(logs.map((l) => l.actorId))];
@@ -152,12 +167,15 @@ export class AuditService {
       : [];
     const byId = new Map(users.map((u) => [u.id, u]));
 
-    return logs.map((l) => {
+    const enriched = logs.map((l) => {
       const u = byId.get(l.actorId);
       return {
         ...l,
         actor: u ? { id: u.id, fullName: u.fullName, email: u.email } : { id: l.actorId },
       };
     });
+    return limit
+      ? buildKeysetPage(enriched, limit, total, (l) => l.createdAt)
+      : enriched;
   }
 }

@@ -27,13 +27,19 @@ export class ReportsController {
     @Query('objectId') objectId?: string,
     @Query('type') type?: string,
     @Query('status') status?: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
   ) {
-    return this.reportsService.list(req.user.userId, {
-      projectId: projectId ? Number(projectId) : undefined,
-      objectId: objectId ? Number(objectId) : undefined,
-      type,
-      status,
-    });
+    return this.reportsService.list(
+      req.user.userId,
+      {
+        projectId: projectId ? Number(projectId) : undefined,
+        objectId: objectId ? Number(objectId) : undefined,
+        type,
+        status,
+      },
+      { limit, cursor }, // ⭐ №391: ?limit= включает keyset-пагинацию
+    );
   }
 
   @Get(':id')

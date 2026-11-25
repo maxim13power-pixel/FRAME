@@ -63,6 +63,35 @@ export const fetchReports = async (params?: {
   return response.data.map(normalizeReport);
 };
 
+// ⭐ №391: keyset-страница списка (?limit=&cursor=). Без limit сервер отдаёт массив —
+// оборачиваем его, чтобы вызывающая сторона не зависела от версии бэкенда.
+export type ReportsPage = {
+  items: ReportData[];
+  total: number;
+  nextCursor: string | null;
+};
+
+export const fetchReportsPage = async (params: {
+  projectId?: number;
+  objectId?: number;
+  type?: ReportType;
+  status?: ReportStatus;
+  limit?: number;
+  cursor?: string;
+}): Promise<ReportsPage> => {
+  const response = await api.get('/reports', { params });
+  const data = response.data;
+  if (Array.isArray(data)) {
+    const items = data.map(normalizeReport);
+    return { items, total: items.length, nextCursor: null };
+  }
+  return {
+    items: (data?.items ?? []).map(normalizeReport),
+    total: typeof data?.total === 'number' ? data.total : 0,
+    nextCursor: data?.nextCursor ?? null,
+  };
+};
+
 export const fetchReport = async (id: number): Promise<ReportData> => {
   const response = await api.get(`/reports/${id}`);
   return normalizeReport(response.data);

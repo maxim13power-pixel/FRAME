@@ -21,7 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useMobileHeader } from '../contexts/MobileHeaderContext';
 import { FAB_STYLE } from '../theme';
 import {
-  fetchReports, fetchReport, createReport, updateReport, deleteReport,
+  fetchReportsPage, fetchReport, createReport, updateReport, deleteReport,
   addReportItem, updateReportItem, deleteReportItem, downloadReportExport,
 } from '../services/reportsService';
 import type { ReportData, ReportStatus, ReportType, ReportItemData } from '../services/reportsService';
@@ -61,6 +61,9 @@ const ACTION_LABELS: Record<string, string> = {
 const fmtMoney = (v: number | string) =>
   parseDecimal(v).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 
+// ⭐ №391: размер страницы журнала отчётов (сервер режет по limit)
+const REPORTS_PAGE_SIZE = 50;
+
 const Reports: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -69,6 +72,10 @@ const Reports: React.FC = () => {
 
   // ─── Данные ───
   const [reports, setReports] = useState<ReportData[]>([]);
+  // ⭐ №391: серверная пагинация списка — тянем по 50, а не весь журнал сразу
+  const [reportsTotal, setReportsTotal] = useState(0);
+  const [reportsCursor, setReportsCursor] = useState<string | null>(null);
+  const [moreLoading, setMoreLoading] = useState(false);
   const [objects, setObjects] = useState<ObjectData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -129,13 +136,42 @@ const Reports: React.FC = () => {
       const params: { objectId?: number; type?: ReportType } = {};
       if (objectFilter !== '') params.objectId = objectFilter;
       if (typeFilter !== 'all') params.type = typeFilter;
-      setReports(await fetchReports(params));
+      const page = await fetchReportsPage({ ...params, limit: REPORTS_PAGE_SIZE });
+      setReports(page.items);
+      setReportsTotal(page.total);
+      setReportsCursor(page.nextCursor);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Не удалось загрузить отчёты'));
     } finally {
       setLoading(false);
     }
   }, [token, objectFilter, typeFilter]);
+
+  // ⭐ №391: следующая страница по курсору — без дублей, если запись уже пришла
+  const loadMoreReports = useCallback(async () => {
+    if (!token || !reportsCursor || moreLoading) return;
+    setMoreLoading(true);
+    try {
+      const params: { objectId?: number; type?: ReportType } = {};
+      if (objectFilter !== '') params.objectId = objectFilter;
+      if (typeFilter !== 'all') params.type = typeFilter;
+      const page = await fetchReportsPage({
+        ...params,
+        limit: REPORTS_PAGE_SIZE,
+        cursor: reportsCursor,
+      });
+      setReports((prev) => {
+        const seen = new Set(prev.map((r) => r.id));
+        return [...prev, ...page.items.filter((r) => !seen.has(r.id))];
+      });
+      setReportsTotal(page.total);
+      setReportsCursor(page.nextCursor);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Не удалось загрузить отчёты'));
+    } finally {
+      setMoreLoading(false);
+    }
+  }, [token, objectFilter, typeFilter, reportsCursor, moreLoading]);
 
   const loadCatalogItems = useCallback(async () => {
     try {
@@ -656,6 +692,24 @@ const Reports: React.FC = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+            )}
+            {reportsCursor && (
+              <Box sx={{ textAlign: 'center', pt: 1 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: 'block', mb: 1 }}
+                >
+                  Показано {reports.length} из {reportsTotal}
+                </Typography>
+                <Button
+                  variant="outlined"
+                  onClick={loadMoreReports}
+                  disabled={moreLoading}
+                >
+                  {moreLoading ? 'Загружаем…' : 'Показать ещё'}
+                </Button>
+              </Box>
             )}
           </Stack>
         </>

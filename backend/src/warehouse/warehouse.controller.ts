@@ -80,8 +80,16 @@ export class WarehouseController {
   }
 
   @Get('transactions')
-  listTransactions(@Req() req, @Query('itemId') itemId?: string) {
+  listTransactions(
+    @Req() req,
+    @Query('itemId') itemId?: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ) {
     const iid = itemId === undefined || itemId === '' ? undefined : Number(itemId);
-    return this.warehouseService.listTransactions(req.user.userId, iid);
+    return this.warehouseService.listTransactions(req.user.userId, iid, {
+      limit,
+      cursor,
+    }); // ⭐ №391: keyset при ?limit=
   }
 }

@@ -11,6 +11,12 @@ import {
 import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  buildKeysetPage,
+  keysetWhere,
+  parseCursor,
+  parseLimit,
+} from '../common/keyset'; // ⭐ №391
+import {
   assertAccessActive,
   findLiveAccess,
   findProjectAccess,
@@ -384,8 +390,15 @@ export class WarehouseService {
   }
 
   // ─── История операций (?itemId=X) ───
-  async listTransactions(userId: number, itemId?: number) {
+  // ⭐ №391: ?limit=&cursor= — keyset-пагинация; без них прежние 100 записей.
+  async listTransactions(
+    userId: number,
+    itemId?: number,
+    page?: { limit?: unknown; cursor?: unknown },
+  ) {
     const where: Prisma.WarehouseTransactionWhereInput = {};
+    const limit = parseLimit(page?.limit);
+    const cursor = parseCursor(page?.cursor);
 
     if (itemId != null && !Number.isNaN(itemId)) {
       await this.checkItemAccess(itemId, userId);
@@ -408,16 +421,24 @@ export class WarehouseService {
     }
 
     const rows = await this.prisma.warehouseTransaction.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: 100,
+      where: limit
+        ? { AND: [where, ...(cursor ? [keysetWhere(cursor, 'createdAt')] : [])] }
+        : where,
+      // ⭐ №391: id — tie-break для одинаковых createdAt
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      ...(limit ? { take: limit + 1 } : { take: 100 }),
       include: {
         warehouseItem: { select: { id: true, name: true, unit: true } },
         project: { select: { id: true, name: true } },
       },
     });
+    const total = limit
+      ? await this.prisma.warehouseTransaction.count({ where })
+      : 0;
+    const finish = <T extends { id: number; createdAt: Date }>(items: T[]) =>
+      limit ? buildKeysetPage(items, limit, total, (r) => r.createdAt) : items;
     // ⭐ №223: цены операций скрываем там же, где скрыты деньги объекта позиции
-    if (rows.length === 0) return rows;
+    if (rows.length === 0) return finish(rows);
     const itemIds = [...new Set(rows.map((r) => r.warehouseItemId))];
     const objects = await this.prisma.warehouseItem.findMany({
       where: { id: { in: itemIds } },
@@ -432,8 +453,12 @@ export class WarehouseService {
       hidden.push(cache.get(key) as boolean);
     }
     const hideSet = new Set(itemIds.filter((id, idx) => hidden[idx]));
-    return hideSet.size === 0
-      ? rows
-      : rows.map((r) => (hideSet.has(r.warehouseItemId) ? { ...r, price: null } : r));
+    return finish(
+      hideSet.size === 0
+        ? rows
+        : rows.map((r) =>
+            hideSet.has(r.warehouseItemId) ? { ...r, price: null } : r,
+          ),
+    );
   }
 }

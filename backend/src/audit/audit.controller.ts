@@ -13,12 +13,15 @@ export class AuditController {
     @Req() req,
     @Query('entity') entity?: string,
     @Query('entityId') entityId?: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
   ) {
     return this.auditService.list(
       req.user.userId,
       entity,
       entityId != null ? Number(entityId) : undefined,
       req.user.role, // ⭐ №180: глобальное чтение журнала — только ADMIN
+      { limit, cursor }, // ⭐ №391: keyset-пагинация при ?limit=
     );
   }
 }

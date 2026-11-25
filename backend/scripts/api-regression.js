@@ -1634,6 +1634,86 @@ async function main() {
     );
   });
 
+  // -- 15. Keyset-пагинация журналов (№391) ----------------------
+  console.log('\n15. Keyset-пагинация журналов');
+
+  await check('отчёты: ?limit= отдаёт конверт, без limit — прежний массив', async () => {
+    const legacy = await api('/reports', {}, admin.token);
+    expectStatus(legacy, 200, 'список отчётов');
+    expect(Array.isArray(legacy.data), 'без limit ответ не массив');
+
+    const page = await api('/reports?limit=1', {}, admin.token);
+    expectStatus(page, 200, 'страница отчётов');
+    expect(
+      page.data && Array.isArray(page.data.items),
+      '?limit= не вернул { items }',
+    );
+    expect(page.data.items.length <= 1, 'limit не соблюдён');
+    expect(typeof page.data.total === 'number', 'нет total');
+    expect(page.data.total === legacy.data.length, 'total расходится со списком');
+    if (page.data.total > 1) {
+      expect(
+        typeof page.data.nextCursor === 'string',
+        'нет nextCursor при total > 1',
+      );
+    } else {
+      expect(page.data.nextCursor === null, 'nextCursor при единственной записи');
+    }
+  });
+
+  await check('отчёты: вторая страница по курсору не повторяет первую', async () => {
+    const first = await api('/reports?limit=1', {}, admin.token);
+    expectStatus(first, 200, 'первая страница');
+    if (!first.data.nextCursor) return; // в базе одна запись — проверять нечего
+    const second = await api(
+      `/reports?limit=1&cursor=${encodeURIComponent(first.data.nextCursor)}`,
+      {},
+      admin.token,
+    );
+    expectStatus(second, 200, 'вторая страница');
+    expect(
+      second.data.items.length === 0 ||
+        second.data.items[0].id !== first.data.items[0].id,
+      'вторая страница повторяет первую',
+    );
+  });
+
+  await check('склад: ?limit= отдаёт конверт с total', async () => {
+    const legacy = await api('/warehouse/transactions', {}, admin.token);
+    expectStatus(legacy, 200, 'история операций');
+    expect(Array.isArray(legacy.data), 'без limit склад отвечает не массивом');
+
+    const page = await api('/warehouse/transactions?limit=1', {}, admin.token);
+    expectStatus(page, 200, 'страница истории');
+    expect(Array.isArray(page.data.items), '?limit= не вернул { items }');
+    expect(page.data.items.length <= 1, 'limit не соблюдён');
+    expect(typeof page.data.total === 'number', 'нет total');
+  });
+
+  await check('аудит: ?limit= — конверт, мусорный курсор — 400', async () => {
+    // глобальный журнал доступен только глобальному ADMIN — берём журнал объекта
+    const scope = `entity=object&entityId=${object.id}`;
+    const page = await api(`/audit?${scope}&limit=1`, {}, admin.token);
+    expectStatus(page, 200, 'страница аудита');
+    expect(Array.isArray(page.data.items), '?limit= не вернул { items }');
+    expect(typeof page.data.total === 'number', 'нет total');
+
+    const legacy = await api(`/audit?${scope}`, {}, admin.token);
+    expectStatus(legacy, 200, 'аудит без limit');
+    expect(Array.isArray(legacy.data), 'без limit аудит отвечает не массивом');
+
+    expectStatus(
+      await api(`/audit?${scope}&limit=1&cursor=abc`, {}, admin.token),
+      400,
+      'мусорный курсор',
+    );
+    expectStatus(
+      await api(`/audit?${scope}&limit=0`, {}, admin.token),
+      400,
+      'limit=0',
+    );
+  });
+
   const failed = results.filter((r) => !r.ok);
   console.log(
     `\nИтог: ${results.length - failed.length} ✅ / ${failed.length} ❌ из ${results.length}`,

@@ -8,6 +8,12 @@ import {
 } from '@nestjs/common';
 import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  buildKeysetPage,
+  keysetWhere,
+  parseCursor,
+  parseLimit,
+} from '../common/keyset'; // ⭐ №391: keyset-пагинация списка
 import { assertAccessActive, findLiveAccess, findProjectAccess } from '../auth/access-scope'; // в­ђ в„–193 (Aв‚‚ F1)
 import { AuditService } from '../audit/audit.service'; // в­ђ в„–131
 import { findVisiblePriceItem } from '../price-list/catalog-access'; // в­ђ в„–191 (F6)
@@ -137,8 +143,12 @@ export class ReportsService {
   async list(
     userId: number,
     filters: { projectId?: number; objectId?: number; type?: string; status?: string },
+    page?: { limit?: unknown; cursor?: unknown },
   ) {
     const where: Prisma.ReportWhereInput = {};
+    // ⭐ №391: пагинация включается только при ?limit=; без него — прежний массив.
+    const limit = parseLimit(page?.limit);
+    const cursor = parseCursor(page?.cursor);
     // в­ђ в„–180: СЃСѓРјРјС‹ СЃРєСЂС‹РІР°РµРј Рё РІ СЃРїРёСЃРєРµ вЂ” СЂР°РЅСЊС€Рµ hidePrices СЂР°Р±РѕС‚Р°Р» С‚РѕР»СЊРєРѕ РІ РєР°СЂС‚РѕС‡РєРµ.
     let hideAll = false;
     let grants: Array<{
@@ -194,25 +204,36 @@ export class ReportsService {
     if (filters.status) where.status = filters.status;
 
     const reports = await this.prisma.report.findMany({
-      where,
-      orderBy: { updatedAt: 'desc' },
+      where: limit
+        ? ({
+            AND: [where, ...(cursor ? [keysetWhere(cursor, 'updatedAt')] : [])],
+          } as Prisma.ReportWhereInput)
+        : where,
+      // ⭐ №391: id — tie-break, иначе одинаковые updatedAt «прыгают» между страницами
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       include: REPORT_INCLUDE,
+      ...(limit ? { take: limit + 1 } : {}),
     });
+    const total = limit ? await this.prisma.report.count({ where }) : 0;
+    const finish = (rows: typeof reports) =>
+      limit ? buildKeysetPage(rows, limit, total, (r) => r.updatedAt) : rows;
 
-    if (hideAll) return reports.map((r) => this.stripPrices(r));
-    if (grants.length === 0) return reports;
+    if (hideAll) return finish(reports.map((r) => this.stripPrices(r)));
+    if (grants.length === 0) return finish(reports);
 
     // РЎРєСЂС‹РІР°РµРј СЃСѓРјРјС‹ С‚Р°Рј, РіРґРµ С…РѕС‚СЏ Р±С‹ РѕРґРЅР° РІС‹РґР°РЅРЅР°СЏ Р·Р°РїРёСЃСЊ С‚СЂРµР±СѓРµС‚ СЃРєСЂС‹С‚РёСЏ.
-    return reports.map((r) => {
-      const own = grants.filter(
-        (g) =>
-          g.objectId === r.objectId &&
-          (g.projectId == null || g.projectId === r.projectId),
-      );
-      return own.some((g) => this.mustHidePrices(g))
-        ? this.stripPrices(r)
-        : r;
-    });
+    return finish(
+      reports.map((r) => {
+        const own = grants.filter(
+          (g) =>
+            g.objectId === r.objectId &&
+            (g.projectId == null || g.projectId === r.projectId),
+        );
+        return own.some((g) => this.mustHidePrices(g))
+          ? this.stripPrices(r)
+          : r;
+      }),
+    );
   }
 
   async detail(userId: number, id: number) {
