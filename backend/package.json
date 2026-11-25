@@ -29,6 +29,7 @@
     "db:reset:users": "ts-node prisma/reset-user-data.ts",
     "db:cleanup:access": "ts-node prisma/cleanup-access-duplicates.ts",
     "test:api": "node scripts/api-regression.js",
+    "test:smoke": "node scripts/smoke-staging.js",
     "db:demo": "ts-node prisma/demo-object.ts",
     "postinstall": "npx prisma generate"
   },
