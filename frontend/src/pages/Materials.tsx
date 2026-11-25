@@ -2973,51 +2973,6 @@ onClose={() => setFilterAnchorEl(null)}
             </Button>
           </Paper>
         )}
-        {/* ⭐ №384: мини-пейджер сверху — не нужно листать до низа, чтобы сменить страницу */}
-        {selectedIds.size === 0 && !fullRender && pageCount > 1 && (
-          <Box
-            className="no-print"
-            sx={{
-              position: 'sticky',
-              top: 8,
-              zIndex: 4,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.5,
-              mb: 1,
-              px: 1,
-              py: 0.5,
-              borderRadius: 2,
-              bgcolor: 'rgba(255,255,255,0.96)',
-              border: '1px solid #e0e0e0',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
-            }}
-          >
-            <IconButton
-              size="small"
-              aria-label="Предыдущая страница"
-              disabled={currentPage <= 1}
-              onClick={() => goToPage(currentPage - 1)}
-            >
-              <ChevronLeftIcon fontSize="small" />
-            </IconButton>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {currentPage} / {pageCount}
-            </Typography>
-            <IconButton
-              size="small"
-              aria-label="Следующая страница"
-              disabled={currentPage >= pageCount}
-              onClick={() => goToPage(currentPage + 1)}
-            >
-              <ChevronRightIcon fontSize="small" />
-            </IconButton>
-            <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-              Показано {sliceStart + 1}–{windowEnd} из {totalRows}
-            </Typography>
-            <Box sx={{ flex: 1 }} />
-          </Box>
-        )}
         {/* ⭐ №383: шапка для печати — на экране скрыта, на бумаге объясняет, что за смета */}
         <Box className="print-only" sx={{ display: 'none', mb: 1 }}>
           <Typography sx={{ fontWeight: 700, fontSize: 14 }}>
