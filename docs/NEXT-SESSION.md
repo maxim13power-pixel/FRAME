@@ -152,7 +152,7 @@ PROJECT FRAME — SaaS для строительных смет: объекты 
 
 | Проверка | Команда | Ожидание |
 |---|---|---|
-| Backend unit | `cd backend; npx jest` | 54 сьюта / 532 passed / 1 todo |
+| Backend unit | `cd backend; npx jest` | 54 сьюта / 533 passed / 1 todo |
 | Backend types | `cd backend; npx tsc -p tsconfig.json --noEmit` | 0 ошибок |
 | API-регрессия | `cd backend; node scripts/api-regression.js` | 76 проверок, все ✅ |
 | Frontend types | `cd frontend; npx tsc -b` | 0 ошибок |
@@ -178,19 +178,18 @@ PROJECT FRAME — SaaS для строительных смет: объекты 
   режим: docker `frame_postgres` на dev ↔ локальные `pg_dump`/`pg_restore` на сервере.
   Фотофиксации лежат НЕ в базе (`PHOTO_STORAGE_DIR`), их пакует тот же бэкап; на сервере
   каталог обязан быть постоянным томом.
-- **Алерты об ошибках:** Telegram, `TELEGRAM_ALERT_BOT_TOKEN` + `TELEGRAM_ALERT_CHAT_ID` в env
-  (без них выключено). **Важно:** из сети dev-машины `api.telegram.org` не резолвится, поэтому
-  добавлен резервный канал — `ALERT_EMAIL_TO` (письмо, если Telegram недоступен). Логика:
-  Telegram → письмо → предупреждение в лог.
-  Runbook, диагностика (`curl https://api.telegram.org`) и лимиты — `docs/ALERTS.md`,
-  проверка — `POST /telemetry/client-error`.
+- **Алерты об ошибках:** Telegram, `TELEGRAM_ALERT_BOT_TOKEN` + `TELEGRAM_ALERT_CHAT_ID` в env.
+  Проверено 25.11.2026: **сообщения реально доходят** в канал «FRAME alert».
+  Резерв — `ALERT_EMAIL_TO` (письмо, если Telegram не сработал): `Telegram → письмо → лог`.
+  Автотесты шлют `x-frame-test: 1` и в канал не пишут.
+  Runbook и лимиты — `docs/ALERTS.md`, проверка — `POST /telemetry/client-error`.
 - **Почта (SMTP):** `SMTP_HOST=smtp.yandex.ru`, `SMTP_PORT=465`,
   `SMTP_USER/SMTP_FROM=support@frame-app.ru`, `SMTP_PASS` (пароль приложения) — в `backend/.env`.
-  Таймауты транспорта: `SMTP_CONNECTION_TIMEOUT`/`SMTP_GREETING_TIMEOUT` (8 с) и
-  `SMTP_SOCKET_TIMEOUT` (15 с). Адреса `*@local.test` в SMTP **не отправляются** (тесты и
-  регрессия), текст пишется в лог как `[DEV MODE]`.
-  **Проверка одной командой:** `npm run mail:check` (verify + письмо на `ALERT_EMAIL_TO`).
-  Из сети dev-машины SMTP-сессия висит (DPI) — запускать с домашней сети или с прода.
+  Таймауты транспорта: `SMTP_CONNECTION_TIMEOUT`/`SMTP_GREETING_TIMEOUT` (8 с),
+  `SMTP_SOCKET_TIMEOUT` (15 с) и общий предохранитель `SMTP_SEND_TIMEOUT` (10 с — запрос не
+  висит, даже если сеть «задумалась»). Адреса `*@local.test` в SMTP **не отправляются**.
+  **Проверено владельцем:** `npm run mail:check` → `verify ok`, письмо `250 Ok: queued`.
+
 
 
 
