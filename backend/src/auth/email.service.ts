@@ -56,6 +56,30 @@ export class EmailService {
     });
   }
 
+  // ⭐ №399: жёсткий предохранитель на отправку. Даже если сеть «висит» (DPI/провайдер),
+  // HTTP-запрос не должен ждать минутами: не дольше SMTP_SEND_TIMEOUT (по умолчанию 10 с).
+  private async sendWithTimeout<T>(send: () => Promise<T>, ms: number): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`SMTP не ответил за ${ms} мс`)), ms);
+    });
+    try {
+      return await Promise.race([send(), timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  private sendTimeoutMs(): number {
+    const value = Number(process.env.SMTP_SEND_TIMEOUT || 10000);
+    return Number.isFinite(value) && value > 0 ? value : 10000;
+  }
+
+  /** Отправка с таймаутом: сеть может «висеть», а запрос ждать не должен. */
+  private async send(payload: Parameters<nodemailer.Transporter['sendMail']>[0]): Promise<unknown> {
+    return this.sendWithTimeout(() => this.transporter.sendMail(payload), this.sendTimeoutMs());
+  }
+
   // ⭐ №206: настроен ли SMTP — нужно, чтобы в dev показать код подтверждения
   isConfigured(): boolean {
     return !!this.transporter;
@@ -84,7 +108,7 @@ export class EmailService {
     const escapedLink = this.escapeHtml(resetLink);
 
     try {
-      await this.transporter.sendMail({
+      await this.send({
         from: this.fromEmail,
         to: email,
         subject: 'Восстановление пароля — FRAME',
@@ -122,7 +146,7 @@ export class EmailService {
     }
 
     try {
-      await this.transporter.sendMail({
+      await this.send({
         from: this.fromEmail,
         to,
         subject,
@@ -150,7 +174,7 @@ export class EmailService {
     }
 
     try {
-      await this.transporter.sendMail({
+      await this.send({
         from: this.fromEmail,
         to: email,
         subject: 'Код подтверждения — FRAME',

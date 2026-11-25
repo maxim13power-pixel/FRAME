@@ -335,10 +335,12 @@ export class AuthService {
     await this.prismaService.verificationToken.create({
       data: { email, code, expiresAt },
     });
-    await this.emailService.sendVerificationCode(email, code);
-    // ⭐ №399: письмо на *@local.test не отправляется (защита SMTP), поэтому и devCode надо
-    // вернуть — иначе регрессия и smoke на тестовых адресах не смогут войти.
-    const emailSent = this.emailService.isConfigured() && !isTestRecipient(email);
+    // ⭐ №399: devCode отдаём, когда письмо реально НЕ ушло — SMTP не настроен, адрес тестовый
+    // (*@local.test) или отправка упала (нет сети/провайдер блокирует). На проде devCode
+    // всё равно отсекается в devCodePayload (NODE_ENV=production).
+    const configured = this.emailService.isConfigured();
+    const delivered = await this.emailService.sendVerificationCode(email, code);
+    const emailSent = configured && !isTestRecipient(email) && delivered;
     return { code, emailSent };
   }
 
