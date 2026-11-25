@@ -101,6 +101,35 @@ export class EmailService {
     }
   }
 
+  // ⭐ №396: произвольное письмо — резервный канал алертов, если Telegram недоступен из сети.
+  // В dev без SMTP пишет текст в лог (как и остальные письма) — так проверка не требует почты.
+  async sendAlertEmail(to: string, subject: string, text: string): Promise<boolean> {
+    if (!this.transporter) {
+      this.logger.warn(`[DEV MODE] Алерт для ${to}: ${subject}\n${text}`);
+      return true;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: this.fromEmail,
+        to,
+        subject,
+        text,
+        html: `
+        <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto;">
+          <h2 style="color: #c62828;">${this.escapeHtml(subject)}</h2>
+          <pre style="white-space: pre-wrap; font-size: 13px; background: #f5f5f5; padding: 12px; border-radius: 4px;">${this.escapeHtml(text)}</pre>
+        </div>
+      `,
+      });
+      this.logger.log(`✅ Алерт отправлен на ${to}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`❌ Ошибка отправки алерта на ${to}`, error);
+      return false;
+    }
+  }
+
   // ⭐ №122b: отправка 6-значного кода верификации email
   async sendVerificationCode(email: string, code: string): Promise<boolean> {
     if (!this.transporter) {

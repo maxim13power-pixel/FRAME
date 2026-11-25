@@ -24,7 +24,9 @@ interface RequestLike {
 
 /** Статус ответа для исключения: HttpException — свой, всё остальное — 500. */
 export const exceptionStatus = (exception: unknown): number =>
-  exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
+  exception instanceof HttpException
+    ? exception.getStatus()
+    : HttpStatus.INTERNAL_SERVER_ERROR;
 
 @Catch()
 export class AlertingExceptionFilter extends BaseExceptionFilter {
@@ -41,15 +43,23 @@ export class AlertingExceptionFilter extends BaseExceptionFilter {
     const status = exceptionStatus(exception);
     if (status >= 500) {
       const request = host.switchToHttp().getRequest<RequestLike>();
-      const message = exception instanceof Error ? `${exception.name}: ${exception.message}` : String(exception);
-      const stack = exception instanceof Error ? (exception.stack || '').split('\n').slice(0, 6).join('\n') : '';
+      const message =
+        exception instanceof Error
+          ? `${exception.name}: ${exception.message}`
+          : String(exception);
+      const stack =
+        exception instanceof Error
+          ? (exception.stack || '').split('\n').slice(0, 6).join('\n')
+          : '';
       const route = `${request?.method || '?'} ${request?.originalUrl || request?.url || ''}`;
       this.logger.error(`${route} → ${status}: ${message}`);
       void this.alerts.notify({
         // ключ без id/тела: одна и та же ошибка на одном маршруте схлопывается антифлудом
         key: `http500:${route}:${message.slice(0, 120)}`,
         title: `HTTP ${status} · ${route}`,
-        details: [message, stack, request?.ip ? `ip: ${request.ip}` : ''].filter(Boolean).join('\n\n'),
+        details: [message, stack, request?.ip ? `ip: ${request.ip}` : '']
+          .filter(Boolean)
+          .join('\n\n'),
       });
     }
     // Ответ формирует базовый фильтр — поведение API не меняется.

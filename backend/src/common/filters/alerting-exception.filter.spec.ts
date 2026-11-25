@@ -2,12 +2,19 @@
 // ⭐ №396: фильтр не должен менять ответы API — проверяем, что 5xx уходят в алерты,
 // а 4xx (валидация, права) не шумят в канал, и что ответ формирует базовый фильтр Nest.
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { AlertingExceptionFilter, exceptionStatus } from './alerting-exception.filter';
+import {
+  AlertingExceptionFilter,
+  exceptionStatus,
+} from './alerting-exception.filter';
 import type { TelegramAlertsService } from '../alerts/telegram-alerts.service';
 
 const makeHost = () => {
   const response = { status: jest.fn(), json: jest.fn(), send: jest.fn() };
-  const request = { method: 'GET', originalUrl: '/materials/1', ip: '127.0.0.1' };
+  const request = {
+    method: 'GET',
+    originalUrl: '/materials/1',
+    ip: '127.0.0.1',
+  };
   const host = {
     switchToHttp: () => ({
       getRequest: () => request,
@@ -18,15 +25,21 @@ const makeHost = () => {
     getArgs: () => [request, response],
     getArgByIndex: (index: number) => [request, response][index],
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   return { host: host as any, response, request };
 };
 
 const makeFilter = () => {
-  const alerts = { notify: jest.fn().mockResolvedValue(undefined) } as unknown as TelegramAlertsService;
+  const alerts = {
+    notify: jest.fn().mockResolvedValue(undefined),
+  } as unknown as TelegramAlertsService;
   // BaseExceptionFilter использует адаптер: reply + isHeadersSent (+ end на всякий случай).
-  const adapter = { reply: jest.fn(), end: jest.fn(), isHeadersSent: jest.fn().mockReturnValue(false) };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const adapter = {
+    reply: jest.fn(),
+    end: jest.fn(),
+    isHeadersSent: jest.fn().mockReturnValue(false),
+  };
+
   const filter = new AlertingExceptionFilter(adapter as any, alerts);
   return { filter, alerts, adapter };
 };
@@ -54,7 +67,7 @@ describe('AlertingExceptionFilter', () => {
     expect(payload.details).toContain('boom');
     expect(payload.key).toContain('http500');
     expect(adapter.reply).toHaveBeenCalledTimes(1);
-    expect((adapter.reply as jest.Mock).mock.calls[0][2]).toBe(500);
+    expect(adapter.reply.mock.calls[0][2]).toBe(500);
   });
 
   it('4xx не шумит в канал, но ответ по-прежнему уходит', () => {
@@ -65,6 +78,6 @@ describe('AlertingExceptionFilter', () => {
 
     expect(alerts.notify).not.toHaveBeenCalled();
     expect(adapter.reply).toHaveBeenCalledTimes(1);
-    expect((adapter.reply as jest.Mock).mock.calls[0][2]).toBe(400);
+    expect(adapter.reply.mock.calls[0][2]).toBe(400);
   });
 });

@@ -56,7 +56,9 @@ export class TelemetryService {
     this.total = this.total.filter((at) => now - at < WINDOW_MS);
     if (this.total.length >= this.maxTotal) return false;
 
-    const hits = (this.perIp.get(ip) || []).filter((at) => now - at < WINDOW_MS);
+    const hits = (this.perIp.get(ip) || []).filter(
+      (at) => now - at < WINDOW_MS,
+    );
     if (hits.length >= this.maxPerIp) {
       this.perIp.set(ip, hits);
       return false;
