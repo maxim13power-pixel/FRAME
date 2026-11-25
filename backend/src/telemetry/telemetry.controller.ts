@@ -17,6 +17,8 @@ export class TelemetryController {
     const forwarded = req.headers['x-forwarded-for'];
     const first = Array.isArray(forwarded) ? forwarded[0] : forwarded;
     const ip = first?.split(',')[0]?.trim() || req.ip || 'unknown';
-    this.telemetry.report(dto, ip);
+    // ⭐ №399: автотесты (регрессия/smoke) помечают свои запросы, чтобы не будить боевой канал.
+    const skipAlert = req.headers['x-frame-test'] === '1';
+    this.telemetry.report(dto, ip, { skipAlert });
   }
 }

@@ -26,8 +26,14 @@ export class TelemetryService {
     this.maxTotal = Number.isFinite(total) && total > 0 ? total : 30;
   }
 
-  /** Принять ошибку фронта. Всегда молча: клиент не должен знать, приняли мы её или отбросили. */
-  report(dto: ClientErrorDto, ip: string): void {
+  /** Принять ошибку фронта. Всегда молча: клиент не должен знать, приняли мы её или отбросили.
+   *  ⭐ №399: `skipAlert` — для автотестов (регрессия шлёт пачку ошибок, чтобы проверить лимиты;
+   *  в боевой канал такие сообщения попадать не должны). */
+  report(dto: ClientErrorDto, ip: string, options: { skipAlert?: boolean } = {}): void {
+    if (options.skipAlert) {
+      this.logger.debug(`тестовый прогон (x-frame-test) — алерт не отправляю: ${dto.message.slice(0, 80)}`);
+      return;
+    }
     if (!this.allow(ip)) {
       this.logger.debug(`ошибка фронта отброшена лимитом (ip ${ip})`);
       return;

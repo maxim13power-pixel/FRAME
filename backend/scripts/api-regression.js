@@ -34,6 +34,8 @@ const api = async (p, opts = {}, token) => {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // ⭐ №399: проверки телеметрии помечают себя, чтобы не будить боевой канал алертов
+      ...(opts.headers || {}),
     },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
@@ -1769,15 +1771,22 @@ async function main() {
 
   await check('ошибка фронта принимается без авторизации (204) и имеет лимиты', async () => {
     // Публичный эндпоинт: падение может случиться до логина, токена нет намеренно.
+    // x-frame-test: 1 — пометка «это автотест, в канал алертов не отправляй».
+    const testHeaders = { 'x-frame-test': '1' };
     const ok = await api('/telemetry/client-error', {
       method: 'POST',
+      headers: testHeaders,
       body: { message: 'Регресс-ошибка фронта', url: '/materials', context: 'window.error' },
     });
     expectStatus(ok, 204, 'ошибка фронта');
 
     // Без обязательного message — 400 от ValidationPipe (эндпоинт не «всё принимает»).
     expectStatus(
-      await api('/telemetry/client-error', { method: 'POST', body: { stack: 'без message' } }),
+      await api('/telemetry/client-error', {
+        method: 'POST',
+        headers: testHeaders,
+        body: { stack: 'без message' },
+      }),
       400,
       'нет message',
     );
@@ -1787,6 +1796,7 @@ async function main() {
     for (let i = 0; i < 12; i += 1) {
       flood.push(await api('/telemetry/client-error', {
         method: 'POST',
+        headers: testHeaders,
         body: { message: `flood ${i}` },
       }));
     }

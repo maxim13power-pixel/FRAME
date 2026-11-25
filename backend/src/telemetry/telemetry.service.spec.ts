@@ -73,4 +73,14 @@ describe('TelemetryService', () => {
       service.report(dto(`ошибка ${i}`), `10.0.0.${i}`);
     expect(alerts.notify).toHaveBeenCalledTimes(2);
   });
+
+  // ⭐ №399: автотесты не должны будить боевой канал (регрессия шлёт пачку «ошибок»).
+  it('skipAlert: тестовый прогон не отправляет алерт и не тратит лимит', () => {
+    const { service, alerts } = makeService();
+    service.report(dto('Регресс-ошибка фронта'), '127.0.0.1', { skipAlert: true });
+    expect(alerts.notify).not.toHaveBeenCalled();
+
+    service.report(dto('настоящая ошибка'), '127.0.0.1');
+    expect(alerts.notify).toHaveBeenCalledTimes(1);
+  });
 });
