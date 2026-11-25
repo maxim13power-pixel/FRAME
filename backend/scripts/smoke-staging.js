@@ -171,6 +171,8 @@ const expectStatus = (res, expected, label) => {
   });
 
   console.log(`\nИтог: ${results.length - failed} ✅ / ${failed} ❌ из ${results.length}\n`);
+  console.log('⚠️  DELETE /users/me обезличивает аккаунт и оставляет демо-объект — на dev после');
+  console.log('    прогонов чистите SQL из docs/STAGING.md (раздел «Уборка после smoke»).\n');
   if (failed > 0) process.exit(1);
 })().catch((error) => {
   console.error('❌ smoke упал:', error.message);
