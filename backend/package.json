@@ -22,6 +22,8 @@
     "db:migrate:status": "prisma migrate status",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:baseline": "prisma migrate resolve --applied 0_init",
+    "db:backup": "node scripts/db-backup.js",
+    "db:restore": "node scripts/db-restore.js",
     "db:seed:catalog": "ts-node prisma/seed.ts",
     "db:seed:prices": "ts-node prisma/seed-prices.ts",
     "db:reset:users": "ts-node prisma/reset-user-data.ts",
