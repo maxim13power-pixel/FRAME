@@ -6208,3 +6208,53 @@ staging, чтобы проверять миграции и оплату не н�
    «tsc 0» снова верна. Структура DOM сметы не менялась, поэтому печать/экспорт/страницы
    работают как раньше.
 
+
+№394 — МИГРАЦИИ ПОД PRODUCTION (25.11.2026)
+ ПРОБЛЕМА (блокер релиза): на dev схема накатывалась `prisma db push`, таблицы
+   `_prisma_migrations` в базе не было вовсе — 28 миграций в `prisma/migrations` никогда не
+   применялись. При этом `backend/amvera.yaml` и `backend/railway.json` на старте запускают
+   `npx prisma migrate deploy`: на новой базе это дало бы НЕПОЛНУЮ схему, на существующей —
+   падение на «relation already exists». Не было миграции для `price_categories.catalogId`
+   и unique `[catalogId, name, kind]` (блок B2).
+ ФАКТЫ, ПРОВЕРЕННЫЕ ПЕРЕД РАБОТОЙ:
+   • `prisma migrate diff --from-url dev --to-schema-datamodel prisma/schema.prisma` → пусто,
+     т.е. живая dev-база ТОЧНО совпадает со `schema.prisma`;
+   • `select * from _prisma_migrations` → «relation does not exist» (учёта миграций нет);
+   • эксперимент на ПУСТОЙ базе (`migrate deploy` со старыми 28 миграциями) → расхождение
+     ровно на 4 изменения: `DROP INDEX price_categories_name_kind_key`;
+     `material_fixes.unitPrice/materialUnitPrice`; `price_categories.catalogId` + индекс +
+     unique `[catalogId,name,kind]` + FK на `price_catalogs`; `rentals.closedAt`.
+ ЧТО СДЕЛАНО:
+   • `backend/prisma/migrations/0_init/migration.sql` — baseline (857 строк), сгенерирован
+     `prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script`;
+   • 28 старых миграций перенесены `git mv` в `backend/prisma/migrations_legacy/` (история в
+     git сохранена) + `README.md`: почему архив и что именно они не догоняют;
+   • `backend/prisma/sql/2026-11-25_sync-from-legacy.sql` — «догоняющий» SQL (7 стейтментов)
+     для баз, собранных legacy-миграциями (например, Railway): все колонки nullable, данные
+     не теряются, unique по `(catalogId,name,kind)` не мешает строкам с `catalogId IS NULL`;
+   • `docs/MIGRATIONS.md` — runbook: новая база / база, совпадающая со схемой (dev, restore
+     дампа) / старая база; как добавлять миграции и что нельзя делать; откат;
+   • npm-скрипты `db:migrate:status`, `db:migrate:deploy`, `db:migrate:baseline`;
+   • dev переведён на учёт миграций (`prisma migrate resolve --applied 0_init`): добавилась
+     только таблица `_prisma_migrations`, схема и данные не менялись.
+ ПРОВЕРКИ (на копиях БД; временные базы `frame_migr_*` потом удалены, осталась только
+   `frame_db`):
+   • ПУСТАЯ база → `migrate deploy` → 33 таблицы (32 приложения + `_prisma_migrations`),
+     94 индекса, 44 внешних ключа; `migrate diff` к `schema.prisma` пустой;
+   • КОПИЯ dev (restore дампа `pg_dump -Fc`, 200 486 байт) → `resolve --applied 0_init` →
+     `migrate status` = «Database schema is up to date», `diff` пустой; данные до/после:
+     audit_logs 507, materials 484, material_fixes 10, price_items 1985, price_categories 224,
+     projects 18, objects 4, users 3 — совпадают;
+   • БАЗА ИЗ 28 LEGACY-МИГРАЦИЙ → применён sync-SQL в транзакции (8 шагов, все OK) →
+     `diff` пустой → `resolve` → `status` up to date;
+   • dev после baseline: `status` up to date, 33 таблицы / 94 индекса, данные те же;
+   • Jest **50 сьютов / 511 passed / 1 todo**, `tsc` — 0 (backend), регрессия API **75/75**;
+     frontend в этой задаче не менялся.
+ НЕ ДОВЕРЕНО / ОСТАЛОСЬ: на реальной прод-базе (Railway) не проверялось — доступа нет;
+   в runbook описан безопасный порядок «сверить diff → проверить дубли → транзакция →
+   resolve». `railway.json` на каждом старте запускает `npm run db:seed` — поведение не
+   менял, но при переезде стоит пересмотреть идемпотентность сида.
+ ЗАМЕЧАНИЯ: `prisma db push` (тем более `--accept-data-loss`) больше не использовать ни на
+   одной базе с данными; правка уже применённой миграции ломает контрольную сумму и
+   `migrate deploy` начнёт падать — только новая миграция.
+

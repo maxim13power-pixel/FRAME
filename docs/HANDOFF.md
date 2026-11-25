@@ -796,6 +796,22 @@ npm run verify                           # tsc + jest + vite build (бэкенд
   в `media=print`, фиксация, дублирование, Esc в «За ед.», Shift+Click диапазон (4 строки),
   мобильные панели (плашка уезжает/возвращается, FAB, отступ 65 px), скрытые цены (9 колонок,
   без «₽», действия на месте).
+- §228 — **миграции под production** (№394): на dev схема всё время накатывалась `db push`,
+  `_prisma_migrations` не существовало, 28 миграций не применялись — а `amvera.yaml` и
+  `railway.json` на старте делают `prisma migrate deploy`. Эксперимент на пустой базе показал,
+  что эти 28 миграций дают схему без четырёх изменений (`price_categories.catalogId` + unique
+  `[catalogId,name,kind]` + FK, `material_fixes.unitPrice/materialUnitPrice`,
+  `rentals.closedAt`, старый unique `[name,kind]`). Сделано: `0_init` — baseline из
+  `schema.prisma` (`migrate diff --from-empty`, 857 строк), старые миграции перенесены в
+  `prisma/migrations_legacy` (git mv + README), «догоняющий» SQL для legacy-баз —
+  `prisma/sql/2026-11-25_sync-from-legacy.sql`, runbook — `docs/MIGRATIONS.md`, npm-скрипты
+  `db:migrate:status|deploy|baseline`. Dev переведён на учёт миграций через
+  `resolve --applied 0_init` (добавилась только `_prisma_migrations`). Проверено на копиях:
+  пустая база → `deploy` → схема идентична (diff пустой); копия dev → baseline → status up to
+  date, данные 1:1 (audit_logs 507, materials 484, price_items 1985, price_categories 224…);
+  база из 28 legacy-миграций → sync SQL → diff пустой → resolve. Jest 50/511/1 todo, tsc 0,
+  регрессия 75/75. `db push` больше не использовать; правка применённой миграции ломает
+  контрольную сумму.
 
 
 
