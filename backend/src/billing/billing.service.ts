@@ -4,6 +4,7 @@
 // Тарифы и лимиты живут в БД (`plans`), см. docs/PRICING.md §2 и scripts/seed-plans.js.
 import { Injectable } from '@nestjs/common';
 import { Plan, PlanCode, Subscription } from '@prisma/client';
+import { createHash, createHmac } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Часовой пояс биллингового периода (МСК) — счётчики сбрасываются по календарному месяцу. */
@@ -127,6 +128,25 @@ export class BillingService {
     return this.prisma.subscription.findUnique({ where: { userId } });
   }
 
+  /** Подпись токена авторизации экспорта: exp + короткий хеш + HMAC. */
+  private signExportToken(userId: number, key: string, payloadHash: string, exp: number): string {
+    const payload = `${userId}|${key}|${payloadHash}|${exp}`;
+    const secret = process.env.EXPORT_TOKEN_SECRET || process.env.JWT_SECRET || 'frame-dev';
+    return `${exp}.${payloadHash.slice(0, 16)}.${createHmac('sha256', secret).update(payload).digest('hex')}`;
+  }
+
+  /**
+   * ⭐ №405: гарантирует строку подписки. Новым аккаунтам строки нет (значит Free), но для
+   * счётчиков (PDF/мес) она нужна — создаём Free лениво, один раз.
+   */
+  async ensureSubscription(userId: number): Promise<Subscription> {
+    const existing = await this.getSubscription(userId);
+    if (existing) return existing;
+    return this.prisma.subscription.create({
+      data: { userId, planCode: 'FREE', status: 'ACTIVE', source: 'MANUAL' },
+    });
+  }
+
   /**
    * Использование аккаунта. Считаем COUNT(*), а не денормализованные счётчики:
    * единственный «настоящий» счётчик — PDF-экспорты за месяц (он в subscriptions).
@@ -235,6 +255,117 @@ export class BillingService {
       used,
       limit: plan.maxPdfPerMonth,
       left: Math.max(0, plan.maxPdfPerMonth - used),
+    };
+  }
+
+  /**
+   * ⭐ №405: авторизация PDF-экспорта.
+   *  • содержимое документа хешируется (проект + фильтры + число строк + перечень строк);
+   *  • повтор с тем же документом в том же месяце НЕ списывает второй раз (idempotency);
+   *  • другой документ — новое списание, поэтому «одним токеном 15 минут печатать всё» нельзя;
+   *  • лимит строк на документ проверяется по тарифу;
+   *  • знак и лимит строк приходят с сервера, а не из клиентского конфига.
+   */
+  async authorizePdfExport(
+    userId: number,
+    input: { projectId: number; materialIds?: number[]; search?: string; categoryId?: number; rowCount: number },
+    now: Date = new Date(),
+  ): Promise<{
+    allowed: boolean;
+    code?: 'LIMIT_PDF' | 'LIMIT_EXPORT_ROWS';
+    used: number;
+    limit: number;
+    left: number;
+    maxRows: number;
+    watermark: boolean;
+    token?: string;
+    expiresAt?: string;
+    reused?: boolean;
+  }> {
+    const sub = await this.ensureSubscription(userId);
+    const plan = await this.getPlan(this.resolvePlanCode(sub, now));
+    const key = periodKey(now);
+    const used = this.pdfUsed(sub, now);
+
+    // 1. Лимит строк в документе — до всякого списания
+    if (input.rowCount > plan.maxExportRows) {
+      return {
+        allowed: false,
+        code: 'LIMIT_EXPORT_ROWS',
+        used,
+        limit: plan.maxPdfPerMonth,
+        left: Math.max(0, plan.maxPdfPerMonth - used),
+        maxRows: plan.maxExportRows,
+        watermark: plan.priceMonthly === 0,
+      };
+    }
+
+    // 2. Хеш содержимого: одинаковый документ = одна авторизация
+    const canonical = JSON.stringify({
+      projectId: input.projectId,
+      materialIds: input.materialIds?.length ? [...input.materialIds].sort((a, b) => a - b) : null,
+      search: input.search?.trim().toLowerCase() || null,
+      categoryId: input.categoryId ?? null,
+      rowCount: input.rowCount,
+    });
+    const payloadHash = createHash('sha256').update(canonical).digest('hex');
+
+    // 3. Пытаемся «застолбить» авторизацию: уникальный индекс не даст списать дважды
+    const inserted = await this.prisma.$queryRaw<Array<{ id: number }>>`
+      INSERT INTO "pdf_export_authorizations" ("userId", "periodKey", "payloadHash")
+      VALUES (${userId}, ${key}, ${payloadHash})
+      ON CONFLICT ("userId", "periodKey", "payloadHash") DO NOTHING
+      RETURNING "id"
+    `;
+
+    const watermark = plan.priceMonthly === 0;
+    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+
+    // 4. Уже авторизовали этот документ в этом месяце — отдаём токен без списания
+    if (inserted.length === 0) {
+      const fresh = await this.getSubscription(userId);
+      const freshUsed = this.pdfUsed(fresh, now);
+      return {
+        allowed: true,
+        used: freshUsed,
+        limit: plan.maxPdfPerMonth,
+        left: Math.max(0, plan.maxPdfPerMonth - freshUsed),
+        maxRows: plan.maxExportRows,
+        watermark,
+        token: this.signExportToken(userId, key, payloadHash, expiresAt.getTime()),
+        expiresAt: expiresAt.toISOString(),
+        reused: true,
+      };
+    }
+
+    // 5. Новая авторизация — атомарно списываем (не больше лимита)
+    const consumed = await this.consumePdfExport(userId, now);
+    if (!consumed || !consumed.allowed) {
+      // лимит исчерпан — освобождаем «застолблённую» строку, чтобы она не блокировала повтор
+      await this.prisma.pdfExportAuthorization.deleteMany({ where: { userId, periodKey: key, payloadHash } });
+      const fresh = await this.getSubscription(userId);
+      const freshUsed = this.pdfUsed(fresh, now);
+      return {
+        allowed: false,
+        code: 'LIMIT_PDF',
+        used: freshUsed,
+        limit: plan.maxPdfPerMonth,
+        left: 0,
+        maxRows: plan.maxExportRows,
+        watermark,
+      };
+    }
+
+    return {
+      allowed: true,
+      used: consumed.used,
+      limit: consumed.limit,
+      left: consumed.left,
+      maxRows: plan.maxExportRows,
+      watermark,
+      token: this.signExportToken(userId, key, payloadHash, expiresAt.getTime()),
+      expiresAt: expiresAt.toISOString(),
+      reused: false,
     };
   }
 }

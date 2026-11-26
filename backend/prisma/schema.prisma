@@ -42,6 +42,24 @@ model User {
   accessSnapshots        AccessSnapshot[] @relation("AccessSnapshots")
   // ⭐ №404: подписка аккаунта (см. docs/PRICING.md). Один пользователь = один аккаунт.
   subscription           Subscription?
+  // ⭐ №405: авторизации PDF-экспорта (идемпотентность по содержимому документа)
+  pdfExportAuth          PdfExportAuthorization[]
+}
+
+// ⭐ №405: каждая авторизация экспорта уникальна по (пользователь, период, хеш содержимого).
+// Повторный запрос с тем же документом не списывает второй раз — отдаём тот же токен.
+model PdfExportAuthorization {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Период YYYY-MM (МСК) — совпадает с Subscription.pdfPeriod
+  periodKey   String
+  /// SHA-256 канонического описания документа (проект + фильтры + число строк)
+  payloadHash String
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, periodKey, payloadHash])
+  @@map("pdf_export_authorizations")
 }
 
 // ⭐ №404: тариф как ДАННЫЕ, а не хардкод. Лимиты меняются через БД (docs/PRICING.md §2).
