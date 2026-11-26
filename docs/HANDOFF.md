@@ -908,6 +908,14 @@ npm run verify                           # tsc + jest + vite build (бэкенд
   `SUMMARY_BAR_BOTTOM + 180` на мобилке) — видна при `scrollY > 200`, по клику плавно уводит на верх
   (`window.scrollTo({ top: 0, behavior: 'smooth' })`). Проверено: зазор 8 px, стиль совпадает,
   клик → `scrollY 0`, у низа «вниз» скрыта, «наверх» на месте.
+  Кнопка «Печать» → печать готового PDF (№402): `exportMaterials.ts` разделён на
+  `buildMaterialsPdfDoc` (общее определение) + `exportMaterialsPdf` (скачивание, без изменений) +
+  `exportMaterialsPdfPrint` (pdfmake `.print()` — новая вкладка с `/OpenAction /Print`).
+  `handlePrint` строит тот же документ, что «PDF» (landscape, 15 колонок, номера страниц, ИТОГО),
+  уважает «только текущую страницу»; старый `printingAll`/`printStateRef`/`afterprint` удалён.
+  Проверено: `window.print` больше не вызывается, PDF 70 КБ с `/OpenAction /Print`, вкладка с blob;
+  «только текущая страница» → PDF 41,6 КБ (50 строк); «PDF» скачивает 70 208 байт, MediaBox
+  841.89×595.28 (A4 landscape), 4 стр.; «Excel» — 156 622 байта, валидный xlsx.
 
 
 

@@ -60,11 +60,13 @@ export function exportMaterialsXlsx(
   downloadWorkbook(wb, `materials-${meta.projectId}-${fileDate(meta.exportedAt)}.xlsx`);
 }
 
-export function exportMaterialsPdf(
+// ⭐ №402: одно определение документа и для «Скачать PDF», и для «Печать» —
+// так печать и скачивание гарантированно дают один и тот же документ.
+function buildMaterialsPdfDoc(
   materials: MaterialData[],
   meta: ExportMeta,
   includePrices: boolean,
-): void {
+) {
   const cols = pdfCols(includePrices);
   const body: PdfCell[][] = [
     cols.map((c) => ({
@@ -174,7 +176,35 @@ export function exportMaterialsPdf(
     }),
   };
 
-  pdfMake.createPdf(docDefinition).download(
+  return docDefinition;
+}
+
+export function exportMaterialsPdf(
+  materials: MaterialData[],
+  meta: ExportMeta,
+  includePrices: boolean,
+): void {
+  pdfMake.createPdf(buildMaterialsPdfDoc(materials, meta, includePrices)).download(
     `materials-${meta.projectId}-${fileDate(meta.exportedAt)}.pdf`,
   );
+}
+
+// ⭐ №402: «Печать» = печать готового PDF (а не веб-страницы).
+// Причина: лист A4 landscape — 1062 px, а таблица на экране 1500 px, поэтому из браузерной
+// печати выпадали правые колонки (стоимость работ/материалов, итого по смете).
+// pdfmake 0.3.x: .print() открывает PDF в новой вкладке с /OpenAction /Print — браузер
+// показывает печать. Если всплывающее окно заблокировано — фолбэк: открыть / скачать файл.
+export function exportMaterialsPdfPrint(
+  materials: MaterialData[],
+  meta: ExportMeta,
+  includePrices: boolean,
+): void {
+  const pdf = pdfMake.createPdf(buildMaterialsPdfDoc(materials, meta, includePrices));
+  Promise.resolve(pdf.print()).catch(() => {
+    try {
+      pdf.open();
+    } catch {
+      pdf.download(`materials-${meta.projectId}-${fileDate(meta.exportedAt)}.pdf`);
+    }
+  });
 }

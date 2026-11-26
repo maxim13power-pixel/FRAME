@@ -667,10 +667,10 @@ const footerSentinelRef = useRef<HTMLDivElement | null>(null);
 // `<thead>`: по нему меряем высоту первой строки, чтобы вторая липла ровно под ней.
 const tableHeadRef = useRef<HTMLTableSectionElement | null>(null);
 // ⭐ №393: состояние «долистали до низа» живёт в `EstimateScrollChrome`, здесь — только ref
-// ⭐ №383: печать из браузера — «вся смета» дорисовывает строки только на время печати
+// ⭐ №383: печать из браузера — «вся смета» дорисовывает строки только на время печати.
+// ⭐ №402: теперь «Печать» печатает готовый PDF (см. handlePrint), поэтому галочка осталась
+// только смыслом «печатать текущую страницу или все позиции».
 const [printOnlyPage, setPrintOnlyPage] = useState(false);
-const [printingAll, setPrintingAll] = useState(false);
-const printStateRef = useRef<{ start: number; size: number; all: boolean } | null>(null);
 const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
   open: false,
   message: '',
@@ -723,46 +723,43 @@ const handleExport = useCallback(
   [materials, currentObject, currentProject, projectId, hidePrices],
 );
 
-// ⭐ №383: печать из браузера. Галочка «только текущую страницу» печатает окно как есть,
-// иначе на время печати дорисовываем всю смету и возвращаем окно после.
-const handlePrint = useCallback(() => {
+// ⭐ №402: «Печать» печатает ГОТОВЫЙ PDF, а не веб-страницу.
+// Раньше вызывался window.print(): лист A4 landscape ≈ 1062 px, а таблица 1500 px — правые
+// колонки (стоимость работ/материалов, итого по смете) обрезались, плюс печаталось боковое меню.
+// Теперь формируется тот же документ, что и «Скачать PDF» (landscape, 15 колонок, номера страниц,
+// ИТОГО), и открывается на печать. Галочка «только текущую страницу» печатает текущую страницу.
+const handlePrint = useCallback(async () => {
   setExportModalOpen(false);
-  if (printOnlyPage) {
-    setTimeout(() => window.print(), 50);
+  const rows = printOnlyPage
+    ? sortedMaterialsRef.current.slice(windowStart, windowStart + windowSize)
+    : materials;
+  if (rows.length === 0) {
+    setSnackbar({ open: true, message: 'Нет материалов для печати', severity: 'error' });
     return;
   }
-  printStateRef.current = { start: windowStart, size: windowSize, all: showAll };
-  setPrintingAll(true);
-}, [printOnlyPage, showAll, windowSize, windowStart]);
-
-const restoreAfterPrint = useCallback(() => {
-  const prev = printStateRef.current;
-  printStateRef.current = null;
-  setPrintingAll(false);
-  if (prev) {
-    setWindowStart(prev.start);
-    setWindowSize(prev.size);
-    setShowAll(prev.all);
+  try {
+    const meta: ExportMeta = {
+      objectName: currentObject?.name || '',
+      projectName: currentProject?.name || '',
+      exportedAt: new Date(),
+      projectId: projectId ?? '',
+    };
+    // ⭐ библиотека выгрузки подгружается только при клике (ленивый чанк)
+    const { exportMaterialsPdfPrint } = await import('../utils/exportMaterials');
+    exportMaterialsPdfPrint(rows, meta, !hidePrices);
+  } catch (err: unknown) {
+    setSnackbar({ open: true, message: getApiErrorText(err, 'Ошибка печати'), severity: 'error' });
   }
-}, []);
-
-useEffect(() => {
-  window.addEventListener('afterprint', restoreAfterPrint);
-  return () => window.removeEventListener('afterprint', restoreAfterPrint);
-}, [restoreAfterPrint]);
-
-// ⭐ №383: печатаем ПОСЛЕ того, как React отрисовал все строки (эффект — после коммита).
-// Firefox/Safari иногда не присылают afterprint — подстраховываемся восстановлением.
-useEffect(() => {
-  if (!printingAll) return;
-  const timer = window.setTimeout(() => {
-    window.print();
-    window.setTimeout(() => {
-      if (printStateRef.current) restoreAfterPrint();
-    }, 500);
-  }, 60);
-  return () => window.clearTimeout(timer);
-}, [printingAll, restoreAfterPrint]);
+}, [
+  printOnlyPage,
+  windowStart,
+  windowSize,
+  materials,
+  currentObject,
+  currentProject,
+  projectId,
+  hidePrices,
+]);
 // ⭐ Воронка — ТОЛЬКО категории, которые реально есть в смете этого проекта
   // (категория попадает сюда, если в проекте есть хотя бы одна позиция с ней)
   const projectCategories = useMemo(() => {
@@ -892,7 +889,7 @@ useEffect(() => {
   // ⭐ №383: окно отрисовки. «Показать все»/печать рисуют весь список, но поиск,
   // сортировка и ИТОГО всегда считаются по всей смете (filteredMaterials).
   const totalRows = sortedMaterials.length;
-  const fullRender = showAll || printingAll;
+  const fullRender = showAll;
   const sliceStart = fullRender ? 0 : Math.min(windowStart, totalRows);
   const windowEnd = fullRender
     ? totalRows
