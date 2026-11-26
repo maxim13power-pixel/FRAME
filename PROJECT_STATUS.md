@@ -6711,4 +6711,40 @@ enforcement `LIMIT_*` по объектам/строкам/фото/участн
 `shadow`); фронт ещё не вызывает `authorize` перед генерацией; приватный бакет/presigned для фото —
 этап 2 (сейчас фото на диске Amvera, лимит слота проверим вместе с S3).
 
+## ⭐ №407 — ENFORCEMENT ЛИМИТОВ ПО ТАРИФУ, РЕЖИМЫ off / shadow / on (26.11.2026)
+
+ЧТО СДЕЛАНО:
+ • `backend/src/billing/limits.service.ts` — единая точка проверки лимитов:
+   `check(accountId, kind, add)` → `{ allowed, code, limit, used, left, message }`,
+   `assert(accountId, kind, add)` → 403 с машинным кодом в режиме `on`.
+   Виды: `objects`, `rows`, `photos` (слоты Free), `storage` (объём МБ), `writers`, `viewers`.
+   Тексты апселла — из `docs/PRICING.md` §2 («Прораб — 5 объектов и 5 000 строк за 499 ₽/мес» и т.д.).
+ • Режимы `BILLING_ENFORCE`: `off` (по умолчанию — ничего не считаем), `shadow` (считаем и пишем
+   в лог `would block LIMIT_* account=… plan=… used=… limit=… mode=shadow`, НЕ блокируем),
+   `on` (403 с кодом и текстом).
+ • Встроено (квота — аккаунта владельца объекта, не автора действия):
+   – создание объекта — `objects.service.create` (`LIMIT_OBJECTS`);
+   – создание строки сметы — `materials.service.create` (`LIMIT_ROWS`);
+   – массовое дублирование строк — `bulkDuplicate` с учётом количества (`LIMIT_ROWS`),
+     иначе лимит обходится копированием;
+   – загрузка фото — `photos.service.upload` (`LIMIT_PHOTOS` + `LIMIT_STORAGE`).
+ • Инъекция `LimitsService`/`BillingService` — опциональная (`@Optional()`), чтобы существующие
+   юнит-тесты собирали сервисы без биллинга; модули `ObjectsModule`, `MaterialsModule`,
+   `PhotosModule` импортируют `BillingModule`.
+
+ПРОВЕРКИ:
+ • живьём, Free-аккаунт (создан и удалён в проверке):
+   – `BILLING_ENFORCE=shadow`: 1-й объект **201**, 2-й объект **201** + в логе
+     `would block LIMIT_OBJECTS account=966 plan=FREE used=1 add=1 limit=1 mode=shadow`;
+   – `BILLING_ENFORCE=on`: 1-й объект **201**, 2-й **403 `LIMIT_OBJECTS`**;
+   – после проверок бэкенд возвращён в `off`, тестовый аккаунт и объекты удалены;
+ • unit-тесты `limits.service.spec.ts` — 5 (off ничего не считает; shadow пропускает и логирует;
+   on бросает 403 с кодом и текстом; запас `add` учитывается; лимит объёма не путается со слотами);
+ • Jest **56 сьютов / 558 passed / 1 todo**; регрессия **76/76**; `tsc --noEmit` 0;
+ • база после проверок: 4 объекта / 18 проектов / 484 строки, `*@local.test` = 0.
+
+НЕ ДОВЕРЕНО: `writers`/`viewers` пока не встроены в выдачу доступа (следующий шаг);
+фронт не вызывает `authorize` и не показывает плашки «осталось N»; режим по умолчанию — `off`,
+включать `shadow` на живом тесте будет отдельным решением (переменная окружения, без деплоя кода).
+
 

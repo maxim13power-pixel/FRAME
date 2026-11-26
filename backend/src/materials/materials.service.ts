@@ -5,10 +5,13 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma, PriceKind, Unit } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
+import { BillingService } from '../billing/billing.service'; // ⭐ №407
+import { LimitsService } from '../billing/limits.service'; // ⭐ №407: лимиты строк
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateFixDto } from './dto/create-fix.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
@@ -51,6 +54,9 @@ export class MaterialsService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService, // ⭐ №131
+    // ⭐ №407: лимиты тарифа (опционально — юнит-тесты собирают сервис без биллинга)
+    @Optional() private readonly billing?: BillingService,
+    @Optional() private readonly limits?: LimitsService,
   ) {}
 
   // ============================================================
@@ -220,6 +226,11 @@ export class MaterialsService {
   async create(dto: CreateMaterialDto, userId: number) {
     // ⭐ Проверяем доступ к проекту (заодно получаем запись доступа)
     const access = await this.checkProjectAccess(dto.projectId, userId);
+    // ⭐ №407: лимит строк сметы по тарифу — квота аккаунта владельца объекта
+    if (this.billing && this.limits) {
+      const scope = await this.billing.resolveProjectAccount(userId, dto.projectId);
+      await this.limits.assert(scope?.accountId ?? userId, 'rows');
+    }
     // 🔒 VIEWER не имеет права создавать материалы
     if (access.role === 'VIEWER') {
       throw new ForbiddenException('Наблюдатель не может создавать материалы');
@@ -1244,6 +1255,17 @@ export class MaterialsService {
    */
   async bulkDuplicate(ids: number[], userId: number) {
     const unique = [...new Set(ids)];
+    // ⭐ №407: дублирование тоже упирается в лимит строк (иначе лимит обходится копированием)
+    if (this.billing && this.limits && unique.length > 0) {
+      const first = await this.prisma.material.findUnique({
+        where: { id: unique[0] },
+        select: { projectId: true },
+      });
+      if (first) {
+        const scope = await this.billing.resolveProjectAccount(userId, first.projectId);
+        await this.limits.assert(scope?.accountId ?? userId, 'rows', unique.length);
+      }
+    }
     for (const id of unique) {
       await this.duplicate(id, userId);
     }

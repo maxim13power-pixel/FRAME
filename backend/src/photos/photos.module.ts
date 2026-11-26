@@ -5,8 +5,10 @@ import { Module } from '@nestjs/common';
 import { PhotosController, PhotosFeedController } from './photos.controller';
 import { PhotosService } from './photos.service';
 import { PHOTO_STORAGE, createPhotoStorage } from './photo-storage';
+import { BillingModule } from '../billing/billing.module'; // ⭐ №407
 
 @Module({
+  imports: [BillingModule], // ⭐ №407: лимиты фото по тарифу
   controllers: [PhotosController, PhotosFeedController],
   providers: [
     PhotosService,

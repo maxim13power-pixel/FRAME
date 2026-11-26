@@ -12,8 +12,11 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { BillingService } from '../billing/billing.service'; // ⭐ №407
+import { LimitsService } from '../billing/limits.service'; // ⭐ №407: слоты фото
 import { assertAccessActive, findProjectAccess } from '../auth/access-scope';
 import {
   accessibleProjectWhere,
@@ -122,6 +125,9 @@ export class PhotosService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(PHOTO_STORAGE) private readonly storage: PhotoStorage,
+    // ⭐ №407: лимиты тарифа (опционально — тесты собирают сервис без биллинга)
+    @Optional() private readonly billing?: BillingService,
+    @Optional() private readonly limits?: LimitsService,
   ) {}
 
   /** Доступ к материалу по той же модели, что в MaterialsService. */
@@ -250,6 +256,20 @@ export class PhotosService {
     const access = await this.materialAccess(materialId, userId);
     if (access.role === 'VIEWER') {
       throw new ForbiddenException('Наблюдатель не может добавлять фото');
+    }
+    // ⭐ №407: лимит фото по тарифу — слоты на Free, объём на платных.
+    // Квота аккаунта владельца объекта, а не автора загрузки.
+    if (this.billing && this.limits) {
+      const material = await this.prisma.material.findUnique({
+        where: { id: materialId },
+        select: { projectId: true },
+      });
+      if (material) {
+        const scope = await this.billing.resolveProjectAccount(userId, material.projectId);
+        const accountId = scope?.accountId ?? userId;
+        await this.limits.assert(accountId, 'photos');
+        await this.limits.assert(accountId, 'storage', 1); // 1 МБ — грубая проверка до записи файла
+      }
     }
     if (!file?.buffer?.length) {
       throw new BadRequestException('Не передан файл фото');

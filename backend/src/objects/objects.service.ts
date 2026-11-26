@@ -4,9 +4,11 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { AccessRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { LimitsService } from '../billing/limits.service'; // ⭐ №407: лимиты тарифа
 import { CreateObjectDto } from './dto/create-object.dto';
 import {
   accessibleObjectWhere,
@@ -25,7 +27,11 @@ import {
 
 @Injectable()
 export class ObjectsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    // ⭐ №407: лимиты тарифа (опционально — чтобы юнит-тесты могли собирать сервис без биллинга)
+    @Optional() private readonly limits?: LimitsService,
+  ) {}
 
   // ⭐ №164: менять сам объект может только участник с объектным доступом
   // и не наблюдатель (раньше хватало любой записи projectId=null).
@@ -94,6 +100,8 @@ export class ObjectsService {
   // Выбор роли при создании убран: прораб, создавший объект «как прораб», оставался без прав
   // на команду и настройки. Понизить себя / передать админку — через модалку участников.
   async create(dto: CreateObjectDto, userId: number) {
+    // ⭐ №407: лимит объектов по тарифу (аккаунт = создатель объекта)
+    await this.limits?.assert(userId, 'objects');
     // ⭐ №164: справочник цен объекта (если передан) — проверяем доступ до создания
     const catalogId =
       dto.catalogId != null
