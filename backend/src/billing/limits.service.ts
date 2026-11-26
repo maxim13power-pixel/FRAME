@@ -5,7 +5,7 @@
 //   shadow — считаем и пишем в лог «would block», но НЕ блокируем (для наблюдения);
 //   on     — блокируем с кодом LIMIT_* и понятным текстом про следующий тариф.
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
-import { BillingService } from './billing.service';
+import { BillingService, PlanView } from './billing.service';
 
 export type LimitKind = 'objects' | 'rows' | 'photos' | 'storage' | 'writers' | 'viewers';
 
@@ -30,20 +30,20 @@ const CODES: Record<LimitKind, string> = {
   viewers: 'LIMIT_VIEWERS',
 };
 
-/** Тексты для UI/апселла (docs/PRICING.md §2 — что даёт следующий тариф). */
-const UPSELL: Record<LimitKind, string> = {
-  objects:
-    'На Free можно вести только 1 объект. Прораб — 5 объектов и 5 000 строк за 499 ₽/мес.',
-  rows:
-    'Лимит строк сметы исчерпан. Прораб — 5 000 строк, Бригада — 30 000.',
-  photos:
-    'На Free доступно 5 активных фото. Прораб — 3 ГБ (≈10 000 снимков) с хранением по плану.',
-  storage:
-    'Закончилось место под фото. Докупить объём: +5 ГБ за 149 ₽/мес или перейти на Бригаду.',
-  writers:
-    'Достигнут лимит участников с правом записи. Прораб — 3, Бригада — 8.',
-  viewers:
-    'Достигнут лимит наблюдателей. Прораб — 5, Бригада — 30.',
+/** Тексты апселла собираются из чисел тарифа в БД — лимиты можно менять без правки кода. */
+const PLAN_LABEL: Record<string, string> = {
+  FREE: 'Free',
+  FOREMAN: 'Прораб',
+  TEAM: 'Бригада',
+};
+
+const KIND_LABEL: Record<LimitKind, string> = {
+  objects: 'объектов',
+  rows: 'строк смет',
+  photos: 'фото',
+  storage: 'МБ под фото',
+  writers: 'участников с правом записи',
+  viewers: 'наблюдателей',
 };
 
 @Injectable()
@@ -123,7 +123,7 @@ export class LimitsService {
         limit,
         used,
         left,
-        message: UPSELL[kind],
+        message: await this.upsellMessage(kind, plan, add),
         shadowed: this.mode === 'shadow',
       };
       this.logger.warn(
@@ -133,6 +133,34 @@ export class LimitsService {
     }
 
     return { allowed: true, kind, limit, used, left };
+  }
+
+  /**
+   * ⭐ №409: текст апселла собирается из чисел тарифа (не хардкод).
+   * Берём текущий план и следующий доступный — текст не врёт после смены лимитов в БД.
+   */
+  private async upsellMessage(
+    kind: LimitKind,
+    plan: PlanView,
+    add: number,
+  ): Promise<string> {
+    const nextCode =
+      plan.code === 'FREE' ? 'FOREMAN' : plan.code === 'FOREMAN' ? 'TEAM' : null;
+    const next = nextCode ? await this.billing.getPlan(nextCode).catch(() => null) : null;
+
+    const head: Record<LimitKind, string> = {
+      objects: `Достигнут лимит объектов (${plan.maxObjects}).`,
+      rows: `Не хватает строк: нужно ${add}, свободно ${Math.max(0, plan.maxRows)}.`,
+      photos: `Закончились слоты фото (${plan.maxPhotos ?? 0} активных).`,
+      storage: `Закончилось место под фото (${Math.round((plan.maxStorageMb ?? 0) / 1024)} ГБ).`,
+      writers: `Достигнут лимит участников с правом записи (${plan.maxWriters}).`,
+      viewers: `Достигнут лимит наблюдателей (${plan.maxViewers}).`,
+    };
+
+    const offer = next
+      ? ` ${next.name} — ${next.maxObjects} объектов и ${next.maxRows} строк за ${next.priceMonthly} ₽/мес.`
+      : '';
+    return `${head[kind]}${offer} Всё введённое сохранится.`;
   }
 
   /**

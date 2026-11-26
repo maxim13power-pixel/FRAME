@@ -1,4 +1,4 @@
-// backend/src/billing/limits.service.spec.ts
+﻿// backend/src/billing/limits.service.spec.ts
 // ⭐ №407: лимиты в режимах off / shadow / on.
 import { ForbiddenException } from '@nestjs/common';
 import { LimitsService } from './limits.service';
@@ -26,6 +26,23 @@ const make = (mode: 'off' | 'shadow' | 'on', snap = snapshot()) => {
   const billing: any = {
     mode,
     getSnapshot: jest.fn().mockResolvedValue(snap),
+    // ⭐ №409: текст апселла берёт числа следующего тарифа из БД
+    getPlan: jest.fn().mockImplementation((code: string) =>
+      Promise.resolve({
+        code,
+        name: code === 'TEAM' ? 'Бригада' : 'Прораб',
+        priceMonthly: code === 'TEAM' ? 1490 : 499,
+        maxObjects: code === 'TEAM' ? 20 : 5,
+        maxRows: code === 'TEAM' ? 30000 : 5000,
+        maxPhotos: null,
+        maxStorageMb: code === 'TEAM' ? 15360 : 3072,
+        maxPdfPerMonth: code === 'TEAM' ? 1000 : 200,
+        maxExportRows: code === 'TEAM' ? 10000 : 5000,
+        maxWriters: code === 'TEAM' ? 8 : 3,
+        maxViewers: code === 'TEAM' ? 30 : 5,
+        historyMonths: 24,
+      }),
+    ),
   };
   return { service: new LimitsService(billing), billing };
 };
@@ -48,7 +65,8 @@ describe('LimitsService (№407)', () => {
     expect(res.limit).toBe(150);
     expect(res.used).toBe(150);
     expect(res.left).toBe(0);
-    expect(res.message).toContain('5 000 строк');
+    expect(res.message).toContain('5000 строк');
+    expect(res.message).toContain('Всё введённое сохранится');
     await expect(service.assert(7, 'rows')).resolves.toBeUndefined();
   });
 
@@ -81,3 +99,4 @@ describe('LimitsService (№407)', () => {
     await expect(service.assert(7, 'storage', 100)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
+

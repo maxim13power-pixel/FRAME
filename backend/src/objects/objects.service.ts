@@ -6,7 +6,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { AccessRole } from '@prisma/client';
+import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LimitsService } from '../billing/limits.service'; // ⭐ №407: лимиты тарифа
 import { CreateObjectDto } from './dto/create-object.dto';
@@ -109,8 +109,8 @@ export class ObjectsService {
     // ⭐ №207: создатель сразу получает полные права на объект. Возвращаем те же флаги,
     // что и findOne, иначе самая свежая карточка в списке не знала бы, что можно
     // управлять командой (кнопка «Участники» оставалась бы неактивной до перезагрузки).
-    const doCreate = () =>
-      this.prisma.object.create({
+    const doCreate = (client: Prisma.TransactionClient | PrismaService) =>
+      client.object.create({
         data: {
           name: dto.name,
           address: dto.address,
@@ -135,14 +135,18 @@ export class ObjectsService {
         include: { catalog: { select: { id: true, name: true } } },
       });
 
-    // ⭐ №407/№408: лимит объектов + сериализация проверки и вставки по аккаунту.
-    // Без сериализации двойной клик на Free (лимит 1) создавал два объекта.
+    // ⭐ №407/№408/№409: лимит объектов + ДВА уровня защиты от TOCTOU:
+    //  1) in-process очередь (дешёво, снимает конкуренцию внутри контейнера);
+    //  2) `pg_advisory_xact_lock` в транзакции (работает и при нескольких инстансах).
     const created = this.limits
-      ? await this.limits.runSerialized(userId, async () => {
-          await this.limits!.assert(userId, 'objects');
-          return doCreate();
-        })
-      : await doCreate();
+      ? await this.limits.runSerialized(userId, () =>
+          this.prisma.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`limit:objects:${userId}`}))`;
+            await this.limits!.assert(userId, 'objects');
+            return doCreate(tx);
+          }),
+        )
+      : await doCreate(this.prisma);
     return {
       ...created,
       role: AccessRole.CUSTOMER,
@@ -365,3 +369,4 @@ export class ObjectsService {
     });
   }
 }
+
