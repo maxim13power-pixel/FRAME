@@ -337,8 +337,36 @@ export class BillingService {
     const plan = await this.getPlan(this.resolvePlanCode(sub, now));
     const key = periodKey(now);
     const usedBefore = this.pdfUsed(sub, now);
-    const watermark = plan.priceMonthly === 0;
     const { rows, lastUpdatedAt } = await this.projectDataVersion(input.projectId);
+
+    // ⭐ №408: матрица режимов — в off/shadow НИЧЕГО не списываем и знак не включаем.
+    // off    — продукт как до биллинга: без лимитов и без знака;
+    // shadow — считаем и логируем «как если бы», но счётчик не двигаем;
+    // on     — списываем и ставим знак по тарифу.
+    const mode = this.mode;
+    if (mode !== 'on') {
+      const wouldBlock =
+        rows > plan.maxExportRows || usedBefore >= plan.maxPdfPerMonth;
+      if (wouldBlock) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[billing:would-block-export] mode=${mode} account=${accountId} actor=${actorUserId} project=${input.projectId} plan=${plan.code} rows=${rows} pdfUsed=${usedBefore} maxRows=${plan.maxExportRows} maxPdf=${plan.maxPdfPerMonth}`,
+        );
+      }
+      return {
+        allowed: true,
+        accountId,
+        used: usedBefore,
+        limit: plan.maxPdfPerMonth,
+        left: Math.max(0, plan.maxPdfPerMonth - usedBefore),
+        maxRows: plan.maxExportRows,
+        rows,
+        watermark: false, // в off/shadow документ выглядит как раньше
+        reused: false,
+      };
+    }
+
+    const watermark = plan.priceMonthly === 0;
 
     if (rows > plan.maxExportRows) {
       return {

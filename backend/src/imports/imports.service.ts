@@ -8,10 +8,13 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { BillingService } from '../billing/billing.service'; // ⭐ №408
+import { LimitsService } from '../billing/limits.service'; // ⭐ №408: лимит строк при импорте
 import { AuditService } from '../audit/audit.service';
 import {
   REVOKED_ACCESS_MESSAGE,
@@ -67,6 +70,9 @@ export class ImportsService {
     private prisma: PrismaService,
     private audit: AuditService,
     private parser: EstimateParserService,
+    // ⭐ №408: лимит строк сметы при импорте (иначе лимит обходится файлом)
+    @Optional() private readonly billing?: BillingService,
+    @Optional() private readonly limits?: LimitsService,
   ) {}
 
   /** Импорт — операция записи: наблюдатель и отозванный доступ не могут.
@@ -383,8 +389,19 @@ export class ImportsService {
       }
     }
 
+    // ⭐ №408: лимит строк сметы — проверяем ДО записи, всё-или-ничего.
+    // Иначе Free обходит лимит 150 строк простым импортом файла на 5 000 строк.
+    if (this.billing && this.limits) {
+      const toImport = preview.rows.filter(
+        (row) => resolutions.get(row.row)?.action === 'IMPORT',
+      ).length;
+      if (toImport > 0) {
+        const scope = await this.billing.resolveProjectAccount(input.userId, batch.projectId);
+        await this.limits.assert(scope?.accountId ?? input.userId, 'rows', toImport);
+      }
+    }
+
     const summary = await this.prisma.$transaction(async (tx) => {
-      // Идемпотентность против двойного клика: «захватываем» партию атомарно
       const claimed = await tx.importBatch.updateMany({
         where: { id: batch.id, status: 'PREVIEW' },
         data: { status: 'COMMITTING' },

@@ -5,9 +5,11 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { AccessRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { LimitsService } from '../billing/limits.service'; // ⭐ №408: лимиты участников
 import { assertAccessActive, findLiveAccess } from '../auth/access-scope'; // ⭐ №193 (A₂ F1)
 import { AuditService } from '../audit/audit.service'; // ⭐ №131
 import { AddAccessDto } from './dto/add-access.dto';
@@ -19,6 +21,8 @@ export class AccessService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService, // ⭐ №131
+    // ⭐ №408: лимиты участников по тарифу (опционально — тесты без биллинга)
+    @Optional() private readonly limits?: LimitsService,
   ) {}
 
   // ⭐ Хелпер: получить запись доступа юзера к объекту (или кинуть 403)
@@ -258,6 +262,21 @@ export class AccessService {
 
     // ⭐ №182: нельзя открыть другому цены, которые скрыты у тебя самого
     this.assertCanDelegatePrices(myAccess, dto.hidePrices);
+
+    // ⭐ №408: лимит участников — по тарифу аккаунта-владельца объекта.
+    // Раздельно: пишущие (CUSTOMER/FOREMAN) и наблюдатели (VIEWER).
+    if (this.limits) {
+      const owner = await this.prisma.objectAccess.findFirst({
+        where: { objectId, role: AccessRole.CUSTOMER, revokedAt: null },
+        select: { userId: true },
+        orderBy: { id: 'asc' },
+      });
+      const accountId = owner?.userId ?? actorUserId;
+      await this.limits.assert(
+        accountId,
+        dto.role === AccessRole.VIEWER ? 'viewers' : 'writers',
+      );
+    }
 
     // Найти приглашаемого юзера
     const invitedUser = await this.resolveUser(dto);

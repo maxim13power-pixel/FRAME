@@ -100,8 +100,6 @@ export class ObjectsService {
   // Выбор роли при создании убран: прораб, создавший объект «как прораб», оставался без прав
   // на команду и настройки. Понизить себя / передать админку — через модалку участников.
   async create(dto: CreateObjectDto, userId: number) {
-    // ⭐ №407: лимит объектов по тарифу (аккаунт = создатель объекта)
-    await this.limits?.assert(userId, 'objects');
     // ⭐ №164: справочник цен объекта (если передан) — проверяем доступ до создания
     const catalogId =
       dto.catalogId != null
@@ -111,30 +109,40 @@ export class ObjectsService {
     // ⭐ №207: создатель сразу получает полные права на объект. Возвращаем те же флаги,
     // что и findOne, иначе самая свежая карточка в списке не знала бы, что можно
     // управлять командой (кнопка «Участники» оставалась бы неактивной до перезагрузки).
-    const created = await this.prisma.object.create({
-      data: {
-        name: dto.name,
-        address: dto.address,
-        startDate: new Date(dto.startDate),
-        endDate: new Date(dto.endDate),
-        plannedEndDate: dto.plannedEndDate
-          ? new Date(dto.plannedEndDate)
-          : new Date(dto.endDate),
-        note: dto.note || null,
-        isArchived: false,
-        catalogId,
-        createdById: userId, // ⭐ №168: метка автора (прав не даёт)
-        // ⭐ Сразу создаём доступ для создателя (вложенный create)
-        accesses: {
-          create: {
-            userId,
-            role: AccessRole.CUSTOMER, // ⭐ №181: создатель — администратор объекта
-            canCreateProjects: true, // ⭐ №207: админ объекта создаёт проекты
+    const doCreate = () =>
+      this.prisma.object.create({
+        data: {
+          name: dto.name,
+          address: dto.address,
+          startDate: new Date(dto.startDate),
+          endDate: new Date(dto.endDate),
+          plannedEndDate: dto.plannedEndDate
+            ? new Date(dto.plannedEndDate)
+            : new Date(dto.endDate),
+          note: dto.note || null,
+          isArchived: false,
+          catalogId,
+          createdById: userId, // ⭐ №168: метка автора (прав не даёт)
+          // ⭐ Сразу создаём доступ для создателя (вложенный create)
+          accesses: {
+            create: {
+              userId,
+              role: AccessRole.CUSTOMER, // ⭐ №181: создатель — администратор объекта
+              canCreateProjects: true, // ⭐ №207: админ объекта создаёт проекты
+            },
           },
         },
-      },
-      include: { catalog: { select: { id: true, name: true } } },
-    });
+        include: { catalog: { select: { id: true, name: true } } },
+      });
+
+    // ⭐ №407/№408: лимит объектов + сериализация проверки и вставки по аккаунту.
+    // Без сериализации двойной клик на Free (лимит 1) создавал два объекта.
+    const created = this.limits
+      ? await this.limits.runSerialized(userId, async () => {
+          await this.limits!.assert(userId, 'objects');
+          return doCreate();
+        })
+      : await doCreate();
     return {
       ...created,
       role: AccessRole.CUSTOMER,

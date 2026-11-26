@@ -240,6 +240,14 @@ describe('BillingService (этап 0)', () => {
   });
 
   describe('authorizePdfExport (№405/№406)', () => {
+    // списание проверяем в режиме on: в off/shadow authorize не списывает (№408)
+    beforeEach(() => {
+      process.env.BILLING_ENFORCE = 'on';
+    });
+    afterEach(() => {
+      delete process.env.BILLING_ENFORCE;
+    });
+
     const freePlan = plan({ code: 'FREE', priceMonthly: 0, maxPdfPerMonth: 3, maxExportRows: 150 });
     const teamPlan = plan({ code: 'TEAM', priceMonthly: 1490, maxPdfPerMonth: 1000, maxExportRows: 10000 });
 
@@ -369,6 +377,30 @@ describe('BillingService (этап 0)', () => {
       expect(res.watermark).toBe(false); // план владельца — платный
       expect(res.limit).toBe(1000);
       expect(res.maxRows).toBe(10000);
+    });
+
+    it('off: не списывает и знак не включает (продукт как до биллинга)', async () => {
+      delete process.env.BILLING_ENFORCE;
+      const prisma = makePrisma();
+      const res = await makeService(prisma).authorizePdfExport(7, input);
+
+      expect(res.allowed).toBe(true);
+      expect(res.watermark).toBe(false);
+      expect(res.token).toBeUndefined();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('shadow: считает, но не списывает и не блокирует', async () => {
+      process.env.BILLING_ENFORCE = 'shadow';
+      const prisma = makePrisma();
+      // 200 строк при лимите 150 — в shadow всё равно пропускаем, только лог
+      prisma.material.aggregate.mockResolvedValue({ _count: { _all: 200 }, _max: { updatedAt: new Date() } });
+      const res = await makeService(prisma).authorizePdfExport(7, input);
+
+      expect(res.allowed).toBe(true);
+      expect(res.rows).toBe(200);
+      expect(prisma.$transaction).not.toHaveBeenCalled(); // счётчик не двигаем
     });
   });
 });

@@ -56,6 +56,30 @@ export class LimitsService {
     return this.billing.mode;
   }
 
+  /**
+   * ⭐ №408: сериализация «проверить → создать» по аккаунту — против TOCTOU
+   * (двойной клик «Создать объект» на Free с лимитом 1 давал 2 объекта).
+   * Очередь в памяти процесса: при одном контейнере этого достаточно
+   * (при нескольких — нужен `pg_advisory_xact_lock` в БД, см. PRICING §8.6).
+   */
+  private readonly chains = new Map<number, Promise<void>>();
+
+  async runSerialized<T>(accountId: number, fn: () => Promise<T>): Promise<T> {
+    // в off/shadow ничего не блокируем — там нет запрета
+    if (this.mode !== 'on') return fn();
+    const prev = this.chains.get(accountId) ?? Promise.resolve();
+    const run = prev.then(fn, fn);
+    const tail: Promise<void> = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.chains.set(accountId, tail);
+    void tail.then(() => {
+      if (this.chains.get(accountId) === tail) this.chains.delete(accountId);
+    });
+    return run;
+  }
+
   /** Проверка без исключения: удобно для UI-плашек и для логов shadow. */
   async check(accountId: number, kind: LimitKind, add = 1): Promise<LimitCheck> {
     // при off даже не считаем — поведение продукта не меняется
@@ -63,7 +87,17 @@ export class LimitsService {
       return { allowed: true, kind, limit: null, used: 0, left: null };
     }
 
-    const snap = await this.billing.getSnapshot(accountId);
+    let snap;
+    try {
+      snap = await this.billing.getSnapshot(accountId);
+    } catch (err) {
+      // ⭐ №408: политика fail-open при сбое БД — не блокируем платящего из-за таймаута,
+      // но пишем громкий лог, чтобы поймать перебор на сверке (PRICING §8.6).
+      this.logger.error(
+        `enforce_fail_open kind=${kind} account=${accountId} mode=${this.mode}: ${(err as Error).message}`,
+      );
+      return { allowed: true, kind, limit: null, used: 0, left: null, shadowed: true };
+    }
     const plan = snap.plan;
     const usage = snap.usage;
 
