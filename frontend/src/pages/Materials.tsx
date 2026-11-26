@@ -927,7 +927,9 @@ useEffect(() => {
     const update = () => {
       const row = head.rows[0];
       if (!row) return;
-      head.style.setProperty('--est-head-row1', `${Math.round(row.getBoundingClientRect().height)}px`);
+      // ⭐ №401: высота БЕЗ округления — иначе вторая строка шапки встаёт на 0.4–0.5 px ниже
+      // первой и между линиями разделителя появляется шов, через который видно строки таблицы.
+      head.style.setProperty('--est-head-row1', `${row.getBoundingClientRect().height.toFixed(2)}px`);
     };
 
     update();
