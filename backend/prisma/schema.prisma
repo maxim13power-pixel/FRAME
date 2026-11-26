@@ -43,22 +43,30 @@ model User {
   // ⭐ №404: подписка аккаунта (см. docs/PRICING.md). Один пользователь = один аккаунт.
   subscription           Subscription?
   // ⭐ №405: авторизации PDF-экспорта (идемпотентность по содержимому документа)
-  pdfExportAuth          PdfExportAuthorization[]
+  pdfExportAuth          PdfExportAuthorization[] @relation("AccountPdfExports")
 }
 
-// ⭐ №405: каждая авторизация экспорта уникальна по (пользователь, период, хеш содержимого).
+// ⭐ №405: каждая авторизация экспорта уникальна по (АККАУНТ, период, хеш содержимого).
 // Повторный запрос с тем же документом не списывает второй раз — отдаём тот же токен.
+// ⭐ №406: квота — аккаунта (владельца объекта), а не того, кто нажал «печать»:
+// прораб, приглашённый в объект, печатает за счёт плана владельца.
 model PdfExportAuthorization {
   id          Int      @id @default(autoincrement())
-  userId      Int
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Чей аккаунт (владелец объекта) — по нему считаются квоты и идемпотентность
+  accountId   Int
+  account     User     @relation("AccountPdfExports", fields: [accountId], references: [id], onDelete: Cascade)
+  /// Кто нажал печать (для аудита; на квоту не влияет)
+  actorUserId Int
+  /// Проект — нужен для «окна правки» на Free и для отладки
+  projectId   Int
   /// Период YYYY-MM (МСК) — совпадает с Subscription.pdfPeriod
   periodKey   String
-  /// SHA-256 канонического описания документа (проект + фильтры + число строк)
+  /// SHA-256 канонического описания документа (проект + фильтры + строки + версия данных)
   payloadHash String
   createdAt   DateTime @default(now())
 
-  @@unique([userId, periodKey, payloadHash])
+  @@unique([accountId, periodKey, payloadHash])
+  @@index([accountId, projectId, createdAt])
   @@map("pdf_export_authorizations")
 }
 

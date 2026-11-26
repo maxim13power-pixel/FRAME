@@ -1,6 +1,6 @@
-// backend/src/billing/dto/authorize-pdf.dto.ts
+﻿// backend/src/billing/dto/authorize-pdf.dto.ts
 // ⭐ №405: запрос на печать/экспорт PDF. Сервер решает: можно ли, с каким лимитом строк и знаком.
-import { IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class AuthorizePdfDto {
   @IsInt()
@@ -22,10 +22,5 @@ export class AuthorizePdfDto {
   @IsOptional()
   @IsInt()
   categoryId?: number;
-
-  /** Сколько строк реально будет в документе — проверяется против maxExportRows плана */
-  @IsInt()
-  @Min(0)
-  @Max(50000)
-  rowCount!: number;
 }
+

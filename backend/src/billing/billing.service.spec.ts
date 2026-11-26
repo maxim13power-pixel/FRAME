@@ -1,4 +1,4 @@
-// backend/src/billing/billing.service.spec.ts
+﻿// backend/src/billing/billing.service.spec.ts
 // ⭐ №404: тарифы и счётчики (этап 0). Enforcement не проверяем — его включает этап 1.
 import { BillingService, periodKey } from './billing.service';
 
@@ -239,127 +239,136 @@ describe('BillingService (этап 0)', () => {
     });
   });
 
-  describe('authorizePdfExport (№405)', () => {
+  describe('authorizePdfExport (№405/№406)', () => {
     const freePlan = plan({ code: 'FREE', priceMonthly: 0, maxPdfPerMonth: 3, maxExportRows: 150 });
-    const foremanPlan = plan({ code: 'FOREMAN', priceMonthly: 499, maxPdfPerMonth: 200, maxExportRows: 5000 });
+    const teamPlan = plan({ code: 'TEAM', priceMonthly: 1490, maxPdfPerMonth: 1000, maxExportRows: 10000 });
 
-    const base = (over: Record<string, any> = {}) => ({
-      subscription: {
-        findUnique: jest.fn().mockResolvedValue(sub({ planCode: 'FREE', pdfUsed: 0, pdfPeriod: null })),
-        create: jest.fn(),
-      },
-      plan: { findUnique: jest.fn().mockResolvedValue(freePlan) },
-      pdfExportAuthorization: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-      $queryRaw: jest.fn(),
-      ...over,
+    /** prisma-мок: доступ, владелец объекта, версия данных, подписка, транзакция */
+    const makePrisma = (over: Record<string, any> = {}) => {
+      const prisma: any = {
+        project: { findUnique: jest.fn().mockResolvedValue({ objectId: 10 }) },
+        objectAccess: {
+          findFirst: jest
+            .fn()
+            // 1-й вызов — доступ актора, 2-й — владелец объекта (CUSTOMER)
+            .mockResolvedValueOnce({ id: 1 })
+            .mockResolvedValueOnce({ userId: 7 }),
+        },
+        material: {
+          aggregate: jest
+            .fn()
+            .mockResolvedValue({ _count: { _all: 3 }, _max: { updatedAt: new Date('2026-11-26T09:00:00Z') } }),
+        },
+        subscription: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue(sub({ userId: 7, planCode: 'FREE', pdfUsed: 0, pdfPeriod: null })),
+          create: jest.fn(),
+        },
+        plan: { findUnique: jest.fn().mockResolvedValue(freePlan) },
+        pdfExportAuthorization: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        $queryRaw: jest.fn(),
+        $transaction: jest.fn((cb: any) => cb(prisma)),
+        ...over,
+      };
+      return prisma;
+    };
+
+    const input = { projectId: 5, materialIds: [9, 3] };
+
+    it('нет доступа к проекту → NO_ACCESS, ничего не списываем', async () => {
+      const prisma = makePrisma();
+      prisma.objectAccess.findFirst.mockReset();
+      prisma.objectAccess.findFirst.mockResolvedValue(null);
+      const res = await makeService(prisma).authorizePdfExport(99, input);
+      expect(res.allowed).toBe(false);
+      expect(res.code).toBe('NO_ACCESS');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
-    const input = { projectId: 5, materialIds: [9, 3], rowCount: 3 };
-
-    it('лимит строк на документ проверяется до списания', async () => {
-      const prisma = base();
-      const service = makeService(prisma);
-      const res = await service.authorizePdfExport(7, { ...input, rowCount: 500 });
+    it('лимит строк документа считается по серверу, а не по клиенту', async () => {
+      const prisma = makePrisma();
+      prisma.material.aggregate.mockResolvedValue({ _count: { _all: 500 }, _max: { updatedAt: new Date() } });
+      const res = await makeService(prisma).authorizePdfExport(7, input);
       expect(res.allowed).toBe(false);
       expect(res.code).toBe('LIMIT_EXPORT_ROWS');
       expect(res.maxRows).toBe(150);
-      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+      expect(res.rows).toBe(500);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
-    it('первый документ: списывает 1 и отдаёт подписанный токен', async () => {
-      const prisma = base();
+    it('первый документ: столбление + списание в одной транзакции, токен выдан', async () => {
+      const prisma = makePrisma();
       prisma.$queryRaw
-        .mockResolvedValueOnce([{ id: 1 }]) // INSERT застолбил авторизацию
-        .mockResolvedValueOnce([{ pdfUsed: 1 }]); // атомарное списание
-      const service = makeService(prisma);
-
-      const res = await service.authorizePdfExport(7, input);
+        .mockResolvedValueOnce([{ id: 1 }]) // INSERT (столб)
+        .mockResolvedValueOnce([{ pdfUsed: 1 }]); // UPDATE (списание)
+      const res = await makeService(prisma).authorizePdfExport(7, input);
 
       expect(res.allowed).toBe(true);
       expect(res.reused).toBe(false);
       expect(res.used).toBe(1);
       expect(res.left).toBe(2);
-      expect(res.watermark).toBe(true); // Free
-      expect(res.maxRows).toBe(150);
+      expect(res.rows).toBe(3);
+      expect(res.watermark).toBe(true);
+      expect(res.accountId).toBe(7);
       expect(res.token).toMatch(/^\d+\.[0-9a-f]{16}\.[0-9a-f]{64}$/);
-      expect(new Date(res.expiresAt!).getTime()).toBeGreaterThan(Date.now());
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     });
 
-    it('повтор того же документа не списывает (idempotency)', async () => {
-      const prisma = base({
-        subscription: {
-          findUnique: jest.fn().mockResolvedValue(sub({ planCode: 'FREE', pdfUsed: 1, pdfPeriod: periodKey() })),
-          create: jest.fn(),
-        },
-      });
-      prisma.$queryRaw.mockResolvedValueOnce([]); // INSERT … DO NOTHING → строка уже есть
-      const service = makeService(prisma);
-
-      const res = await service.authorizePdfExport(7, input);
+    it('повтор того же документа → reused, без второго списания', async () => {
+      const prisma = makePrisma();
+      prisma.subscription.findUnique.mockResolvedValue(
+        sub({ userId: 7, planCode: 'FREE', pdfUsed: 1, pdfPeriod: periodKey() }),
+      );
+      prisma.$queryRaw.mockResolvedValueOnce([]); // INSERT … DO NOTHING → уже авторизован
+      const res = await makeService(prisma).authorizePdfExport(7, input);
 
       expect(res.allowed).toBe(true);
       expect(res.reused).toBe(true);
-      expect(res.used).toBe(1); // второй раз не списали
-      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(res.used).toBe(1);
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1); // списания не было
     });
 
-    it('другой документ — новое списание (нельзя переиспользовать токен)', async () => {
-      const prisma = base({
-        subscription: {
-          findUnique: jest.fn().mockResolvedValue(sub({ planCode: 'FREE', pdfUsed: 1, pdfPeriod: periodKey() })),
-          create: jest.fn(),
-        },
-      });
+    it('лимит PDF: транзакция откатывается (столб не остаётся)', async () => {
+      const prisma = makePrisma();
+      prisma.subscription.findUnique.mockResolvedValue(
+        sub({ userId: 7, planCode: 'FREE', pdfUsed: 3, pdfPeriod: periodKey() }),
+      );
       prisma.$queryRaw
-        .mockResolvedValueOnce([{ id: 2 }])
-        .mockResolvedValueOnce([{ pdfUsed: 2 }]);
-      const service = makeService(prisma);
-
-      const res = await service.authorizePdfExport(7, { projectId: 5, materialIds: [9, 4], rowCount: 3 });
-      expect(res.allowed).toBe(true);
-      expect(res.reused).toBe(false);
-      expect(res.used).toBe(2);
-    });
-
-    it('исчерпан лимит PDF: не пускает и освобождает застолблённую авторизацию', async () => {
-      const prisma = base({
-        subscription: {
-          findUnique: jest.fn().mockResolvedValue(sub({ planCode: 'FREE', pdfUsed: 3, pdfPeriod: periodKey() })),
-          create: jest.fn(),
-        },
-      });
-      prisma.$queryRaw
-        .mockResolvedValueOnce([{ id: 3 }]) // застолбили
-        .mockResolvedValueOnce([]); // списание не прошло — лимит
-      const service = makeService(prisma);
-
-      const res = await service.authorizePdfExport(7, input);
+        .mockResolvedValueOnce([{ id: 2 }]) // столб вставлен
+        .mockResolvedValueOnce([]); // списание не прошло
+      const res = await makeService(prisma).authorizePdfExport(7, input);
 
       expect(res.allowed).toBe(false);
       expect(res.code).toBe('LIMIT_PDF');
       expect(res.left).toBe(0);
-      expect(prisma.pdfExportAuthorization.deleteMany).toHaveBeenCalledWith({
-        where: { userId: 7, periodKey: periodKey(), payloadHash: expect.any(String) },
-      });
     });
 
-    it('на платном плане знака нет, лимит строк выше', async () => {
-      const prisma = base({
+    it('прораб печатает проект владельца — списывается квота владельца', async () => {
+      const prisma = makePrisma({
+        objectAccess: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce({ id: 2 }) // доступ прораба (userId 8)
+            .mockResolvedValueOnce({ userId: 7 }), // владелец объекта
+        },
         subscription: {
-          findUnique: jest.fn().mockResolvedValue(
-            sub({ planCode: 'FOREMAN', pdfUsed: 0, pdfPeriod: periodKey(), periodEnd: new Date('2027-01-01') }),
-          ),
+          findUnique: jest
+            .fn()
+            .mockResolvedValue(sub({ userId: 7, planCode: 'TEAM', pdfUsed: 0, pdfPeriod: periodKey() })),
           create: jest.fn(),
         },
-        plan: { findUnique: jest.fn().mockResolvedValue(foremanPlan) },
+        plan: { findUnique: jest.fn().mockResolvedValue(teamPlan) },
       });
-      prisma.$queryRaw.mockResolvedValueOnce([{ id: 4 }]).mockResolvedValueOnce([{ pdfUsed: 1 }]);
-      const service = makeService(prisma);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 3 }]).mockResolvedValueOnce([{ pdfUsed: 1 }]);
 
-      const res = await service.authorizePdfExport(7, { ...input, rowCount: 4000 });
+      const res = await makeService(prisma).authorizePdfExport(8, input);
+
       expect(res.allowed).toBe(true);
-      expect(res.watermark).toBe(false);
-      expect(res.maxRows).toBe(5000);
+      expect(res.accountId).toBe(7); // квота владельца, не прораба
+      expect(res.watermark).toBe(false); // план владельца — платный
+      expect(res.limit).toBe(1000);
+      expect(res.maxRows).toBe(10000);
     });
   });
 });
