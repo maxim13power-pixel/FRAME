@@ -3026,7 +3026,7 @@ onClose={() => setFilterAnchorEl(null)}
           sx={{ mb: 2, overflow: 'visible' }}
         >
           <Table sx={{ minWidth: 1500, ...(dragSelecting ? { userSelect: 'none' } : {}) }}>
-<TableHead ref={tableHeadRef} sx={{ bgcolor: '#f5f5f5', '& th': { bgcolor: '#f5f5f5' } }}>
+<TableHead ref={tableHeadRef} sx={{ bgcolor: '#e3f2fd', '& th': { bgcolor: '#e3f2fd' } }}>
 <TableRow>
 <TableCell rowSpan={2} sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
   {/* ⭐ №292: чекбокс «выбрать все» — в колонке «№», раскладка таблицы не меняется */}
