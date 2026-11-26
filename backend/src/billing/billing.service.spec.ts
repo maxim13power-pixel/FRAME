@@ -198,43 +198,39 @@ describe('BillingService (этап 0)', () => {
   });
 
   describe('consumePdfExport', () => {
-    it('начинает новый период и увеличивает счётчик', async () => {
-      const update = jest.fn().mockResolvedValue({});
+    it('атомарно списывает: возвращает used/left при успехе', async () => {
       const prisma = {
-        subscription: {
-          findUnique: jest.fn().mockResolvedValue(sub({ pdfUsed: 5, pdfPeriod: '2026-10' })),
-          update,
-        },
+        subscription: { findUnique: jest.fn().mockResolvedValue(sub({ pdfUsed: 5, pdfPeriod: '2026-10' })) },
         plan: { findUnique: jest.fn().mockResolvedValue(plan({ code: 'FOREMAN', maxPdfPerMonth: 200 })) },
+        $queryRaw: jest.fn().mockResolvedValue([{ pdfUsed: 1 }]),
       };
       const service = makeService(prisma);
 
       const res = await service.consumePdfExport(7, new Date('2026-11-26T10:00:00Z'));
 
-      expect(res).toEqual({ used: 1, limit: 200, left: 199 });
-      expect(update).toHaveBeenCalledWith({
-        where: { userId: 7 },
-        data: { pdfUsed: 1, pdfPeriod: '2026-11' },
-      });
+      expect(res).toEqual({ allowed: true, used: 1, limit: 200, left: 199 });
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+      // обычного read-modify-write больше нет — только один атомарный UPDATE
+      expect((prisma.subscription as any).update).toBeUndefined();
     });
 
-    it('в том же месяце — инкремент', async () => {
-      const update = jest.fn().mockResolvedValue({});
+    it('при исчерпанном лимите UPDATE не обновляет строки → allowed=false', async () => {
       const prisma = {
         subscription: {
-          findUnique: jest.fn().mockResolvedValue(sub({ pdfUsed: 2, pdfPeriod: '2026-11' })),
-          update,
+          findUnique: jest
+            .fn()
+            // 1-й вызов — до списания, 2-й — чтобы вернуть актуальное used
+            .mockResolvedValueOnce(sub({ pdfUsed: 3, pdfPeriod: periodKey() }))
+            .mockResolvedValueOnce(sub({ pdfUsed: 3, pdfPeriod: periodKey() })),
         },
-        plan: { findUnique: jest.fn().mockResolvedValue(plan({ code: 'FOREMAN', maxPdfPerMonth: 200 })) },
+        plan: { findUnique: jest.fn().mockResolvedValue(plan({ code: 'FREE', maxPdfPerMonth: 3 })) },
+        $queryRaw: jest.fn().mockResolvedValue([]),
       };
       const service = makeService(prisma);
 
-      const res = await service.consumePdfExport(7, new Date('2026-11-26T10:00:00Z'));
-      expect(res?.used).toBe(3);
-      expect(update).toHaveBeenCalledWith({
-        where: { userId: 7 },
-        data: { pdfUsed: 3, pdfPeriod: '2026-11' },
-      });
+      const res = await service.consumePdfExport(7, new Date());
+
+      expect(res).toEqual({ allowed: false, used: 3, limit: 3, left: 0 });
     });
 
     it('без подписки — null (лимит Free считает вызывающий)', async () => {

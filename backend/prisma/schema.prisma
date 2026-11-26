@@ -465,6 +465,8 @@ model ObjectAccess {
   // Он создаётся в миграции 20261026120000_access_ownership_freeze вручную.
   @@index([objectId])
   @@index([userId, isHidden])
+  // ⭐ №404: подсчёт использования по тарифу (объекты/участники аккаунта)
+  @@index([userId, role])
   @@map("object_access")
 }
 

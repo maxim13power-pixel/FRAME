@@ -84,9 +84,15 @@ const toPlanView = (plan: Plan): PlanView => ({
 export class BillingService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Включён ли запрет по лимитам (этап 1). На этапе 0 всегда false. */
+  /** Режим enforcement: off (этап 0) / shadow (считаем и логируем) / on (блокируем). */
+  get mode(): 'off' | 'shadow' | 'on' {
+    const raw = (process.env.BILLING_ENFORCE || 'off').toLowerCase();
+    return raw === 'on' || raw === 'shadow' ? raw : 'off';
+  }
+
+  /** Включён ли реальный запрет (только режим on). */
   get enforced(): boolean {
-    return process.env.BILLING_ENFORCE === 'true';
+    return this.mode === 'on';
   }
 
   /**
@@ -193,24 +199,43 @@ export class BillingService {
   }
 
   /**
-   * Списывает один PDF-экспорт (ленивый сброс периода: pdfPeriod → YYYY-MM МСК).
-   * На этапе 0 ниоткуда не вызывается — подключится на этапе 1
-   * (`POST /exports/pdf/authorize`, см. docs/PRICING.md §8).
+   * Списывает один PDF-экспорт АТОМАРНО (без гонок на границе лимита и месяца).
+   * Один UPDATE: сброс периода, если месяц сменился, + инкремент, но только пока не достигнут
+   * лимит. Ноль обновлённых строк = лимит исчерпан (или подписки нет).
+   * Подключится на этапе 1 (`POST /exports/pdf/authorize`, docs/PRICING.md §8).
    */
   async consumePdfExport(
     userId: number,
     now: Date = new Date(),
-  ): Promise<{ used: number; limit: number; left: number } | null> {
+  ): Promise<{ allowed: boolean; used: number; limit: number; left: number } | null> {
     const sub = await this.getSubscription(userId);
     if (!sub) return null;
-    const key = periodKey(now);
-    const used = sub.pdfPeriod === key ? sub.pdfUsed + 1 : 1;
-    await this.prisma.subscription.update({
-      where: { userId },
-      data: { pdfUsed: used, pdfPeriod: key },
-    });
     const plan = await this.getPlan(this.resolvePlanCode(sub, now));
-    return { used, limit: plan.maxPdfPerMonth, left: Math.max(0, plan.maxPdfPerMonth - used) };
+    const key = periodKey(now);
+
+    // CASE WHEN — «новый месяц → начинаем с 1», иначе +1. WHERE не пускает сверх лимита.
+    const rows = await this.prisma.$queryRaw<Array<{ pdfUsed: number }>>`
+      UPDATE "subscriptions"
+         SET "pdfUsed" = CASE WHEN "pdfPeriod" = ${key} THEN "pdfUsed" + 1 ELSE 1 END,
+             "pdfPeriod" = ${key},
+             "updatedAt" = now()
+       WHERE "userId" = ${userId}
+         AND (CASE WHEN "pdfPeriod" = ${key} THEN "pdfUsed" ELSE 0 END) < ${plan.maxPdfPerMonth}
+      RETURNING "pdfUsed"
+    `;
+
+    if (rows.length === 0) {
+      const current = await this.getSubscription(userId);
+      const used = this.pdfUsed(current, now);
+      return { allowed: false, used, limit: plan.maxPdfPerMonth, left: 0 };
+    }
+    const used = rows[0].pdfUsed;
+    return {
+      allowed: true,
+      used,
+      limit: plan.maxPdfPerMonth,
+      left: Math.max(0, plan.maxPdfPerMonth - used),
+    };
   }
 }
 

@@ -1,11 +1,13 @@
 // backend/scripts/seed-plans.js
-// ⭐ №404: сиды тарифов (docs/PRICING.md §2) + grandfathering существующих аккаунтов.
-// Идемпотентно: повторный запуск обновляет лимиты и не плодит дубли.
+// ⭐ №404: сиды тарифов (docs/PRICING.md §2) + разовый grandfathering.
+// Идемпотентно: повторный запуск обновляет тарифы и НЕ трогает аккаунты, созданные позже cutoff.
 //
 //   node scripts/seed-plans.js
+//   npm run db:seed:plans
 //
-// Grandfather: всем существующим пользователям без подписки выдаётся «Бригада» бессрочно
-// (source=GRANDFATHER, periodEnd=null) — при включении лимитов никого не «обрезаем».
+// Grandfather: «Бригада» бессрочно выдаётся ТОЛЬКО аккаунтам, которые существовали на момент
+// миграции billing_plans (2026-11-26 07:28:43 UTC). Все, кто зарегистрировался позже, остаются
+// на Free — иначе каждый повторный запуск сидов (деплой, staging) дарил бы Бригаду новым людям.
 const fs = require('fs');
 const path = require('path');
 
@@ -14,6 +16,9 @@ const env = fs.readFileSync(path.join(BACKEND, '.env'), 'utf8');
 process.env.DATABASE_URL = env.match(/DATABASE_URL\s*=\s*"?([^"\r\n]+)/)[1].trim();
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+
+/** Дата миграции billing_plans: всё, что создано ДО неё, получает Бригаду навсегда. */
+const GRANDFATHER_CUTOFF = new Date('2026-11-26T07:28:43Z');
 
 // Лимиты — ровно как в docs/PRICING.md §2. Меняются здесь, а не в коде продукта.
 const PLANS = [
@@ -83,12 +88,13 @@ const PLANS = [
     );
   }
 
-  // Grandfathering: кто уже зарегистрирован — получает «Бригаду» бессрочно.
+  // Grandfathering — ОДИН раз и только для аккаунтов, существовавших до миграции.
   const withoutSub = await prisma.user.findMany({
-    where: { subscription: null },
+    where: { subscription: null, createdAt: { lt: GRANDFATHER_CUTOFF } },
     select: { id: true, email: true },
   });
   if (withoutSub.length > 0) {
+    // skipDuplicates: повторный запуск не упадёт и не перезапишет ручные подписки
     await prisma.subscription.createMany({
       data: withoutSub.map((u) => ({
         userId: u.id,
@@ -98,11 +104,23 @@ const PLANS = [
         grandfather: true,
         periodEnd: null,
       })),
+      skipDuplicates: true,
     });
-    console.log('grandfather выдан %d аккаунтам: %s', withoutSub.length,
-      withoutSub.map((u) => u.email).join(', '));
+    console.log(
+      'grandfather выдан %d аккаунтам (cutoff %s): %s',
+      withoutSub.length,
+      GRANDFATHER_CUTOFF.toISOString(),
+      withoutSub.map((u) => u.email).join(', '),
+    );
   } else {
-    console.log('grandfather: новых аккаунтов нет');
+    console.log('grandfather: новых аккаунтов до cutoff нет');
+  }
+
+  const later = await prisma.user.count({
+    where: { subscription: null, createdAt: { gte: GRANDFATHER_CUTOFF } },
+  });
+  if (later > 0) {
+    console.log('новых аккаунтов после cutoff (остаются на Free): %d', later);
   }
 
   const subs = await prisma.subscription.groupBy({ by: ['planCode'], _count: { _all: true } });
