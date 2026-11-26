@@ -22,6 +22,7 @@
     "db:migrate:status": "prisma migrate status",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:baseline": "prisma migrate resolve --applied 0_init",
+    "db:seed:plans": "node scripts/seed-plans.js",
     "db:backup": "node scripts/db-backup.js",
     "db:restore": "node scripts/db-restore.js",
     "db:seed:catalog": "ts-node prisma/seed.ts",

@@ -6600,4 +6600,42 @@ staging, чтобы проверять миграции и оплату не н�
      `…(227,242,253) → (224,224,224) → (227,242,253)…` — ровно одна линия, просвета нет;
      `elementFromPoint` на границе → `TH(thead)`; нижняя граница шапки тоже одна линия (y 161/160).
 
+## ⭐ №404 — ЭТАП 0 БИЛЛИНГА: ТАРИФЫ КАК ДАННЫЕ (26.11.2026)
+
+ЧТО СДЕЛАНО:
+ • миграция `20261126072843_billing_plans` (только добавления, ничего не удалено):
+   таблицы `plans`, `subscriptions`, enum'ы `PlanCode` (FREE/FOREMAN/TEAM),
+   `SubscriptionStatus` (ACTIVE/PAST_DUE/FROZEN/CANCELED), `SubscriptionSource`
+   (MANUAL/GRANDFATHER/PAYMENT/PROMO);
+ • тариф `Plan` — данные, а не хардкод: `maxObjects`, `maxRows`, `maxPhotos`, `maxStorageMb`,
+   `maxPdfPerMonth`, `maxExportRows`, `maxWriters`, `maxViewers`, `historyMonths`;
+   `Subscription` — план, статус, `periodEnd`, `grandfather`, `pdfUsed` + `pdfPeriod`
+   (счётчик PDF/мес с ленивым сбросом по МСК, без cron), `seatsPaid`, `storageAddonMb`;
+ • `backend/scripts/seed-plans.js` + `npm run db:seed:plans` — идемпотентные сиды 3 тарифов
+   по `docs/PRICING.md` §2 и **grandfather** (Бригада бессрочно) всем существующим аккаунтам;
+ • `backend/src/billing/`: `BillingService` (действующий план с учётом срока/grandfather/отмены,
+   использование через `COUNT(*)`, остатки по лимитам, `consumePdfExport` для этапа 1),
+   `BillingController` (`GET /billing/me`), `BillingModule` подключён в `app.module.ts`;
+ • флаг `BILLING_ENFORCE` (по умолчанию **off**) — этап 0 ничего не блокирует,
+   поведение продукта не изменилось.
+ • попутно: `prisma generate` требовал остановки dev-сервера (движок занят) — остановил
+   два старых nest watch и dist/main, сгенерировал клиент, поднял один `npm run start:dev`.
+
+ПРОВЕРКИ:
+ • `GET /billing/me` реальным пользователем `s@mail.ru` (JWT тем же секретом): 200,
+   `plan.code = TEAM`, `source = GRANDFATHER`, `grandfather = true`, `enforced = false`;
+   usage совпал с БД: объектов 4, строк 484, фото 20, объём 2 МБ, писателей 2, наблюдателей 0;
+   остатки: объектов 16, строк 29 516, фото `null` (лимит по объёму), PDF 1 000;
+ • сиды: повторный запуск не дублирует тарифы; grandfather выдан 3 аккаунтам
+   (`1@`, `s@`, `q@mail.ru`);
+ • unit-тесты `billing.service.spec.ts`: 14 тестов (период МСК, grandfather, истёк срок,
+   отмена, ленивый сброс PDF, подсчёт объектов/строк/фото/участников без владельца, остатки,
+   `consumePdfExport`);
+ • Jest: **55 сьюта / 547 passed / 1 todo**; регрессия API **76/76**; `tsc --noEmit` 0;
+   `GET /health` 200.
+
+НЕ ДОВЕРЕНО: enforcement (этап 1) не включался — лимиты пока только читаются;
+серверная авторизация экспорта (`POST /exports/pdf/authorize`) не реализована;
+S3 для фото (этап 2) и оплата (этап 3) не делались.
+
 

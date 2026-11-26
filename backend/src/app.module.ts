@@ -26,6 +26,7 @@ import { PhotosModule } from './photos/photos.module'; // ⭐ №227: фото-�
 import { PriceListImportModule } from './price-list-import/price-list-import.module'; // ⭐ №273: импорт/выгрузка прайса
 import { AlertsModule } from './common/alerts/alerts.module'; // ⭐ №396: алерты в Telegram
 import { TelemetryModule } from './telemetry/telemetry.module'; // ⭐ №396: ошибки из браузера
+import { BillingModule } from './billing/billing.module'; // ⭐ №404: тарифы и лимиты
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -56,6 +57,7 @@ import { TelemetryModule } from './telemetry/telemetry.module'; // ⭐ №396: �
     PhotosModule, // ⭐ №227: фото-фиксация материалов
     AlertsModule, // ⭐ №396: алерты в Telegram (глобальный, без БД)
     TelemetryModule, // ⭐ №396: приём ошибок из браузера
+    BillingModule, // ⭐ №404: тарифы и лимиты (этап 0 — чтение)
   ],
   controllers: [AppController],
   providers: [AppService],

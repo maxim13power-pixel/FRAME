@@ -40,6 +40,90 @@ model User {
   objectTemplates        ObjectTemplate[] @relation("ObjectTemplates")
   // ⭐ №194 (F1 шаг 2): неизменяемые снимки доступа (создаются при отзыве)
   accessSnapshots        AccessSnapshot[] @relation("AccessSnapshots")
+  // ⭐ №404: подписка аккаунта (см. docs/PRICING.md). Один пользователь = один аккаунт.
+  subscription           Subscription?
+}
+
+// ⭐ №404: тариф как ДАННЫЕ, а не хардкод. Лимиты меняются через БД (docs/PRICING.md §2).
+model Plan {
+  code            PlanCode @id
+  name            String
+  priceMonthly    Int      @default(0) // ₽/мес, 0 = бесплатный
+  /// Активных объектов
+  maxObjects      Int
+  /// Строк смет суммарно по аккаунту
+  maxRows         Int
+  /// Активных фото (для Free: 5 слотов). null = лимит по объёму (maxStorageMb)
+  maxPhotos       Int?
+  /// Объём фото в МБ (для платных). null = не ограничено по объёму
+  maxStorageMb    Int?
+  /// Экспортов PDF в месяц
+  maxPdfPerMonth  Int
+  /// Максимум строк в одном экспорте
+  maxExportRows   Int
+  /// Участников с правом записи (кроме владельца): 0 = только владелец
+  maxWriters      Int      @default(0)
+  /// Наблюдателей (VIEWER)
+  maxViewers      Int      @default(0)
+  /// Месяцев видимости истории фиксаций
+  historyMonths   Int      @default(3)
+  /// Показывать на лендинге/в тарифах
+  isPublic        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+// ⭐ №404: подписка пользователя. Биллинг-единица = пользователь-владелец.
+// Счётчики, которые нельзя посчитать COUNT(*), живут здесь (только экспорты PDF/мес).
+model Subscription {
+  id              Int                @id @default(autoincrement())
+  userId          Int                @unique
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planCode        PlanCode           @default(FREE)
+  plan            Plan               @relation(fields: [planCode], references: [code])
+  status          SubscriptionStatus @default(ACTIVE)
+  source          SubscriptionSource @default(MANUAL)
+  /// Дата окончания оплаченного периода; null = бессрочно (Free, grandfather)
+  periodEnd       DateTime?
+  /// Выдан «по-старому» при включении лимитов — не отбираем до конца жизни аккаунта
+  grandfather     Boolean            @default(false)
+  /// Сколько PDF-экспортов израсходовано в текущем периоде
+  pdfUsed         Int                @default(0)
+  /// Ключ периода в формате YYYY-MM (МСК) — при смене сбрасываем pdfUsed без cron
+  pdfPeriod       String?
+  /// Докупленные места (аддон «+1 место»)
+  seatsPaid       Int                @default(0)
+  /// Докупленный объём фото, МБ (аддон «+5 ГБ»)
+  storageAddonMb  Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@map("subscriptions")
+}
+
+enum PlanCode {
+  FREE
+  FOREMAN
+  TEAM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  FROZEN
+  CANCELED
+}
+
+enum SubscriptionSource {
+  MANUAL
+  GRANDFATHER
+  PAYMENT
+  PROMO
 }
 
 model Object {
