@@ -8,6 +8,7 @@ import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { Box, Fab, IconButton, Paper, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { useScrollDirection } from '../../hooks/useScrollDirection';
 import { FAB_STYLE } from '../../theme';
 import { countRender } from '../../utils/perf';
@@ -48,6 +49,8 @@ const EstimateScrollChromeInner: React.FC<EstimateScrollChromeProps> = ({
   countRender('materials.scrollChrome'); // ⭐ №393: замер рендеров обвязки
   const direction = useScrollDirection();
   const [footerVisible, setFooterVisible] = useState(false);
+  // ⭐ «Наверх»: кнопка нужна, когда страница прокручена (у самого верха она лишняя)
+  const [topButtonVisible, setTopButtonVisible] = useState(false);
 
   // ⭐ №384: видимость кнопки «вниз» — по расстоянию до низа страницы.
   // Меряем после отрисовки (rAF) и при изменении высоты контента (ResizeObserver),
@@ -57,6 +60,7 @@ const EstimateScrollChromeInner: React.FC<EstimateScrollChromeProps> = ({
       const doc = document.documentElement;
       const distance = doc.scrollHeight - (window.scrollY + window.innerHeight);
       setFooterVisible(distance <= 160);
+      setTopButtonVisible(window.scrollY > 200);
     };
     const raf = window.requestAnimationFrame(measure);
     window.addEventListener('scroll', measure, { passive: true });
@@ -179,6 +183,30 @@ const EstimateScrollChromeInner: React.FC<EstimateScrollChromeProps> = ({
           }}
         >
           <KeyboardArrowDownIcon />
+        </IconButton>
+      )}
+      {/* ⭐ «Наверх» — такая же кнопка над «К итогам и страницам»; появляется, когда страница
+          прокручена, и возвращает к началу сметы (шапка, поиск, фильтры). */}
+      {topButtonVisible && (
+        <IconButton
+          className="no-print"
+          aria-label="Наверх"
+          title="Наверх"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          sx={{
+            position: 'fixed',
+            right: isMobile ? 16 : 24,
+            bottom: isMobile ? SUMMARY_BAR_BOTTOM + 180 : 72,
+            zIndex: 8,
+            width: 40,
+            height: 40,
+            bgcolor: 'background.paper',
+            border: '1px solid #e0e0e0',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+            '&:hover': { bgcolor: '#fff' },
+          }}
+        >
+          <KeyboardArrowUpIcon />
         </IconButton>
       )}
     </>
