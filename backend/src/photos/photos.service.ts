@@ -257,8 +257,9 @@ export class PhotosService {
     if (access.role === 'VIEWER') {
       throw new ForbiddenException('Наблюдатель не может добавлять фото');
     }
-    // ⭐ №407: лимит фото по тарифу — слоты на Free, объём на платных.
+    // ⭐ №407/№409: лимит фото по тарифу — слоты на Free, объём на платных.
     // Квота аккаунта владельца объекта, а не автора загрузки.
+    let photoAccountId = userId;
     if (this.billing && this.limits) {
       const material = await this.prisma.material.findUnique({
         where: { id: materialId },
@@ -266,9 +267,10 @@ export class PhotosService {
       });
       if (material) {
         const scope = await this.billing.resolveProjectAccount(userId, material.projectId);
-        const accountId = scope?.accountId ?? userId;
-        await this.limits.assert(accountId, 'photos');
-        await this.limits.assert(accountId, 'storage', 1); // 1 МБ — грубая проверка до записи файла
+        photoAccountId = scope?.accountId ?? userId;
+        // быстрая проверка ДО записи файлов, чтобы не плодить мусор;
+        // окончательная — в транзакции ниже, под advisory-блокировкой аккаунта
+        await this.limits.assert(photoAccountId, 'photos');
       }
     }
     if (!file?.buffer?.length) {
@@ -296,20 +298,42 @@ export class PhotosService {
         thumbName = buildPhotoKey(now, extensionForMime(thumbnail.mime));
         await this.storage.save(thumbName, thumbnail.buffer);
       }
-      const created = await this.prisma.materialPhoto.create({
-        data: {
-          materialId,
-          fileName,
-          thumbName,
-          mimeType: mime,
-          sizeBytes: size,
-          width,
-          height,
-          comment,
-          createdById: userId,
-        },
-        select: PHOTO_SELECT,
-      });
+      const created = this.limits
+        ? await this.prisma.$transaction(async (tx) => {
+            // ⭐ №409: advisory-блокировка аккаунта — два параллельных upload не дадут
+            // 6 фото на Free (лимит 5). Проверка повторяется уже под блокировкой.
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`limit:account:${photoAccountId}`}))`;
+            await this.limits!.assert(photoAccountId, 'photos');
+            await this.limits!.assert(photoAccountId, 'storage', Math.max(1, Math.ceil(size / (1024 * 1024))));
+            return tx.materialPhoto.create({
+              data: {
+                materialId,
+                fileName,
+                thumbName,
+                mimeType: mime,
+                sizeBytes: size,
+                width,
+                height,
+                comment,
+                createdById: userId,
+              },
+              select: PHOTO_SELECT,
+            });
+          })
+        : await this.prisma.materialPhoto.create({
+            data: {
+              materialId,
+              fileName,
+              thumbName,
+              mimeType: mime,
+              sizeBytes: size,
+              width,
+              height,
+              comment,
+              createdById: userId,
+            },
+            select: PHOTO_SELECT,
+          });
       const [dto] = await this.withAuthors([created as PhotoRow]);
       return dto;
     } catch (error) {
