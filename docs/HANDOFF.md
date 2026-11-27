@@ -929,6 +929,22 @@ npm run verify                           # tsc + jest + vite build (бэкенд
   не блокируется. Проверено: для `s@mail.ru` план TEAM/grandfather, usage 4 объекта /
   484 строки / 20 фото / 2 МБ / 2 писателя, остатки посчитаны; Jest 55 сьютов / 547 тестов,
   регрессия 76/76, `tsc` 0.
+- §237 — **биллинг: экспорт, лимиты, гонки, спека S3** (№405–№409): `POST /billing/exports/pdf/authorize`
+  с HMAC-токеном, привязанным к хешу документа (`sha256` от проекта + фильтров + строк +
+  `max(material.updatedAt)`), идемпотентность через `pdf_export_authorizations`
+  `UNIQUE(accountId, periodKey, payloadHash)`; квота — **аккаунта владельца объекта**
+  (`resolveProjectAccount` по роли CUSTOMER), `actorUserId` только для аудита; столбление и
+  списание — одна транзакция (при лимите ROLLBACK, «бесплатных» столбов нет); `rows` считает
+  сервер, `watermark`/`maxRows` приходят из БД. Лимиты: `limits.service.ts` (`objects/rows/
+  photos/storage/writers/viewers`), режимы `BILLING_ENFORCE=off|shadow|on`, тексты апселла
+  собираются из чисел текущего и следующего тарифа, fail-open с логом `enforce_fail_open`.
+  Встроено: объект (advisory lock `limit:objects:<id>`), строка сметы и импорт XLSX
+  (`limit:account:<id>` внутри транзакции), фото (слоты + объём, повторная проверка под локом),
+  участники (`writers`/`viewers`). Проверено живьём: прораб печатает проект владельца →
+  списывается квота владельца; гонка двух authorize одного документа → одно списание;
+  IDOR фото: 401 без токена / 404 чужой JWT / 200 участнику; `EXPLAIN` подтвердил индексы.
+  Jest 56 сьютов / 560 тестов, регрессия 76/76, `tsc` 0. Спеке S3 и открытым пунктам —
+  `docs/PRICING.md` §13 и новый `docs/S3-MIGRATION.md`.
 
 
 
