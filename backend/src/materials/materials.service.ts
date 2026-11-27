@@ -226,11 +226,13 @@ export class MaterialsService {
   async create(dto: CreateMaterialDto, userId: number) {
     // ⭐ Проверяем доступ к проекту (заодно получаем запись доступа)
     const access = await this.checkProjectAccess(dto.projectId, userId);
-    // ⭐ №407: лимит строк сметы по тарифу — квота аккаунта владельца объекта
-    if (this.billing && this.limits) {
-      const scope = await this.billing.resolveProjectAccount(userId, dto.projectId);
-      await this.limits.assert(scope?.accountId ?? userId, 'rows');
-    }
+    // ⭐ №409: аккаунт для квоты — владелец объекта; блокировка и проверка лимита строк
+    // выполняются ВНУТРИ транзакции создания (см. ниже), иначе два параллельных запроса
+    // при 149/150 оба проходят проверку и дают 151 строку.
+    const scope = this.billing
+      ? await this.billing.resolveProjectAccount(userId, dto.projectId)
+      : null;
+    const accountId = scope?.accountId ?? userId;
     // 🔒 VIEWER не имеет права создавать материалы
     if (access.role === 'VIEWER') {
       throw new ForbiddenException('Наблюдатель не может создавать материалы');
@@ -280,6 +282,12 @@ export class MaterialsService {
     }
 
     const created = await this.prisma.$transaction(async (tx) => {
+      // ⭐ №409: единый ключ блокировки на аккаунт — сериализует ВСЕ создания строк
+      // (обычное, дублирование, импорт) и защищает от TOCTOU на границе лимита.
+      if (this.limits) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`limit:account:${accountId}`}))`;
+        await this.limits.assert(accountId, 'rows');
+      }
       let priceItemId: number | null = null;
       let unitPrice = 0;
       if (dto.priceItemId != null) {

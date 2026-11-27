@@ -1,4 +1,4 @@
-// backend/src/imports/imports.service.ts
+﻿// backend/src/imports/imports.service.ts
 // ⭐ №202 (RFC §8.3–8.5): партия импорта сметы — предпросмотр и commit.
 // Главные правила: цены берём ТОЛЬКО из справочника, commit атомарный,
 // повторный импорт того же файла не создаёт дубли (externalKey).
@@ -389,19 +389,25 @@ export class ImportsService {
       }
     }
 
-    // ⭐ №408: лимит строк сметы — проверяем ДО записи, всё-или-ничего.
+    // ⭐ №408/№409: лимит строк сметы — считаем ДО записи, проверяем в транзакции ниже.
     // Иначе Free обходит лимит 150 строк простым импортом файла на 5 000 строк.
+    let rowsToImport = 0;
+    let importAccountId = input.userId;
     if (this.billing && this.limits) {
-      const toImport = preview.rows.filter(
-        (row) => resolutions.get(row.row)?.action === 'IMPORT',
-      ).length;
-      if (toImport > 0) {
+      rowsToImport = preview.rows.filter((row) => resolutions.get(row.row)?.action === 'IMPORT').length;
+      if (rowsToImport > 0) {
         const scope = await this.billing.resolveProjectAccount(input.userId, batch.projectId);
-        await this.limits.assert(scope?.accountId ?? input.userId, 'rows', toImport);
+        importAccountId = scope?.accountId ?? input.userId;
       }
     }
 
     const summary = await this.prisma.$transaction(async (tx) => {
+      // ⭐ №409: тот же ключ блокировки аккаунта, что и в создании строки —
+      // два параллельных импорта не могут вместе перескочить лимит строк.
+      if (this.limits && rowsToImport > 0) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`limit:account:${importAccountId}`}))`;
+        await this.limits.assert(importAccountId, 'rows', rowsToImport);
+      }
       const claimed = await tx.importBatch.updateMany({
         where: { id: batch.id, status: 'PREVIEW' },
         data: { status: 'COMMITTING' },

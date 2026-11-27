@@ -493,6 +493,8 @@ model ObjectAccess {
   @@index([userId, isHidden])
   // ⭐ №404: подсчёт использования по тарифу (объекты/участники аккаунта)
   @@index([userId, role])
+  // ⭐ №409: подсчёт writers/viewers по набору объектов аккаунта
+  @@index([objectId, role])
   @@map("object_access")
 }
 
